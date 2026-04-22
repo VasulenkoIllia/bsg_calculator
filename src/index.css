@@ -1,0 +1,54 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  body {
+    @apply m-0 min-h-screen bg-bsg-surface font-sans text-bsg-ink antialiased;
+  }
+
+  #root {
+    @apply min-h-screen;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-2xl border border-slate-200/80 bg-white/90 shadow-panel backdrop-blur-sm;
+  }
+
+  .section-title {
+    @apply text-2xl font-extrabold tracking-tight text-bsg-ink;
+  }
+
+  .zone-title {
+    @apply text-xl font-bold tracking-tight text-bsg-ink;
+  }
+
+  .field-label {
+    @apply mb-2 block text-sm font-semibold text-slate-700;
+  }
+
+  .field-input {
+    @apply w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base font-semibold text-slate-900 shadow-sm outline-none transition;
+    @apply focus:border-bsg-sky focus:ring-4 focus:ring-blue-100;
+  }
+
+  .metric-card {
+    @apply rounded-xl border border-slate-200 bg-slate-50/80 p-4;
+  }
+
+  .metric-name {
+    @apply text-sm font-medium text-slate-600;
+  }
+
+  .metric-value {
+    @apply mt-1 break-words text-[clamp(1.5rem,2.2vw,2rem)] font-extrabold leading-tight tracking-tight text-bsg-ink;
+  }
+}
