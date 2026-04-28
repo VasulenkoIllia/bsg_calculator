@@ -6,7 +6,8 @@ Status: Completed (phase scope)
 ## 1) Completed zone/module
 - Zone 4: `Other Fees & Limits`
 - Covered sections:
-  - `Payout Minimum Fee (Per Transaction)` with round-up-to-€0.10 normalization.
+  - Revenue-affecting `Payout Minimum Fee (Per Transaction)` with round-up-to-€0.10 normalization.
+  - Separate contract-summary-only payout minimum fee wording with overall or EU/WW informational values.
   - `3DS Fee` with locked revenue (`€0.05`) and always-applied provider cost (`€0.03`).
   - `Settlement Fee` visibility dependency from Zone 3 (`Settlement Included`).
   - `Monthly Minimum Fee` uplift logic.
@@ -33,6 +34,7 @@ Source: `Calculator_Описание.docx`, section `ZONE 4: OTHER FEES & TRANSA
   - `Settlement Fee = Net × Rate%`
   - `Client Net = Net - Settlement Fee`
 - Monthly minimum warning and payout minimum warning behavior implemented.
+- New contract-summary payout minimum fee fields are informational and do not replace the existing payout minimum fee business logic.
 - Failed TRX modes aligned with DOCX behavior split.
 - Contract fields exposed without affecting profitability.
 

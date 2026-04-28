@@ -99,6 +99,18 @@ function toTierBoundaryLabel(value: number): string {
   })}`;
 }
 
+function formatThresholdMillion(value: number): string {
+  return safeNonNegative(value).toLocaleString("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2
+  });
+}
+
+function formatPayoutMinimumFeeClause(thresholdMillion: number, feePerTransaction: number): string {
+  const threshold = formatThresholdMillion(thresholdMillion);
+  return `<=€${threshold}M: ${formatAmount2(feePerTransaction)} / >€${threshold}M: N/A`;
+}
+
 function buildPayinRegionPricingLines(
   regionLabel: string,
   pricing: PayinRegionPricingConfig
@@ -397,6 +409,29 @@ export function buildOfferSummaryText(input: OfferSummaryInput): string {
         : formatAmountInteger(input.contractSummary.payoutLimitMax)
     }`
   );
+  if (input.calculatorType.payout) {
+    if (input.contractSummary.payoutMinimumFeeMode === "overall") {
+      lines.push(
+        `Payout Minimum Fee: ${formatPayoutMinimumFeeClause(
+          input.contractSummary.payoutMinimumFeeThresholdMillion,
+          input.contractSummary.payoutMinimumFeePerTransaction
+        )}`
+      );
+    } else {
+      lines.push(
+        `Payout Minimum Fee EU: ${formatPayoutMinimumFeeClause(
+          input.contractSummary.payoutMinimumFeeEuThresholdMillion,
+          input.contractSummary.payoutMinimumFeeEuPerTransaction
+        )}`
+      );
+      lines.push(
+        `Payout Minimum Fee WW: ${formatPayoutMinimumFeeClause(
+          input.contractSummary.payoutMinimumFeeWwThresholdMillion,
+          input.contractSummary.payoutMinimumFeeWwPerTransaction
+        )}`
+      );
+    }
+  }
   lines.push(
     `Rolling Reserve: ${formatPercent(
       input.contractSummary.rollingReservePercent,

@@ -80,6 +80,33 @@ Use this file to record meaningful technical decisions for the project.
   - Total profitability now has an explicit disabled-introducer path instead of relying on zero rates.
   - Offer Summary clearly shows when no agent/introducer is applied.
 
+### Decision: Zone 4 Payout Minimum Fee Contract Summary Does Not Replace Calculation
+- Date: 2026-04-28
+- Context:
+  - Product clarified that the new `Contract Summary Only` block is informational.
+  - It describes `Payout Minimum Fee (Per Transaction)` for contract generation.
+  - This clarification should not remove or change the pre-existing revenue-affecting payout minimum fee calculation.
+  - Product requested an optional regional split using the project-standard regions `EU` and `WW`.
+- Decision:
+  - Keep the existing revenue-affecting `Payout Minimum Fee (Per Transaction)` business logic unchanged.
+  - Add separate `Contract Summary Only` fields for contract wording.
+  - Support two informational contract modes:
+    - `overall`
+    - `by region (EU / WW)`
+  - Default contract wording uses threshold `€2.5M`, fee `€1.00`, and `N/A` above threshold.
+  - Keep `Refund Cost = €15` and `Dispute/Chargeback Cost = €75` defaults.
+  - Add UI reminders and lower clamps for provider minimums:
+    - Refund minimum `€10`
+    - Dispute/Chargeback minimum `€50`
+  - Settlement Period options are `T+1` through `T+5`.
+- Alternatives considered:
+  - Treat the new contract-summary wording as a replacement for the existing calculation.
+  - Add EU/WW contract split into profitability calculations immediately.
+- Consequences:
+  - Zone 5 payout revenue can still include the old payout minimum uplift when the existing revenue-affecting checkbox is enabled.
+  - The new overall/EU/WW contract fields do not affect Zone 5 by themselves.
+  - Future contract generation can consume the stored overall/EU/WW values without changing existing profitability formulas.
+
 ### Decision: Phase Sequencing (Zone 2 Next)
 - Date: 2026-04-22
 - Context:

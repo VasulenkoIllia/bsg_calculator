@@ -6,6 +6,7 @@ import {
   calculateSettlementFeeImpact,
   calculateThreeDsImpact,
   DEFAULT_3DS_FEE_CONFIG,
+  DEFAULT_CONTRACT_SUMMARY_SETTINGS,
   DEFAULT_FAILED_TRX_CHARGING_CONFIG,
   DEFAULT_MONTHLY_MINIMUM_FEE_CONFIG,
   DEFAULT_PAYOUT_MINIMUM_FEE_CONFIG,
@@ -31,6 +32,16 @@ describe("zone4/otherFeesAndLimits", () => {
     expect(result.adjustedRevenue).toBe(36_250);
     expect(result.upliftRevenue).toBe(18_995);
     expect(result.warning).toBe("⚠️ Payout Minimum Fee Applied");
+  });
+
+  it("exposes payout minimum fee contract-summary defaults", () => {
+    expect(DEFAULT_CONTRACT_SUMMARY_SETTINGS.payoutMinimumFeeMode).toBe("overall");
+    expect(DEFAULT_CONTRACT_SUMMARY_SETTINGS.payoutMinimumFeeThresholdMillion).toBe(2.5);
+    expect(DEFAULT_CONTRACT_SUMMARY_SETTINGS.payoutMinimumFeePerTransaction).toBe(1);
+    expect(DEFAULT_CONTRACT_SUMMARY_SETTINGS.payoutMinimumFeeEuThresholdMillion).toBe(2.5);
+    expect(DEFAULT_CONTRACT_SUMMARY_SETTINGS.payoutMinimumFeeEuPerTransaction).toBe(1);
+    expect(DEFAULT_CONTRACT_SUMMARY_SETTINGS.payoutMinimumFeeWwThresholdMillion).toBe(2.5);
+    expect(DEFAULT_CONTRACT_SUMMARY_SETTINGS.payoutMinimumFeeWwPerTransaction).toBe(1);
   });
 
   it("calculates 3DS revenue by successful and cost by total attempts", () => {

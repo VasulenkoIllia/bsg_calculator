@@ -1,5 +1,6 @@
 export type FailedTrxChargingMode = "overLimitOnly" | "allFailedVolume";
-export type SettlementPeriod = "T+1" | "T+2" | "T+3" | "T+5" | "T+7";
+export type SettlementPeriod = "T+1" | "T+2" | "T+3" | "T+4" | "T+5";
+export type PayoutMinimumFeeMode = "overall" | "byRegion";
 
 export interface PayoutMinimumFeeConfig {
   enabled: boolean;
@@ -33,6 +34,13 @@ export interface ContractSummarySettings {
   refundCost: number;
   disputeCost: number;
   settlementPeriod: SettlementPeriod;
+  payoutMinimumFeeMode: PayoutMinimumFeeMode;
+  payoutMinimumFeeThresholdMillion: number;
+  payoutMinimumFeePerTransaction: number;
+  payoutMinimumFeeEuThresholdMillion: number;
+  payoutMinimumFeeEuPerTransaction: number;
+  payoutMinimumFeeWwThresholdMillion: number;
+  payoutMinimumFeeWwPerTransaction: number;
   collectionLimitMin: number;
   collectionLimitMax: number;
   payoutLimitMin: number;
@@ -154,6 +162,13 @@ export const DEFAULT_CONTRACT_SUMMARY_SETTINGS: ContractSummarySettings = {
   refundCost: 15,
   disputeCost: 75,
   settlementPeriod: "T+2",
+  payoutMinimumFeeMode: "overall",
+  payoutMinimumFeeThresholdMillion: 2.5,
+  payoutMinimumFeePerTransaction: 1,
+  payoutMinimumFeeEuThresholdMillion: 2.5,
+  payoutMinimumFeeEuPerTransaction: 1,
+  payoutMinimumFeeWwThresholdMillion: 2.5,
+  payoutMinimumFeeWwPerTransaction: 1,
   collectionLimitMin: 1,
   collectionLimitMax: 2_500,
   payoutLimitMin: 60,

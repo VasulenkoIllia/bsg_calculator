@@ -48,6 +48,7 @@ import {
   type PayinRegionPricingConfig,
   type PayinRegionPricingPreview,
   type PricingModelType,
+  type PayoutMinimumFeeMode,
   type PricingRateMode,
   type PayoutPricingConfig,
   type SettlementPeriod,
@@ -238,7 +239,14 @@ const ZERO_CONTRACT_SUMMARY_SETTINGS: ContractSummarySettings = {
   payoutLimitMax: 0,
   rollingReservePercent: 0,
   rollingReserveHoldDays: 0,
-  rollingReserveCap: 0
+  rollingReserveCap: 0,
+  payoutMinimumFeeMode: "overall",
+  payoutMinimumFeeThresholdMillion: 0,
+  payoutMinimumFeePerTransaction: 0,
+  payoutMinimumFeeEuThresholdMillion: 0,
+  payoutMinimumFeeEuPerTransaction: 0,
+  payoutMinimumFeeWwThresholdMillion: 0,
+  payoutMinimumFeeWwPerTransaction: 0
 };
 
 const DEFAULT_CALCULATOR_STATE: CalculatorStatePreset = {
@@ -2008,7 +2016,9 @@ export default function App() {
         children: [
           {
             id: "unified-payout-total-revenue",
-            label: "Total Payout Revenue",
+            label: payoutMinimumFeeImpact.warning
+              ? "Total Payout Revenue (Minimum Applied)"
+              : "Total Payout Revenue",
             value: payoutProfitability.revenue.total,
             formula: payoutMinimumFeeImpact.warning
               ? `Total Payout Revenue (minimum applied) = max(Base Payout Revenue (${formatAmount2(
@@ -4006,6 +4016,162 @@ export default function App() {
               <p className="mt-1 text-xs text-slate-500">
                 These parameters are shown in offer summary and do not affect Zone 5 profitability.
               </p>
+              {calculatorType.payout ? (
+                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <h4 className="text-base font-bold text-slate-800">
+                        Payout Minimum Fee (Contract Summary)
+                      </h4>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Contract summary only. Does not affect Zone 5 profitability.
+                      </p>
+                    </div>
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+                      <input
+                        className="h-4 w-4 accent-blue-600"
+                        type="checkbox"
+                        checked={contractSummarySettings.payoutMinimumFeeMode === "byRegion"}
+                        onChange={event =>
+                          setContractSummaryField(
+                            "payoutMinimumFeeMode",
+                            (event.target.checked ? "byRegion" : "overall") as PayoutMinimumFeeMode
+                          )
+                        }
+                      />
+                      By region (EU / WW)
+                    </label>
+                  </div>
+
+                  {contractSummarySettings.payoutMinimumFeeMode === "overall" ? (
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <NumberField
+                        label="Volume Threshold (M)"
+                        value={contractSummarySettings.payoutMinimumFeeThresholdMillion}
+                        onChange={value =>
+                          setContractSummaryField(
+                            "payoutMinimumFeeThresholdMillion",
+                            Math.max(0, value)
+                          )
+                        }
+                        min={0}
+                        step={0.5}
+                        helper="Contract wording: minimum fee applies up to this payout volume tier."
+                      />
+                      <NumberField
+                        label="Minimum Transaction Fee (€)"
+                        value={contractSummarySettings.payoutMinimumFeePerTransaction}
+                        onChange={value =>
+                          setContractSummaryField(
+                            "payoutMinimumFeePerTransaction",
+                            Math.max(0, value)
+                          )
+                        }
+                        min={0}
+                        step={0.01}
+                        helper="Default from contract table: €1.00; above threshold is N/A."
+                      />
+                      <p className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 md:col-span-2">
+                        Contract preview: ≤€
+                        {formatInputNumber(
+                          contractSummarySettings.payoutMinimumFeeThresholdMillion
+                        )}
+                        M: {formatAmount2(contractSummarySettings.payoutMinimumFeePerTransaction)} /
+                        &gt;€
+                        {formatInputNumber(
+                          contractSummarySettings.payoutMinimumFeeThresholdMillion
+                        )}
+                        M: N/A
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                      <div className="rounded-lg border border-slate-200 bg-white p-3">
+                        <p className="text-sm font-bold text-slate-800">EU</p>
+                        <div className="mt-2 grid gap-3 md:grid-cols-2">
+                          <NumberField
+                            label="EU Volume Threshold (M)"
+                            value={contractSummarySettings.payoutMinimumFeeEuThresholdMillion}
+                            onChange={value =>
+                              setContractSummaryField(
+                                "payoutMinimumFeeEuThresholdMillion",
+                                Math.max(0, value)
+                              )
+                            }
+                            min={0}
+                            step={0.5}
+                          />
+                          <NumberField
+                            label="EU Minimum Transaction Fee (€)"
+                            value={contractSummarySettings.payoutMinimumFeeEuPerTransaction}
+                            onChange={value =>
+                              setContractSummaryField(
+                                "payoutMinimumFeeEuPerTransaction",
+                                Math.max(0, value)
+                              )
+                            }
+                            min={0}
+                            step={0.01}
+                          />
+                        </div>
+                        <p className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                          EU preview: ≤€
+                          {formatInputNumber(
+                            contractSummarySettings.payoutMinimumFeeEuThresholdMillion
+                          )}
+                          M: {formatAmount2(contractSummarySettings.payoutMinimumFeeEuPerTransaction)} /
+                          &gt;€
+                          {formatInputNumber(
+                            contractSummarySettings.payoutMinimumFeeEuThresholdMillion
+                          )}
+                          M: N/A
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 bg-white p-3">
+                        <p className="text-sm font-bold text-slate-800">WW</p>
+                        <div className="mt-2 grid gap-3 md:grid-cols-2">
+                          <NumberField
+                            label="WW Volume Threshold (M)"
+                            value={contractSummarySettings.payoutMinimumFeeWwThresholdMillion}
+                            onChange={value =>
+                              setContractSummaryField(
+                                "payoutMinimumFeeWwThresholdMillion",
+                                Math.max(0, value)
+                              )
+                            }
+                            min={0}
+                            step={0.5}
+                          />
+                          <NumberField
+                            label="WW Minimum Transaction Fee (€)"
+                            value={contractSummarySettings.payoutMinimumFeeWwPerTransaction}
+                            onChange={value =>
+                              setContractSummaryField(
+                                "payoutMinimumFeeWwPerTransaction",
+                                Math.max(0, value)
+                              )
+                            }
+                            min={0}
+                            step={0.01}
+                          />
+                        </div>
+                        <p className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                          WW preview: ≤€
+                          {formatInputNumber(
+                            contractSummarySettings.payoutMinimumFeeWwThresholdMillion
+                          )}
+                          M: {formatAmount2(contractSummarySettings.payoutMinimumFeeWwPerTransaction)} /
+                          &gt;€
+                          {formatInputNumber(
+                            contractSummarySettings.payoutMinimumFeeWwThresholdMillion
+                          )}
+                          M: N/A
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : null}
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <NumberField
                   label="Account Setup Fee (€, one-time)"
@@ -4017,23 +4183,23 @@ export default function App() {
                 <NumberField
                   label="Refund Cost (€)"
                   value={contractSummarySettings.refundCost}
-                  onChange={value => setContractSummaryField("refundCost", clampNumber(value, 10, 50))}
+                  onChange={value => setContractSummaryField("refundCost", Math.max(10, value))}
                   min={10}
-                  max={50}
                   step={5}
+                  helper="Minimum provider cost is €10. Do not set below €10."
                 />
                 <NumberField
                   label="Dispute/Chargeback Cost (€)"
                   value={contractSummarySettings.disputeCost}
-                  onChange={value => setContractSummaryField("disputeCost", clampNumber(value, 50, 150))}
+                  onChange={value => setContractSummaryField("disputeCost", Math.max(50, value))}
                   min={50}
-                  max={150}
                   step={5}
+                  helper="Minimum provider cost is €50. Do not set below €50."
                 />
                 <div>
                   <span className="field-label">Settlement Period</span>
                   <div className="flex flex-wrap gap-2">
-                    {(["T+1", "T+2", "T+3", "T+5", "T+7"] as SettlementPeriod[]).map(period => (
+                    {(["T+1", "T+2", "T+3", "T+4", "T+5"] as SettlementPeriod[]).map(period => (
                       <MiniToggle
                         key={`settlement-period-${period}`}
                         label={period}
@@ -4292,25 +4458,25 @@ export default function App() {
                     </div>
                   ) : null}
                   {monthlyMinimumFeeImpact.warning ? (
-                    <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
-                      <p className="text-sm font-extrabold">Minimum Fee Applied: Monthly</p>
-                      <p className="mt-1">
-                        Base actual revenue:{" "}
-                        <strong>{formatAmount2(monthlyMinimumFeeImpact.baseRevenue)}</strong>
-                      </p>
-                      <p>
-                        Configured monthly minimum:{" "}
-                        <strong>{formatAmount2(monthlyMinimumFeeAmount)}</strong>
-                      </p>
-                      <p>
-                        Used in totals (applied monthly revenue):{" "}
-                        <strong>{formatAmount2(monthlyMinimumFeeImpact.appliedRevenue)}</strong>
-                      </p>
-                      <p>
-                        Difference from minimum rule:{" "}
-                        <strong>+{formatAmount2(monthlyMinimumFeeImpact.upliftRevenue)}</strong>
-                      </p>
-                    </div>
+                  <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                    <p className="text-sm font-extrabold">Minimum Fee Applied: Monthly</p>
+                    <p className="mt-1">
+                      Base actual revenue:{" "}
+                      <strong>{formatAmount2(monthlyMinimumFeeImpact.baseRevenue)}</strong>
+                    </p>
+                    <p>
+                      Configured monthly minimum:{" "}
+                      <strong>{formatAmount2(monthlyMinimumFeeAmount)}</strong>
+                    </p>
+                    <p>
+                      Used in totals (applied monthly revenue):{" "}
+                      <strong>{formatAmount2(monthlyMinimumFeeImpact.appliedRevenue)}</strong>
+                    </p>
+                    <p>
+                      Difference from minimum rule:{" "}
+                      <strong>+{formatAmount2(monthlyMinimumFeeImpact.upliftRevenue)}</strong>
+                    </p>
+                  </div>
                   ) : null}
                 </div>
               ) : null}

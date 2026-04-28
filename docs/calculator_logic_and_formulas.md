@@ -244,17 +244,38 @@ Tiered rate:
 
 From `zone4/otherFeesAndLimits.ts` and App wiring.
 
-### 7.1 Payout minimum fee impact
+### 7.1 Payout minimum fee
 
-- User minimum fee normalized upward to one decimal:
+There are two separate payout minimum fee concerns:
+
+1. Existing `Revenue-Affecting Fees` control: `Payout Minimum Fee (Per Transaction)`.
+2. New `Contract Summary Only` wording for contract preparation.
+
+Revenue-affecting rule:
+- The existing `Payout Minimum Fee (Per Transaction)` calculation remains unchanged.
+- User minimum fee is normalized upward to one decimal:
   - `normalizePayoutMinimumFeePerTransaction(x) = ceil(x * 10) / 10`
+- Given base payout revenue and payout transactions:
+  - `perTransactionRevenue = payoutRevenue / payoutTransactions` (if tx > 0)
+  - If enabled and `perTransactionRevenue < minimumFee`, then minimum is applied.
+  - `appliedPerTransactionRevenue = minimumFee or perTransactionRevenue`
+  - `adjustedRevenue = appliedPerTransactionRevenue * payoutTransactions`
+  - `upliftRevenue = max(0, adjustedRevenue - payoutRevenue)`
 
-Given base payout revenue and payout transactions:
-- `perTransactionRevenue = payoutRevenue / payoutTransactions` (if tx > 0)
-- If enabled and `perTransactionRevenue < minimumFee`, then minimum is applied.
-- `appliedPerTransactionRevenue = minimumFee or perTransactionRevenue`
-- `adjustedRevenue = appliedPerTransactionRevenue * payoutTransactions`
-- `upliftRevenue = max(0, adjustedRevenue - payoutRevenue)`
+Contract-summary-only rule:
+- The new overall/EU/WW fields are informational and do not change profitability formulas by themselves.
+- They appear as contract wording in Zone 4 and Zone 6 Offer Summary.
+- Default mode is `overall`.
+- Defaults:
+  - overall threshold: `€2.5M`
+  - overall minimum transaction fee: `€1.00`
+  - EU threshold: `€2.5M`
+  - EU minimum transaction fee: `€1.00`
+  - WW threshold: `€2.5M`
+  - WW minimum transaction fee: `€1.00`
+- Overall contract wording:
+  - `<=€2.5M: €1 / >€2.5M: N/A`
+- By-region contract wording uses the same rule separately for `EU` and `WW`.
 
 ### 7.2 3DS impact
 
@@ -286,6 +307,10 @@ Important App wiring:
 - `payinFeesAll = payinBaseRevenue + threeDsRevenue`
 - `payoutFeesAll = payoutBaseRevenue`
 
+Contract summary settlement period:
+- Allowed values are `T+1`, `T+2`, `T+3`, `T+4`, `T+5`.
+- Default is `T+2`.
+
 ### 7.4 Monthly minimum fee impact
 
 - If enabled and `actualRevenue < minimumMonthlyRevenue`:
@@ -304,6 +329,18 @@ Given failed CC/APM tx counts and effective CC/APM failed fees:
 Additional values currently computed in code:
 - `overLimitAttempts = max(0, thresholdAttempts - totalAttempts)`
 - `belowLimitAttempts = max(0, totalAttempts - thresholdAttempts)`
+
+### 7.6 Contract summary reminders
+
+Refund and dispute/chargeback costs remain contract-summary values only.
+
+Defaults:
+- `Refund Cost = €15`
+- `Dispute/Chargeback Cost = €75`
+
+Minimum reminders:
+- Refund provider minimum is `€10`; UI clamps lower edits back to `€10`.
+- Dispute/chargeback provider minimum is `€50`; UI clamps lower edits back to `€50`.
 
 ## 8. Zone 5 (Profitability)
 

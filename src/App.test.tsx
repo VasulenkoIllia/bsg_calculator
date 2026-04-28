@@ -60,6 +60,9 @@ describe("App UI", () => {
     await user.click(screen.getByRole("checkbox", { name: "Payout" }));
     expect(screen.getByLabelText("Monthly Payout Volume (€)")).toHaveValue("200,000");
     expect(screen.getByLabelText("Total Payout Transactions")).toHaveValue("2,000");
+    expect(screen.getByLabelText("Minimum Fee per Transaction (€)")).toHaveValue("2.5");
+    expect(screen.getByLabelText("Volume Threshold (M)")).toHaveValue("2.5");
+    expect(screen.getByLabelText("Minimum Transaction Fee (€)")).toHaveValue("1");
 
     await user.click(screen.getByRole("button", { name: "Reset all to 0" }));
 
@@ -75,6 +78,9 @@ describe("App UI", () => {
     await user.click(screen.getByRole("checkbox", { name: "Payout" }));
     expect(screen.getByLabelText("Monthly Payout Volume (€)")).toHaveValue("0");
     expect(screen.getByLabelText("Total Payout Transactions")).toHaveValue("0");
+    expect(screen.getByLabelText("Minimum Fee per Transaction (€)")).toHaveValue("0");
+    expect(screen.getByLabelText("Volume Threshold (M)")).toHaveValue("0");
+    expect(screen.getByLabelText("Minimum Transaction Fee (€)")).toHaveValue("0");
 
     await user.click(screen.getByRole("button", { name: "Apply defaults" }));
 
@@ -96,6 +102,9 @@ describe("App UI", () => {
     await user.click(screen.getByRole("checkbox", { name: "Payout" }));
     expect(screen.getByLabelText("Monthly Payout Volume (€)")).toHaveValue("200,000");
     expect(screen.getByLabelText("Total Payout Transactions")).toHaveValue("2,000");
+    expect(screen.getByLabelText("Minimum Fee per Transaction (€)")).toHaveValue("2.5");
+    expect(screen.getByLabelText("Volume Threshold (M)")).toHaveValue("2.5");
+    expect(screen.getByLabelText("Minimum Transaction Fee (€)")).toHaveValue("1");
   });
 
   it("shows split formulas under each split input and recalculates on split changes", async () => {
@@ -277,16 +286,31 @@ describe("App UI", () => {
 
     await user.click(screen.getByRole("checkbox", { name: "Payout" }));
     expect(screen.getByText("Payout Minimum Fee (Per Transaction)")).toBeInTheDocument();
+    expect(screen.getByText("Payout Minimum Fee (Contract Summary)")).toBeInTheDocument();
+    expect(screen.getByText(/Does not affect Zone 5 profitability/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Volume Threshold (M)")).toHaveValue("2.5");
+    expect(screen.getByLabelText("Minimum Transaction Fee (€)")).toHaveValue("1");
+    expect(screen.getByText(/Contract preview: ≤€2.5M: €1 \/ >€2.5M: N\/A/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("checkbox", { name: "Payout Minimum Fee (Per Transaction)" }));
-    expect(screen.queryByText(/Payout Minimum Fee Applied/)).not.toBeInTheDocument();
-    const payoutMinimumInput = screen.getByRole("textbox", {
-      name: "Minimum Fee per Transaction (€)"
-    });
+    const payoutMinimumInput = screen.getByLabelText("Minimum Fee per Transaction (€)");
     await user.clear(payoutMinimumInput);
     await user.type(payoutMinimumInput, "3.5");
     await user.tab();
     expect(screen.getAllByText(/Payout Minimum Fee Applied/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Payout Minimum Uplift")).toBeInTheDocument();
+    expect(screen.getByText(/Formula: Applied Payout Revenue = max/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("checkbox", { name: "By region (EU / WW)" }));
+    expect(screen.getByLabelText("EU Volume Threshold (M)")).toHaveValue("2.5");
+    expect(screen.getByLabelText("EU Minimum Transaction Fee (€)")).toHaveValue("1");
+    expect(screen.getByLabelText("WW Volume Threshold (M)")).toHaveValue("2.5");
+    expect(screen.getByLabelText("WW Minimum Transaction Fee (€)")).toHaveValue("1");
+
+    expect(screen.getByRole("button", { name: "Settlement period T+4" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Settlement period T+7" })).not.toBeInTheDocument();
+    expect(screen.getByText("Minimum provider cost is €10. Do not set below €10.")).toBeInTheDocument();
+    expect(screen.getByText("Minimum provider cost is €50. Do not set below €50.")).toBeInTheDocument();
 
     await user.click(screen.getByRole("checkbox", { name: "3D Secure Fee" }));
     expect(screen.getAllByText("€500").length).toBeGreaterThanOrEqual(1);
@@ -371,6 +395,9 @@ describe("App UI", () => {
 
     await user.click(screen.getByRole("checkbox", { name: "Payout" }));
     expect((summaryPreview as HTMLTextAreaElement).value).toContain("PAYOUT:");
+    expect((summaryPreview as HTMLTextAreaElement).value).toContain(
+      "Payout Minimum Fee: <=€2.5M: €1 / >€2.5M: N/A"
+    );
 
     expect((summaryPreview as HTMLTextAreaElement).value).toContain("Agent / Introducer: No");
     await user.click(screen.getByRole("checkbox", { name: "Agent / Introducer" }));
