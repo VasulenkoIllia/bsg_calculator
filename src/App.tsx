@@ -10,6 +10,7 @@ import {
   DEFAULT_CONTRACT_SUMMARY_SETTINGS,
   DEFAULT_FAILED_TRX_CHARGING_CONFIG,
   DEFAULT_MONTHLY_MINIMUM_FEE_CONFIG,
+  DEFAULT_CUSTOM_TIER_SETTINGS,
   DEFAULT_STANDARD_TIERS,
   DEFAULT_PAYIN_EU_PRICING_CONFIG,
   DEFAULT_PAYOUT_MINIMUM_FEE_CONFIG,
@@ -41,6 +42,7 @@ import {
   derivePayoutTraffic,
   normalizePayoutMinimumFeePerTransaction,
   type ContractSummarySettings,
+  type CalculatorTypeSelection,
   type FailedTrxChargingMode,
   type IntroducerCommissionType,
   type PayinRegionPricingConfig,
@@ -126,6 +128,192 @@ type UnifiedProfitabilityNode = {
   value: number;
   formula?: string;
   children?: UnifiedProfitabilityNode[];
+};
+
+type CalculatorStatePreset = {
+  calculatorType: CalculatorTypeSelection;
+  payinVolume: number;
+  payinTransactions: number;
+  approvalRatioPercent: number;
+  euPercent: number;
+  ccPercent: number;
+  payoutVolume: number;
+  payoutTransactions: number;
+  introducerCommissionType: IntroducerCommissionType;
+  customTier1UpToMillion: number;
+  customTier2UpToMillion: number;
+  customTier1RatePerMillion: number;
+  customTier2RatePerMillion: number;
+  customTier3RatePerMillion: number;
+  revSharePercent: number;
+  settlementIncluded: boolean;
+  payinEuPricing: PayinRegionPricingConfig;
+  payinWwPricing: PayinRegionPricingConfig;
+  payoutPricing: PayoutPricingConfig;
+  payoutMinimumFeeEnabled: boolean;
+  payoutMinimumFeePerTransaction: number;
+  threeDsEnabled: boolean;
+  threeDsRevenuePerSuccessfulTransaction: number;
+  settlementFeeEnabled: boolean;
+  settlementFeeRatePercent: number;
+  monthlyMinimumFeeEnabled: boolean;
+  monthlyMinimumFeeAmount: number;
+  failedTrxEnabled: boolean;
+  failedTrxMode: FailedTrxChargingMode;
+  failedTrxOverLimitThresholdPercent: number;
+  contractSummarySettings: ContractSummarySettings;
+  clientNotes: string;
+  showUnifiedFormulas: boolean;
+  unifiedExpandedById: Record<string, boolean>;
+  zoneExpanded: Record<ZoneId, boolean>;
+};
+
+const INITIAL_ZONE_EXPANDED: Record<ZoneId, boolean> = {
+  zone0: true,
+  zone1a: true,
+  zone1b: true,
+  zone2: true,
+  zone3: true,
+  zone4: true,
+  zone5: true,
+  zone6: true,
+  derivedPayin: true,
+  derivedPayout: true
+};
+
+const DEFAULT_CALCULATOR_TYPE: CalculatorTypeSelection = {
+  payin: true,
+  payout: false
+};
+
+const ZERO_CALCULATOR_TYPE: CalculatorTypeSelection = {
+  payin: true,
+  payout: false
+};
+
+const ZERO_PAYIN_REGION_PRICING_CONFIG: PayinRegionPricingConfig = {
+  model: "icpp",
+  trxFeeEnabled: false,
+  rateMode: "single",
+  tier1UpToMillion: 0,
+  tier2UpToMillion: 0,
+  single: {
+    mdrPercent: 0,
+    trxCc: 0,
+    trxApm: 0
+  },
+  tiers: [
+    { mdrPercent: 0, trxCc: 0, trxApm: 0 },
+    { mdrPercent: 0, trxCc: 0, trxApm: 0 },
+    { mdrPercent: 0, trxCc: 0, trxApm: 0 }
+  ],
+  schemeFeesPercent: 0,
+  interchangePercent: 0
+};
+
+const ZERO_PAYOUT_PRICING_CONFIG: PayoutPricingConfig = {
+  rateMode: "single",
+  tier1UpToMillion: 0,
+  tier2UpToMillion: 0,
+  single: {
+    mdrPercent: 0,
+    trxFee: 0
+  },
+  tiers: [
+    { mdrPercent: 0, trxFee: 0 },
+    { mdrPercent: 0, trxFee: 0 },
+    { mdrPercent: 0, trxFee: 0 }
+  ]
+};
+
+const ZERO_CONTRACT_SUMMARY_SETTINGS: ContractSummarySettings = {
+  accountSetupFee: 0,
+  refundCost: 0,
+  disputeCost: 0,
+  settlementPeriod: "T+1",
+  collectionLimitMin: 0,
+  collectionLimitMax: 0,
+  payoutLimitMin: 0,
+  payoutLimitMax: 0,
+  rollingReservePercent: 0,
+  rollingReserveHoldDays: 0,
+  rollingReserveCap: 0
+};
+
+const DEFAULT_CALCULATOR_STATE: CalculatorStatePreset = {
+  calculatorType: DEFAULT_CALCULATOR_TYPE,
+  payinVolume: 1_000_000,
+  payinTransactions: 10_000,
+  approvalRatioPercent: 80,
+  euPercent: 80,
+  ccPercent: 90,
+  payoutVolume: 500_000,
+  payoutTransactions: 5_000,
+  introducerCommissionType: "standard",
+  customTier1UpToMillion: DEFAULT_CUSTOM_TIER_SETTINGS.tier1UpToMillion,
+  customTier2UpToMillion: DEFAULT_CUSTOM_TIER_SETTINGS.tier2UpToMillion,
+  customTier1RatePerMillion: DEFAULT_CUSTOM_TIER_SETTINGS.tier1RatePerMillion,
+  customTier2RatePerMillion: DEFAULT_CUSTOM_TIER_SETTINGS.tier2RatePerMillion,
+  customTier3RatePerMillion: DEFAULT_CUSTOM_TIER_SETTINGS.tier3RatePerMillion,
+  revSharePercent: 25,
+  settlementIncluded: DEFAULT_SETTLEMENT_INCLUDED,
+  payinEuPricing: DEFAULT_PAYIN_EU_PRICING_CONFIG,
+  payinWwPricing: DEFAULT_PAYIN_WW_PRICING_CONFIG,
+  payoutPricing: DEFAULT_PAYOUT_PRICING_CONFIG,
+  payoutMinimumFeeEnabled: DEFAULT_PAYOUT_MINIMUM_FEE_CONFIG.enabled,
+  payoutMinimumFeePerTransaction: DEFAULT_PAYOUT_MINIMUM_FEE_CONFIG.minimumFeePerTransaction,
+  threeDsEnabled: DEFAULT_3DS_FEE_CONFIG.enabled,
+  threeDsRevenuePerSuccessfulTransaction: DEFAULT_3DS_FEE_CONFIG.revenuePerSuccessfulTransaction,
+  settlementFeeEnabled: DEFAULT_SETTLEMENT_FEE_CONFIG.enabled,
+  settlementFeeRatePercent: DEFAULT_SETTLEMENT_FEE_CONFIG.ratePercent,
+  monthlyMinimumFeeEnabled: DEFAULT_MONTHLY_MINIMUM_FEE_CONFIG.enabled,
+  monthlyMinimumFeeAmount: DEFAULT_MONTHLY_MINIMUM_FEE_CONFIG.minimumMonthlyRevenue,
+  failedTrxEnabled: DEFAULT_FAILED_TRX_CHARGING_CONFIG.enabled,
+  failedTrxMode: DEFAULT_FAILED_TRX_CHARGING_CONFIG.mode,
+  failedTrxOverLimitThresholdPercent: DEFAULT_FAILED_TRX_CHARGING_CONFIG.overLimitThresholdPercent,
+  contractSummarySettings: DEFAULT_CONTRACT_SUMMARY_SETTINGS,
+  clientNotes: "",
+  showUnifiedFormulas: true,
+  unifiedExpandedById: {},
+  zoneExpanded: INITIAL_ZONE_EXPANDED
+};
+
+const ZERO_CALCULATOR_STATE: CalculatorStatePreset = {
+  calculatorType: ZERO_CALCULATOR_TYPE,
+  payinVolume: 0,
+  payinTransactions: 0,
+  approvalRatioPercent: 0,
+  euPercent: 0,
+  ccPercent: 0,
+  payoutVolume: 0,
+  payoutTransactions: 0,
+  introducerCommissionType: "standard",
+  customTier1UpToMillion: 0,
+  customTier2UpToMillion: 0,
+  customTier1RatePerMillion: 0,
+  customTier2RatePerMillion: 0,
+  customTier3RatePerMillion: 0,
+  revSharePercent: 0,
+  settlementIncluded: false,
+  payinEuPricing: ZERO_PAYIN_REGION_PRICING_CONFIG,
+  payinWwPricing: ZERO_PAYIN_REGION_PRICING_CONFIG,
+  payoutPricing: ZERO_PAYOUT_PRICING_CONFIG,
+  payoutMinimumFeeEnabled: false,
+  payoutMinimumFeePerTransaction: 0,
+  threeDsEnabled: false,
+  threeDsRevenuePerSuccessfulTransaction: 0,
+  settlementFeeEnabled: false,
+  settlementFeeRatePercent: 0,
+  monthlyMinimumFeeEnabled: false,
+  monthlyMinimumFeeAmount: 0,
+  failedTrxEnabled: false,
+  failedTrxMode: "overLimitOnly",
+  failedTrxOverLimitThresholdPercent: 0,
+  contractSummarySettings: ZERO_CONTRACT_SUMMARY_SETTINGS,
+  clientNotes: "",
+  showUnifiedFormulas: true,
+  unifiedExpandedById: {},
+  zoneExpanded: INITIAL_ZONE_EXPANDED
 };
 
 function formatCount(value: number): string {
@@ -259,6 +447,30 @@ function collectExpandableNodeIds(nodes: UnifiedProfitabilityNode[]): string[] {
 
   nodes.forEach(walk);
   return ids;
+}
+
+function clonePayinRegionPricingConfig(
+  config: PayinRegionPricingConfig
+): PayinRegionPricingConfig {
+  return {
+    ...config,
+    single: { ...config.single },
+    tiers: config.tiers.map(tier => ({ ...tier })) as PayinRegionPricingConfig["tiers"]
+  };
+}
+
+function clonePayoutPricingConfig(config: PayoutPricingConfig): PayoutPricingConfig {
+  return {
+    ...config,
+    single: { ...config.single },
+    tiers: config.tiers.map(tier => ({ ...tier })) as PayoutPricingConfig["tiers"]
+  };
+}
+
+function cloneContractSummarySettings(
+  settings: ContractSummarySettings
+): ContractSummarySettings {
+  return { ...settings };
 }
 
 function findPreviousZoneTarget(
@@ -620,84 +832,96 @@ function ZoneSection({
 }
 
 export default function App() {
-  const [calculatorType, setCalculatorType] = useState({
-    payin: true,
-    payout: false
-  });
+  const [calculatorType, setCalculatorType] = useState<CalculatorTypeSelection>(
+    DEFAULT_CALCULATOR_STATE.calculatorType
+  );
 
-  const [payinVolume, setPayinVolume] = useState(15_000_000);
-  const [payinTransactions, setPayinTransactions] = useState(21_000);
-  const [approvalRatioPercent, setApprovalRatioPercent] = useState(80);
-  const [euPercent, setEuPercent] = useState(50);
-  const [ccPercent, setCcPercent] = useState(70);
-  const [payoutVolume, setPayoutVolume] = useState(500_000);
-  const [payoutTransactions, setPayoutTransactions] = useState(5_000);
+  const [payinVolume, setPayinVolume] = useState(DEFAULT_CALCULATOR_STATE.payinVolume);
+  const [payinTransactions, setPayinTransactions] = useState(
+    DEFAULT_CALCULATOR_STATE.payinTransactions
+  );
+  const [approvalRatioPercent, setApprovalRatioPercent] = useState(
+    DEFAULT_CALCULATOR_STATE.approvalRatioPercent
+  );
+  const [euPercent, setEuPercent] = useState(DEFAULT_CALCULATOR_STATE.euPercent);
+  const [ccPercent, setCcPercent] = useState(DEFAULT_CALCULATOR_STATE.ccPercent);
+  const [payoutVolume, setPayoutVolume] = useState(DEFAULT_CALCULATOR_STATE.payoutVolume);
+  const [payoutTransactions, setPayoutTransactions] = useState(
+    DEFAULT_CALCULATOR_STATE.payoutTransactions
+  );
   const [introducerCommissionType, setIntroducerCommissionType] =
-    useState<IntroducerCommissionType>("standard");
-  const [customTier1UpToMillion, setCustomTier1UpToMillion] = useState(10);
-  const [customTier2UpToMillion, setCustomTier2UpToMillion] = useState(25);
-  const [customTier1RatePerMillion, setCustomTier1RatePerMillion] = useState(2_500);
-  const [customTier2RatePerMillion, setCustomTier2RatePerMillion] = useState(5_000);
-  const [customTier3RatePerMillion, setCustomTier3RatePerMillion] = useState(7_500);
-  const [revSharePercent, setRevSharePercent] = useState(25);
-  const [settlementIncluded, setSettlementIncluded] = useState(DEFAULT_SETTLEMENT_INCLUDED);
+    useState<IntroducerCommissionType>(DEFAULT_CALCULATOR_STATE.introducerCommissionType);
+  const [customTier1UpToMillion, setCustomTier1UpToMillion] = useState(
+    DEFAULT_CALCULATOR_STATE.customTier1UpToMillion
+  );
+  const [customTier2UpToMillion, setCustomTier2UpToMillion] = useState(
+    DEFAULT_CALCULATOR_STATE.customTier2UpToMillion
+  );
+  const [customTier1RatePerMillion, setCustomTier1RatePerMillion] = useState(
+    DEFAULT_CALCULATOR_STATE.customTier1RatePerMillion
+  );
+  const [customTier2RatePerMillion, setCustomTier2RatePerMillion] = useState(
+    DEFAULT_CALCULATOR_STATE.customTier2RatePerMillion
+  );
+  const [customTier3RatePerMillion, setCustomTier3RatePerMillion] = useState(
+    DEFAULT_CALCULATOR_STATE.customTier3RatePerMillion
+  );
+  const [revSharePercent, setRevSharePercent] = useState(DEFAULT_CALCULATOR_STATE.revSharePercent);
+  const [settlementIncluded, setSettlementIncluded] = useState(
+    DEFAULT_CALCULATOR_STATE.settlementIncluded
+  );
   const [payinEuPricing, setPayinEuPricing] = useState<PayinRegionPricingConfig>(
-    DEFAULT_PAYIN_EU_PRICING_CONFIG
+    () => clonePayinRegionPricingConfig(DEFAULT_CALCULATOR_STATE.payinEuPricing)
   );
   const [payinWwPricing, setPayinWwPricing] = useState<PayinRegionPricingConfig>(
-    DEFAULT_PAYIN_WW_PRICING_CONFIG
+    () => clonePayinRegionPricingConfig(DEFAULT_CALCULATOR_STATE.payinWwPricing)
   );
   const [payoutPricing, setPayoutPricing] = useState<PayoutPricingConfig>(
-    DEFAULT_PAYOUT_PRICING_CONFIG
+    () => clonePayoutPricingConfig(DEFAULT_CALCULATOR_STATE.payoutPricing)
   );
   const [payoutMinimumFeeEnabled, setPayoutMinimumFeeEnabled] = useState(
-    DEFAULT_PAYOUT_MINIMUM_FEE_CONFIG.enabled
+    DEFAULT_CALCULATOR_STATE.payoutMinimumFeeEnabled
   );
   const [payoutMinimumFeePerTransaction, setPayoutMinimumFeePerTransaction] =
-    useState(DEFAULT_PAYOUT_MINIMUM_FEE_CONFIG.minimumFeePerTransaction);
-  const [threeDsEnabled, setThreeDsEnabled] = useState(DEFAULT_3DS_FEE_CONFIG.enabled);
+    useState(DEFAULT_CALCULATOR_STATE.payoutMinimumFeePerTransaction);
+  const [threeDsEnabled, setThreeDsEnabled] = useState(DEFAULT_CALCULATOR_STATE.threeDsEnabled);
   const [threeDsRevenuePerSuccessfulTransaction, setThreeDsRevenuePerSuccessfulTransaction] =
-    useState(DEFAULT_3DS_FEE_CONFIG.revenuePerSuccessfulTransaction);
+    useState(DEFAULT_CALCULATOR_STATE.threeDsRevenuePerSuccessfulTransaction);
   const [settlementFeeEnabled, setSettlementFeeEnabled] = useState(
-    DEFAULT_SETTLEMENT_FEE_CONFIG.enabled
+    DEFAULT_CALCULATOR_STATE.settlementFeeEnabled
   );
   const [settlementFeeRatePercent, setSettlementFeeRatePercent] = useState(
-    DEFAULT_SETTLEMENT_FEE_CONFIG.ratePercent
+    DEFAULT_CALCULATOR_STATE.settlementFeeRatePercent
   );
   const [monthlyMinimumFeeEnabled, setMonthlyMinimumFeeEnabled] = useState(
-    DEFAULT_MONTHLY_MINIMUM_FEE_CONFIG.enabled
+    DEFAULT_CALCULATOR_STATE.monthlyMinimumFeeEnabled
   );
   const [monthlyMinimumFeeAmount, setMonthlyMinimumFeeAmount] = useState(
-    DEFAULT_MONTHLY_MINIMUM_FEE_CONFIG.minimumMonthlyRevenue
+    DEFAULT_CALCULATOR_STATE.monthlyMinimumFeeAmount
   );
   const [failedTrxEnabled, setFailedTrxEnabled] = useState(
-    DEFAULT_FAILED_TRX_CHARGING_CONFIG.enabled
+    DEFAULT_CALCULATOR_STATE.failedTrxEnabled
   );
   const [failedTrxMode, setFailedTrxMode] = useState<FailedTrxChargingMode>(
-    DEFAULT_FAILED_TRX_CHARGING_CONFIG.mode
+    DEFAULT_CALCULATOR_STATE.failedTrxMode
   );
   const [failedTrxOverLimitThresholdPercent, setFailedTrxOverLimitThresholdPercent] = useState(
-    DEFAULT_FAILED_TRX_CHARGING_CONFIG.overLimitThresholdPercent
+    DEFAULT_CALCULATOR_STATE.failedTrxOverLimitThresholdPercent
   );
   const [contractSummarySettings, setContractSummarySettings] = useState<ContractSummarySettings>(
-    DEFAULT_CONTRACT_SUMMARY_SETTINGS
+    () => cloneContractSummarySettings(DEFAULT_CALCULATOR_STATE.contractSummarySettings)
   );
-  const [clientNotes, setClientNotes] = useState("");
+  const [clientNotes, setClientNotes] = useState(DEFAULT_CALCULATOR_STATE.clientNotes);
   const [offerSummaryActionMessage, setOfferSummaryActionMessage] = useState<string | null>(null);
-  const [showUnifiedFormulas, setShowUnifiedFormulas] = useState(true);
-  const [unifiedExpandedById, setUnifiedExpandedById] = useState<Record<string, boolean>>({});
-  const [zoneExpanded, setZoneExpanded] = useState<Record<ZoneId, boolean>>({
-    zone0: true,
-    zone1a: true,
-    zone1b: true,
-    zone2: true,
-    zone3: true,
-    zone4: true,
-    zone5: true,
-    zone6: true,
-    derivedPayin: true,
-    derivedPayout: true
-  });
+  const [showUnifiedFormulas, setShowUnifiedFormulas] = useState(
+    DEFAULT_CALCULATOR_STATE.showUnifiedFormulas
+  );
+  const [unifiedExpandedById, setUnifiedExpandedById] = useState<Record<string, boolean>>(
+    DEFAULT_CALCULATOR_STATE.unifiedExpandedById
+  );
+  const [zoneExpanded, setZoneExpanded] = useState<Record<ZoneId, boolean>>(
+    DEFAULT_CALCULATOR_STATE.zoneExpanded
+  );
 
   const wwPercent = 100 - euPercent;
   const apmPercent = 100 - ccPercent;
@@ -708,6 +932,53 @@ export default function App() {
 
   const setPayoutEnabled = (checked: boolean) => {
     setCalculatorType(current => applyCalculatorModeToggle(current, "payout", checked));
+  };
+
+  const applyStatePreset = (preset: CalculatorStatePreset) => {
+    setCalculatorType({ ...preset.calculatorType });
+    setPayinVolume(preset.payinVolume);
+    setPayinTransactions(preset.payinTransactions);
+    setApprovalRatioPercent(preset.approvalRatioPercent);
+    setEuPercent(preset.euPercent);
+    setCcPercent(preset.ccPercent);
+    setPayoutVolume(preset.payoutVolume);
+    setPayoutTransactions(preset.payoutTransactions);
+    setIntroducerCommissionType(preset.introducerCommissionType);
+    setCustomTier1UpToMillion(preset.customTier1UpToMillion);
+    setCustomTier2UpToMillion(preset.customTier2UpToMillion);
+    setCustomTier1RatePerMillion(preset.customTier1RatePerMillion);
+    setCustomTier2RatePerMillion(preset.customTier2RatePerMillion);
+    setCustomTier3RatePerMillion(preset.customTier3RatePerMillion);
+    setRevSharePercent(preset.revSharePercent);
+    setSettlementIncluded(preset.settlementIncluded);
+    setPayinEuPricing(clonePayinRegionPricingConfig(preset.payinEuPricing));
+    setPayinWwPricing(clonePayinRegionPricingConfig(preset.payinWwPricing));
+    setPayoutPricing(clonePayoutPricingConfig(preset.payoutPricing));
+    setPayoutMinimumFeeEnabled(preset.payoutMinimumFeeEnabled);
+    setPayoutMinimumFeePerTransaction(preset.payoutMinimumFeePerTransaction);
+    setThreeDsEnabled(preset.threeDsEnabled);
+    setThreeDsRevenuePerSuccessfulTransaction(preset.threeDsRevenuePerSuccessfulTransaction);
+    setSettlementFeeEnabled(preset.settlementFeeEnabled);
+    setSettlementFeeRatePercent(preset.settlementFeeRatePercent);
+    setMonthlyMinimumFeeEnabled(preset.monthlyMinimumFeeEnabled);
+    setMonthlyMinimumFeeAmount(preset.monthlyMinimumFeeAmount);
+    setFailedTrxEnabled(preset.failedTrxEnabled);
+    setFailedTrxMode(preset.failedTrxMode);
+    setFailedTrxOverLimitThresholdPercent(preset.failedTrxOverLimitThresholdPercent);
+    setContractSummarySettings(cloneContractSummarySettings(preset.contractSummarySettings));
+    setClientNotes(preset.clientNotes);
+    setOfferSummaryActionMessage(null);
+    setShowUnifiedFormulas(preset.showUnifiedFormulas);
+    setUnifiedExpandedById({ ...preset.unifiedExpandedById });
+    setZoneExpanded({ ...preset.zoneExpanded });
+  };
+
+  const resetAllValuesToZero = () => {
+    applyStatePreset(ZERO_CALCULATOR_STATE);
+  };
+
+  const applyDefaultValues = () => {
+    applyStatePreset(DEFAULT_CALCULATOR_STATE);
   };
 
   const handleEuChange = (value: number) => setEuPercent(clampPercent(value));
@@ -2111,6 +2382,26 @@ export default function App() {
             </p>
           </div>
         </header>
+
+        <section
+          aria-label="Calculator actions"
+          className="panel mb-6 flex flex-col gap-3 p-5 sm:flex-row sm:justify-end md:p-7"
+        >
+          <button
+            type="button"
+            onClick={resetAllValuesToZero}
+            className="inline-flex w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 sm:w-auto"
+          >
+            Reset all to 0
+          </button>
+          <button
+            type="button"
+            onClick={applyDefaultValues}
+            className="inline-flex w-full items-center justify-center rounded-xl border border-blue-500 bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 sm:w-auto"
+          >
+            Apply defaults
+          </button>
+        </section>
 
         <ZoneSection
           id="zone0"

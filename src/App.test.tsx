@@ -27,7 +27,7 @@ describe("App UI", () => {
     render(<App />);
 
     const payinVolumeInput = screen.getByLabelText("Monthly Payin Volume (€)");
-    expect(payinVolumeInput).toHaveValue("15,000,000");
+    expect(payinVolumeInput).toHaveValue("1,000,000");
 
     await user.click(payinVolumeInput);
     await user.clear(payinVolumeInput);
@@ -37,6 +37,44 @@ describe("App UI", () => {
     expect(payinVolumeInput).toHaveValue("1,234,567.89");
   });
 
+  it("applies zone defaults and resets editable values from the top controls", async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    expect(screen.getByRole("checkbox", { name: "Payin" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Payout" })).not.toBeChecked();
+    expect(screen.getByLabelText("Monthly Payin Volume (€)")).toHaveValue("1,000,000");
+    expect(screen.getByLabelText("Successful Payin Transactions")).toHaveValue("10,000");
+    expect(screen.getByLabelText("Payin Approval Ratio (%)")).toHaveValue("80");
+    expect(screen.getByLabelText("EU Split (%)")).toHaveValue("80");
+    expect(screen.getByLabelText("WW Split (%)")).toHaveValue("20");
+    expect(screen.getByLabelText("CC Split (%)")).toHaveValue("90");
+    expect(screen.getByLabelText("APM Split (%)")).toHaveValue("10");
+
+    await user.click(screen.getByRole("button", { name: "Reset all to 0" }));
+
+    expect(screen.getByRole("checkbox", { name: "Payin" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Payout" })).not.toBeChecked();
+    expect(screen.getByLabelText("Monthly Payin Volume (€)")).toHaveValue("0");
+    expect(screen.getByLabelText("Successful Payin Transactions")).toHaveValue("0");
+    expect(screen.getByLabelText("Payin Approval Ratio (%)")).toHaveValue("0");
+    expect(screen.getByLabelText("EU Split (%)")).toHaveValue("0");
+    expect(screen.getByLabelText("CC Split (%)")).toHaveValue("0");
+
+    await user.click(screen.getByRole("button", { name: "Apply defaults" }));
+
+    expect(screen.getByRole("checkbox", { name: "Payin" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Payout" })).not.toBeChecked();
+    expect(screen.getByLabelText("Monthly Payin Volume (€)")).toHaveValue("1,000,000");
+    expect(screen.getByLabelText("Successful Payin Transactions")).toHaveValue("10,000");
+    expect(screen.getByLabelText("Payin Approval Ratio (%)")).toHaveValue("80");
+    expect(screen.getByLabelText("EU Split (%)")).toHaveValue("80");
+    expect(screen.getByLabelText("WW Split (%)")).toHaveValue("20");
+    expect(screen.getByLabelText("CC Split (%)")).toHaveValue("90");
+    expect(screen.getByLabelText("APM Split (%)")).toHaveValue("10");
+  });
+
   it("shows split formulas under each split input and recalculates on split changes", async () => {
     const user = userEvent.setup();
 
@@ -44,22 +82,22 @@ describe("App UI", () => {
 
     expect(
       screen.getByText(
-        "EU Volume = Rounded Monthly Payin Volume (€15,000,000) × EU Split (50%) = €7,500,000"
+        "EU Volume = Rounded Monthly Payin Volume (€1,000,000) × EU Split (80%) = €800,000"
       )
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "WW Volume = Rounded Monthly Payin Volume (€15,000,000) × WW Split (50%) = €7,500,000"
+        "WW Volume = Rounded Monthly Payin Volume (€1,000,000) × WW Split (20%) = €200,000"
       )
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "CC Volume = Rounded Monthly Payin Volume (€15,000,000) × CC Split (70%) = €10,500,000"
+        "CC Volume = Rounded Monthly Payin Volume (€1,000,000) × CC Split (90%) = €900,000"
       )
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "APM Volume = Rounded Monthly Payin Volume (€15,000,000) × APM Split (30%) = €4,500,000"
+        "APM Volume = Rounded Monthly Payin Volume (€1,000,000) × APM Split (10%) = €100,000"
       )
     ).toBeInTheDocument();
 
@@ -71,12 +109,12 @@ describe("App UI", () => {
 
     expect(
       screen.getByText(
-        "EU Volume = Rounded Monthly Payin Volume (€15,000,000) × EU Split (60%) = €9,000,000"
+        "EU Volume = Rounded Monthly Payin Volume (€1,000,000) × EU Split (60%) = €600,000"
       )
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "WW Volume = Rounded Monthly Payin Volume (€15,000,000) × WW Split (40%) = €6,000,000"
+        "WW Volume = Rounded Monthly Payin Volume (€1,000,000) × WW Split (40%) = €400,000"
       )
     ).toBeInTheDocument();
 
@@ -88,12 +126,12 @@ describe("App UI", () => {
 
     expect(
       screen.getByText(
-        "CC Volume = Rounded Monthly Payin Volume (€15,000,000) × CC Split (80%) = €12,000,000"
+        "CC Volume = Rounded Monthly Payin Volume (€1,000,000) × CC Split (80%) = €800,000"
       )
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "APM Volume = Rounded Monthly Payin Volume (€15,000,000) × APM Split (20%) = €3,000,000"
+        "APM Volume = Rounded Monthly Payin Volume (€1,000,000) × APM Split (20%) = €200,000"
       )
     ).toBeInTheDocument();
   });
@@ -104,14 +142,14 @@ describe("App UI", () => {
     render(<App />);
 
     expect(screen.getByText("Standard Tiers")).toBeInTheDocument();
-    expect(screen.getByText("Tier 1 (€0-€10M)")).toBeInTheDocument();
+    expect(screen.getAllByText("Tier 1 (€0-€10M)").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Tier 2 (€10M-€25M)").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Tier 3 (>€25M)")).toBeInTheDocument();
 
-    expect(screen.getByText("€75,000")).toBeInTheDocument();
+    expect(screen.getAllByText("€2,500").length).toBeGreaterThanOrEqual(1);
 
     await user.click(screen.getByRole("button", { name: "Commission model: Custom" }));
-    expect(screen.getByText("€50,000")).toBeInTheDocument();
+    expect(screen.getAllByText("€2,500").length).toBeGreaterThanOrEqual(1);
 
     await user.click(screen.getByRole("button", { name: "Commission model: Rev Share" }));
     expect(screen.getByText("Auto from Zone 5 (Payin only): Total Payin Revenue.")).toBeInTheDocument();
@@ -153,7 +191,7 @@ describe("App UI", () => {
     await user.click(screen.getByRole("button", { name: "Payin EU model Blended" }));
     expect(screen.getByLabelText("Scheme Fees (%)")).toBeInTheDocument();
     expect(screen.getByLabelText("Interchange (%)")).toBeInTheDocument();
-    expect(screen.getByText("€22,500")).toBeInTheDocument();
+    expect(screen.getByText("€2,400")).toBeInTheDocument();
     expect(
       screen.getByText(/Formula: Scheme Cost Impact \(Zone5\) = EU Volume/)
     ).toBeInTheDocument();
@@ -210,7 +248,7 @@ describe("App UI", () => {
     expect(screen.getAllByText(/Payout Minimum Fee Applied/).length).toBeGreaterThanOrEqual(1);
 
     await user.click(screen.getByRole("checkbox", { name: "3D Secure Fee" }));
-    expect(screen.getAllByText("€1,050").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("€500").length).toBeGreaterThanOrEqual(1);
     const threeDsRevenueInput = screen.getByRole("textbox", {
       name: "3DS Revenue per Successful TRX (€)"
     });
@@ -218,11 +256,11 @@ describe("App UI", () => {
     await user.type(threeDsRevenueInput, "0.06");
     await user.tab();
     expect(screen.getByText(/Formula: 3DS Revenue = Successful Payin Transactions/)).toBeInTheDocument();
-    expect(screen.getAllByText("€1,260").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("€600").length).toBeGreaterThanOrEqual(1);
 
     await user.click(screen.getByRole("checkbox", { name: "Failed TRX Charging" }));
     await user.click(screen.getByRole("button", { name: "Failed TRX all failed volume" }));
-    expect(screen.getAllByText("€1,837").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("€875").length).toBeGreaterThanOrEqual(1);
 
     await user.click(screen.getByRole("checkbox", { name: "Settlement Included" }));
     expect(screen.getAllByText("Settlement Fee").length).toBeGreaterThanOrEqual(1);
@@ -239,7 +277,7 @@ describe("App UI", () => {
     expect(screen.getByRole("heading", { name: "Other Revenue" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("checkbox", { name: "3D Secure Fee" }));
-    expect(screen.getAllByText("€1,050").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("€500").length).toBeGreaterThanOrEqual(1);
 
     await user.click(screen.getByRole("button", { name: "Commission model: Rev Share" }));
     expect(screen.getAllByText(/Formula: Margin Before Split = Total Revenue/).length).toBeGreaterThanOrEqual(1);

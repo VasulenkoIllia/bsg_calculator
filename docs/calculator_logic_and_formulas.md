@@ -1,6 +1,6 @@
 # Calculator Logic and Formulas (Current Code)
 
-Date: 2026-04-23
+Date: 2026-04-28
 Scope: current implementation in `src/App.tsx` and `src/domain/calculator/zone0..zone6`.
 
 This document is the technical source of truth for runtime calculation behavior.
@@ -14,6 +14,23 @@ This document is the technical source of truth for runtime calculation behavior.
 5. Zone 4 computes fee/limit impacts (payout minimum uplift, 3DS, settlement, monthly minimum, failed trx charging).
 6. Zone 5 aggregates profitability (payin + payout + other revenue) and total margin.
 7. Zone 6 builds text offer summary from current state and supports copy/print/PDF-save flow.
+
+### 1.1 Startup presets and global actions
+
+Initial/default state currently applies the defined Zone 0 and Zone 1A defaults:
+
+- Zone 0: `Payin = on`, `Payout = off`.
+- Zone 1A:
+  - Monthly Payin Volume: `€1,000,000`
+  - Successful Payin Transactions: `10,000`
+  - Approval Ratio: `80%`
+  - EU / WW split: `80% / 20%`
+  - CC / APM split: `90% / 10%`
+
+Global top controls:
+
+- `Apply defaults` reapplies the current default preset. More zone defaults can be added to this preset as they are defined.
+- `Reset all to 0` applies the zero preset to editable numeric values and resets optional toggles/settings. Zone 0 remains normalized to `Payin = on`, `Payout = off` because the calculator type domain requires at least one active mode. Complement split fields still follow the current `100 - primary` rule.
 
 ## 2. Shared normalization rules
 
