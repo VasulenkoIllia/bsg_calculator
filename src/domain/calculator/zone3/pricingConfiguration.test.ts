@@ -4,12 +4,34 @@ import {
   calculatePayoutPricingPreview,
   collectPayinPricingWarnings,
   collectPayoutPricingWarnings,
+  DEFAULT_SETTLEMENT_INCLUDED,
   DEFAULT_PAYIN_EU_PRICING_CONFIG,
+  DEFAULT_PAYIN_WW_PRICING_CONFIG,
   DEFAULT_PAYOUT_PRICING_CONFIG
 } from "./pricingConfiguration.js";
 import type { PayinTierRevenueBreakdown, PayoutTierRevenueBreakdown } from "./pricingConfiguration.js";
 
 describe("zone3/pricingConfiguration", () => {
+  it("exposes the configured Zone 3 defaults", () => {
+    expect(DEFAULT_SETTLEMENT_INCLUDED).toBe(false);
+    expect(DEFAULT_PAYIN_EU_PRICING_CONFIG.model).toBe("blended");
+    expect(DEFAULT_PAYIN_EU_PRICING_CONFIG.trxFeeEnabled).toBe(true);
+    expect(DEFAULT_PAYIN_EU_PRICING_CONFIG.rateMode).toBe("single");
+    expect(DEFAULT_PAYIN_EU_PRICING_CONFIG.tier1UpToMillion).toBe(5);
+    expect(DEFAULT_PAYIN_EU_PRICING_CONFIG.tier2UpToMillion).toBe(10);
+    expect(DEFAULT_PAYIN_EU_PRICING_CONFIG.schemeFeesPercent).toBe(0.75);
+
+    expect(DEFAULT_PAYIN_WW_PRICING_CONFIG.trxFeeEnabled).toBe(true);
+    expect(DEFAULT_PAYIN_WW_PRICING_CONFIG.rateMode).toBe("single");
+    expect(DEFAULT_PAYIN_WW_PRICING_CONFIG.tier1UpToMillion).toBe(5);
+    expect(DEFAULT_PAYIN_WW_PRICING_CONFIG.tier2UpToMillion).toBe(10);
+    expect(DEFAULT_PAYIN_WW_PRICING_CONFIG.schemeFeesPercent).toBe(2);
+
+    expect(DEFAULT_PAYOUT_PRICING_CONFIG.rateMode).toBe("single");
+    expect(DEFAULT_PAYOUT_PRICING_CONFIG.tier1UpToMillion).toBe(1);
+    expect(DEFAULT_PAYOUT_PRICING_CONFIG.tier2UpToMillion).toBe(5);
+  });
+
   it("calculates payin single-rate preview", () => {
     const result = calculatePayinRegionPricingPreview({
       volume: 1_000_000,
@@ -18,6 +40,7 @@ describe("zone3/pricingConfiguration", () => {
       methodVolume: { cc: 700_000, apm: 300_000 },
       config: {
         ...DEFAULT_PAYIN_EU_PRICING_CONFIG,
+        model: "icpp",
         rateMode: "single",
         single: { mdrPercent: 4.5, trxCc: 0.35, trxApm: 0.35 }
       }
@@ -39,6 +62,7 @@ describe("zone3/pricingConfiguration", () => {
       methodVolume: { cc: 10_500_000, apm: 4_500_000 },
       config: {
         ...DEFAULT_PAYIN_EU_PRICING_CONFIG,
+        model: "icpp",
         rateMode: "tiered"
       }
     });
@@ -49,14 +73,14 @@ describe("zone3/pricingConfiguration", () => {
       PayinTierRevenueBreakdown,
       PayinTierRevenueBreakdown
     ];
-    expect(payinTierRows[0].mdrRevenue).toBe(450_000);
+    expect(payinTierRows[0].mdrRevenue).toBe(225_000);
     expect(payinTierRows[1].mdrRevenue).toBeCloseTo(212_500, 6);
-    expect(payinTierRows[2].mdrRevenue).toBe(0);
-    expect(result.mdrRevenue).toBeCloseTo(662_500, 6);
-    expect(result.trxRevenue).toBeCloseTo(10_150, 4);
-    expect(result.totalRevenue).toBeCloseTo(672_650, 4);
+    expect(payinTierRows[2].mdrRevenue).toBe(200_000);
+    expect(result.mdrRevenue).toBeCloseTo(637_500, 6);
+    expect(result.trxRevenue).toBeCloseTo(9_450, 4);
+    expect(result.totalRevenue).toBeCloseTo(646_950, 4);
     expect(result.schemeCostImpact).toBe(0);
-    expect(result.revenueAfterSchemePreview).toBeCloseTo(672_650, 4);
+    expect(result.revenueAfterSchemePreview).toBeCloseTo(646_950, 4);
   });
 
   it("applies scheme-cost impact only for blended model", () => {
@@ -131,13 +155,15 @@ describe("zone3/pricingConfiguration", () => {
       PayoutTierRevenueBreakdown,
       PayoutTierRevenueBreakdown
     ];
-    expect(payoutTierRows[0].mdrRevenue).toBe(200_000);
-    expect(payoutTierRows[1].mdrRevenue).toBeCloseTo(36_000, 6);
-    expect(payoutTierRows[0].trxRevenue).toBe(50_000);
-    expect(payoutTierRows[1].trxRevenue).toBe(9_000);
-    expect(result.mdrRevenue).toBe(236_000);
-    expect(result.trxRevenue).toBe(59_000);
-    expect(result.totalRevenue).toBe(295_000);
+    expect(payoutTierRows[0].mdrRevenue).toBe(20_000);
+    expect(payoutTierRows[1].mdrRevenue).toBeCloseTo(72_000, 6);
+    expect(payoutTierRows[2].mdrRevenue).toBe(105_000);
+    expect(payoutTierRows[0].trxRevenue).toBe(5_000);
+    expect(payoutTierRows[1].trxRevenue).toBe(18_000);
+    expect(payoutTierRows[2].trxRevenue).toBe(28_000);
+    expect(result.mdrRevenue).toBe(197_000);
+    expect(result.trxRevenue).toBe(51_000);
+    expect(result.totalRevenue).toBe(248_000);
     expect(result.minimumAdjustments.every(adjustment => !adjustment.mdrMinimumApplied)).toBe(true);
     expect(result.minimumAdjustments.every(adjustment => !adjustment.trxMinimumApplied)).toBe(true);
   });
@@ -182,9 +208,9 @@ describe("zone3/pricingConfiguration", () => {
       }
     });
 
-    expect(result.mdrRevenue).toBeCloseTo(156_000, 6);
-    expect(result.trxRevenue).toBe(24_000);
-    expect(result.totalRevenue).toBeCloseTo(180_000, 6);
+    expect(result.mdrRevenue).toBeCloseTo(170_000, 6);
+    expect(result.trxRevenue).toBe(38_000);
+    expect(result.totalRevenue).toBeCloseTo(208_000, 6);
     expect(result.singleRateMinimumAdjustment).toBeNull();
     expect(result.minimumAdjustments[0].mdrMinimumApplied).toBe(true);
     expect(result.minimumAdjustments[0].trxMinimumApplied).toBe(true);

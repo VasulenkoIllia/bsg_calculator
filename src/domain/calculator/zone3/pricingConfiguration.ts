@@ -113,14 +113,14 @@ export interface PayoutPricingPreview {
   warnings: string[];
 }
 
-export const DEFAULT_SETTLEMENT_INCLUDED = true;
+export const DEFAULT_SETTLEMENT_INCLUDED = false;
 
 export const DEFAULT_PAYIN_EU_PRICING_CONFIG: PayinRegionPricingConfig = {
-  model: "icpp",
+  model: "blended",
   trxFeeEnabled: true,
   rateMode: "single",
-  tier1UpToMillion: 10,
-  tier2UpToMillion: 25,
+  tier1UpToMillion: 5,
+  tier2UpToMillion: 10,
   single: {
     mdrPercent: 4.5,
     trxCc: 0.35,
@@ -131,7 +131,7 @@ export const DEFAULT_PAYIN_EU_PRICING_CONFIG: PayinRegionPricingConfig = {
     { mdrPercent: 4.25, trxCc: 0.3, trxApm: 0.35 },
     { mdrPercent: 4.0, trxCc: 0.25, trxApm: 0.35 }
   ],
-  schemeFeesPercent: 0.3,
+  schemeFeesPercent: 0.75,
   interchangePercent: 0.5
 };
 
@@ -139,8 +139,8 @@ export const DEFAULT_PAYIN_WW_PRICING_CONFIG: PayinRegionPricingConfig = {
   model: "icpp",
   trxFeeEnabled: true,
   rateMode: "single",
-  tier1UpToMillion: 10,
-  tier2UpToMillion: 25,
+  tier1UpToMillion: 5,
+  tier2UpToMillion: 10,
   single: {
     mdrPercent: 5.0,
     trxCc: 0.35,
@@ -151,14 +151,14 @@ export const DEFAULT_PAYIN_WW_PRICING_CONFIG: PayinRegionPricingConfig = {
     { mdrPercent: 4.75, trxCc: 0.3, trxApm: 0.35 },
     { mdrPercent: 4.5, trxCc: 0.25, trxApm: 0.35 }
   ],
-  schemeFeesPercent: 0.8,
+  schemeFeesPercent: 2,
   interchangePercent: 1.8
 };
 
 export const DEFAULT_PAYOUT_PRICING_CONFIG: PayoutPricingConfig = {
   rateMode: "single",
-  tier1UpToMillion: 10,
-  tier2UpToMillion: 25,
+  tier1UpToMillion: 1,
+  tier2UpToMillion: 5,
   single: {
     mdrPercent: 2.0,
     trxFee: 0.5

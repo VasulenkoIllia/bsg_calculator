@@ -37,6 +37,31 @@ Use this file to record meaningful technical decisions for the project.
 - Follow-up actions:
   - Resolve open items progressively during implementation, starting from the first blocking module.
 
+### Decision: Zone 3 Payin Defaults and Scheme Visibility
+- Date: 2026-04-28
+- Context:
+  - Product requested a Zone 3 defaults update.
+  - The request states: `Payin pricing EU дефолт - blended`.
+  - The same request also mentions Europe and WW together for TRX Fee Enabled, Rate Type, tier boundaries, MDR, and fees.
+  - Scheme handling was clarified separately: remove only `Scheme Fees` from Zone 3 UI; keep `Interchange (%)` in Zone 3.
+- Ambiguity recorded:
+  - We had two possible readings for the payin model default: apply `Blended` only to Payin EU, or apply it to both Payin EU and Payin WW because other defaults were described for Europe and WW together.
+- Alternatives considered:
+  - Apply `Blended` by default to Payin EU only, leaving Payin WW on its current/default model.
+  - Apply `Blended` by default to both Payin EU and Payin WW for consistency with the other EU/WW Zone 3 default changes.
+- Decision:
+  - Use the literal scope from the request: Payin EU defaults to `Blended`; Payin WW remains on its existing/default `IC++` model.
+  - Apply the shared EU/WW defaults to TRX Fee Enabled, Rate Type, and tier boundaries.
+  - Remove only `Scheme Fees` from Zone 3 UI and formula breakdowns.
+  - Keep `Interchange (%)` visible in Zone 3.
+  - Keep Scheme as an internal calculation cost with defaults EU `0.75%` and WW `2%`.
+  - Keep Scheme Fees visible in Zone 6 Offer Summary for now; this is not part of the Zone 3 removal scope.
+- Consequences:
+  - Prevents an accidental pricing model change for WW.
+  - Future Zone 3 edits should not re-add Scheme controls unless product explicitly asks for Scheme to be editable in that zone.
+  - Calculation sections may still mention Scheme as a cost; the removal scope is the Zone 3 configuration UI.
+  - Offer Summary can be adjusted separately later if product decides Scheme should be hidden from client-facing output too.
+
 ### Decision: Phase Sequencing (Zone 2 Next)
 - Date: 2026-04-22
 - Context:

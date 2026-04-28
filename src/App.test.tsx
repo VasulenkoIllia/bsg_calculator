@@ -52,6 +52,10 @@ describe("App UI", () => {
     expect(screen.getByLabelText("CC Split (%)")).toHaveValue("90");
     expect(screen.getByLabelText("APM Split (%)")).toHaveValue("10");
 
+    await user.click(screen.getByRole("checkbox", { name: "Payout" }));
+    expect(screen.getByLabelText("Monthly Payout Volume (€)")).toHaveValue("200,000");
+    expect(screen.getByLabelText("Total Payout Transactions")).toHaveValue("2,000");
+
     await user.click(screen.getByRole("button", { name: "Reset all to 0" }));
 
     expect(screen.getByRole("checkbox", { name: "Payin" })).toBeChecked();
@@ -61,6 +65,10 @@ describe("App UI", () => {
     expect(screen.getByLabelText("Payin Approval Ratio (%)")).toHaveValue("0");
     expect(screen.getByLabelText("EU Split (%)")).toHaveValue("0");
     expect(screen.getByLabelText("CC Split (%)")).toHaveValue("0");
+
+    await user.click(screen.getByRole("checkbox", { name: "Payout" }));
+    expect(screen.getByLabelText("Monthly Payout Volume (€)")).toHaveValue("0");
+    expect(screen.getByLabelText("Total Payout Transactions")).toHaveValue("0");
 
     await user.click(screen.getByRole("button", { name: "Apply defaults" }));
 
@@ -73,6 +81,10 @@ describe("App UI", () => {
     expect(screen.getByLabelText("WW Split (%)")).toHaveValue("20");
     expect(screen.getByLabelText("CC Split (%)")).toHaveValue("90");
     expect(screen.getByLabelText("APM Split (%)")).toHaveValue("10");
+
+    await user.click(screen.getByRole("checkbox", { name: "Payout" }));
+    expect(screen.getByLabelText("Monthly Payout Volume (€)")).toHaveValue("200,000");
+    expect(screen.getByLabelText("Total Payout Transactions")).toHaveValue("2,000");
   });
 
   it("shows split formulas under each split input and recalculates on split changes", async () => {
@@ -180,24 +192,30 @@ describe("App UI", () => {
     expect(screen.getByText("Zone 3: Pricing Configuration")).toBeInTheDocument();
     expect(screen.getByText("Payin EU Pricing")).toBeInTheDocument();
     expect(screen.getByText("Payin WW Pricing")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Settlement Included" })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Payin EU model Blended" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Payin WW model IC++" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    expect(screen.getAllByRole("checkbox", { name: "TRX Fee Enabled" })).toHaveLength(2);
+    expect(screen.getAllByRole("checkbox", { name: "TRX Fee Enabled" })[0]).toBeChecked();
+    expect(screen.getAllByRole("checkbox", { name: "TRX Fee Enabled" })[1]).toBeChecked();
     expect(screen.getByText(/Formula: MDR Revenue = EU Volume/)).toBeInTheDocument();
     expect(screen.getAllByText(/Formula: Total Revenue = MDR Revenue/).length).toBeGreaterThanOrEqual(
       2
     );
     expect(screen.getAllByText("€0").length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByLabelText("Scheme Fees (%)")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Interchange (%)")).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Payin EU model Blended" }));
-    expect(screen.getByLabelText("Scheme Fees (%)")).toBeInTheDocument();
     expect(screen.getByLabelText("Interchange (%)")).toBeInTheDocument();
-    expect(screen.getByText("€2,400")).toBeInTheDocument();
-    expect(
-      screen.getByText(/Formula: Scheme Cost Impact \(Zone5\) = EU Volume/)
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/Scheme Cost Impact/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Revenue After Scheme/)).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Payin EU tiered rates" }));
-    expect(screen.getByText(/Tier 1 \(€0-€10M\): Volume/)).toBeInTheDocument();
+    expect(screen.getByText(/Tier 1 \(€0-€5M\): Volume/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("checkbox", { name: "Payout" }));
     expect(screen.getByText("Payout Pricing")).toBeInTheDocument();
@@ -221,7 +239,7 @@ describe("App UI", () => {
     ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Payout tiered rates" }));
-    expect(screen.getAllByText(/Tier 1 \(€0-€10M\): Volume/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/Tier 1 \(€0-€1M\): Volume/)).toBeInTheDocument();
   });
 
   it("renders zone 4 controls and recalculates fee impacts", async () => {
@@ -230,9 +248,7 @@ describe("App UI", () => {
     render(<App />);
 
     expect(screen.getByText("Zone 4: Other Fees & Limits")).toBeInTheDocument();
-    expect(
-      screen.getByText("Settlement Fee block is hidden because `Settlement Included` is ON in Zone 3.")
-    ).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Settlement Fee" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("checkbox", { name: "Payout" }));
     expect(screen.getByText("Payout Minimum Fee (Per Transaction)")).toBeInTheDocument();
@@ -263,7 +279,9 @@ describe("App UI", () => {
     expect(screen.getAllByText("€875").length).toBeGreaterThanOrEqual(1);
 
     await user.click(screen.getByRole("checkbox", { name: "Settlement Included" }));
-    expect(screen.getAllByText("Settlement Fee").length).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getByText("Settlement Fee block is hidden because `Settlement Included` is ON in Zone 3.")
+    ).toBeInTheDocument();
   });
 
   it("renders zone 5 profitability and recalculates totals", async () => {

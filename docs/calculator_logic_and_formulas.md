@@ -17,7 +17,7 @@ This document is the technical source of truth for runtime calculation behavior.
 
 ### 1.1 Startup presets and global actions
 
-Initial/default state currently applies the defined Zone 0 and Zone 1A defaults:
+Initial/default state currently applies these defaults:
 
 - Zone 0: `Payin = on`, `Payout = off`.
 - Zone 1A:
@@ -26,6 +26,21 @@ Initial/default state currently applies the defined Zone 0 and Zone 1A defaults:
   - Approval Ratio: `80%`
   - EU / WW split: `80% / 20%`
   - CC / APM split: `90% / 10%`
+- Zone 1B (stored in the default preset and shown when Payout is enabled):
+  - Monthly Payout Volume: `€200,000`
+  - Total Payout Transactions: `2,000`
+- Zone 3:
+  - `Settlement Included = off`
+  - Payin EU pricing model: `Blended`
+  - Payin WW pricing model: `IC++` (kept unchanged because the default request explicitly named EU)
+  - Payin EU/WW `TRX Fee Enabled = on`
+  - Payin EU/WW rate type: `Single Rate`
+  - Payin EU/WW tier boundaries: `5M / 10M`
+  - Scheme defaults used in calculation costs: EU `0.75%`, WW `2%`
+  - Scheme Fees are not shown in Zone 3 UI; `Interchange (%)` remains visible in Zone 3.
+  - Zone 6 Offer Summary still includes Scheme Fees for now by product decision.
+  - Payout rate type: `Single Rate`
+  - Payout tier boundaries: `1M / 5M`
 
 Global top controls:
 
@@ -151,6 +166,11 @@ From `zone3/pricingConfiguration.ts`.
 
 ### 6.1 Defaults and boundaries
 
+- Default settlement flag is `false`, so Zone 4 settlement fee settings are visible by default.
+- Payin EU defaults to `Blended`; Payin WW remains `IC++`.
+- Payin EU/WW default to enabled TRX fees and `Single Rate`.
+- Payin EU/WW tier boundaries default to `5M / 10M`.
+- Payout defaults to `Single Rate`; payout tier boundaries default to `1M / 5M`.
 - Tier boundaries normalized with cap at `25M` for preview splitter.
 - Payout minimum floors (always applied in payout preview math):
   - `PAYOUT_MDR_MIN_PERCENT = 1.3`
@@ -168,6 +188,10 @@ Input per region (EU/WW):
 - method volumes CC/APM
 - config (`model`, `rateMode`, rates, scheme/interchange)
 
+Zone 3 UI shows `Interchange (%)` for Blended but does not show or edit `Scheme Fees (%)`.
+Scheme values remain internal defaults and appear as costs in calculation sections. Zone 6 Offer Summary
+still displays Scheme Fees for now; hiding Scheme there is a separate product decision.
+
 Single rate:
 - `mdrRevenue = volume * mdrPercent / 100`
 - `trxRevenue = successfulCc * trxCc + successfulApm * trxApm` (only if `trxFeeEnabled`)
@@ -183,6 +207,7 @@ Tiered rate:
 Scheme cost impact preview:
 - `schemeCostImpact = volume * schemeFeesPercent / 100` only for `blended`.
 - For `icpp`, `schemeCostImpact = 0`.
+- Current Scheme defaults: EU `0.75%`, WW `2%`.
 
 Output:
 - `totalRevenue = mdrRevenue + trxRevenue`

@@ -247,8 +247,8 @@ const DEFAULT_CALCULATOR_STATE: CalculatorStatePreset = {
   approvalRatioPercent: 80,
   euPercent: 80,
   ccPercent: 90,
-  payoutVolume: 500_000,
-  payoutTransactions: 5_000,
+  payoutVolume: 200_000,
+  payoutTransactions: 2_000,
   introducerCommissionType: "standard",
   customTier1UpToMillion: DEFAULT_CUSTOM_TIER_SETTINGS.tier1UpToMillion,
   customTier2UpToMillion: DEFAULT_CUSTOM_TIER_SETTINGS.tier2UpToMillion,
@@ -1091,10 +1091,10 @@ export default function App() {
   };
   const setPayinRegionExtraField = (
     region: "eu" | "ww",
-    field: "schemeFeesPercent" | "interchangePercent",
+    field: "interchangePercent",
     value: number
   ) => {
-    const normalizedValue = clampNumber(Math.max(0, value), 0, field === "schemeFeesPercent" ? 1 : 2.5);
+    const normalizedValue = clampNumber(Math.max(0, value), 0, 2.5);
     if (region === "eu") {
       setPayinEuPricing(current => ({ ...current, [field]: normalizedValue }));
       return;
@@ -3063,15 +3063,7 @@ export default function App() {
                       </div>
                     )}
                     {payinEuPricing.model === "blended" ? (
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <NumberField
-                          label="Scheme Fees (%)"
-                          value={payinEuPricing.schemeFeesPercent}
-                          onChange={value => setPayinRegionExtraField("eu", "schemeFeesPercent", value)}
-                          min={0}
-                          max={1}
-                          step={0.05}
-                        />
+                      <div className="grid gap-3">
                         <NumberField
                           label="Interchange (%)"
                           value={payinEuPricing.interchangePercent}
@@ -3083,24 +3075,9 @@ export default function App() {
                       </div>
                     ) : (
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                        Для IC++ поля <strong>Scheme Fees</strong> і <strong>Interchange</strong>{" "}
-                        не застосовуються в обрахунках.
+                        Для IC++ поле <strong>Interchange</strong> не застосовується в обрахунках.
                       </div>
                     )}
-                    {hasSchemeFeesIcPlusAmbiguityEu ? (
-                      <SpecAmbiguityNotice
-                        title="Scheme Fees в IC++ (EU): pass-through чи наші витрати?"
-                        currentValue={`Модель: IC++, Scheme Fees: ${formatInputNumber(
-                          payinEuPricing.schemeFeesPercent
-                        )}%`}
-                        sourceContext="У DOCX є конфлікт: в одній секції IC++ позначено як pass-through, але в інших секціях/прикладах Scheme Fees включені в Payin Costs."
-                        usedInFormulas={[
-                          "Zone 3 EU: Scheme Cost Impact (Zone5)",
-                          "Zone 5 Payin Costs: Total Payin Costs includes Scheme",
-                          "Zone 5 Payin Net Margin = Total Payin Revenue - Total Payin Costs"
-                        ]}
-                      />
-                    ) : null}
                     {payinEuPreview.warnings.length > 0 ? (
                       <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
                         {payinEuPreview.warnings.map(warning => (
@@ -3116,14 +3093,6 @@ export default function App() {
                       <MetricCard name="MDR Revenue" value={formatAmount2(payinEuPreview.mdrRevenue)} />
                       <MetricCard name="TRX Revenue" value={formatAmount2(payinEuPreview.trxRevenue)} />
                       <MetricCard name="Total Revenue" value={formatAmount2(payinEuPreview.totalRevenue)} />
-                      <MetricCard
-                        name="Scheme Cost Impact (Zone5)"
-                        value={formatAmount2(payinEuPreview.schemeCostImpact)}
-                      />
-                      <MetricCard
-                        name="Revenue After Scheme (Preview)"
-                        value={formatAmount2(payinEuPreview.revenueAfterSchemePreview)}
-                      />
                     </div>
                     <div className="mt-3 space-y-2">
                       {payinEuPricing.rateMode === "single" ? (
@@ -3169,30 +3138,6 @@ export default function App() {
                         Formula: Total Revenue = MDR Revenue ({formatAmount2(payinEuPreview.mdrRevenue)}) +
                         TRX Revenue ({formatAmount2(payinEuPreview.trxRevenue)}) ={" "}
                         {formatAmount2(payinEuPreview.totalRevenue)}
-                      </FormulaLine>
-                      <FormulaLine
-                        className={
-                          hasSchemeFeesIcPlusAmbiguityEu
-                            ? "border-rose-300 bg-rose-50 text-rose-900"
-                            : ""
-                        }
-                      >
-                        Formula: Scheme Cost Impact (Zone5) ={" "}
-                        {payinEuPricing.model === "blended"
-                          ? `EU Volume (${formatAmountInteger(
-                              payin.volume.eu
-                            )}) × Scheme Fees (${formatInputNumber(
-                              payinEuPricing.schemeFeesPercent
-                            )}%)`
-                          : "0 (IC++: Scheme Fees are pass-through)"}
-                        {" = "}
-                        {formatAmount2(payinEuPreview.schemeCostImpact)}
-                      </FormulaLine>
-                      <FormulaLine>
-                        Formula: Revenue After Scheme (Preview) = Total Revenue (
-                        {formatAmount2(payinEuPreview.totalRevenue)}) - Scheme Cost Impact (
-                        {formatAmount2(payinEuPreview.schemeCostImpact)}) ={" "}
-                        {formatAmount2(payinEuPreview.revenueAfterSchemePreview)}
                       </FormulaLine>
                     </div>
                   </div>
@@ -3350,15 +3295,7 @@ export default function App() {
                       </div>
                     )}
                     {payinWwPricing.model === "blended" ? (
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <NumberField
-                          label="Scheme Fees (%)"
-                          value={payinWwPricing.schemeFeesPercent}
-                          onChange={value => setPayinRegionExtraField("ww", "schemeFeesPercent", value)}
-                          min={0}
-                          max={1}
-                          step={0.05}
-                        />
+                      <div className="grid gap-3">
                         <NumberField
                           label="Interchange (%)"
                           value={payinWwPricing.interchangePercent}
@@ -3370,24 +3307,9 @@ export default function App() {
                       </div>
                     ) : (
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                        Для IC++ поля <strong>Scheme Fees</strong> і <strong>Interchange</strong>{" "}
-                        не застосовуються в обрахунках.
+                        Для IC++ поле <strong>Interchange</strong> не застосовується в обрахунках.
                       </div>
                     )}
-                    {hasSchemeFeesIcPlusAmbiguityWw ? (
-                      <SpecAmbiguityNotice
-                        title="Scheme Fees в IC++ (WW): pass-through чи наші витрати?"
-                        currentValue={`Модель: IC++, Scheme Fees: ${formatInputNumber(
-                          payinWwPricing.schemeFeesPercent
-                        )}%`}
-                        sourceContext="У DOCX є конфлікт: в одній секції IC++ позначено як pass-through, але в інших секціях/прикладах Scheme Fees включені в Payin Costs."
-                        usedInFormulas={[
-                          "Zone 3 WW: Scheme Cost Impact (Zone5)",
-                          "Zone 5 Payin Costs: Total Payin Costs includes Scheme",
-                          "Zone 5 Payin Net Margin = Total Payin Revenue - Total Payin Costs"
-                        ]}
-                      />
-                    ) : null}
                     {payinWwPreview.warnings.length > 0 ? (
                       <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
                         {payinWwPreview.warnings.map(warning => (
@@ -3403,14 +3325,6 @@ export default function App() {
                       <MetricCard name="MDR Revenue" value={formatAmount2(payinWwPreview.mdrRevenue)} />
                       <MetricCard name="TRX Revenue" value={formatAmount2(payinWwPreview.trxRevenue)} />
                       <MetricCard name="Total Revenue" value={formatAmount2(payinWwPreview.totalRevenue)} />
-                      <MetricCard
-                        name="Scheme Cost Impact (Zone5)"
-                        value={formatAmount2(payinWwPreview.schemeCostImpact)}
-                      />
-                      <MetricCard
-                        name="Revenue After Scheme (Preview)"
-                        value={formatAmount2(payinWwPreview.revenueAfterSchemePreview)}
-                      />
                     </div>
                     <div className="mt-3 space-y-2">
                       {payinWwPricing.rateMode === "single" ? (
@@ -3456,30 +3370,6 @@ export default function App() {
                         Formula: Total Revenue = MDR Revenue ({formatAmount2(payinWwPreview.mdrRevenue)}) +
                         TRX Revenue ({formatAmount2(payinWwPreview.trxRevenue)}) ={" "}
                         {formatAmount2(payinWwPreview.totalRevenue)}
-                      </FormulaLine>
-                      <FormulaLine
-                        className={
-                          hasSchemeFeesIcPlusAmbiguityWw
-                            ? "border-rose-300 bg-rose-50 text-rose-900"
-                            : ""
-                        }
-                      >
-                        Formula: Scheme Cost Impact (Zone5) ={" "}
-                        {payinWwPricing.model === "blended"
-                          ? `WW Volume (${formatAmountInteger(
-                              payin.volume.ww
-                            )}) × Scheme Fees (${formatInputNumber(
-                              payinWwPricing.schemeFeesPercent
-                            )}%)`
-                          : "0 (IC++: Scheme Fees are pass-through)"}
-                        {" = "}
-                        {formatAmount2(payinWwPreview.schemeCostImpact)}
-                      </FormulaLine>
-                      <FormulaLine>
-                        Formula: Revenue After Scheme (Preview) = Total Revenue (
-                        {formatAmount2(payinWwPreview.totalRevenue)}) - Scheme Cost Impact (
-                        {formatAmount2(payinWwPreview.schemeCostImpact)}) ={" "}
-                        {formatAmount2(payinWwPreview.revenueAfterSchemePreview)}
                       </FormulaLine>
                     </div>
                   </div>
