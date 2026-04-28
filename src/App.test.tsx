@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import App from "./App.js";
 
 describe("App UI", () => {
@@ -325,6 +325,55 @@ describe("App UI", () => {
     expect(
       screen.getByText(/Formula: Average Transaction = Rounded Monthly Payout Volume/)
     ).toBeInTheDocument();
+  });
+
+  it("adds end-of-zone navigation controls from zone 1 onward", async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    expect(screen.getAllByRole("button", { name: /Back to start/ })).toHaveLength(6);
+    expect(
+      screen.getByRole("button", {
+        name: "Back to previous zone from Zone 1A: Payin Traffic Input: Zone 0: Calculator Type"
+      })
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "Collapse Zone 2: Introducer Commission" })
+    );
+    expect(
+      screen.queryByRole("button", { name: "Commission model: Standard" })
+    ).not.toBeInTheDocument();
+
+    const zone2ScrollIntoView = vi.fn();
+    Object.defineProperty(document.getElementById("zone2"), "scrollIntoView", {
+      configurable: true,
+      value: zone2ScrollIntoView
+    });
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Back to previous zone from Zone 3: Pricing Configuration: Zone 2: Introducer Commission"
+      })
+    );
+
+    expect(screen.getByRole("button", { name: "Commission model: Standard" })).toBeInTheDocument();
+    expect(zone2ScrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+
+    const zone0ScrollIntoView = vi.fn();
+    Object.defineProperty(document.getElementById("zone0"), "scrollIntoView", {
+      configurable: true,
+      value: zone0ScrollIntoView
+    });
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Back to start from Zone 3: Pricing Configuration"
+      })
+    );
+
+    expect(zone0ScrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
   });
 
   it("allows collapsing and expanding zones for compact view", async () => {

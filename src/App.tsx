@@ -103,9 +103,21 @@ type ZoneSectionProps = {
   expanded: boolean;
   onToggle: () => void;
   children: ReactNode;
+  navigation?: ZoneSectionNavigation;
   panelClassName?: string;
   headerClassName?: string;
   contentClassName?: string;
+};
+
+type ZoneNavigationTarget = {
+  id: ZoneId;
+  title: string;
+};
+
+type ZoneSectionNavigation = {
+  start: ZoneNavigationTarget;
+  previous: ZoneNavigationTarget;
+  onNavigate: (zoneId: ZoneId) => void;
 };
 
 type UnifiedProfitabilityNode = {
@@ -247,6 +259,14 @@ function collectExpandableNodeIds(nodes: UnifiedProfitabilityNode[]): string[] {
 
   nodes.forEach(walk);
   return ids;
+}
+
+function findPreviousZoneTarget(
+  zoneId: ZoneId,
+  zones: ZoneNavigationTarget[]
+): ZoneNavigationTarget | undefined {
+  const zoneIndex = zones.findIndex(zone => zone.id === zoneId);
+  return zoneIndex > 0 ? zones[zoneIndex - 1] : undefined;
 }
 
 function UnifiedProfitabilityRow({
@@ -532,6 +552,7 @@ function ZoneSection({
   expanded,
   onToggle,
   children,
+  navigation,
   panelClassName = "mb-6",
   headerClassName = "p-5 md:p-7",
   contentClassName = "p-5 md:p-7"
@@ -545,7 +566,7 @@ function ZoneSection({
   };
 
   return (
-    <section className={["panel overflow-hidden", panelClassName].join(" ")}>
+    <section id={id} className={["panel overflow-hidden", panelClassName].join(" ")}>
       <div
         className={[
           "w-full cursor-pointer select-none text-left transition hover:bg-slate-50/70",
@@ -572,6 +593,26 @@ function ZoneSection({
       {expanded ? (
         <div id={regionId} className={contentClassName}>
           {children}
+          {navigation ? (
+            <div className="mt-6 flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <button
+                type="button"
+                onClick={() => navigation.onNavigate(navigation.start.id)}
+                aria-label={`Back to start from ${title}`}
+                className="inline-flex w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 sm:w-auto"
+              >
+                Back to start
+              </button>
+              <button
+                type="button"
+                onClick={() => navigation.onNavigate(navigation.previous.id)}
+                aria-label={`Back to previous zone from ${title}: ${navigation.previous.title}`}
+                className="inline-flex w-full items-center justify-center rounded-xl border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-900 transition hover:border-blue-400 hover:bg-blue-100 sm:w-auto"
+              >
+                Back to previous zone
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </section>
@@ -837,6 +878,48 @@ export default function App() {
   };
   const toggleZone = (zoneId: ZoneId) => {
     setZoneExpanded(current => ({ ...current, [zoneId]: !current[zoneId] }));
+  };
+
+  const navigateToZone = (zoneId: ZoneId) => {
+    setZoneExpanded(current => ({ ...current, [zoneId]: true }));
+    document.getElementById(zoneId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const visiblePrimaryZones = useMemo<ZoneNavigationTarget[]>(() => {
+    const zones: ZoneNavigationTarget[] = [
+      { id: "zone0", title: "Zone 0: Calculator Type" }
+    ];
+
+    if (calculatorType.payin) {
+      zones.push({ id: "zone1a", title: "Zone 1A: Payin Traffic Input" });
+    }
+
+    if (calculatorType.payout) {
+      zones.push({ id: "zone1b", title: "Zone 1B: Payout Traffic Input" });
+    }
+
+    zones.push(
+      { id: "zone2", title: "Zone 2: Introducer Commission" },
+      { id: "zone3", title: "Zone 3: Pricing Configuration" },
+      { id: "zone4", title: "Zone 4: Other Fees & Limits" },
+      { id: "zone5", title: "Zone 5: Profitability Calculations" },
+      { id: "zone6", title: "Zone 6: Offer Summary" }
+    );
+
+    return zones;
+  }, [calculatorType.payin, calculatorType.payout]);
+
+  const getZoneNavigation = (zoneId: ZoneId): ZoneSectionNavigation | undefined => {
+    const start = visiblePrimaryZones[0];
+    const previous = findPreviousZoneTarget(zoneId, visiblePrimaryZones);
+
+    if (!start || !previous) return undefined;
+
+    return {
+      start,
+      previous,
+      onNavigate: navigateToZone
+    };
   };
 
   const payin = useMemo(
@@ -2058,6 +2141,7 @@ export default function App() {
             subtitle="Core traffic data and split configuration for Payin calculations."
             expanded={zoneExpanded.zone1a}
             onToggle={() => toggleZone("zone1a")}
+            navigation={getZoneNavigation("zone1a")}
             headerClassName="border-b border-slate-200 bg-gradient-to-r from-emerald-50 to-cyan-50 px-5 py-4 md:px-7"
             contentClassName="p-5 md:p-7"
           >
@@ -2170,6 +2254,7 @@ export default function App() {
             subtitle="Dedicated input section for Payout flow data."
             expanded={zoneExpanded.zone1b}
             onToggle={() => toggleZone("zone1b")}
+            navigation={getZoneNavigation("zone1b")}
             headerClassName="border-b border-slate-200 bg-gradient-to-r from-indigo-50 to-sky-50 px-5 py-4 md:px-7"
             contentClassName="p-5 md:p-7"
           >
@@ -2209,6 +2294,7 @@ export default function App() {
           subtitle="Configure partner commission model: Standard, Custom, or Rev Share."
           expanded={zoneExpanded.zone2}
           onToggle={() => toggleZone("zone2")}
+          navigation={getZoneNavigation("zone2")}
           headerClassName="border-b border-slate-200 bg-gradient-to-r from-violet-50 to-fuchsia-50 px-5 py-4 md:px-7"
           contentClassName="p-5 md:p-7"
         >
@@ -2502,6 +2588,7 @@ export default function App() {
           subtitle="Configure Payin/Payout pricing models and rate sets (IC++ / Blended, Single / Tiered)."
           expanded={zoneExpanded.zone3}
           onToggle={() => toggleZone("zone3")}
+          navigation={getZoneNavigation("zone3")}
           headerClassName="border-b border-slate-200 bg-gradient-to-r from-amber-50 to-orange-50 px-5 py-4 md:px-7"
           contentClassName="p-5 md:p-7"
         >
@@ -3366,6 +3453,7 @@ export default function App() {
           subtitle="Configure additional revenue-affecting fees and contract summary settings."
           expanded={zoneExpanded.zone4}
           onToggle={() => toggleZone("zone4")}
+          navigation={getZoneNavigation("zone4")}
           headerClassName="border-b border-slate-200 bg-gradient-to-r from-rose-50 to-orange-50 px-5 py-4 md:px-7"
           contentClassName="p-5 md:p-7"
         >
@@ -3870,6 +3958,7 @@ export default function App() {
           subtitle="Full profitability model with Payin/Payout/Other categories and total margin."
           expanded={zoneExpanded.zone5}
           onToggle={() => toggleZone("zone5")}
+          navigation={getZoneNavigation("zone5")}
           headerClassName="border-b border-slate-200 bg-gradient-to-r from-cyan-50 to-blue-50 px-5 py-4 md:px-7"
           contentClassName="p-5 md:p-7"
         >
@@ -4455,6 +4544,7 @@ export default function App() {
           subtitle="Auto-generated proposal text based on active sections and enabled options."
           expanded={zoneExpanded.zone6}
           onToggle={() => toggleZone("zone6")}
+          navigation={getZoneNavigation("zone6")}
           headerClassName="border-b border-slate-200 bg-gradient-to-r from-indigo-50 to-blue-50 px-5 py-4 md:px-7"
           contentClassName="p-5 md:p-7"
         >
