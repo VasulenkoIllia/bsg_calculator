@@ -40,6 +40,7 @@ export interface OfferSummaryInput {
   failedTrxMode: FailedTrxChargingMode;
   failedTrxOverLimitThresholdPercent: number;
   contractSummary: ContractSummarySettings;
+  introducerEnabled: boolean;
   introducerCommissionType: IntroducerCommissionType;
   standardIntroducer: StandardCommissionResult;
   customIntroducer: CustomCommissionResult;
@@ -248,8 +249,13 @@ function buildAdditionalFeesLines(input: OfferSummaryInput): string[] {
 }
 
 function buildIntroducerLines(input: OfferSummaryInput): string[] {
+  if (!input.introducerEnabled) {
+    return ["Agent / Introducer: No", "Introducer Commission: Not applied"];
+  }
+
   if (input.introducerCommissionType === "standard") {
     return [
+      "Agent / Introducer: Yes",
       "Type: Standard",
       `Volume: ${formatMillion(input.standardIntroducer.volumeEuro)}`,
       `Tier: ${input.standardIntroducer.appliedTier.label}`,
@@ -260,6 +266,7 @@ function buildIntroducerLines(input: OfferSummaryInput): string[] {
 
   if (input.introducerCommissionType === "custom") {
     const lines: string[] = [
+      "Agent / Introducer: Yes",
       "Type: Custom (Progressive)",
       `Volume: ${formatMillion(input.customIntroducer.volumeEuro)}`
     ];
@@ -278,6 +285,7 @@ function buildIntroducerLines(input: OfferSummaryInput): string[] {
   }
 
   return [
+    "Agent / Introducer: Yes",
     "Type: Rev Share",
     `Total Revenue: ${formatAmount2(input.revShareIntroducer.totalRevenue)}`,
     `Total Costs: ${formatAmount2(input.revShareIntroducer.totalCosts)}`,

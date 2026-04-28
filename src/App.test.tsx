@@ -51,6 +51,11 @@ describe("App UI", () => {
     expect(screen.getByLabelText("WW Split (%)")).toHaveValue("20");
     expect(screen.getByLabelText("CC Split (%)")).toHaveValue("90");
     expect(screen.getByLabelText("APM Split (%)")).toHaveValue("10");
+    expect(screen.getByRole("checkbox", { name: "Agent / Introducer" })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Commission model: Standard" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
 
     await user.click(screen.getByRole("checkbox", { name: "Payout" }));
     expect(screen.getByLabelText("Monthly Payout Volume (€)")).toHaveValue("200,000");
@@ -65,6 +70,7 @@ describe("App UI", () => {
     expect(screen.getByLabelText("Payin Approval Ratio (%)")).toHaveValue("0");
     expect(screen.getByLabelText("EU Split (%)")).toHaveValue("0");
     expect(screen.getByLabelText("CC Split (%)")).toHaveValue("0");
+    expect(screen.getByRole("checkbox", { name: "Agent / Introducer" })).not.toBeChecked();
 
     await user.click(screen.getByRole("checkbox", { name: "Payout" }));
     expect(screen.getByLabelText("Monthly Payout Volume (€)")).toHaveValue("0");
@@ -81,6 +87,11 @@ describe("App UI", () => {
     expect(screen.getByLabelText("WW Split (%)")).toHaveValue("20");
     expect(screen.getByLabelText("CC Split (%)")).toHaveValue("90");
     expect(screen.getByLabelText("APM Split (%)")).toHaveValue("10");
+    expect(screen.getByRole("checkbox", { name: "Agent / Introducer" })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Commission model: Standard" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
 
     await user.click(screen.getByRole("checkbox", { name: "Payout" }));
     expect(screen.getByLabelText("Monthly Payout Volume (€)")).toHaveValue("200,000");
@@ -154,6 +165,11 @@ describe("App UI", () => {
     render(<App />);
 
     expect(screen.getByText("Standard Tiers")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Agent / Introducer" })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Commission model: Standard" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
     expect(screen.getAllByText("Tier 1 (€0-€10M)").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Tier 2 (€10M-€25M)").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Tier 3 (>€25M)")).toBeInTheDocument();
@@ -161,8 +177,14 @@ describe("App UI", () => {
     expect(screen.getAllByText("€2,500").length).toBeGreaterThanOrEqual(1);
 
     await user.click(screen.getByRole("button", { name: "Commission model: Custom" }));
-    expect(screen.getAllByText("€2,500").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText("Tier 1 Up To (M)")).toHaveValue("5");
+    expect(screen.getByLabelText("Tier 2 Up To (M)")).toHaveValue("10");
+    expect(screen.getByLabelText("Tier 1 Rate (%)")).toHaveValue("0.75");
+    expect(screen.getByLabelText("Tier 2 Rate (%)")).toHaveValue("0.5");
+    expect(screen.getByLabelText("Tier 3 Rate (%)")).toHaveValue("0.25");
+    expect(screen.getAllByText("Tier 1 (€0-€5M)").length).toBeGreaterThanOrEqual(1);
 
+    await user.click(screen.getByRole("checkbox", { name: "Agent / Introducer" }));
     await user.click(screen.getByRole("button", { name: "Commission model: Rev Share" }));
     expect(screen.getByText("Auto from Zone 5 (Payin only): Total Payin Revenue.")).toBeInTheDocument();
     expect(screen.getByLabelText("Total Revenue (€)")).toHaveAttribute("readonly");
@@ -174,6 +196,9 @@ describe("App UI", () => {
     expect(
       screen.getAllByText(/Formula: Our Margin After Share = Payin Margin Before Split/).length
     ).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText("Partner Share (%) [0-50]")).toHaveValue("25");
+
+    expect(screen.getByRole("checkbox", { name: "Agent / Introducer" })).toBeChecked();
 
     const shareInput = screen.getByLabelText("Partner Share (%) [0-50]");
     await user.click(shareInput);
@@ -297,6 +322,7 @@ describe("App UI", () => {
     await user.click(screen.getByRole("checkbox", { name: "3D Secure Fee" }));
     expect(screen.getAllByText("€500").length).toBeGreaterThanOrEqual(1);
 
+    await user.click(screen.getByRole("checkbox", { name: "Agent / Introducer" }));
     await user.click(screen.getByRole("button", { name: "Commission model: Rev Share" }));
     expect(screen.getAllByText(/Formula: Margin Before Split = Total Revenue/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText(/Partner Share \(25%\)/).length).toBeGreaterThanOrEqual(1);
@@ -346,6 +372,8 @@ describe("App UI", () => {
     await user.click(screen.getByRole("checkbox", { name: "Payout" }));
     expect((summaryPreview as HTMLTextAreaElement).value).toContain("PAYOUT:");
 
+    expect((summaryPreview as HTMLTextAreaElement).value).toContain("Agent / Introducer: No");
+    await user.click(screen.getByRole("checkbox", { name: "Agent / Introducer" }));
     await user.click(screen.getByRole("button", { name: "Commission model: Rev Share" }));
     expect((summaryPreview as HTMLTextAreaElement).value).toContain("Type: Rev Share");
   });

@@ -70,11 +70,11 @@ export interface CustomTierSettings {
 }
 
 export const DEFAULT_CUSTOM_TIER_SETTINGS: CustomTierSettings = {
-  tier1UpToMillion: 10,
-  tier2UpToMillion: 25,
-  tier1RatePerMillion: 2_500,
+  tier1UpToMillion: 5,
+  tier2UpToMillion: 10,
+  tier1RatePerMillion: 7_500,
   tier2RatePerMillion: 5_000,
-  tier3RatePerMillion: 7_500
+  tier3RatePerMillion: 2_500
 };
 
 function normalizeEuroAmount(value: number): number {

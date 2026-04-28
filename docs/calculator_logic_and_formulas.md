@@ -29,6 +29,12 @@ Initial/default state currently applies these defaults:
 - Zone 1B (stored in the default preset and shown when Payout is enabled):
   - Monthly Payout Volume: `€200,000`
   - Total Payout Transactions: `2,000`
+- Zone 2:
+  - Agent / Introducer: `off`
+  - Commission model: `Standard`
+  - Custom tier boundaries: `5M / 10M`
+  - Custom rates: `0.75% / 0.5% / 0.25%`
+  - Rev Share percent: `25%`
 - Zone 3:
   - `Settlement Included = off`
   - Payin EU pricing model: `Blended`
@@ -122,6 +128,8 @@ From `zone2/introducerCommission.ts` and App wiring.
 
 ### 5.1 Base volume
 
+- `Agent / Introducer` controls whether Zone 2 commission is applied to total profitability.
+- Default is `off`, so introducer commission is calculated as `0` in totals until enabled.
 - `introducerBaseVolume = payin.normalized.monthlyVolume` only when payin mode is enabled.
 - If payin mode is off, base volume is `0`.
 
@@ -141,6 +149,8 @@ Formula:
 
 - Uses 3 tier slices and configurable boundaries/rates.
 - Boundaries normalized so `tier2 >= tier1`.
+- Default boundaries: `5M / 10M`.
+- Default rates: `0.75% / 0.5% / 0.25%` of volume, stored as `€7,500 / €5,000 / €2,500` per `€1M`.
 
 For each tier:
 - `volumeInTier = overlap(volumeMillion, tier.from..tier.to)`
@@ -366,8 +376,14 @@ If introducer mode is `revShare`:
 If introducer mode is `standard` or `custom`:
 - `introducerCommission = introducerCommissionAmount`
 
+If `Agent / Introducer` is off:
+- `introducerCommission = 0`
+- `revSharePercentApplied = 0`
+- `ourMargin = marginBeforeIntroducer`
+
 Final:
-- `ourMargin = marginBeforeIntroducer - introducerCommission`
+- when `Agent / Introducer` is on: `ourMargin = marginBeforeIntroducer - introducerCommission`
+- when `Agent / Introducer` is off: `ourMargin = marginBeforeIntroducer`
 - Warning displayed when `ourMargin < 0`.
 
 ## 9. Zone 6 (Offer Summary)

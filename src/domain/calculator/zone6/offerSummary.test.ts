@@ -56,6 +56,7 @@ function buildBaseInput(overrides: Partial<OfferSummaryInput> = {}): OfferSummar
     failedTrxMode: "overLimitOnly",
     failedTrxOverLimitThresholdPercent: 70,
     contractSummary: DEFAULT_CONTRACT_SUMMARY_SETTINGS,
+    introducerEnabled: true,
     introducerCommissionType: "standard",
     standardIntroducer,
     customIntroducer,
@@ -79,6 +80,7 @@ describe("buildOfferSummaryText", () => {
     expect(summary).toContain("PAYOUT:");
     expect(summary).toContain("Settlement Included: Yes");
     expect(summary).toContain("TRX Fee Enabled: Yes");
+    expect(summary).toContain("Agent / Introducer: Yes");
     expect(summary).toContain("Type: Standard");
     expect(summary).toContain("Total Commission: €75,000");
     expect(summary).toContain("Min Collection Size: €1");
@@ -131,5 +133,18 @@ describe("buildOfferSummaryText", () => {
     expect(summary).toContain("Type: Rev Share");
     expect(summary).toContain("Partner Share (25%): €12,500");
     expect(summary).toContain("Our Margin: €37,500");
+  });
+
+  it("shows no introducer commission when agent is disabled", () => {
+    const input = buildBaseInput({
+      introducerEnabled: false,
+      introducerCommissionType: "custom"
+    });
+
+    const summary = buildOfferSummaryText(input);
+
+    expect(summary).toContain("Agent / Introducer: No");
+    expect(summary).toContain("Introducer Commission: Not applied");
+    expect(summary).not.toContain("Type: Custom (Progressive)");
   });
 });

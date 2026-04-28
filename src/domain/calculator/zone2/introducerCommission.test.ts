@@ -7,6 +7,16 @@ import {
 } from "./introducerCommission.js";
 
 describe("zone2/introducerCommission", () => {
+  it("exposes configured custom defaults", () => {
+    expect(DEFAULT_CUSTOM_TIER_SETTINGS).toEqual({
+      tier1UpToMillion: 5,
+      tier2UpToMillion: 10,
+      tier1RatePerMillion: 7_500,
+      tier2RatePerMillion: 5_000,
+      tier3RatePerMillion: 2_500
+    });
+  });
+
   it("calculates standard commission using one retrospective tier for full volume", () => {
     const result = calculateStandardIntroducerCommission(18_000_000);
 
@@ -28,22 +38,22 @@ describe("zone2/introducerCommission", () => {
       DEFAULT_CUSTOM_TIER_SETTINGS
     );
 
-    expect(result.tiers[0].volumeMillionInTier).toBe(10);
-    expect(result.tiers[0].commission).toBe(25_000);
-    expect(result.tiers[1].volumeMillionInTier).toBe(8);
-    expect(result.tiers[1].commission).toBe(40_000);
-    expect(result.tiers[2].volumeMillionInTier).toBe(0);
-    expect(result.tiers[2].commission).toBe(0);
-    expect(result.totalCommission).toBe(65_000);
+    expect(result.tiers[0].volumeMillionInTier).toBe(5);
+    expect(result.tiers[0].commission).toBe(37_500);
+    expect(result.tiers[1].volumeMillionInTier).toBe(5);
+    expect(result.tiers[1].commission).toBe(25_000);
+    expect(result.tiers[2].volumeMillionInTier).toBe(8);
+    expect(result.tiers[2].commission).toBe(20_000);
+    expect(result.totalCommission).toBe(82_500);
   });
 
   it("calculates custom tier 3 for volume above tier 2 boundary", () => {
     const result = calculateCustomIntroducerCommission(30_000_000);
 
-    expect(result.tiers[0].commission).toBe(25_000);
-    expect(result.tiers[1].commission).toBe(75_000);
-    expect(result.tiers[2].commission).toBe(37_500);
-    expect(result.totalCommission).toBe(137_500);
+    expect(result.tiers[0].commission).toBe(37_500);
+    expect(result.tiers[1].commission).toBe(25_000);
+    expect(result.tiers[2].commission).toBe(50_000);
+    expect(result.totalCommission).toBe(112_500);
   });
 
   it("calculates rev-share commission from margin", () => {

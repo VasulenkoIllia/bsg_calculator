@@ -62,6 +62,24 @@ Use this file to record meaningful technical decisions for the project.
   - Calculation sections may still mention Scheme as a cost; the removal scope is the Zone 3 configuration UI.
   - Offer Summary can be adjusted separately later if product decides Scheme should be hidden from client-facing output too.
 
+### Decision: Zone 2 Agent / Introducer Toggle
+- Date: 2026-04-28
+- Context:
+  - Product clarified that `Agent` means `Introducer`.
+  - Zone 2 should support calculations with or without an agent/introducer.
+  - Default state should be no agent.
+- Decision:
+  - Add `Agent / Introducer` as a Zone 2 checkbox.
+  - Default checkbox state is `off`; `Apply defaults` restores it to `off`.
+  - Keep default commission model as `Standard`.
+  - When the checkbox is off, introducer commission is not applied to total profitability or Offer Summary.
+  - Custom model defaults are `5M / 10M` tiers and `0.75% / 0.5% / 0.25%` rates.
+  - Rev Share default remains `25%`.
+- Consequences:
+  - Users can prepare Zone 2 model settings without applying an introducer to the final calculation.
+  - Total profitability now has an explicit disabled-introducer path instead of relying on zero rates.
+  - Offer Summary clearly shows when no agent/introducer is applied.
+
 ### Decision: Phase Sequencing (Zone 2 Next)
 - Date: 2026-04-22
 - Context:

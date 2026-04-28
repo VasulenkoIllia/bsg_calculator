@@ -139,6 +139,7 @@ type CalculatorStatePreset = {
   ccPercent: number;
   payoutVolume: number;
   payoutTransactions: number;
+  introducerEnabled: boolean;
   introducerCommissionType: IntroducerCommissionType;
   customTier1UpToMillion: number;
   customTier2UpToMillion: number;
@@ -249,6 +250,7 @@ const DEFAULT_CALCULATOR_STATE: CalculatorStatePreset = {
   ccPercent: 90,
   payoutVolume: 200_000,
   payoutTransactions: 2_000,
+  introducerEnabled: false,
   introducerCommissionType: "standard",
   customTier1UpToMillion: DEFAULT_CUSTOM_TIER_SETTINGS.tier1UpToMillion,
   customTier2UpToMillion: DEFAULT_CUSTOM_TIER_SETTINGS.tier2UpToMillion,
@@ -287,6 +289,7 @@ const ZERO_CALCULATOR_STATE: CalculatorStatePreset = {
   ccPercent: 0,
   payoutVolume: 0,
   payoutTransactions: 0,
+  introducerEnabled: false,
   introducerCommissionType: "standard",
   customTier1UpToMillion: 0,
   customTier2UpToMillion: 0,
@@ -849,6 +852,9 @@ export default function App() {
   const [payoutTransactions, setPayoutTransactions] = useState(
     DEFAULT_CALCULATOR_STATE.payoutTransactions
   );
+  const [introducerEnabled, setIntroducerEnabled] = useState(
+    DEFAULT_CALCULATOR_STATE.introducerEnabled
+  );
   const [introducerCommissionType, setIntroducerCommissionType] =
     useState<IntroducerCommissionType>(DEFAULT_CALCULATOR_STATE.introducerCommissionType);
   const [customTier1UpToMillion, setCustomTier1UpToMillion] = useState(
@@ -943,6 +949,7 @@ export default function App() {
     setCcPercent(preset.ccPercent);
     setPayoutVolume(preset.payoutVolume);
     setPayoutTransactions(preset.payoutTransactions);
+    setIntroducerEnabled(preset.introducerEnabled);
     setIntroducerCommissionType(preset.introducerCommissionType);
     setCustomTier1UpToMillion(preset.customTier1UpToMillion);
     setCustomTier2UpToMillion(preset.customTier2UpToMillion);
@@ -1603,7 +1610,7 @@ export default function App() {
       revSharePercent
     ]
   );
-  const introducerCommissionAmount = useMemo(() => {
+  const selectedIntroducerCommissionAmount = useMemo(() => {
     if (introducerCommissionType === "standard") {
       return standardIntroducer.totalCommission;
     }
@@ -1617,23 +1624,26 @@ export default function App() {
     revShareIntroducer.partnerShare,
     standardIntroducer.totalCommission
   ]);
+  const introducerCommissionAmount = introducerEnabled ? selectedIntroducerCommissionAmount : 0;
   const totalProfitability = useMemo(
     () =>
       calculateTotalProfitability({
         payin: payinProfitability,
         payout: payoutProfitability,
         other: otherRevenueProfitability,
+        introducerEnabled,
         introducerCommissionType,
-        introducerCommissionAmount:
-          introducerCommissionType === "revShare" ? 0 : introducerCommissionAmount,
+        introducerCommissionAmount: selectedIntroducerCommissionAmount,
         revSharePercent
       }),
     [
       introducerCommissionAmount,
+      introducerEnabled,
       introducerCommissionType,
       otherRevenueProfitability,
       payinProfitability,
       payoutProfitability,
+      selectedIntroducerCommissionAmount,
       revSharePercent
     ]
   );
@@ -1688,7 +1698,7 @@ export default function App() {
     const nodes: UnifiedProfitabilityNode[] = [];
 
     const totalChildren: UnifiedProfitabilityNode[] =
-      introducerCommissionType === "revShare"
+      introducerEnabled && introducerCommissionType === "revShare"
         ? [
             {
               id: "unified-total-revenue",
@@ -1784,9 +1794,11 @@ export default function App() {
               id: "unified-introducer",
               label: "Introducer Commission",
               value: -totalProfitability.introducerCommission,
-              formula: `Introducer Commission = Zone 2 Commission (${formatAmount2(
-                totalProfitability.introducerCommission
-              )})`
+              formula: introducerEnabled
+                ? `Introducer Commission = Zone 2 Commission (${formatAmount2(
+                    totalProfitability.introducerCommission
+                  )})`
+                : "Introducer Commission = 0 because Agent / Introducer is not enabled"
             },
             {
               id: "unified-our-margin",
@@ -2106,8 +2118,9 @@ export default function App() {
       id: "unified-introducer-root",
       label: "Introducer Commission",
       value: -introducerCommissionAmount,
-      formula:
-        introducerCommissionType === "revShare"
+      formula: !introducerEnabled
+        ? "Introducer Commission = 0 because Agent / Introducer is not enabled"
+        : introducerCommissionType === "revShare"
           ? `Rev Share (Payin only) = (Payin Revenue (${formatAmount2(
               revShareIntroducer.totalRevenue
             )}) - Payin Costs (${formatAmount2(revShareIntroducer.totalCosts)})) × ${formatInputNumber(
@@ -2126,6 +2139,7 @@ export default function App() {
     euTrxRevenueCc,
     failedTrxRevenueByRegion.eu,
     failedTrxRevenueByRegion.ww,
+    introducerEnabled,
     introducerCommissionAmount,
     introducerCommissionType,
     monthlyMinimumFeeAmount,
@@ -2269,6 +2283,7 @@ export default function App() {
         failedTrxMode,
         failedTrxOverLimitThresholdPercent,
         contractSummary: contractSummarySettings,
+        introducerEnabled,
         introducerCommissionType,
         standardIntroducer,
         customIntroducer,
@@ -2282,6 +2297,7 @@ export default function App() {
       failedTrxEnabled,
       failedTrxMode,
       failedTrxOverLimitThresholdPercent,
+      introducerEnabled,
       introducerCommissionType,
       monthlyMinimumFeeAmount,
       monthlyMinimumFeeEnabled,
@@ -2592,6 +2608,15 @@ export default function App() {
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <h3 className="text-lg font-bold text-slate-800">Commission Model</h3>
+              <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+                <input
+                  className="h-4 w-4 accent-blue-600"
+                  type="checkbox"
+                  checked={introducerEnabled}
+                  onChange={event => setIntroducerEnabled(event.target.checked)}
+                />
+                Agent / Introducer
+              </label>
               <div className="mt-4 grid gap-3 md:grid-cols-3">
                 <CommissionModeCard
                   label="Standard"
@@ -4305,7 +4330,7 @@ export default function App() {
 
             <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4">
               <h3 className="text-lg font-bold text-slate-900">TOTAL PROFITABILITY</h3>
-              {introducerCommissionType === "revShare" ? (
+              {introducerEnabled && introducerCommissionType === "revShare" ? (
                 <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   <MetricCard name="Total Revenue" value={formatAmount2(totalProfitability.totalRevenue)} />
                   <MetricCard
@@ -4350,7 +4375,7 @@ export default function App() {
                 </div>
               )}
               <div className="mt-3 space-y-2">
-                {introducerCommissionType === "revShare" ? (
+                {introducerEnabled && introducerCommissionType === "revShare" ? (
                   <>
                     <FormulaLine>
                       Formula: Margin Before Split = Total Revenue ({formatAmount2(
@@ -4375,11 +4400,17 @@ export default function App() {
                       {formatAmount2(totalProfitability.marginBeforeIntroducer)}
                     </FormulaLine>
                     <FormulaLine>
-                      Formula: Our Margin = Total Margin ({formatAmount2(
-                        totalProfitability.marginBeforeIntroducer
-                      )}) - Introducer Commission ({formatAmount2(
-                        totalProfitability.introducerCommission
-                      )}) = {formatAmount2(totalProfitability.ourMargin)}
+                      {introducerEnabled
+                        ? `Formula: Our Margin = Total Margin (${formatAmount2(
+                            totalProfitability.marginBeforeIntroducer
+                          )}) - Introducer Commission (${formatAmount2(
+                            totalProfitability.introducerCommission
+                          )}) = ${formatAmount2(totalProfitability.ourMargin)}`
+                        : `Formula: Our Margin = Total Margin (${formatAmount2(
+                            totalProfitability.marginBeforeIntroducer
+                          )}) because Agent / Introducer is not enabled = ${formatAmount2(
+                            totalProfitability.ourMargin
+                          )}`}
                     </FormulaLine>
                   </>
                 )}
@@ -4649,7 +4680,14 @@ export default function App() {
 
               <div className="rounded-xl border border-slate-200 bg-white p-4">
                 <h4 className="text-base font-bold text-slate-800">Introducer Commission</h4>
-                {introducerCommissionType === "revShare" ? (
+                {!introducerEnabled ? (
+                  <div className="mt-3 space-y-2">
+                    <MetricCard name="Agent / Introducer" value="Not enabled" />
+                    <FormulaLine>
+                      Formula: Introducer Commission = 0 because Agent / Introducer is not enabled.
+                    </FormulaLine>
+                  </div>
+                ) : introducerCommissionType === "revShare" ? (
                   <div className="mt-3 space-y-2">
                     <MetricCard
                       name={`Partner Share (${formatInputNumber(revShareIntroducer.sharePercent)}%)`}

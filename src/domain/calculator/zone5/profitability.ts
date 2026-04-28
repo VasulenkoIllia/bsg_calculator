@@ -135,13 +135,14 @@ export interface TotalProfitabilityInput {
   payin: Pick<PayinProfitabilityResult, "revenue" | "costs" | "netMargin">;
   payout: Pick<PayoutProfitabilityResult, "revenue" | "costs" | "netMargin">;
   other: OtherRevenueProfitabilityResult;
+  introducerEnabled: boolean;
   introducerCommissionType: IntroducerCommissionType;
   introducerCommissionAmount: number;
   revSharePercent: number;
 }
 
 export interface TotalProfitabilityResult {
-  mode: "standardCustom" | "revShare";
+  mode: "disabled" | "standardCustom" | "revShare";
   payinNetMargin: number;
   payoutNetMargin: number;
   otherNetMargin: number;
@@ -489,6 +490,25 @@ export function calculateTotalProfitability(
     safeNonNegative(input.payout.costs.total) +
     safeNonNegative(input.other.costs.total);
   const marginBeforeIntroducer = payinNetMargin + payoutNetMargin + otherNetMargin;
+
+  if (!input.introducerEnabled) {
+    return {
+      mode: "disabled",
+      payinNetMargin,
+      payoutNetMargin,
+      otherNetMargin,
+      totalRevenue,
+      totalCosts,
+      marginBeforeIntroducer,
+      introducerCommission: 0,
+      revSharePercentApplied: 0,
+      ourMargin: marginBeforeIntroducer,
+      warning:
+        marginBeforeIntroducer < 0
+          ? "⚠️ Negative Margin: Costs exceed revenue. Please review pricing structure."
+          : null
+    };
+  }
 
   if (input.introducerCommissionType === "revShare") {
     const revSharePercentApplied = Math.max(0, Math.min(50, input.revSharePercent));

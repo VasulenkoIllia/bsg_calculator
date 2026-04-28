@@ -139,6 +139,7 @@ describe("zone5/profitability", () => {
         netMargin: 35_450
       },
       other,
+      introducerEnabled: true,
       introducerCommissionType: "standard",
       introducerCommissionAmount: 90_000,
       revSharePercent: 25
@@ -176,6 +177,7 @@ describe("zone5/profitability", () => {
         netMargin: 35_450
       },
       other,
+      introducerEnabled: true,
       introducerCommissionType: "revShare",
       introducerCommissionAmount: 0,
       revSharePercent: 25
@@ -187,6 +189,45 @@ describe("zone5/profitability", () => {
     expect(result.marginBeforeIntroducer).toBeCloseTo(540_872, 6);
     expect(result.introducerCommission).toBeCloseTo(114_670.5, 6);
     expect(result.ourMargin).toBeCloseTo(426_201.5, 6);
+  });
+
+  it("skips introducer commission when agent is disabled", () => {
+    const other = calculateOtherRevenueProfitability({
+      threeDsRevenue: 1_050,
+      threeDsCost: 630,
+      settlementFeeRevenue: 46_320,
+      monthlyMinimumAdjustment: 0
+    });
+
+    const result = calculateTotalProfitability({
+      payin: {
+        revenue: { mdr: 712_500, trx: 7_350, failedTrx: 0, total: 719_850 },
+        costs: {
+          providerMdr: 255_000,
+          providerTrx: 6_168,
+          schemeFees: 0,
+          interchange: 0,
+          total: 261_168
+        },
+        netMargin: 458_682
+      },
+      payout: {
+        revenue: { mdr: 10_000, trx: 36_250, total: 46_250 },
+        costs: { providerMdr: 5_000, providerTrx: 5_800, total: 10_800 },
+        netMargin: 35_450
+      },
+      other,
+      introducerEnabled: false,
+      introducerCommissionType: "revShare",
+      introducerCommissionAmount: 90_000,
+      revSharePercent: 25
+    });
+
+    expect(result.mode).toBe("disabled");
+    expect(result.marginBeforeIntroducer).toBeCloseTo(540_872, 6);
+    expect(result.introducerCommission).toBe(0);
+    expect(result.revSharePercentApplied).toBe(0);
+    expect(result.ourMargin).toBeCloseTo(540_872, 6);
   });
 
   it("returns warning when resulting margin is negative", () => {
@@ -215,6 +256,7 @@ describe("zone5/profitability", () => {
         netMargin: 0
       },
       other,
+      introducerEnabled: true,
       introducerCommissionType: "standard",
       introducerCommissionAmount: 0,
       revSharePercent: 25
