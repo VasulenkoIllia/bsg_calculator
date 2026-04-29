@@ -453,7 +453,7 @@ export function calculateOtherRevenueProfitability(
 ): OtherRevenueProfitabilityResult {
   const threeDsRevenue = safeNonNegative(input.threeDsRevenue);
   const threeDsCost = safeNonNegative(input.threeDsCost);
-  const settlementFee = safeNonNegative(input.settlementFeeRevenue);
+  const settlementFee = safeFinite(input.settlementFeeRevenue);
   const monthlyMinimumAdjustment = safeNonNegative(input.monthlyMinimumAdjustment);
 
   const revenueTotal = threeDsRevenue + settlementFee + monthlyMinimumAdjustment;

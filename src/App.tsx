@@ -1694,7 +1694,7 @@ export default function App() {
       calculateOtherRevenueProfitability({
         threeDsRevenue: threeDsImpact.revenue,
         threeDsCost: threeDsImpact.cost,
-        settlementFeeRevenue: settlementFeeImpact.fee,
+        settlementFeeRevenue: -settlementFeeImpact.fee,
         monthlyMinimumAdjustment: monthlyMinimumFeeImpact.upliftRevenue
       }),
     [
@@ -1881,8 +1881,8 @@ export default function App() {
                 otherRevenueProfitability.revenue.threeDs
               )}) - 3DS Costs (${formatAmount2(
                 otherRevenueProfitability.costs.threeDs
-              )}) + Settlement Fee (${formatAmount2(
-                otherRevenueProfitability.revenue.settlementFee
+              )}) - Settlement Fee (${formatAmount2(
+                Math.abs(otherRevenueProfitability.revenue.settlementFee)
               )}) + Monthly Minimum Adj (${formatAmount2(
                 otherRevenueProfitability.revenue.monthlyMinimumAdjustment
               )})`
@@ -2015,6 +2015,9 @@ export default function App() {
         id: "unified-payin-root",
         label: "Payin Revenue & Costs",
         value: payinProfitability.netMargin,
+        formula: `Payin Net Margin = Total Payin Revenue (${formatAmount2(
+          payinProfitability.revenue.total
+        )}) - Total Payin Costs (${formatAmount2(payinProfitability.costs.total)})`,
         children: [
           {
             id: "unified-payin-total-revenue",
@@ -2121,6 +2124,26 @@ export default function App() {
                     )})`
                   }
                 ]
+              },
+              {
+                id: "unified-payin-eu-3ds-revenue",
+                label: "3DS Revenue (EU)",
+                value: threeDsPayinRegionalBreakdown.eu.revenue,
+                formula: `3DS Revenue (EU) = Successful Payin EU Transactions (${formatCount(
+                  threeDsPayinRegionalBreakdown.eu.successfulTransactions
+                )}) × 3DS Revenue per Successful (${formatAmount2(
+                  threeDsRevenuePerSuccessfulTransaction
+                )})`
+              },
+              {
+                id: "unified-payin-ww-3ds-revenue",
+                label: "3DS Revenue (WW)",
+                value: threeDsPayinRegionalBreakdown.ww.revenue,
+                formula: `3DS Revenue (WW) = Successful Payin WW Transactions (${formatCount(
+                  threeDsPayinRegionalBreakdown.ww.successfulTransactions
+                )}) × 3DS Revenue per Successful (${formatAmount2(
+                  threeDsRevenuePerSuccessfulTransaction
+                )})`
               }
             ]
           },
@@ -2147,34 +2170,6 @@ export default function App() {
                 value: -payinProfitability.ww.costs.total,
                 formula: buildPayinCostFormula("WW", payinProfitability.ww, payinWwPricing),
                 children: buildPayinCostChildren("ww", "WW", payinWwPricing, payin.volume.ww)
-              }
-            ]
-          },
-          {
-            id: "unified-payin-net-margin",
-            label: "Payin Net Margin",
-            value: payinProfitability.netMargin,
-            formula: `Payin Net Margin = Total Payin Revenue (${formatAmount2(
-              payinProfitability.revenue.total
-            )}) - Total Payin Costs (${formatAmount2(payinProfitability.costs.total)})`
-          },
-          {
-            id: "unified-payin-3ds",
-            label: "Payin 3DS Revenue & Costs",
-            value: threeDsPayinRegionalBreakdown.total.net,
-            formula: `Payin 3DS Net = 3DS Revenue (${formatAmount2(
-              threeDsPayinRegionalBreakdown.total.revenue
-            )}) - 3DS Costs (${formatAmount2(threeDsPayinRegionalBreakdown.total.cost)})`,
-            children: [
-              {
-                id: "unified-payin-eu-3ds-revenue",
-                label: "3DS Revenue (EU)",
-                value: threeDsPayinRegionalBreakdown.eu.revenue,
-                formula: `3DS Revenue (EU) = Successful Payin EU Transactions (${formatCount(
-                  threeDsPayinRegionalBreakdown.eu.successfulTransactions
-                )}) × 3DS Revenue per Successful (${formatAmount2(
-                  threeDsRevenuePerSuccessfulTransaction
-                )})`
               },
               {
                 id: "unified-payin-eu-3ds-cost",
@@ -2184,16 +2179,6 @@ export default function App() {
                   threeDsPayinRegionalBreakdown.eu.attempts
                 )}) × Provider 3DS Cost per Attempt (${formatAmount2(
                   DEFAULT_3DS_FEE_CONFIG.providerCostPerAttempt
-                )})`
-              },
-              {
-                id: "unified-payin-ww-3ds-revenue",
-                label: "3DS Revenue (WW)",
-                value: threeDsPayinRegionalBreakdown.ww.revenue,
-                formula: `3DS Revenue (WW) = Successful Payin WW Transactions (${formatCount(
-                  threeDsPayinRegionalBreakdown.ww.successfulTransactions
-                )}) × 3DS Revenue per Successful (${formatAmount2(
-                  threeDsRevenuePerSuccessfulTransaction
                 )})`
               },
               {
@@ -2270,19 +2255,21 @@ export default function App() {
       value: otherRevenueProfitability.netMargin,
       formula: `Other Revenue = Payin 3DS Net (${formatAmount2(
         threeDsPayinRegionalBreakdown.total.net
-      )}) + Settlement Fee (${formatAmount2(
-        otherRevenueProfitability.revenue.settlementFee
+      )}) - Settlement Fee (${formatAmount2(
+        Math.abs(otherRevenueProfitability.revenue.settlementFee)
       )}) + Monthly Minimum Adj (${formatAmount2(
         otherRevenueProfitability.revenue.monthlyMinimumAdjustment
       )})`,
       children: [
         {
           id: "unified-other-settlement-fee",
-          label: "Settlement Fee",
+          label: "Settlement Fee (Deduction)",
           value: otherRevenueProfitability.revenue.settlementFee,
-          formula: `Settlement Fee = Chargeable Net (${formatAmount2(
+          formula: `Settlement Fee Deduction = Chargeable Net (${formatAmount2(
             settlementFeeImpact.chargeableNet
-          )}) × Settlement Rate (${formatInputNumber(settlementFeeRatePercent)}%)`
+          )}) × Settlement Rate (${formatInputNumber(settlementFeeRatePercent)}%) = -${formatAmount2(
+            settlementFeeImpact.fee
+          )}`
         },
         {
           id: "unified-other-monthly-minimum",
@@ -4076,8 +4063,8 @@ export default function App() {
                   <MetricCard name="3DS Revenue" value={formatAmount2(threeDsImpact.revenue)} />
                   <MetricCard name="3DS Cost" value={formatAmount2(threeDsImpact.cost)} />
                   <MetricCard
-                    name="Settlement Fee Revenue"
-                    value={formatAmount2(settlementFeeImpact.fee)}
+                    name="Settlement Fee Deduction"
+                    value={formatSignedAmount(-settlementFeeImpact.fee)}
                   />
                   <MetricCard
                     name="Monthly Minimum Fee Uplift"
@@ -4142,7 +4129,7 @@ export default function App() {
                       <FormulaLine>
                         Formula: Settlement Net = (Payin Volume (
                         {formatAmountInteger(calculatorType.payin ? payin.normalized.monthlyVolume : 0)}
-                        ) + Payout Volume (
+                        ) - Payout Volume (
                         {formatAmountInteger(calculatorType.payout ? payout.normalized.monthlyVolume : 0)}
                         )) - (Payin Fees ALL ({formatAmount2(payinBaseRevenue + threeDsImpact.revenue)})
                         + Payout Fees ALL ({formatAmount2(payoutBaseRevenue)})) ={" "}
@@ -4990,7 +4977,7 @@ export default function App() {
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <MetricCard
                     name="Settlement Fee"
-                    value={formatAmount2(otherRevenueProfitability.revenue.settlementFee)}
+                    value={formatSignedAmount(otherRevenueProfitability.revenue.settlementFee)}
                   />
                   <MetricCard
                     name={
@@ -5019,8 +5006,8 @@ export default function App() {
                     }
                   >
                     Formula: Other Revenue Net = Payin 3DS Net (
-                    {formatAmount2(threeDsPayinRegionalBreakdown.total.net)}) + Settlement Fee (
-                    {formatAmount2(otherRevenueProfitability.revenue.settlementFee)}) + Monthly Minimum Adj (
+                    {formatAmount2(threeDsPayinRegionalBreakdown.total.net)}) - Settlement Fee (
+                    {formatAmount2(Math.abs(otherRevenueProfitability.revenue.settlementFee))}) + Monthly Minimum Adj (
                     {formatAmount2(otherRevenueProfitability.revenue.monthlyMinimumAdjustment)}) ={" "}
                     {formatAmount2(otherRevenueProfitability.netMargin)}
                   </FormulaLine>

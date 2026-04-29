@@ -261,7 +261,7 @@ export function calculateSettlementFeeImpact(
   const payoutVolume = safeNonNegative(input.payoutVolume);
   const payinFeesAll = safeNonNegative(input.payinFeesAll);
   const payoutFeesAll = safeNonNegative(input.payoutFeesAll);
-  const baseNet = payinVolume + payoutVolume - payinFeesAll - payoutFeesAll;
+  const baseNet = payinVolume - payoutVolume - payinFeesAll - payoutFeesAll;
   const chargeableNet = Math.max(0, baseNet);
   const ratePercent = clamp(input.config.ratePercent, 0, 2);
   const fee = visible && input.config.enabled

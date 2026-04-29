@@ -122,6 +122,21 @@ Use this file to record meaningful technical decisions for the project.
   - Zone 4 UI and Zone 6 summary now align with the `Payin` naming of this block.
   - No profitability formulas changed; this is a visibility-gating fix only.
 
+### Decision: Settlement Fee Sign and Net Formula Correction
+- Date: 2026-04-29
+- Context:
+  - Product requested a correction to settlement-fee math.
+  - Previous implementation used `Payin + Payout` in settlement net and treated settlement fee as a positive addend in `Other Revenue`.
+- Decision:
+  - Correct settlement net to:
+    - `Settlement Net = (Total Payin Volume - Total Payout Volume) - (Total Payin Fees + Total Payout Fees)`.
+  - Keep `Settlement Fee = Chargeable Net × Rate`.
+  - Apply settlement fee as a deduction in profitability (`Other Revenue` uses `- Settlement Fee`).
+- Consequences:
+  - Zone 4 settlement base/fee values are lower when payout volume is non-zero.
+  - Zone 5 total margin decreases by settlement fee amount (instead of increasing).
+  - All formula traces and docs must show `- Settlement Fee` where relevant.
+
 ### Decision: Zone 5 Payin Cost Breakdown Presentation
 - Date: 2026-04-28
 - Context:
@@ -162,11 +177,15 @@ Use this file to record meaningful technical decisions for the project.
 - Decision:
   - Keep all 3DS calculations unchanged.
   - Display 3DS revenue and costs under `Payin Revenue & Costs`.
+  - In unified hierarchy, place `3DS Revenue (EU/WW)` under `Total Payin Revenue`.
+  - In unified hierarchy, place `3DS Costs (EU/WW)` under `Total Payin Costs`.
   - Split Payin 3DS display into EU and WW using existing Payin successful transactions and Payin attempts.
+  - Remove the separate `Payin Net Margin` child row in unified Payin block and keep the same net-margin formula on parent `Payin Revenue & Costs`.
   - Remove separate 3DS Revenue and 3DS Costs child rows from `Other Revenue`.
   - Keep `Other Revenue` total unchanged and show Payin 3DS Net in its formula.
 - Consequences:
   - Profitability presentation now follows the Payin/Payout grouping without changing totals.
+  - Unified tree hierarchy is cleaner and avoids duplicate values for Payin net margin.
   - No Payout 3DS rows are added because the current 3DS rule is Payin-based.
 
 ### Decision: Constraint Helper Warning Style

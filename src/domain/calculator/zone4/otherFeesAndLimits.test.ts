@@ -76,9 +76,9 @@ describe("zone4/otherFeesAndLimits", () => {
       payinFeesAll: 50_000,
       payoutFeesAll: 10_000
     });
-    expect(on.baseNet).toBe(1_440_000);
-    expect(on.fee).toBe(4_320);
-    expect(on.clientNet).toBe(1_435_680);
+    expect(on.baseNet).toBe(440_000);
+    expect(on.fee).toBe(1_320);
+    expect(on.clientNet).toBe(438_680);
   });
 
   it("applies monthly minimum fee when actual revenue is below floor", () => {

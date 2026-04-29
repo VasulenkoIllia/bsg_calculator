@@ -403,7 +403,7 @@ describe("App UI", () => {
     expect(screen.getByText("Interchange (EU, Blended fixed cost)")).toBeInTheDocument();
     expect(screen.queryByText("Scheme Fees (WW, IC++ pass-through)")).not.toBeInTheDocument();
     expect(screen.queryByText("Interchange (WW, IC++ pass-through)")).not.toBeInTheDocument();
-    expect(screen.getByText("Payin 3DS Revenue & Costs")).toBeInTheDocument();
+    expect(screen.queryByText("Payin 3DS Revenue & Costs")).not.toBeInTheDocument();
     expect(screen.getByText("3DS Revenue (EU)")).toBeInTheDocument();
     expect(screen.getByText("3DS Costs (EU)")).toBeInTheDocument();
     expect(screen.getByText("3DS Revenue (WW)")).toBeInTheDocument();

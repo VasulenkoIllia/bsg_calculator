@@ -31,7 +31,7 @@ Source: `Calculator_Описание.docx`, section `ZONE 4: OTHER FEES & TRANSA
 
 - Revenue-affecting options implemented and tied to dynamic recalculation.
 - Settlement formula implemented:
-  - `Net = (Payin Vol + Payout Vol) - (Payin Fees (ALL) + Payout Fees (ALL))`
+  - `Net = (Payin Vol - Payout Vol) - (Payin Fees (ALL) + Payout Fees (ALL))`
   - `Settlement Fee = Net × Rate%`
   - `Client Net = Net - Settlement Fee`
 - Monthly minimum warning and payout minimum warning behavior implemented.

@@ -318,7 +318,7 @@ Visibility:
 - Settlement fee block is visible only when `settlementIncludedInPricing === false`.
 
 Math:
-- `baseNet = payinVolume + payoutVolume - payinFeesAll - payoutFeesAll`
+- `baseNet = payinVolume - payoutVolume - payinFeesAll - payoutFeesAll`
 - `chargeableNet = max(0, baseNet)`
 - `ratePercent` clamped to `[0, 2]`
 - `fee = chargeableNet * ratePercent / 100` only if visible and enabled; otherwise `0`
@@ -437,14 +437,18 @@ Zone 5 payin cost breakdown display:
 
 ### 8.4 Other revenue profitability
 
-- `revenue.total = threeDsRevenue + settlementFeeRevenue + monthlyMinimumAdjustment`
+- `revenue.total = threeDsRevenue - settlementFeeDeduction + monthlyMinimumAdjustment`
 - `costs.total = threeDsCost`
 - `other.netMargin = revenue.total - costs.total`
 
 Zone 5 display rule:
 - 3DS revenue and 3DS costs remain in the same calculations above.
 - In profitability breakdowns, 3DS revenue/cost rows are displayed under `Payin Revenue & Costs`, split by `EU` and `WW`.
-- `Other Revenue` shows the resulting Payin 3DS net together with Settlement Fee and Monthly Minimum Adjustment, instead of duplicating separate 3DS revenue/cost rows.
+- In the unified tree:
+  - `3DS Revenue (EU/WW)` rows are nested under `Total Payin Revenue`.
+  - `3DS Costs (EU/WW)` rows are nested under `Total Payin Costs`.
+  - A separate `Payin Net Margin` child row is not shown to avoid duplicating the parent `Payin Revenue & Costs` value; the net-margin formula is displayed on the parent row.
+- `Other Revenue` shows the resulting Payin 3DS net minus Settlement Fee Deduction plus Monthly Minimum Adjustment, instead of duplicating separate 3DS revenue/cost rows.
 - There is no payout 3DS split because the current 3DS business rule is Payin-based (`successful Payin transactions` for revenue and `Payin attempts` for cost).
 
 ### 8.5 Total profitability

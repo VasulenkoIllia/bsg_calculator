@@ -104,20 +104,20 @@ describe("zone5/profitability", () => {
     const result = calculateOtherRevenueProfitability({
       threeDsRevenue: 1_050,
       threeDsCost: 630,
-      settlementFeeRevenue: 46_320,
+      settlementFeeRevenue: -46_320,
       monthlyMinimumAdjustment: 0
     });
 
-    expect(result.revenue.total).toBe(47_370);
+    expect(result.revenue.total).toBe(-45_270);
     expect(result.costs.total).toBe(630);
-    expect(result.netMargin).toBe(46_740);
+    expect(result.netMargin).toBe(-45_900);
   });
 
   it("calculates total profitability for standard/custom mode", () => {
     const other = calculateOtherRevenueProfitability({
       threeDsRevenue: 1_050,
       threeDsCost: 630,
-      settlementFeeRevenue: 46_320,
+      settlementFeeRevenue: -46_320,
       monthlyMinimumAdjustment: 0
     });
 
@@ -146,16 +146,16 @@ describe("zone5/profitability", () => {
     });
 
     expect(result.mode).toBe("standardCustom");
-    expect(result.marginBeforeIntroducer).toBeCloseTo(540_872, 6);
+    expect(result.marginBeforeIntroducer).toBeCloseTo(448_232, 6);
     expect(result.introducerCommission).toBe(90_000);
-    expect(result.ourMargin).toBeCloseTo(450_872, 6);
+    expect(result.ourMargin).toBeCloseTo(358_232, 6);
   });
 
   it("calculates total profitability for rev share mode", () => {
     const other = calculateOtherRevenueProfitability({
       threeDsRevenue: 1_050,
       threeDsCost: 630,
-      settlementFeeRevenue: 46_320,
+      settlementFeeRevenue: -46_320,
       monthlyMinimumAdjustment: 0
     });
 
@@ -184,18 +184,18 @@ describe("zone5/profitability", () => {
     });
 
     expect(result.mode).toBe("revShare");
-    expect(result.totalRevenue).toBeCloseTo(813_470, 6);
+    expect(result.totalRevenue).toBeCloseTo(766_100, 6);
     expect(result.totalCosts).toBeCloseTo(272_598, 6);
-    expect(result.marginBeforeIntroducer).toBeCloseTo(540_872, 6);
+    expect(result.marginBeforeIntroducer).toBeCloseTo(448_232, 6);
     expect(result.introducerCommission).toBeCloseTo(114_670.5, 6);
-    expect(result.ourMargin).toBeCloseTo(426_201.5, 6);
+    expect(result.ourMargin).toBeCloseTo(333_561.5, 6);
   });
 
   it("skips introducer commission when agent is disabled", () => {
     const other = calculateOtherRevenueProfitability({
       threeDsRevenue: 1_050,
       threeDsCost: 630,
-      settlementFeeRevenue: 46_320,
+      settlementFeeRevenue: -46_320,
       monthlyMinimumAdjustment: 0
     });
 
@@ -224,10 +224,10 @@ describe("zone5/profitability", () => {
     });
 
     expect(result.mode).toBe("disabled");
-    expect(result.marginBeforeIntroducer).toBeCloseTo(540_872, 6);
+    expect(result.marginBeforeIntroducer).toBeCloseTo(448_232, 6);
     expect(result.introducerCommission).toBe(0);
     expect(result.revSharePercentApplied).toBe(0);
-    expect(result.ourMargin).toBeCloseTo(540_872, 6);
+    expect(result.ourMargin).toBeCloseTo(448_232, 6);
   });
 
   it("returns warning when resulting margin is negative", () => {
