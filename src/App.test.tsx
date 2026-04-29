@@ -363,6 +363,16 @@ describe("App UI", () => {
     expect(screen.getByRole("checkbox", { name: "Show Formulas" })).toBeChecked();
 
     expect(screen.getByText(/Formula \(Unified\): Our Margin =/)).toBeInTheDocument();
+    expect(screen.getByText(/Formula \(Unified\): Total Payin Costs = EU Costs/)).toBeInTheDocument();
+    expect(screen.getByText("Provider TRX CC (EU)")).toBeInTheDocument();
+    expect(screen.getByText("Provider TRX APM (EU)")).toBeInTheDocument();
+    expect(screen.getByText("Provider TRX CC (WW)")).toBeInTheDocument();
+    expect(screen.getByText("Provider TRX APM (WW)")).toBeInTheDocument();
+    expect(screen.getByText("Scheme Fees (EU, Blended)")).toBeInTheDocument();
+    expect(screen.getByText("Interchange (EU, Blended)")).toBeInTheDocument();
+    expect(screen.getByText("Scheme Fees (WW, IC++ pass-through)")).toBeInTheDocument();
+    expect(screen.getByText("Interchange (WW, IC++ pass-through)")).toBeInTheDocument();
+
     await user.click(screen.getByRole("checkbox", { name: "Show Formulas" }));
     expect(screen.queryByText(/Formula \(Unified\): Our Margin =/)).not.toBeInTheDocument();
 

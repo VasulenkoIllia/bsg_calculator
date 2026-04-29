@@ -3,6 +3,12 @@
 Date: 2026-04-22  
 Status: Completed (phase scope)
 
+Update: 2026-04-28
+- Clarified Zone 5 payin cost presentation without changing calculation formulas.
+- `Total Payin Costs` is displayed as `EU Costs + WW Costs`.
+- Each regional cost breakdown now shows provider MDR tiers, provider TRX CC/APM, Scheme Fees, and Interchange.
+- Scheme Fees and Interchange remain costs only for `Blended`; for `IC++` they are displayed as pass-through / `€0` cost impact.
+
 ## 1) Completed zone/module
 - Zone 5: `Profitability Calculations`
 - Covered sections:

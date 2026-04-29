@@ -384,6 +384,18 @@ Payin aggregate:
 - Sum EU and WW revenue/cost fields.
 - `payin.netMargin = payin.revenue.total - payin.costs.total`
 
+Zone 5 payin cost breakdown display:
+- `Total Payin Costs = EU Costs + WW Costs`.
+- EU/WW regional cost rows break down into:
+  - provider MDR tiers,
+  - provider TRX CC,
+  - provider TRX APM,
+  - Scheme Fees,
+  - Interchange.
+- Scheme Fees and Interchange are included as costs only for the `blended` model.
+- For `IC++`, Scheme Fees and Interchange are shown as pass-through informational rows with `€0` cost impact.
+- This is a display/breakdown rule only; it does not change the domain calculation formulas above.
+
 ### 8.3 Payout profitability
 
 - Revenue:

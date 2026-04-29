@@ -1808,17 +1808,83 @@ export default function App() {
                   )})`
                 : "Introducer Commission = 0 because Agent / Introducer is not enabled"
             },
-            {
-              id: "unified-our-margin",
-              label: "Our Margin",
-              value: totalProfitability.ourMargin,
-              formula: `Our Margin = Total Margin (${formatAmount2(
-                totalProfitability.marginBeforeIntroducer
-              )}) - Introducer Commission (${formatAmount2(
-                totalProfitability.introducerCommission
-              )})`
-            }
-          ];
+          {
+            id: "unified-our-margin",
+            label: "Our Margin",
+            value: totalProfitability.ourMargin,
+            formula: `Our Margin = Total Margin (${formatAmount2(
+              totalProfitability.marginBeforeIntroducer
+            )}) - Introducer Commission (${formatAmount2(
+              totalProfitability.introducerCommission
+            )})`
+          }
+        ];
+
+    const buildPayinCostChildren = (
+      regionKey: "eu" | "ww",
+      regionLabel: "EU" | "WW",
+      pricing: PayinRegionPricingConfig,
+      volume: number
+    ): UnifiedProfitabilityNode[] => {
+      const regionProfitability =
+        regionKey === "eu" ? payinProfitability.eu : payinProfitability.ww;
+      const isBlended = pricing.model === "blended";
+
+      return [
+        ...regionProfitability.providerMdrRows.map((row, index) => ({
+          id: `unified-payin-${regionKey}-provider-mdr-tier-${index}`,
+          label: `Provider MDR ${row.label} (${regionLabel})`,
+          value: -row.cost,
+          formula: `${formatAmountInteger(row.volume)} × ${formatInputNumber(
+            row.ratePercent
+          )}% = ${formatAmount2(row.cost)}`
+        })),
+        {
+          id: `unified-payin-${regionKey}-provider-trx-cc`,
+          label: `Provider TRX CC (${regionLabel})`,
+          value: -regionProfitability.providerTrxBreakdown.ccCost,
+          formula: `${formatCount(
+            regionProfitability.providerTrxBreakdown.attemptsCc
+          )} attempts × ${formatAmount2(DEFAULT_PROVIDER_PAYIN_TRX_CC_COST)} = ${formatAmount2(
+            regionProfitability.providerTrxBreakdown.ccCost
+          )}`
+        },
+        {
+          id: `unified-payin-${regionKey}-provider-trx-apm`,
+          label: `Provider TRX APM (${regionLabel})`,
+          value: -regionProfitability.providerTrxBreakdown.apmCost,
+          formula: `${formatCount(
+            regionProfitability.providerTrxBreakdown.attemptsApm
+          )} attempts × ${formatAmount2(DEFAULT_PROVIDER_PAYIN_TRX_APM_COST)} = ${formatAmount2(
+            regionProfitability.providerTrxBreakdown.apmCost
+          )}`
+        },
+        {
+          id: `unified-payin-${regionKey}-scheme-fees`,
+          label: isBlended
+            ? `Scheme Fees (${regionLabel}, Blended)`
+            : `Scheme Fees (${regionLabel}, IC++ pass-through)`,
+          value: -regionProfitability.costs.schemeFees,
+          formula: isBlended
+            ? `${formatAmountInteger(volume)} × ${formatInputNumber(
+                pricing.schemeFeesPercent
+              )}% = ${formatAmount2(regionProfitability.costs.schemeFees)}`
+            : "IC++ model: Scheme Fees are pass-through and not included in our costs = €0"
+        },
+        {
+          id: `unified-payin-${regionKey}-interchange`,
+          label: isBlended
+            ? `Interchange (${regionLabel}, Blended)`
+            : `Interchange (${regionLabel}, IC++ pass-through)`,
+          value: -regionProfitability.costs.interchange,
+          formula: isBlended
+            ? `${formatAmountInteger(volume)} × ${formatInputNumber(
+                pricing.interchangePercent
+              )}% = ${formatAmount2(regionProfitability.costs.interchange)}`
+            : "IC++ model: Interchange is pass-through and not included in our costs = €0"
+        }
+      ];
+    };
 
     nodes.push({
       id: "unified-total-profitability",
@@ -1946,13 +2012,11 @@ export default function App() {
             id: "unified-payin-total-costs",
             label: "Total Payin Costs",
             value: -payinProfitability.costs.total,
-            formula: `Total Payin Costs = Provider MDR (${formatAmount2(
-              payinProfitability.costs.providerMdr
-            )}) + Provider TRX (${formatAmount2(
-              payinProfitability.costs.providerTrx
-            )}) + Scheme (${formatAmount2(payinProfitability.costs.schemeFees)}) + Interchange (${formatAmount2(
-              payinProfitability.costs.interchange
-            )})`,
+            formula: `Total Payin Costs = EU Costs (${formatAmount2(
+              payinProfitability.eu.costs.total
+            )}) + WW Costs (${formatAmount2(payinProfitability.ww.costs.total)}) = ${formatAmount2(
+              payinProfitability.costs.total
+            )}`,
             children: [
               {
                 id: "unified-payin-eu-costs",
@@ -1965,14 +2029,7 @@ export default function App() {
                 )}) + Scheme (${formatAmount2(
                   payinProfitability.eu.costs.schemeFees
                 )}) + Interchange (${formatAmount2(payinProfitability.eu.costs.interchange)})`,
-                children: payinProfitability.eu.providerMdrRows.map((row, index) => ({
-                  id: `unified-payin-eu-provider-mdr-tier-${index}`,
-                  label: `Provider MDR ${row.label} (EU)`,
-                  value: -row.cost,
-                  formula: `${formatAmountInteger(row.volume)} × ${formatInputNumber(
-                    row.ratePercent
-                  )}% = ${formatAmount2(row.cost)}`
-                }))
+                children: buildPayinCostChildren("eu", "EU", payinEuPricing, payin.volume.eu)
               },
               {
                 id: "unified-payin-ww-costs",
@@ -1985,14 +2042,7 @@ export default function App() {
                 )}) + Scheme (${formatAmount2(
                   payinProfitability.ww.costs.schemeFees
                 )}) + Interchange (${formatAmount2(payinProfitability.ww.costs.interchange)})`,
-                children: payinProfitability.ww.providerMdrRows.map((row, index) => ({
-                  id: `unified-payin-ww-provider-mdr-tier-${index}`,
-                  label: `Provider MDR ${row.label} (WW)`,
-                  value: -row.cost,
-                  formula: `${formatAmountInteger(row.volume)} × ${formatInputNumber(
-                    row.ratePercent
-                  )}% = ${formatAmount2(row.cost)}`
-                }))
+                children: buildPayinCostChildren("ww", "WW", payinWwPricing, payin.volume.ww)
               }
             ]
           },
@@ -2170,7 +2220,10 @@ export default function App() {
     payin.volume.ww,
     payinEuPreview.mdrRevenue,
     payinEuPreview.trxRevenue,
+    payinEuPricing.interchangePercent,
+    payinEuPricing.model,
     payinEuPricing.rateMode,
+    payinEuPricing.schemeFeesPercent,
     payinEuPricing.single.mdrPercent,
     payinProfitability.costs.interchange,
     payinProfitability.costs.providerMdr,
@@ -2183,6 +2236,10 @@ export default function App() {
     payinProfitability.eu.costs.schemeFees,
     payinProfitability.eu.costs.total,
     payinProfitability.eu.providerMdrRows,
+    payinProfitability.eu.providerTrxBreakdown.apmCost,
+    payinProfitability.eu.providerTrxBreakdown.attemptsApm,
+    payinProfitability.eu.providerTrxBreakdown.attemptsCc,
+    payinProfitability.eu.providerTrxBreakdown.ccCost,
     payinProfitability.eu.revenue.total,
     payinProfitability.netMargin,
     payinProfitability.revenue.failedTrx,
@@ -2195,10 +2252,17 @@ export default function App() {
     payinProfitability.ww.costs.schemeFees,
     payinProfitability.ww.costs.total,
     payinProfitability.ww.providerMdrRows,
+    payinProfitability.ww.providerTrxBreakdown.apmCost,
+    payinProfitability.ww.providerTrxBreakdown.attemptsApm,
+    payinProfitability.ww.providerTrxBreakdown.attemptsCc,
+    payinProfitability.ww.providerTrxBreakdown.ccCost,
     payinProfitability.ww.revenue.total,
     payinWwPreview.mdrRevenue,
     payinWwPreview.trxRevenue,
+    payinWwPricing.interchangePercent,
+    payinWwPricing.model,
     payinWwPricing.rateMode,
+    payinWwPricing.schemeFeesPercent,
     payinWwPricing.single.mdrPercent,
     payoutProfitability.costs.providerMdr,
     payoutProfitability.costs.providerTrx,
@@ -4394,7 +4458,7 @@ export default function App() {
                       }`}
                       sourceContext="У DOCX є суперечність: в одних місцях Scheme Fees для IC++ як pass-through, в інших вони входять у витрати."
                       usedInFormulas={[
-                        "Unified: Payin Revenue & Costs -> Total Payin Costs",
+                        "Unified: Payin Revenue & Costs -> EU/WW regional costs",
                         "Unified: TOTAL PROFITABILITY -> Our Margin"
                       ]}
                     />
@@ -4407,7 +4471,7 @@ export default function App() {
                       }`}
                       sourceContext="У DOCX є суперечність: в одних місцях Scheme Fees для IC++ як pass-through, в інших вони входять у витрати."
                       usedInFormulas={[
-                        "Unified: Payin Revenue & Costs -> Total Payin Costs",
+                        "Unified: Payin Revenue & Costs -> EU/WW regional costs",
                         "Unified: TOTAL PROFITABILITY -> Our Margin"
                       ]}
                     />
@@ -4634,7 +4698,7 @@ export default function App() {
                         }, WW model: ${payinWwPricing.model === "icpp" ? "IC++" : "Blended"}`}
                         sourceContext="У DOCX є конфлікт: для IC++ Scheme Fees описані і як pass-through, і як складова наших витрат."
                         usedInFormulas={[
-                          "Zone 5: Total Payin Costs = Provider MDR + Provider TRX + Scheme + Interchange",
+                          "Zone 5: EU/WW Costs = Provider MDR + Provider TRX + Scheme + Interchange",
                           "Zone 5: Payin Net Margin = Total Payin Revenue - Total Payin Costs"
                         ]}
                       />
@@ -4655,13 +4719,9 @@ export default function App() {
                           : ""
                       }
                     >
-                      Formula: Total Payin Costs = Provider MDR ({formatAmount2(
-                        payinProfitability.costs.providerMdr
-                      )}) + Provider TRX ({formatAmount2(
-                        payinProfitability.costs.providerTrx
-                      )}) + Scheme ({formatAmount2(
-                        payinProfitability.costs.schemeFees
-                      )}) + Interchange ({formatAmount2(payinProfitability.costs.interchange)}) ={" "}
+                      Formula: Total Payin Costs = EU Costs (
+                      {formatAmount2(payinProfitability.eu.costs.total)}) + WW Costs (
+                      {formatAmount2(payinProfitability.ww.costs.total)}) ={" "}
                       {formatAmount2(payinProfitability.costs.total)}
                     </FormulaLine>
                     <FormulaLine

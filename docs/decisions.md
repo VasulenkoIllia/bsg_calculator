@@ -107,6 +107,27 @@ Use this file to record meaningful technical decisions for the project.
   - The new overall/EU/WW contract fields do not affect Zone 5 by themselves.
   - Future contract generation can consume the stored overall/EU/WW values without changing existing profitability formulas.
 
+### Decision: Zone 5 Payin Cost Breakdown Presentation
+- Date: 2026-04-28
+- Context:
+  - Product noted that `Provider TRX` was included in payin costs but was not visible in the detailed Zone 5 breakdown.
+  - Product also asked to verify why `Interchange` appeared in the cost breakdown and to keep these items in the Payin section.
+  - Existing domain methodology already treats `Scheme Fees` and `Interchange` as costs only for `Blended`; for `IC++` they are pass-through / zero cost impact.
+- Decision:
+  - Do not change Zone 5 business formulas.
+  - Display `Total Payin Costs` as `EU Costs + WW Costs`.
+  - Expand each regional payin cost row into provider MDR tiers, provider TRX CC/APM, Scheme Fees, and Interchange.
+  - Label Scheme Fees and Interchange by model:
+    - `Blended`: calculated cost rows.
+    - `IC++`: pass-through informational rows with `€0` cost impact.
+- Alternatives considered:
+  - Keep top-level total as `Provider MDR + Provider TRX + Scheme + Interchange`.
+  - Remove Interchange from the breakdown entirely.
+- Consequences:
+  - The visible breakdown now matches the regional cost structure used by the calculation engine.
+  - Provider TRX is auditable in Zone 5 without changing profitability.
+  - Interchange remains visible only where it belongs: inside Payin regional costs, with model-specific handling.
+
 ### Decision: Phase Sequencing (Zone 2 Next)
 - Date: 2026-04-22
 - Context:
