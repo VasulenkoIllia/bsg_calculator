@@ -109,11 +109,11 @@ describe("buildOfferSummaryText", () => {
 
     const summary = buildOfferSummaryText(input);
 
-    expect(summary).toContain("Tier 1 (€0-€5M): 4.50% / €0 CC + €0 APM");
-    expect(summary).toContain("Tier 1 (€0-€1M): 2.00% / €0");
-    expect(summary).toContain("3DS Fee: Enabled (€0 per successful transaction)");
+    expect(summary).toContain("Tier 1 (€0-€5M): 4.50% / €0.35 CC + €0.35 APM");
+    expect(summary).toContain("Tier 1 (€0-€1M): 2.00% / €0.5");
+    expect(summary).toContain("3DS Fee: Enabled (€0.05 per successful transaction)");
     expect(summary).toContain("Monthly Minimum: €5,000");
-    expect(summary).toContain("Payout Minimum Fee: €2 per transaction");
+    expect(summary).toContain("Payout Minimum Fee: €2.5 per transaction");
     expect(summary).toContain("Payin Minimum Fee: <=€2.5M: €1 / >€2.5M: N/A");
     expect(summary).toContain("Failed TRX: All failed volume charged");
     expect(summary).not.toContain("No additional enabled fees");

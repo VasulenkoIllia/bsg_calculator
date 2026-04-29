@@ -53,7 +53,8 @@ import {
   type PayoutPricingConfig,
   type SettlementPeriod,
   formatAmount2,
-  formatAmountInteger
+  formatAmountInteger,
+  formatVariableAmount
 } from "./domain/calculator/index.js";
 
 type NumberFieldProps = {
@@ -352,14 +353,6 @@ function formatInputNumber(value: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2
   });
-}
-
-function formatVariableAmount(value: number): string {
-  if (!Number.isFinite(value)) return "€0";
-  return `€${value.toLocaleString("en-US", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2
-  })}`;
 }
 
 function formatSignedAmount(value: number): string {
@@ -4973,7 +4966,7 @@ export default function App() {
                     <FormulaLine>
                       Formula: Applied Payout Revenue = max(Base Revenue ({formatAmount2(
                         payoutBaseRevenue
-                      )}), Minimum Fee per TRX ({formatAmount2(
+                      )}), Minimum Fee per TRX ({formatVariableAmount(
                         payoutMinimumFeePerTransaction
                       )}) × Transactions ({formatCount(
                         payout.normalized.totalTransactions

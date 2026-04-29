@@ -13,7 +13,7 @@ import type {
   FailedTrxChargingMode
 } from "../zone4/otherFeesAndLimits.js";
 import type { PayinTrafficDerived, PayoutTrafficDerived } from "../zone1/traffic.js";
-import { formatAmount2, formatAmountInteger } from "../shared/format.js";
+import { formatAmount2, formatAmountInteger, formatVariableAmount } from "../shared/format.js";
 
 export interface OfferSummaryInput {
   generatedAt?: Date;
@@ -108,7 +108,7 @@ function formatThresholdMillion(value: number): string {
 
 function formatPayoutMinimumFeeClause(thresholdMillion: number, feePerTransaction: number): string {
   const threshold = formatThresholdMillion(thresholdMillion);
-  return `<=€${threshold}M: ${formatAmount2(feePerTransaction)} / >€${threshold}M: N/A`;
+  return `<=€${threshold}M: ${formatVariableAmount(feePerTransaction)} / >€${threshold}M: N/A`;
 }
 
 function buildPayinRegionPricingLines(
@@ -129,7 +129,7 @@ function buildPayinRegionPricingLines(
       `Tier 1 (€0-€${tier1}M): ${formatPercent(
         pricing.tiers[0].mdrPercent,
         2
-      )} / ${formatAmount2(pricing.tiers[0].trxCc)} CC + ${formatAmount2(
+      )} / ${formatVariableAmount(pricing.tiers[0].trxCc)} CC + ${formatVariableAmount(
         pricing.tiers[0].trxApm
       )} APM`
     );
@@ -137,7 +137,7 @@ function buildPayinRegionPricingLines(
       `Tier 2 (€${tier1}M-€${tier2}M): ${formatPercent(
         pricing.tiers[1].mdrPercent,
         2
-      )} / ${formatAmount2(pricing.tiers[1].trxCc)} CC + ${formatAmount2(
+      )} / ${formatVariableAmount(pricing.tiers[1].trxCc)} CC + ${formatVariableAmount(
         pricing.tiers[1].trxApm
       )} APM`
     );
@@ -145,15 +145,15 @@ function buildPayinRegionPricingLines(
       `Tier 3 (>€${tier2}M): ${formatPercent(
         pricing.tiers[2].mdrPercent,
         2
-      )} / ${formatAmount2(pricing.tiers[2].trxCc)} CC + ${formatAmount2(
+      )} / ${formatVariableAmount(pricing.tiers[2].trxCc)} CC + ${formatVariableAmount(
         pricing.tiers[2].trxApm
       )} APM`
     );
   } else {
     lines.push("Tiers: Disabled");
     lines.push(`MDR: ${formatPercent(pricing.single.mdrPercent, 2)}`);
-    lines.push(`TRX CC: ${formatAmount2(pricing.single.trxCc)}`);
-    lines.push(`TRX APM: ${formatAmount2(pricing.single.trxApm)}`);
+    lines.push(`TRX CC: ${formatVariableAmount(pricing.single.trxCc)}`);
+    lines.push(`TRX APM: ${formatVariableAmount(pricing.single.trxApm)}`);
   }
 
   if (pricing.model === "blended") {
@@ -177,7 +177,10 @@ function buildPayoutPricingLines(
   if (pricing.rateMode === "tiered") {
     lines.push("Tiers: Enabled");
     lines.push(
-      `Tier 1 (€0-€${tier1}M): ${formatPercent(pricing.tiers[0].mdrPercent, 2)} / ${formatAmount2(
+      `Tier 1 (€0-€${tier1}M): ${formatPercent(
+        pricing.tiers[0].mdrPercent,
+        2
+      )} / ${formatVariableAmount(
         pricing.tiers[0].trxFee
       )}`
     );
@@ -185,22 +188,25 @@ function buildPayoutPricingLines(
       `Tier 2 (€${tier1}M-€${tier2}M): ${formatPercent(
         pricing.tiers[1].mdrPercent,
         2
-      )} / ${formatAmount2(pricing.tiers[1].trxFee)}`
+      )} / ${formatVariableAmount(pricing.tiers[1].trxFee)}`
     );
     lines.push(
-      `Tier 3 (>€${tier2}M): ${formatPercent(pricing.tiers[2].mdrPercent, 2)} / ${formatAmount2(
+      `Tier 3 (>€${tier2}M): ${formatPercent(
+        pricing.tiers[2].mdrPercent,
+        2
+      )} / ${formatVariableAmount(
         pricing.tiers[2].trxFee
       )}`
     );
   } else {
     lines.push("Tiers: Disabled");
     lines.push(`MDR: ${formatPercent(pricing.single.mdrPercent, 2)}`);
-    lines.push(`TRX Fee: ${formatAmount2(pricing.single.trxFee)}`);
+    lines.push(`TRX Fee: ${formatVariableAmount(pricing.single.trxFee)}`);
   }
 
   if (payoutMinimumFeeEnabled) {
     lines.push(
-      `Minimum Fee: ${formatAmount2(
+      `Minimum Fee: ${formatVariableAmount(
         safeNonNegative(payoutMinimumFeePerTransaction)
       )} per transaction`
     );
@@ -214,7 +220,7 @@ function buildAdditionalFeesLines(input: OfferSummaryInput): string[] {
 
   if (input.calculatorType.payin && input.threeDsEnabled) {
     lines.push(
-      `3DS Fee: Enabled (${formatAmount2(
+      `3DS Fee: Enabled (${formatVariableAmount(
         safeNonNegative(input.threeDsRevenuePerSuccessfulTransaction)
       )} per successful transaction)`
     );
@@ -232,7 +238,7 @@ function buildAdditionalFeesLines(input: OfferSummaryInput): string[] {
 
   if (input.calculatorType.payout && input.payoutMinimumFeeEnabled) {
     lines.push(
-      `Payout Minimum Fee: ${formatAmount2(
+      `Payout Minimum Fee: ${formatVariableAmount(
         safeNonNegative(input.payoutMinimumFeePerTransaction)
       )} per transaction`
     );
@@ -444,9 +450,9 @@ export function buildOfferSummaryText(input: OfferSummaryInput): string {
   lines.push(SECTION_BAR);
   lines.push("5. CONTRACT SUMMARY");
   lines.push(SECTION_BAR);
-  lines.push(`Account Setup: ${formatAmount2(input.contractSummary.accountSetupFee)} (one-time)`);
-  lines.push(`Refund: ${formatAmount2(input.contractSummary.refundCost)} per transaction`);
-  lines.push(`Dispute/Chargeback: ${formatAmount2(input.contractSummary.disputeCost)} per transaction`);
+  lines.push(`Account Setup: ${formatVariableAmount(input.contractSummary.accountSetupFee)} (one-time)`);
+  lines.push(`Refund: ${formatVariableAmount(input.contractSummary.refundCost)} per transaction`);
+  lines.push(`Dispute/Chargeback: ${formatVariableAmount(input.contractSummary.disputeCost)} per transaction`);
 
   lines.push(SECTION_BAR);
   lines.push("6. INTRODUCER COMMISSION");
