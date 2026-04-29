@@ -53,6 +53,7 @@ Global top controls:
 
 - `Apply defaults` reapplies the current default preset. More zone defaults can be added to this preset as they are defined.
 - `Reset all to 0` applies the zero preset to editable numeric values and resets optional toggles/settings. Zone 0 remains normalized to `Payin = on`, `Payout = off` because the calculator type domain requires at least one active mode. Complement split fields still follow the current `100 - primary` rule.
+- `Hardcoded Calculation Constants` block is rendered at the top of the calculator and lists embedded read-only values used by formulas (provider tiers/costs, floors/guards, and fixed calculation clamps) to simplify manual verification.
 
 ## 2. Shared normalization rules
 

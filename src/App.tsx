@@ -14,9 +14,13 @@ import {
   DEFAULT_STANDARD_TIERS,
   DEFAULT_PAYIN_EU_PRICING_CONFIG,
   DEFAULT_PAYOUT_MINIMUM_FEE_CONFIG,
+  DEFAULT_PROVIDER_PAYIN_MDR_TIERS,
   DEFAULT_PAYIN_WW_PRICING_CONFIG,
+  DEFAULT_PROVIDER_PAYOUT_MDR_TIERS,
+  DEFAULT_PROVIDER_PAYOUT_TRX_TIERS,
   DEFAULT_PAYOUT_PRICING_CONFIG,
   PAYOUT_MDR_MIN_PERCENT,
+  PAYOUT_TRX_LOW_WARNING_FEE,
   PAYOUT_TRX_MIN_FEE,
   DEFAULT_PROVIDER_PAYIN_TRX_APM_COST,
   DEFAULT_PROVIDER_PAYIN_TRX_CC_COST,
@@ -131,6 +135,16 @@ type UnifiedProfitabilityNode = {
   value: number;
   formula?: string;
   children?: UnifiedProfitabilityNode[];
+};
+
+type HardcodedConstantItem = {
+  label: string;
+  value: string;
+};
+
+type HardcodedConstantGroup = {
+  title: string;
+  items: HardcodedConstantItem[];
 };
 
 type CalculatorStatePreset = {
@@ -1008,6 +1022,79 @@ export default function App() {
 
   const wwPercent = 100 - euPercent;
   const apmPercent = 100 - ccPercent;
+  const hardcodedConstantGroups = useMemo<HardcodedConstantGroup[]>(
+    () => [
+      {
+        title: "Provider Payin Costs (Zone 5)",
+        items: [
+          {
+            label: "Provider MDR tiers",
+            value: `0-${formatInputNumber(DEFAULT_PROVIDER_PAYIN_MDR_TIERS.tier1UpToMillion)}M: ${formatInputNumber(
+              DEFAULT_PROVIDER_PAYIN_MDR_TIERS.tier1Rate
+            )}% | ${formatInputNumber(
+              DEFAULT_PROVIDER_PAYIN_MDR_TIERS.tier1UpToMillion
+            )}-${formatInputNumber(
+              DEFAULT_PROVIDER_PAYIN_MDR_TIERS.tier2UpToMillion
+            )}M: ${formatInputNumber(DEFAULT_PROVIDER_PAYIN_MDR_TIERS.tier2Rate)}% | >${formatInputNumber(
+              DEFAULT_PROVIDER_PAYIN_MDR_TIERS.tier2UpToMillion
+            )}M: ${formatInputNumber(DEFAULT_PROVIDER_PAYIN_MDR_TIERS.tier3Rate)}%`
+          },
+          {
+            label: "Provider TRX CC cost",
+            value: formatVariableAmount(DEFAULT_PROVIDER_PAYIN_TRX_CC_COST)
+          },
+          {
+            label: "Provider TRX APM cost",
+            value: formatVariableAmount(DEFAULT_PROVIDER_PAYIN_TRX_APM_COST)
+          }
+        ]
+      },
+      {
+        title: "Provider Payout Costs (Zone 5)",
+        items: [
+          {
+            label: "Provider MDR tiers",
+            value: `0-${formatInputNumber(DEFAULT_PROVIDER_PAYOUT_MDR_TIERS.tier1UpToMillion)}M: ${formatInputNumber(
+              DEFAULT_PROVIDER_PAYOUT_MDR_TIERS.tier1Rate
+            )}% | ${formatInputNumber(
+              DEFAULT_PROVIDER_PAYOUT_MDR_TIERS.tier1UpToMillion
+            )}-${formatInputNumber(
+              DEFAULT_PROVIDER_PAYOUT_MDR_TIERS.tier2UpToMillion
+            )}M: ${formatInputNumber(DEFAULT_PROVIDER_PAYOUT_MDR_TIERS.tier2Rate)}% | >${formatInputNumber(
+              DEFAULT_PROVIDER_PAYOUT_MDR_TIERS.tier2UpToMillion
+            )}M: ${formatInputNumber(DEFAULT_PROVIDER_PAYOUT_MDR_TIERS.tier3Rate)}%`
+          },
+          {
+            label: "Provider TRX tier fees",
+            value: `Tier1 ${formatVariableAmount(
+              DEFAULT_PROVIDER_PAYOUT_TRX_TIERS.tier1Fee
+            )} | Tier2 ${formatVariableAmount(
+              DEFAULT_PROVIDER_PAYOUT_TRX_TIERS.tier2Fee
+            )} | Tier3 ${formatVariableAmount(DEFAULT_PROVIDER_PAYOUT_TRX_TIERS.tier3Fee)}`
+          }
+        ]
+      },
+      {
+        title: "Pricing Floors & Guards",
+        items: [
+          { label: "Payout MDR minimum floor", value: `${formatInputNumber(PAYOUT_MDR_MIN_PERCENT)}%` },
+          { label: "Payout TRX minimum floor", value: formatVariableAmount(PAYOUT_TRX_MIN_FEE) },
+          { label: "Payout TRX low-fee warning", value: `< ${formatVariableAmount(PAYOUT_TRX_LOW_WARNING_FEE)}` },
+          { label: "Payout minimum fee normalization", value: "Always round up to the next €0.10" }
+        ]
+      },
+      {
+        title: "Settlement / 3DS / Failed TRX",
+        items: [
+          { label: "Settlement rate clamp", value: "0% to 2%" },
+          { label: "3DS provider cost per attempt", value: formatVariableAmount(DEFAULT_3DS_FEE_CONFIG.providerCostPerAttempt) },
+          { label: "3DS revenue per successful (default)", value: formatVariableAmount(DEFAULT_3DS_FEE_CONFIG.revenuePerSuccessfulTransaction) },
+          { label: "Failed TRX threshold clamp", value: "50% to 95%" }
+        ]
+      }
+    ],
+    []
+  );
 
   const setPayinEnabled = (checked: boolean) => {
     setCalculatorType(current => applyCalculatorModeToggle(current, "payin", checked));
@@ -2796,6 +2883,34 @@ export default function App() {
             </p>
           </div>
         </header>
+
+        <section
+          aria-label="Hardcoded calculation constants"
+          className="panel mb-6 border border-slate-200 bg-slate-50 p-5 md:p-7"
+        >
+          <h2 className="text-lg font-bold text-slate-800">Hardcoded Calculation Constants</h2>
+          <p className="mt-1 text-xs text-slate-600">
+            Read-only values embedded in code and used by formulas during calculations/verification.
+          </p>
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            {hardcodedConstantGroups.map(group => (
+              <div
+                key={group.title}
+                className="rounded-xl border border-slate-200 bg-white p-4"
+              >
+                <h3 className="text-sm font-bold text-slate-800">{group.title}</h3>
+                <dl className="mt-3 space-y-2 text-xs">
+                  {group.items.map(item => (
+                    <div key={`${group.title}-${item.label}`} className="grid gap-1 sm:grid-cols-[1fr_auto] sm:items-center sm:gap-3">
+                      <dt className="text-slate-600">{item.label}</dt>
+                      <dd className="font-semibold text-slate-800 sm:text-right">{item.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            ))}
+          </div>
+        </section>
 
         <section
           aria-label="Calculator actions"

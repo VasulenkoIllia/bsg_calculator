@@ -4,6 +4,15 @@ import { describe, expect, it, vi } from "vitest";
 import App from "./App.js";
 
 describe("App UI", () => {
+  it("shows hardcoded calculation constants at the top", () => {
+    render(<App />);
+
+    expect(screen.getByRole("heading", { name: "Hardcoded Calculation Constants" })).toBeInTheDocument();
+    expect(screen.getByText("Provider Payin Costs (Zone 5)")).toBeInTheDocument();
+    expect(screen.getByText("Provider TRX CC cost")).toBeInTheDocument();
+    expect(screen.getByText("€0.22")).toBeInTheDocument();
+  });
+
   it("shows auto average transaction fields in input blocks as readonly", async () => {
     const user = userEvent.setup();
 
