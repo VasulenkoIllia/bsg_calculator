@@ -87,7 +87,7 @@ describe("buildOfferSummaryText", () => {
     expect(summary).toContain("Max Collection Size: €2,500");
     expect(summary).toContain("Min Payout Size: €60");
     expect(summary).toContain("Max Payout Size: N/A");
-    expect(summary).toContain("Payout Minimum Fee: <=€2.5M: €1 / >€2.5M: N/A");
+    expect(summary).toContain("Payin Minimum Fee: <=€2.5M: €1 / >€2.5M: N/A");
   });
 
   it("shows tier rows for tiered models and includes enabled options only", () => {
@@ -114,12 +114,12 @@ describe("buildOfferSummaryText", () => {
     expect(summary).toContain("3DS Fee: Enabled (€0 per successful transaction)");
     expect(summary).toContain("Monthly Minimum: €5,000");
     expect(summary).toContain("Payout Minimum Fee: €2 per transaction");
-    expect(summary).toContain("Payout Minimum Fee: <=€2.5M: €1 / >€2.5M: N/A");
+    expect(summary).toContain("Payin Minimum Fee: <=€2.5M: €1 / >€2.5M: N/A");
     expect(summary).toContain("Failed TRX: All failed volume charged");
     expect(summary).not.toContain("No additional enabled fees");
   });
 
-  it("supports payout minimum fee contract summary by EU and WW", () => {
+  it("supports payin minimum fee contract summary by EU and WW", () => {
     const input = buildBaseInput({
       contractSummary: {
         ...DEFAULT_CONTRACT_SUMMARY_SETTINGS,
@@ -133,8 +133,8 @@ describe("buildOfferSummaryText", () => {
 
     const summary = buildOfferSummaryText(input);
 
-    expect(summary).toContain("Payout Minimum Fee EU: <=€2.5M: €1 / >€2.5M: N/A");
-    expect(summary).toContain("Payout Minimum Fee WW: <=€5M: €2 / >€5M: N/A");
+    expect(summary).toContain("Payin Minimum Fee EU: <=€2.5M: €1 / >€2.5M: N/A");
+    expect(summary).toContain("Payin Minimum Fee WW: <=€5M: €2 / >€5M: N/A");
   });
 
   it("supports rev share output and skips inactive payout blocks", () => {

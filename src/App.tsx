@@ -165,6 +165,8 @@ type CalculatorStatePreset = {
   failedTrxOverLimitThresholdPercent: number;
   contractSummarySettings: ContractSummarySettings;
   clientNotes: string;
+  showZone3Formulas: boolean;
+  showZone4Formulas: boolean;
   showUnifiedFormulas: boolean;
   unifiedExpandedById: Record<string, boolean>;
   zoneExpanded: Record<ZoneId, boolean>;
@@ -283,6 +285,8 @@ const DEFAULT_CALCULATOR_STATE: CalculatorStatePreset = {
   failedTrxOverLimitThresholdPercent: DEFAULT_FAILED_TRX_CHARGING_CONFIG.overLimitThresholdPercent,
   contractSummarySettings: DEFAULT_CONTRACT_SUMMARY_SETTINGS,
   clientNotes: "",
+  showZone3Formulas: true,
+  showZone4Formulas: true,
   showUnifiedFormulas: true,
   unifiedExpandedById: {},
   zoneExpanded: INITIAL_ZONE_EXPANDED
@@ -322,6 +326,8 @@ const ZERO_CALCULATOR_STATE: CalculatorStatePreset = {
   failedTrxOverLimitThresholdPercent: 0,
   contractSummarySettings: ZERO_CONTRACT_SUMMARY_SETTINGS,
   clientNotes: "",
+  showZone3Formulas: true,
+  showZone4Formulas: true,
   showUnifiedFormulas: true,
   unifiedExpandedById: {},
   zoneExpanded: INITIAL_ZONE_EXPANDED
@@ -742,6 +748,29 @@ function FormulaLine({
   );
 }
 
+function FormulaVisibilityToggle({
+  scopeLabel,
+  showFormulas,
+  onToggle
+}: {
+  scopeLabel: string;
+  showFormulas: boolean;
+  onToggle: () => void;
+}) {
+  const action = showFormulas ? "Hide" : "Show";
+
+  return (
+    <button
+      type="button"
+      aria-label={`${action} ${scopeLabel} formulas`}
+      onClick={onToggle}
+      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+    >
+      {action} formulas
+    </button>
+  );
+}
+
 function SpecAmbiguityNotice({
   title,
   currentValue,
@@ -927,6 +956,12 @@ export default function App() {
   );
   const [clientNotes, setClientNotes] = useState(DEFAULT_CALCULATOR_STATE.clientNotes);
   const [offerSummaryActionMessage, setOfferSummaryActionMessage] = useState<string | null>(null);
+  const [showZone3Formulas, setShowZone3Formulas] = useState(
+    DEFAULT_CALCULATOR_STATE.showZone3Formulas
+  );
+  const [showZone4Formulas, setShowZone4Formulas] = useState(
+    DEFAULT_CALCULATOR_STATE.showZone4Formulas
+  );
   const [showUnifiedFormulas, setShowUnifiedFormulas] = useState(
     DEFAULT_CALCULATOR_STATE.showUnifiedFormulas
   );
@@ -983,6 +1018,8 @@ export default function App() {
     setContractSummarySettings(cloneContractSummarySettings(preset.contractSummarySettings));
     setClientNotes(preset.clientNotes);
     setOfferSummaryActionMessage(null);
+    setShowZone3Formulas(preset.showZone3Formulas);
+    setShowZone4Formulas(preset.showZone4Formulas);
     setShowUnifiedFormulas(preset.showUnifiedFormulas);
     setUnifiedExpandedById({ ...preset.unifiedExpandedById });
     setZoneExpanded({ ...preset.zoneExpanded });
@@ -1103,18 +1140,6 @@ export default function App() {
       return;
     }
     setPayinWwPricing(update);
-  };
-  const setPayinRegionExtraField = (
-    region: "eu" | "ww",
-    field: "interchangePercent",
-    value: number
-  ) => {
-    const normalizedValue = clampNumber(Math.max(0, value), 0, 2.5);
-    if (region === "eu") {
-      setPayinEuPricing(current => ({ ...current, [field]: normalizedValue }));
-      return;
-    }
-    setPayinWwPricing(current => ({ ...current, [field]: normalizedValue }));
   };
   const setPayoutRateMode = (rateMode: PricingRateMode) => {
     setPayoutPricing(current => ({ ...current, rateMode }));
@@ -1415,6 +1440,47 @@ export default function App() {
       threeDsRevenuePerSuccessfulTransaction
     ]
   );
+  const threeDsPayinRegionalBreakdown = useMemo(() => {
+    const revenuePerSuccessful = Math.max(0, threeDsRevenuePerSuccessfulTransaction);
+    const providerCostPerAttempt = DEFAULT_3DS_FEE_CONFIG.providerCostPerAttempt;
+    const payinEnabled = calculatorType.payin;
+    const buildRegion = (successfulTransactions: number, attempts: number) => {
+      const revenue =
+        payinEnabled && threeDsEnabled
+          ? successfulTransactions * revenuePerSuccessful
+          : 0;
+      const cost = payinEnabled ? attempts * providerCostPerAttempt : 0;
+
+      return {
+        successfulTransactions,
+        attempts,
+        revenue,
+        cost,
+        net: revenue - cost
+      };
+    };
+
+    const eu = buildRegion(payin.successful.eu, payin.attempts.eu);
+    const ww = buildRegion(payin.successful.ww, payin.attempts.ww);
+
+    return {
+      eu,
+      ww,
+      total: {
+        revenue: eu.revenue + ww.revenue,
+        cost: eu.cost + ww.cost,
+        net: eu.net + ww.net
+      }
+    };
+  }, [
+    calculatorType.payin,
+    payin.attempts.eu,
+    payin.attempts.ww,
+    payin.successful.eu,
+    payin.successful.ww,
+    threeDsEnabled,
+    threeDsRevenuePerSuccessfulTransaction
+  ]);
   const settlementFeeImpact = useMemo(
     () =>
       calculateSettlementFeeImpact({
@@ -1830,7 +1896,7 @@ export default function App() {
         regionKey === "eu" ? payinProfitability.eu : payinProfitability.ww;
       const isBlended = pricing.model === "blended";
 
-      return [
+      const children: UnifiedProfitabilityNode[] = [
         ...regionProfitability.providerMdrRows.map((row, index) => ({
           id: `unified-payin-${regionKey}-provider-mdr-tier-${index}`,
           label: `Provider MDR ${row.label} (${regionLabel})`,
@@ -1858,32 +1924,49 @@ export default function App() {
           )} attempts × ${formatAmount2(DEFAULT_PROVIDER_PAYIN_TRX_APM_COST)} = ${formatAmount2(
             regionProfitability.providerTrxBreakdown.apmCost
           )}`
-        },
+        }
+      ];
+
+      if (!isBlended) return children;
+
+      children.push(
         {
           id: `unified-payin-${regionKey}-scheme-fees`,
-          label: isBlended
-            ? `Scheme Fees (${regionLabel}, Blended)`
-            : `Scheme Fees (${regionLabel}, IC++ pass-through)`,
+          label: `Scheme Fees (${regionLabel}, Blended)`,
           value: -regionProfitability.costs.schemeFees,
-          formula: isBlended
-            ? `${formatAmountInteger(volume)} × ${formatInputNumber(
-                pricing.schemeFeesPercent
-              )}% = ${formatAmount2(regionProfitability.costs.schemeFees)}`
-            : "IC++ model: Scheme Fees are pass-through and not included in our costs = €0"
+          formula: `${formatAmountInteger(volume)} × ${formatInputNumber(
+            pricing.schemeFeesPercent
+          )}% = ${formatAmount2(regionProfitability.costs.schemeFees)}`
         },
         {
           id: `unified-payin-${regionKey}-interchange`,
-          label: isBlended
-            ? `Interchange (${regionLabel}, Blended)`
-            : `Interchange (${regionLabel}, IC++ pass-through)`,
+          label: `Interchange (${regionLabel}, Blended fixed cost)`,
           value: -regionProfitability.costs.interchange,
-          formula: isBlended
-            ? `${formatAmountInteger(volume)} × ${formatInputNumber(
-                pricing.interchangePercent
-              )}% = ${formatAmount2(regionProfitability.costs.interchange)}`
-            : "IC++ model: Interchange is pass-through and not included in our costs = €0"
+          formula: `${formatAmountInteger(volume)} × fixed ${formatInputNumber(
+            pricing.interchangePercent
+          )}% = ${formatAmount2(regionProfitability.costs.interchange)}`
         }
+      );
+
+      return children;
+    };
+
+    const buildPayinCostFormula = (
+      regionLabel: "EU" | "WW",
+      profitability: typeof payinProfitability.eu,
+      pricing: PayinRegionPricingConfig
+    ): string => {
+      const parts = [
+        `Provider MDR (${formatAmount2(profitability.costs.providerMdr)})`,
+        `Provider TRX (${formatAmount2(profitability.costs.providerTrx)})`
       ];
+
+      if (pricing.model === "blended") {
+        parts.push(`Scheme Fees (${formatAmount2(profitability.costs.schemeFees)})`);
+        parts.push(`Interchange (${formatAmount2(profitability.costs.interchange)})`);
+      }
+
+      return `${regionLabel} Costs = ${parts.join(" + ")}`;
     };
 
     nodes.push({
@@ -2022,26 +2105,14 @@ export default function App() {
                 id: "unified-payin-eu-costs",
                 label: "EU Costs",
                 value: -payinProfitability.eu.costs.total,
-                formula: `EU Costs = Provider MDR (${formatAmount2(
-                  payinProfitability.eu.costs.providerMdr
-                )}) + Provider TRX (${formatAmount2(
-                  payinProfitability.eu.costs.providerTrx
-                )}) + Scheme (${formatAmount2(
-                  payinProfitability.eu.costs.schemeFees
-                )}) + Interchange (${formatAmount2(payinProfitability.eu.costs.interchange)})`,
+                formula: buildPayinCostFormula("EU", payinProfitability.eu, payinEuPricing),
                 children: buildPayinCostChildren("eu", "EU", payinEuPricing, payin.volume.eu)
               },
               {
                 id: "unified-payin-ww-costs",
                 label: "WW Costs",
                 value: -payinProfitability.ww.costs.total,
-                formula: `WW Costs = Provider MDR (${formatAmount2(
-                  payinProfitability.ww.costs.providerMdr
-                )}) + Provider TRX (${formatAmount2(
-                  payinProfitability.ww.costs.providerTrx
-                )}) + Scheme (${formatAmount2(
-                  payinProfitability.ww.costs.schemeFees
-                )}) + Interchange (${formatAmount2(payinProfitability.ww.costs.interchange)})`,
+                formula: buildPayinCostFormula("WW", payinProfitability.ww, payinWwPricing),
                 children: buildPayinCostChildren("ww", "WW", payinWwPricing, payin.volume.ww)
               }
             ]
@@ -2053,6 +2124,56 @@ export default function App() {
             formula: `Payin Net Margin = Total Payin Revenue (${formatAmount2(
               payinProfitability.revenue.total
             )}) - Total Payin Costs (${formatAmount2(payinProfitability.costs.total)})`
+          },
+          {
+            id: "unified-payin-3ds",
+            label: "Payin 3DS Revenue & Costs",
+            value: threeDsPayinRegionalBreakdown.total.net,
+            formula: `Payin 3DS Net = 3DS Revenue (${formatAmount2(
+              threeDsPayinRegionalBreakdown.total.revenue
+            )}) - 3DS Costs (${formatAmount2(threeDsPayinRegionalBreakdown.total.cost)})`,
+            children: [
+              {
+                id: "unified-payin-eu-3ds-revenue",
+                label: "3DS Revenue (EU)",
+                value: threeDsPayinRegionalBreakdown.eu.revenue,
+                formula: `3DS Revenue (EU) = Successful Payin EU Transactions (${formatCount(
+                  threeDsPayinRegionalBreakdown.eu.successfulTransactions
+                )}) × 3DS Revenue per Successful (${formatAmount2(
+                  threeDsRevenuePerSuccessfulTransaction
+                )})`
+              },
+              {
+                id: "unified-payin-eu-3ds-cost",
+                label: "3DS Costs (EU)",
+                value: -threeDsPayinRegionalBreakdown.eu.cost,
+                formula: `3DS Costs (EU) = EU Payin Attempts (${formatCount(
+                  threeDsPayinRegionalBreakdown.eu.attempts
+                )}) × Provider 3DS Cost per Attempt (${formatAmount2(
+                  DEFAULT_3DS_FEE_CONFIG.providerCostPerAttempt
+                )})`
+              },
+              {
+                id: "unified-payin-ww-3ds-revenue",
+                label: "3DS Revenue (WW)",
+                value: threeDsPayinRegionalBreakdown.ww.revenue,
+                formula: `3DS Revenue (WW) = Successful Payin WW Transactions (${formatCount(
+                  threeDsPayinRegionalBreakdown.ww.successfulTransactions
+                )}) × 3DS Revenue per Successful (${formatAmount2(
+                  threeDsRevenuePerSuccessfulTransaction
+                )})`
+              },
+              {
+                id: "unified-payin-ww-3ds-cost",
+                label: "3DS Costs (WW)",
+                value: -threeDsPayinRegionalBreakdown.ww.cost,
+                formula: `3DS Costs (WW) = WW Payin Attempts (${formatCount(
+                  threeDsPayinRegionalBreakdown.ww.attempts
+                )}) × Provider 3DS Cost per Attempt (${formatAmount2(
+                  DEFAULT_3DS_FEE_CONFIG.providerCostPerAttempt
+                )})`
+              }
+            ]
           }
         ]
       });
@@ -2114,27 +2235,14 @@ export default function App() {
       id: "unified-other-revenue-root",
       label: "Other Revenue",
       value: otherRevenueProfitability.netMargin,
+      formula: `Other Revenue = Payin 3DS Net (${formatAmount2(
+        threeDsPayinRegionalBreakdown.total.net
+      )}) + Settlement Fee (${formatAmount2(
+        otherRevenueProfitability.revenue.settlementFee
+      )}) + Monthly Minimum Adj (${formatAmount2(
+        otherRevenueProfitability.revenue.monthlyMinimumAdjustment
+      )})`,
       children: [
-        {
-          id: "unified-other-3ds-revenue",
-          label: "3DS Revenue",
-          value: otherRevenueProfitability.revenue.threeDs,
-          formula: `3DS Revenue = Successful Payin Transactions (${formatCount(
-            payin.successful.total
-          )}) × 3DS Revenue per Successful (${formatAmount2(
-            threeDsRevenuePerSuccessfulTransaction
-          )}) (when enabled)`
-        },
-        {
-          id: "unified-other-3ds-cost",
-          label: "3DS Costs",
-          value: -otherRevenueProfitability.costs.threeDs,
-          formula: `3DS Costs = Total Payin Attempts (${formatCount(
-            payin.attempts.total
-          )}) × Provider 3DS Cost per Attempt (${formatAmount2(
-            DEFAULT_3DS_FEE_CONFIG.providerCostPerAttempt
-          )})`
-        },
         {
           id: "unified-other-settlement-fee",
           label: "Settlement Fee",
@@ -2156,20 +2264,6 @@ export default function App() {
             : `Monthly Minimum Adj = max(0, Minimum (${formatAmount2(
                 monthlyMinimumFeeAmount
               )}) - Actual Revenue (${formatAmount2(monthlyMinimumFeeImpact.baseRevenue)}))`
-        },
-        {
-          id: "unified-other-net",
-          label: "Other Revenue Net",
-          value: otherRevenueProfitability.netMargin,
-          formula: `Other Revenue Net = 3DS Revenue (${formatAmount2(
-            otherRevenueProfitability.revenue.threeDs
-          )}) - 3DS Costs (${formatAmount2(
-            otherRevenueProfitability.costs.threeDs
-          )}) + Settlement Fee (${formatAmount2(
-            otherRevenueProfitability.revenue.settlementFee
-          )}) + Monthly Minimum Adj (${formatAmount2(
-            otherRevenueProfitability.revenue.monthlyMinimumAdjustment
-          )})`
         }
       ]
     });
@@ -2281,6 +2375,7 @@ export default function App() {
     revShareIntroducer.totalRevenue,
     settlementFeeImpact.chargeableNet,
     settlementFeeRatePercent,
+    threeDsPayinRegionalBreakdown,
     threeDsRevenuePerSuccessfulTransaction,
     totalProfitability.introducerCommission,
     totalProfitability.marginBeforeIntroducer,
@@ -2983,6 +3078,13 @@ export default function App() {
           contentClassName="p-5 md:p-7"
         >
           <div className="grid gap-6">
+            <div className="flex justify-end">
+              <FormulaVisibilityToggle
+                scopeLabel="Zone 3"
+                showFormulas={showZone3Formulas}
+                onToggle={() => setShowZone3Formulas(current => !current)}
+              />
+            </div>
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <h3 className="text-lg font-bold text-slate-800">General Settings</h3>
               <div className="mt-4">
@@ -2998,13 +3100,15 @@ export default function App() {
                 <p className="mt-2 text-xs text-slate-600">
                   If unchecked, Settlement Fee settings become active in Zone 4.
                 </p>
-                <div className="mt-3">
-                  <FormulaLine>
-                    Formula: Settlement Included ={" "}
-                    <strong>{settlementIncluded ? "ON" : "OFF"}</strong>. When OFF, Settlement Fee
-                    section should be shown in Zone 4.
-                  </FormulaLine>
-                </div>
+                {showZone3Formulas ? (
+                  <div className="mt-3">
+                    <FormulaLine>
+                      Formula: Settlement Included ={" "}
+                      <strong>{settlementIncluded ? "ON" : "OFF"}</strong>. When OFF, Settlement Fee
+                      section should be shown in Zone 4.
+                    </FormulaLine>
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -3161,22 +3265,6 @@ export default function App() {
                         ))}
                       </div>
                     )}
-                    {payinEuPricing.model === "blended" ? (
-                      <div className="grid gap-3">
-                        <NumberField
-                          label="Interchange (%)"
-                          value={payinEuPricing.interchangePercent}
-                          onChange={value => setPayinRegionExtraField("eu", "interchangePercent", value)}
-                          min={0}
-                          max={2.5}
-                          step={0.05}
-                        />
-                      </div>
-                    ) : (
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                        Для IC++ поле <strong>Interchange</strong> не застосовується в обрахунках.
-                      </div>
-                    )}
                     {payinEuPreview.warnings.length > 0 ? (
                       <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
                         {payinEuPreview.warnings.map(warning => (
@@ -3193,52 +3281,55 @@ export default function App() {
                       <MetricCard name="TRX Revenue" value={formatAmount2(payinEuPreview.trxRevenue)} />
                       <MetricCard name="Total Revenue" value={formatAmount2(payinEuPreview.totalRevenue)} />
                     </div>
-                    <div className="mt-3 space-y-2">
-                      {payinEuPricing.rateMode === "single" ? (
-                        <>
-                          <FormulaLine>
-                            Formula: MDR Revenue = EU Volume ({formatAmountInteger(payin.volume.eu)}) ×
-                            MDR ({formatInputNumber(payinEuPricing.single.mdrPercent)}%) ={" "}
-                            {formatAmount2(
-                              payin.volume.eu * (payinEuPricing.single.mdrPercent / 100)
-                            )}
-                          </FormulaLine>
-                          <FormulaLine>
-                            Formula: TRX Revenue ={" "}
-                            {payinEuPricing.trxFeeEnabled
-                              ? `Successful EU CC (${formatCount(
-                                  payin.successful.byRegionMethod.euCc
-                                )}) × TRX CC (${formatAmount2(
-                                  payinEuPricing.single.trxCc
-                                )}) + Successful EU APM (${formatCount(
-                                  payin.successful.byRegionMethod.euApm
-                                )}) × TRX APM (${formatAmount2(
-                                  payinEuPricing.single.trxApm
-                                )})`
-                              : "TRX disabled"}
-                            {" = "}
-                            {formatAmount2(payinEuPreview.trxRevenue)}
-                          </FormulaLine>
-                        </>
-                      ) : (
-                        <>
-                          {payinEuPreview.tierRows.map(row => (
-                            <FormulaLine key={`payin-eu-breakdown-${row.label}`}>
-                              {row.label}: Volume {formatAmountInteger(row.volume)} × MDR{" "}
-                              {formatInputNumber(row.mdrPercent)}% = {formatAmount2(row.mdrRevenue)}; TRX
-                              = ({formatInputNumber(row.ccTransactions)} CC trx ×{" "}
-                              {formatAmount2(row.trxCc)}) + ({formatInputNumber(row.apmTransactions)} APM
-                              trx × {formatAmount2(row.trxApm)}) = {formatAmount2(row.trxRevenue)}
+                    {showZone3Formulas ? (
+                      <div className="mt-3 space-y-2">
+                        {payinEuPricing.rateMode === "single" ? (
+                          <>
+                            <FormulaLine>
+                              Formula: MDR Revenue = EU Volume ({formatAmountInteger(payin.volume.eu)}) ×
+                              MDR ({formatInputNumber(payinEuPricing.single.mdrPercent)}%) ={" "}
+                              {formatAmount2(
+                                payin.volume.eu * (payinEuPricing.single.mdrPercent / 100)
+                              )}
                             </FormulaLine>
-                          ))}
-                        </>
-                      )}
-                      <FormulaLine>
-                        Formula: Total Revenue = MDR Revenue ({formatAmount2(payinEuPreview.mdrRevenue)}) +
-                        TRX Revenue ({formatAmount2(payinEuPreview.trxRevenue)}) ={" "}
-                        {formatAmount2(payinEuPreview.totalRevenue)}
-                      </FormulaLine>
-                    </div>
+                            <FormulaLine>
+                              Formula: TRX Revenue ={" "}
+                              {payinEuPricing.trxFeeEnabled
+                                ? `Successful EU CC (${formatCount(
+                                    payin.successful.byRegionMethod.euCc
+                                  )}) × TRX CC (${formatAmount2(
+                                    payinEuPricing.single.trxCc
+                                  )}) + Successful EU APM (${formatCount(
+                                    payin.successful.byRegionMethod.euApm
+                                  )}) × TRX APM (${formatAmount2(
+                                    payinEuPricing.single.trxApm
+                                  )})`
+                                : "TRX disabled"}
+                              {" = "}
+                              {formatAmount2(payinEuPreview.trxRevenue)}
+                            </FormulaLine>
+                          </>
+                        ) : (
+                          <>
+                            {payinEuPreview.tierRows.map(row => (
+                              <FormulaLine key={`payin-eu-breakdown-${row.label}`}>
+                                {row.label}: Volume {formatAmountInteger(row.volume)} × MDR{" "}
+                                {formatInputNumber(row.mdrPercent)}% = {formatAmount2(row.mdrRevenue)};
+                                TRX = ({formatInputNumber(row.ccTransactions)} CC trx ×{" "}
+                                {formatAmount2(row.trxCc)}) + ({formatInputNumber(row.apmTransactions)}{" "}
+                                APM trx × {formatAmount2(row.trxApm)}) ={" "}
+                                {formatAmount2(row.trxRevenue)}
+                              </FormulaLine>
+                            ))}
+                          </>
+                        )}
+                        <FormulaLine>
+                          Formula: Total Revenue = MDR Revenue ({formatAmount2(payinEuPreview.mdrRevenue)}) +
+                          TRX Revenue ({formatAmount2(payinEuPreview.trxRevenue)}) ={" "}
+                          {formatAmount2(payinEuPreview.totalRevenue)}
+                        </FormulaLine>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
@@ -3393,22 +3484,6 @@ export default function App() {
                         ))}
                       </div>
                     )}
-                    {payinWwPricing.model === "blended" ? (
-                      <div className="grid gap-3">
-                        <NumberField
-                          label="Interchange (%)"
-                          value={payinWwPricing.interchangePercent}
-                          onChange={value => setPayinRegionExtraField("ww", "interchangePercent", value)}
-                          min={0}
-                          max={2.5}
-                          step={0.05}
-                        />
-                      </div>
-                    ) : (
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                        Для IC++ поле <strong>Interchange</strong> не застосовується в обрахунках.
-                      </div>
-                    )}
                     {payinWwPreview.warnings.length > 0 ? (
                       <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
                         {payinWwPreview.warnings.map(warning => (
@@ -3425,52 +3500,55 @@ export default function App() {
                       <MetricCard name="TRX Revenue" value={formatAmount2(payinWwPreview.trxRevenue)} />
                       <MetricCard name="Total Revenue" value={formatAmount2(payinWwPreview.totalRevenue)} />
                     </div>
-                    <div className="mt-3 space-y-2">
-                      {payinWwPricing.rateMode === "single" ? (
-                        <>
-                          <FormulaLine>
-                            Formula: MDR Revenue = WW Volume ({formatAmountInteger(payin.volume.ww)}) ×
-                            MDR ({formatInputNumber(payinWwPricing.single.mdrPercent)}%) ={" "}
-                            {formatAmount2(
-                              payin.volume.ww * (payinWwPricing.single.mdrPercent / 100)
-                            )}
-                          </FormulaLine>
-                          <FormulaLine>
-                            Formula: TRX Revenue ={" "}
-                            {payinWwPricing.trxFeeEnabled
-                              ? `Successful WW CC (${formatCount(
-                                  payin.successful.byRegionMethod.wwCc
-                                )}) × TRX CC (${formatAmount2(
-                                  payinWwPricing.single.trxCc
-                                )}) + Successful WW APM (${formatCount(
-                                  payin.successful.byRegionMethod.wwApm
-                                )}) × TRX APM (${formatAmount2(
-                                  payinWwPricing.single.trxApm
-                                )})`
-                              : "TRX disabled"}
-                            {" = "}
-                            {formatAmount2(payinWwPreview.trxRevenue)}
-                          </FormulaLine>
-                        </>
-                      ) : (
-                        <>
-                          {payinWwPreview.tierRows.map(row => (
-                            <FormulaLine key={`payin-ww-breakdown-${row.label}`}>
-                              {row.label}: Volume {formatAmountInteger(row.volume)} × MDR{" "}
-                              {formatInputNumber(row.mdrPercent)}% = {formatAmount2(row.mdrRevenue)}; TRX
-                              = ({formatInputNumber(row.ccTransactions)} CC trx ×{" "}
-                              {formatAmount2(row.trxCc)}) + ({formatInputNumber(row.apmTransactions)} APM
-                              trx × {formatAmount2(row.trxApm)}) = {formatAmount2(row.trxRevenue)}
+                    {showZone3Formulas ? (
+                      <div className="mt-3 space-y-2">
+                        {payinWwPricing.rateMode === "single" ? (
+                          <>
+                            <FormulaLine>
+                              Formula: MDR Revenue = WW Volume ({formatAmountInteger(payin.volume.ww)}) ×
+                              MDR ({formatInputNumber(payinWwPricing.single.mdrPercent)}%) ={" "}
+                              {formatAmount2(
+                                payin.volume.ww * (payinWwPricing.single.mdrPercent / 100)
+                              )}
                             </FormulaLine>
-                          ))}
-                        </>
-                      )}
-                      <FormulaLine>
-                        Formula: Total Revenue = MDR Revenue ({formatAmount2(payinWwPreview.mdrRevenue)}) +
-                        TRX Revenue ({formatAmount2(payinWwPreview.trxRevenue)}) ={" "}
-                        {formatAmount2(payinWwPreview.totalRevenue)}
-                      </FormulaLine>
-                    </div>
+                            <FormulaLine>
+                              Formula: TRX Revenue ={" "}
+                              {payinWwPricing.trxFeeEnabled
+                                ? `Successful WW CC (${formatCount(
+                                    payin.successful.byRegionMethod.wwCc
+                                  )}) × TRX CC (${formatAmount2(
+                                    payinWwPricing.single.trxCc
+                                  )}) + Successful WW APM (${formatCount(
+                                    payin.successful.byRegionMethod.wwApm
+                                  )}) × TRX APM (${formatAmount2(
+                                    payinWwPricing.single.trxApm
+                                  )})`
+                                : "TRX disabled"}
+                              {" = "}
+                              {formatAmount2(payinWwPreview.trxRevenue)}
+                            </FormulaLine>
+                          </>
+                        ) : (
+                          <>
+                            {payinWwPreview.tierRows.map(row => (
+                              <FormulaLine key={`payin-ww-breakdown-${row.label}`}>
+                                {row.label}: Volume {formatAmountInteger(row.volume)} × MDR{" "}
+                                {formatInputNumber(row.mdrPercent)}% = {formatAmount2(row.mdrRevenue)};
+                                TRX = ({formatInputNumber(row.ccTransactions)} CC trx ×{" "}
+                                {formatAmount2(row.trxCc)}) + ({formatInputNumber(row.apmTransactions)}{" "}
+                                APM trx × {formatAmount2(row.trxApm)}) ={" "}
+                                {formatAmount2(row.trxRevenue)}
+                              </FormulaLine>
+                            ))}
+                          </>
+                        )}
+                        <FormulaLine>
+                          Formula: Total Revenue = MDR Revenue ({formatAmount2(payinWwPreview.mdrRevenue)}) +
+                          TRX Revenue ({formatAmount2(payinWwPreview.trxRevenue)}) ={" "}
+                          {formatAmount2(payinWwPreview.totalRevenue)}
+                        </FormulaLine>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -3643,84 +3721,86 @@ export default function App() {
                     <MetricCard name="TRX Revenue" value={formatAmount2(payoutPreview.trxRevenue)} />
                     <MetricCard name="Total Revenue" value={formatAmount2(payoutPreview.totalRevenue)} />
                   </div>
-                  <div className="mt-3 space-y-2">
-                    {payoutPricing.rateMode === "single" ? (
-                      <>
-                        <FormulaLine>
-                          Formula: MDR Revenue = Monthly Payout Volume (
-                          {formatAmountInteger(payout.normalized.monthlyVolume)}) × MDR (
-                          {formatInputNumber(
-                            payoutSingleRateMinimumAdjustment?.appliedMdrPercent ??
-                              payoutPricing.single.mdrPercent
-                          )}
-                          %) ={" "}
-                          {formatAmount2(
-                            payout.normalized.monthlyVolume *
-                              ((payoutSingleRateMinimumAdjustment?.appliedMdrPercent ??
-                                payoutPricing.single.mdrPercent) /
-                                100)
-                          )}
-                        </FormulaLine>
-                        {payoutSingleRateMinimumAdjustment?.mdrMinimumApplied ? (
-                          <FormulaLine className="border-amber-300 bg-amber-50 text-amber-900">
-                            Minimum MDR floor applied: configured{" "}
-                            {formatInputNumber(payoutSingleRateMinimumAdjustment.configuredMdrPercent)}%{" "}
-                            {"->"} used in calculation{" "}
-                            {formatInputNumber(payoutSingleRateMinimumAdjustment.appliedMdrPercent)}% (
-                            min {formatInputNumber(PAYOUT_MDR_MIN_PERCENT)}%).
+                  {showZone3Formulas ? (
+                    <div className="mt-3 space-y-2">
+                      {payoutPricing.rateMode === "single" ? (
+                        <>
+                          <FormulaLine>
+                            Formula: MDR Revenue = Monthly Payout Volume (
+                            {formatAmountInteger(payout.normalized.monthlyVolume)}) × MDR (
+                            {formatInputNumber(
+                              payoutSingleRateMinimumAdjustment?.appliedMdrPercent ??
+                                payoutPricing.single.mdrPercent
+                            )}
+                            %) ={" "}
+                            {formatAmount2(
+                              payout.normalized.monthlyVolume *
+                                ((payoutSingleRateMinimumAdjustment?.appliedMdrPercent ??
+                                  payoutPricing.single.mdrPercent) /
+                                  100)
+                            )}
                           </FormulaLine>
-                        ) : null}
-                        <FormulaLine>
-                          Formula: TRX Revenue = Payout Transactions (
-                          {formatCount(payout.normalized.totalTransactions)}) × TRX Fee (
-                          {formatAmount2(
-                            payoutSingleRateMinimumAdjustment?.appliedTrxFee ??
-                              payoutPricing.single.trxFee
-                          )}
-                          ) ={" "}
-                          {formatAmount2(payoutPreview.trxRevenue)}
-                        </FormulaLine>
-                        {payoutSingleRateMinimumAdjustment?.trxMinimumApplied ? (
-                          <FormulaLine className="border-amber-300 bg-amber-50 text-amber-900">
-                            Minimum TRX floor applied: configured{" "}
-                            {formatAmount2(payoutSingleRateMinimumAdjustment.configuredTrxFee)} {"->"}{" "}
-                            used in calculation{" "}
-                            {formatAmount2(payoutSingleRateMinimumAdjustment.appliedTrxFee)} (min{" "}
-                            {formatAmount2(PAYOUT_TRX_MIN_FEE)}).
+                          {payoutSingleRateMinimumAdjustment?.mdrMinimumApplied ? (
+                            <FormulaLine className="border-amber-300 bg-amber-50 text-amber-900">
+                              Minimum MDR floor applied: configured{" "}
+                              {formatInputNumber(payoutSingleRateMinimumAdjustment.configuredMdrPercent)}%{" "}
+                              {"->"} used in calculation{" "}
+                              {formatInputNumber(payoutSingleRateMinimumAdjustment.appliedMdrPercent)}% (
+                              min {formatInputNumber(PAYOUT_MDR_MIN_PERCENT)}%).
+                            </FormulaLine>
+                          ) : null}
+                          <FormulaLine>
+                            Formula: TRX Revenue = Payout Transactions (
+                            {formatCount(payout.normalized.totalTransactions)}) × TRX Fee (
+                            {formatAmount2(
+                              payoutSingleRateMinimumAdjustment?.appliedTrxFee ??
+                                payoutPricing.single.trxFee
+                            )}
+                            ) ={" "}
+                            {formatAmount2(payoutPreview.trxRevenue)}
                           </FormulaLine>
-                        ) : null}
-                      </>
-                    ) : (
-                      <>
-                        {payoutPreview.tierRows.map(row => (
-                          <FormulaLine key={`payout-breakdown-${row.label}`}>
-                            {row.label}: Volume {formatAmountInteger(row.volume)} × MDR{" "}
-                            {formatInputNumber(row.appliedMdrPercent)}%
-                            {row.mdrMinimumApplied
-                              ? ` (configured ${formatInputNumber(
-                                  row.configuredMdrPercent
-                                )}% -> minimum ${formatInputNumber(row.appliedMdrPercent)}%)`
-                              : ""}{" "}
-                            = {formatAmount2(row.mdrRevenue)}; TRX = {formatInputNumber(
-                              row.transactions
-                            )} trx × {formatAmount2(row.appliedTrxFee)}
-                            {row.trxMinimumApplied
-                              ? ` (configured ${formatAmount2(
-                                  row.configuredTrxFee
-                                )} -> minimum ${formatAmount2(row.appliedTrxFee)})`
-                              : ""}{" "}
-                            ={" "}
-                            {formatAmount2(row.trxRevenue)}
-                          </FormulaLine>
-                        ))}
-                      </>
-                    )}
-                    <FormulaLine>
-                      Formula: Total Revenue = MDR Revenue ({formatAmount2(payoutPreview.mdrRevenue)}) +
-                      TRX Revenue ({formatAmount2(payoutPreview.trxRevenue)}) ={" "}
-                      {formatAmount2(payoutPreview.totalRevenue)}
-                    </FormulaLine>
-                  </div>
+                          {payoutSingleRateMinimumAdjustment?.trxMinimumApplied ? (
+                            <FormulaLine className="border-amber-300 bg-amber-50 text-amber-900">
+                              Minimum TRX floor applied: configured{" "}
+                              {formatAmount2(payoutSingleRateMinimumAdjustment.configuredTrxFee)} {"->"}{" "}
+                              used in calculation{" "}
+                              {formatAmount2(payoutSingleRateMinimumAdjustment.appliedTrxFee)} (min{" "}
+                              {formatAmount2(PAYOUT_TRX_MIN_FEE)}).
+                            </FormulaLine>
+                          ) : null}
+                        </>
+                      ) : (
+                        <>
+                          {payoutPreview.tierRows.map(row => (
+                            <FormulaLine key={`payout-breakdown-${row.label}`}>
+                              {row.label}: Volume {formatAmountInteger(row.volume)} × MDR{" "}
+                              {formatInputNumber(row.appliedMdrPercent)}%
+                              {row.mdrMinimumApplied
+                                ? ` (configured ${formatInputNumber(
+                                    row.configuredMdrPercent
+                                  )}% -> minimum ${formatInputNumber(row.appliedMdrPercent)}%)`
+                                : ""}{" "}
+                              = {formatAmount2(row.mdrRevenue)}; TRX = {formatInputNumber(
+                                row.transactions
+                              )} trx × {formatAmount2(row.appliedTrxFee)}
+                              {row.trxMinimumApplied
+                                ? ` (configured ${formatAmount2(
+                                    row.configuredTrxFee
+                                  )} -> minimum ${formatAmount2(row.appliedTrxFee)})`
+                                : ""}{" "}
+                              ={" "}
+                              {formatAmount2(row.trxRevenue)}
+                            </FormulaLine>
+                          ))}
+                        </>
+                      )}
+                      <FormulaLine>
+                        Formula: Total Revenue = MDR Revenue ({formatAmount2(payoutPreview.mdrRevenue)}) +
+                        TRX Revenue ({formatAmount2(payoutPreview.trxRevenue)}) ={" "}
+                        {formatAmount2(payoutPreview.totalRevenue)}
+                      </FormulaLine>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -3738,6 +3818,13 @@ export default function App() {
           contentClassName="p-5 md:p-7"
         >
           <div className="grid gap-6">
+            <div className="flex justify-end">
+              <FormulaVisibilityToggle
+                scopeLabel="Zone 4"
+                showFormulas={showZone4Formulas}
+                onToggle={() => setShowZone4Formulas(current => !current)}
+              />
+            </div>
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <h3 className="text-lg font-bold text-slate-800">Revenue-Affecting Fees</h3>
               <div className="mt-4 grid gap-5">
@@ -3961,102 +4048,102 @@ export default function App() {
                     value={formatAmount2(failedTrxImpact.effectiveRevenue)}
                   />
                 </div>
-                <div className="mt-3 space-y-2">
-                  {calculatorType.payout ? (
+                {showZone4Formulas ? (
+                  <div className="mt-3 space-y-2">
+                    {calculatorType.payout ? (
+                      <FormulaLine>
+                        Formula: Payout Minimum Per-TRX Revenue = Base Payout Revenue (
+                        {formatAmount2(payoutMinimumFeeImpact.baseRevenue)}) / Payout Transactions (
+                        {formatCount(payout.normalized.totalTransactions)}) ={" "}
+                        {formatAmount2(payoutMinimumFeeImpact.perTransactionRevenue)}
+                      </FormulaLine>
+                    ) : null}
+                    {calculatorType.payout ? (
+                      <FormulaLine>
+                        Formula: Payout Revenue After Min Fee = max(Base Payout Revenue (
+                        {formatAmount2(payoutMinimumFeeImpact.baseRevenue)}), Minimum Fee per TRX (
+                        {formatAmount2(payoutMinimumFeePerTransaction)}) × Payout Transactions (
+                        {formatCount(payout.normalized.totalTransactions)})) ={" "}
+                        {formatAmount2(payoutMinimumFeeImpact.adjustedRevenue)}
+                      </FormulaLine>
+                    ) : null}
+                    {calculatorType.payout ? (
+                      <FormulaLine>
+                        Formula: Payout Minimum Fee Uplift = max(0, Applied Revenue (
+                        {formatAmount2(payoutMinimumFeeImpact.adjustedRevenue)}) - Base Payout Revenue (
+                        {formatAmount2(payoutMinimumFeeImpact.baseRevenue)})) ={" "}
+                        {formatAmount2(payoutMinimumFeeImpact.upliftRevenue)}
+                      </FormulaLine>
+                    ) : null}
+                    {calculatorType.payin ? (
+                      <FormulaLine>
+                        Formula: 3DS Revenue = Successful Payin Transactions (
+                        {formatCount(threeDsImpact.successfulTransactions)}) × 3DS Revenue per Successful (
+                        {formatAmount2(threeDsRevenuePerSuccessfulTransaction)}) (if enabled) ={" "}
+                        {formatAmount2(threeDsImpact.revenue)}
+                      </FormulaLine>
+                    ) : null}
+                    {calculatorType.payin ? (
+                      <FormulaLine
+                        className={
+                          hasThreeDsBaseAmbiguity
+                            ? "border-rose-300 bg-rose-50 text-rose-900"
+                            : ""
+                        }
+                      >
+                        Formula: 3DS Cost = Total Payin Attempts ({formatCount(payin.attempts.total)}) ×
+                        Provider 3DS Cost per Attempt ({formatAmount2(
+                          DEFAULT_3DS_FEE_CONFIG.providerCostPerAttempt
+                        )}) (always) ={" "}
+                        {formatAmount2(threeDsImpact.cost)}
+                      </FormulaLine>
+                    ) : null}
+                    {!settlementIncluded ? (
+                      <FormulaLine>
+                        Formula: Settlement Net = (Payin Volume (
+                        {formatAmountInteger(calculatorType.payin ? payin.normalized.monthlyVolume : 0)}
+                        ) + Payout Volume (
+                        {formatAmountInteger(calculatorType.payout ? payout.normalized.monthlyVolume : 0)}
+                        )) - (Payin Fees ALL ({formatAmount2(payinBaseRevenue + threeDsImpact.revenue)})
+                        + Payout Fees ALL ({formatAmount2(payoutBaseRevenue)})) ={" "}
+                        {formatAmount2(settlementFeeImpact.baseNet)}
+                      </FormulaLine>
+                    ) : null}
+                    {!settlementIncluded ? (
+                      <FormulaLine>
+                        Formula: Settlement Fee = Chargeable Net (
+                        {formatAmount2(settlementFeeImpact.chargeableNet)}) × Rate (
+                        {formatInputNumber(settlementFeeRatePercent)}%) ={" "}
+                        {formatAmount2(settlementFeeImpact.fee)}
+                      </FormulaLine>
+                    ) : null}
                     <FormulaLine>
-                      Formula: Payout Minimum Per-TRX Revenue = Base Payout Revenue (
-                      {formatAmount2(payoutMinimumFeeImpact.baseRevenue)}) / Payout Transactions (
-                      {formatCount(payout.normalized.totalTransactions)}) ={" "}
-                      {formatAmount2(payoutMinimumFeeImpact.perTransactionRevenue)}
+                      Formula: Monthly Minimum Uplift = max(0, Minimum Monthly Revenue (
+                      {formatAmount2(monthlyMinimumFeeAmount)}) - Actual Revenue (
+                      {formatAmount2(monthlyMinimumFeeImpact.baseRevenue)})) ={" "}
+                      {formatAmount2(monthlyMinimumFeeImpact.upliftRevenue)}
                     </FormulaLine>
-                  ) : null}
-                  {calculatorType.payout ? (
-                    <FormulaLine>
-                      Formula: Payout Revenue After Min Fee = max(Base Payout Revenue (
-                      {formatAmount2(payoutMinimumFeeImpact.baseRevenue)}), Minimum Fee per TRX (
-                      {formatAmount2(payoutMinimumFeePerTransaction)}) × Payout Transactions (
-                      {formatCount(payout.normalized.totalTransactions)})) ={" "}
-                      {formatAmount2(payoutMinimumFeeImpact.adjustedRevenue)}
-                    </FormulaLine>
-                  ) : null}
-                  {calculatorType.payout ? (
-                    <FormulaLine>
-                      Formula: Payout Minimum Fee Uplift = max(0, Applied Revenue (
-                      {formatAmount2(payoutMinimumFeeImpact.adjustedRevenue)}) - Base Payout Revenue (
-                      {formatAmount2(payoutMinimumFeeImpact.baseRevenue)})) ={" "}
-                      {formatAmount2(payoutMinimumFeeImpact.upliftRevenue)}
-                    </FormulaLine>
-                  ) : null}
-                  {calculatorType.payin ? (
-                    <FormulaLine
-                      className=""
-                    >
-                      Formula: 3DS Revenue = Successful Payin Transactions (
-                      {formatCount(threeDsImpact.successfulTransactions)}) × 3DS Revenue per Successful (
-                      {formatAmount2(threeDsRevenuePerSuccessfulTransaction)}) (if enabled) ={" "}
-                      {formatAmount2(threeDsImpact.revenue)}
-                    </FormulaLine>
-                  ) : null}
-                  {calculatorType.payin ? (
-                    <FormulaLine
-                      className={
-                        hasThreeDsBaseAmbiguity
-                          ? "border-rose-300 bg-rose-50 text-rose-900"
-                          : ""
-                      }
-                    >
-                      Formula: 3DS Cost = Total Payin Attempts ({formatCount(payin.attempts.total)}) ×
-                      Provider 3DS Cost per Attempt ({formatAmount2(
-                        DEFAULT_3DS_FEE_CONFIG.providerCostPerAttempt
-                      )}) (always) ={" "}
-                      {formatAmount2(threeDsImpact.cost)}
-                    </FormulaLine>
-                  ) : null}
-                  {!settlementIncluded ? (
-                    <FormulaLine>
-                      Formula: Settlement Net = (Payin Volume (
-                      {formatAmountInteger(calculatorType.payin ? payin.normalized.monthlyVolume : 0)}
-                      ) + Payout Volume (
-                      {formatAmountInteger(calculatorType.payout ? payout.normalized.monthlyVolume : 0)}
-                      )) - (Payin Fees ALL ({formatAmount2(payinBaseRevenue + threeDsImpact.revenue)})
-                      + Payout Fees ALL ({formatAmount2(payoutBaseRevenue)})) ={" "}
-                      {formatAmount2(settlementFeeImpact.baseNet)}
-                    </FormulaLine>
-                  ) : null}
-                  {!settlementIncluded ? (
-                    <FormulaLine>
-                      Formula: Settlement Fee = Chargeable Net (
-                      {formatAmount2(settlementFeeImpact.chargeableNet)}) × Rate (
-                      {formatInputNumber(settlementFeeRatePercent)}%) ={" "}
-                      {formatAmount2(settlementFeeImpact.fee)}
-                    </FormulaLine>
-                  ) : null}
-                  <FormulaLine>
-                    Formula: Monthly Minimum Uplift = max(0, Minimum Monthly Revenue (
-                    {formatAmount2(monthlyMinimumFeeAmount)}) - Actual Revenue (
-                    {formatAmount2(monthlyMinimumFeeImpact.baseRevenue)})) ={" "}
-                    {formatAmount2(monthlyMinimumFeeImpact.upliftRevenue)}
-                  </FormulaLine>
-                  {calculatorType.payin ? (
-                    <FormulaLine>
-                      Formula: Failed TRX All-Failed Revenue = Failed CC (
-                      {formatCount(failedTrxImpact.failedCcTransactions)}) × CC TRX fee (
-                      {formatAmount2(effectiveFailedTrxFees.ccFee)}) + Failed APM (
-                      {formatCount(failedTrxImpact.failedApmTransactions)}) × APM TRX fee (
-                      {formatAmount2(effectiveFailedTrxFees.apmFee)}) ={" "}
-                      {formatAmount2(failedTrxImpact.allFailedRevenue)}
-                    </FormulaLine>
-                  ) : null}
-                  {calculatorType.payin && failedTrxMode === "overLimitOnly" ? (
-                    <FormulaLine>
-                      Formula: Over-Limit Attempts = max(0, Successful (
-                      {formatCount(payin.successful.total)}) / Threshold (
-                      {formatInputNumber(failedTrxOverLimitThresholdPercent)}%) - Actual Attempts (
-                      {formatCount(payin.attempts.total)})) ={" "}
-                      {formatCount(failedTrxImpact.overLimitAttempts)}
-                    </FormulaLine>
-                  ) : null}
-                </div>
+                    {calculatorType.payin ? (
+                      <FormulaLine>
+                        Formula: Failed TRX All-Failed Revenue = Failed CC (
+                        {formatCount(failedTrxImpact.failedCcTransactions)}) × CC TRX fee (
+                        {formatAmount2(effectiveFailedTrxFees.ccFee)}) + Failed APM (
+                        {formatCount(failedTrxImpact.failedApmTransactions)}) × APM TRX fee (
+                        {formatAmount2(effectiveFailedTrxFees.apmFee)}) ={" "}
+                        {formatAmount2(failedTrxImpact.allFailedRevenue)}
+                      </FormulaLine>
+                    ) : null}
+                    {calculatorType.payin && failedTrxMode === "overLimitOnly" ? (
+                      <FormulaLine>
+                        Formula: Over-Limit Attempts = max(0, Successful (
+                        {formatCount(payin.successful.total)}) / Threshold (
+                        {formatInputNumber(failedTrxOverLimitThresholdPercent)}%) - Actual Attempts (
+                        {formatCount(payin.attempts.total)})) ={" "}
+                        {formatCount(failedTrxImpact.overLimitAttempts)}
+                      </FormulaLine>
+                    ) : null}
+                  </div>
+                ) : null}
                 {payoutMinimumFeeImpact.warning ? (
                   <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                     {payoutMinimumFeeImpact.warning}
@@ -4085,7 +4172,7 @@ export default function App() {
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div>
                       <h4 className="text-base font-bold text-slate-800">
-                        Payout Minimum Fee (Contract Summary)
+                        Payin Minimum Fee
                       </h4>
                       <p className="mt-1 text-xs text-slate-500">
                         Contract summary only. Does not affect Zone 5 profitability.
@@ -4484,7 +4571,7 @@ export default function App() {
                       )} × Total Payin Attempts`}
                       sourceContext="У DOCX є розбіжність щодо бази для 3DS cost: Total Attempts або Successful Transactions."
                       usedInFormulas={[
-                        "Unified: Other Revenue -> 3DS Costs",
+                        "Unified: Payin Revenue & Costs -> Payin 3DS Costs",
                         "Unified: TOTAL PROFITABILITY -> Our Margin"
                       ]}
                     />
@@ -4689,6 +4776,20 @@ export default function App() {
                       <p>Net: {formatAmount2(payinProfitability.ww.netMargin)}</p>
                     </div>
                   </div>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                      <p className="font-semibold text-slate-800">EU 3DS</p>
+                      <p>3DS Revenue: {formatAmount2(threeDsPayinRegionalBreakdown.eu.revenue)}</p>
+                      <p>3DS Costs: {formatSignedAmount(-threeDsPayinRegionalBreakdown.eu.cost)}</p>
+                      <p>3DS Net: {formatAmount2(threeDsPayinRegionalBreakdown.eu.net)}</p>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                      <p className="font-semibold text-slate-800">WW 3DS</p>
+                      <p>3DS Revenue: {formatAmount2(threeDsPayinRegionalBreakdown.ww.revenue)}</p>
+                      <p>3DS Costs: {formatSignedAmount(-threeDsPayinRegionalBreakdown.ww.cost)}</p>
+                      <p>3DS Net: {formatAmount2(threeDsPayinRegionalBreakdown.ww.net)}</p>
+                    </div>
+                  </div>
                   {hasAnySchemeIcPlusAmbiguity ? (
                     <div className="mt-3">
                       <SpecAmbiguityNotice
@@ -4711,6 +4812,12 @@ export default function App() {
                       )}) + TRX ({formatAmount2(payinProfitability.revenue.trx)}) + Failed TRX (
                       {formatAmount2(payinProfitability.revenue.failedTrx)}) ={" "}
                       {formatAmount2(payinProfitability.revenue.total)}
+                    </FormulaLine>
+                    <FormulaLine>
+                      Formula: Payin 3DS Net = EU 3DS Net (
+                      {formatAmount2(threeDsPayinRegionalBreakdown.eu.net)}) + WW 3DS Net (
+                      {formatAmount2(threeDsPayinRegionalBreakdown.ww.net)}) ={" "}
+                      {formatAmount2(threeDsPayinRegionalBreakdown.total.net)}
                     </FormulaLine>
                     <FormulaLine
                       className={
@@ -4838,17 +4945,7 @@ export default function App() {
             <div className="grid gap-6 xl:grid-cols-2">
               <div className="rounded-xl border border-slate-200 bg-white p-4">
                 <h4 className="text-base font-bold text-slate-800">Other Revenue</h4>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <MetricCard
-                    name="3DS Revenue"
-                    value={formatAmount2(otherRevenueProfitability.revenue.threeDs)}
-                    className=""
-                  />
-                  <MetricCard
-                    name="3DS Costs"
-                    value={formatSignedAmount(-otherRevenueProfitability.costs.threeDs)}
-                    className={hasThreeDsBaseAmbiguity ? "border-rose-300 bg-rose-50" : ""}
-                  />
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <MetricCard
                     name="Settlement Fee"
                     value={formatAmount2(otherRevenueProfitability.revenue.settlementFee)}
@@ -4879,9 +4976,8 @@ export default function App() {
                         : ""
                     }
                   >
-                    Formula: Other Revenue Net = 3DS Revenue (
-                    {formatAmount2(otherRevenueProfitability.revenue.threeDs)}) - 3DS Costs (
-                    {formatAmount2(otherRevenueProfitability.costs.threeDs)}) + Settlement Fee (
+                    Formula: Other Revenue Net = Payin 3DS Net (
+                    {formatAmount2(threeDsPayinRegionalBreakdown.total.net)}) + Settlement Fee (
                     {formatAmount2(otherRevenueProfitability.revenue.settlementFee)}) + Monthly Minimum Adj (
                     {formatAmount2(otherRevenueProfitability.revenue.monthlyMinimumAdjustment)}) ={" "}
                     {formatAmount2(otherRevenueProfitability.netMargin)}
@@ -4890,13 +4986,13 @@ export default function App() {
                 {hasThreeDsBaseAmbiguity ? (
                   <div className="mt-3">
                     <SpecAmbiguityNotice
-                      title="База для Provider 3DS Cost у блоці Other Revenue"
+                      title="База для Provider 3DS Cost у блоці Payin 3DS"
                       currentValue={`3DS Revenue ${formatAmount2(
                         otherRevenueProfitability.revenue.threeDs
                       )}; 3DS Cost ${formatAmount2(otherRevenueProfitability.costs.threeDs)}`}
-                      sourceContext="Потрібно зафіксувати єдину базу для 3DS cost (Total Attempts або Successful Transactions), бо це напряму змінює Other Revenue Net."
+                      sourceContext="Потрібно зафіксувати єдину базу для 3DS cost (Total Attempts або Successful Transactions), бо це напряму змінює Payin 3DS Net."
                       usedInFormulas={[
-                        "Zone 5: Other Revenue Net = 3DS Revenue - 3DS Costs + Settlement Fee + Monthly Minimum Adj",
+                        "Zone 5: Payin 3DS Net = 3DS Revenue - 3DS Costs",
                         "Zone 5: Total Margin includes Other Revenue Net"
                       ]}
                     />

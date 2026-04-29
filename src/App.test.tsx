@@ -244,9 +244,15 @@ describe("App UI", () => {
     );
     expect(screen.getAllByText("€0").length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByLabelText("Scheme Fees (%)")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Interchange (%)")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Interchange (%)")).not.toBeInTheDocument();
     expect(screen.queryByText(/Scheme Cost Impact/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Revenue After Scheme/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Hide Zone 3 formulas" }));
+    expect(screen.queryByText(/Formula: MDR Revenue = EU Volume/)).not.toBeInTheDocument();
+    expect(screen.getByText("Formula Breakdown (EU)")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Show Zone 3 formulas" }));
+    expect(screen.getByText(/Formula: MDR Revenue = EU Volume/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Payin EU tiered rates" }));
     expect(screen.getByText(/Tier 1 \(€0-€5M\): Volume/)).toBeInTheDocument();
@@ -286,7 +292,7 @@ describe("App UI", () => {
 
     await user.click(screen.getByRole("checkbox", { name: "Payout" }));
     expect(screen.getByText("Payout Minimum Fee (Per Transaction)")).toBeInTheDocument();
-    expect(screen.getByText("Payout Minimum Fee (Contract Summary)")).toBeInTheDocument();
+    expect(screen.getByText("Payin Minimum Fee")).toBeInTheDocument();
     expect(screen.getByText(/Does not affect Zone 5 profitability/)).toBeInTheDocument();
     expect(screen.getByLabelText("Volume Threshold (M)")).toHaveValue("2.5");
     expect(screen.getByLabelText("Minimum Transaction Fee (€)")).toHaveValue("1");
@@ -300,6 +306,12 @@ describe("App UI", () => {
     expect(screen.getAllByText(/Payout Minimum Fee Applied/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Payout Minimum Uplift")).toBeInTheDocument();
     expect(screen.getByText(/Formula: Applied Payout Revenue = max/)).toBeInTheDocument();
+    expect(screen.getByText(/Formula: Payout Minimum Per-TRX Revenue =/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Hide Zone 4 formulas" }));
+    expect(screen.queryByText(/Formula: Payout Minimum Per-TRX Revenue =/)).not.toBeInTheDocument();
+    expect(screen.getByText("Formula Breakdown (Zone 4)")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Show Zone 4 formulas" }));
+    expect(screen.getByText(/Formula: Payout Minimum Per-TRX Revenue =/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("checkbox", { name: "By region (EU / WW)" }));
     expect(screen.getByLabelText("EU Volume Threshold (M)")).toHaveValue("2.5");
@@ -369,9 +381,16 @@ describe("App UI", () => {
     expect(screen.getByText("Provider TRX CC (WW)")).toBeInTheDocument();
     expect(screen.getByText("Provider TRX APM (WW)")).toBeInTheDocument();
     expect(screen.getByText("Scheme Fees (EU, Blended)")).toBeInTheDocument();
-    expect(screen.getByText("Interchange (EU, Blended)")).toBeInTheDocument();
-    expect(screen.getByText("Scheme Fees (WW, IC++ pass-through)")).toBeInTheDocument();
-    expect(screen.getByText("Interchange (WW, IC++ pass-through)")).toBeInTheDocument();
+    expect(screen.getByText("Interchange (EU, Blended fixed cost)")).toBeInTheDocument();
+    expect(screen.queryByText("Scheme Fees (WW, IC++ pass-through)")).not.toBeInTheDocument();
+    expect(screen.queryByText("Interchange (WW, IC++ pass-through)")).not.toBeInTheDocument();
+    expect(screen.getByText("Payin 3DS Revenue & Costs")).toBeInTheDocument();
+    expect(screen.getByText("3DS Revenue (EU)")).toBeInTheDocument();
+    expect(screen.getByText("3DS Costs (EU)")).toBeInTheDocument();
+    expect(screen.getByText("3DS Revenue (WW)")).toBeInTheDocument();
+    expect(screen.getByText("3DS Costs (WW)")).toBeInTheDocument();
+    expect(screen.queryByText("Other Revenue Net")).not.toBeInTheDocument();
+    expect(screen.getByText(/Formula \(Unified\): Other Revenue = Payin 3DS Net/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("checkbox", { name: "Show Formulas" }));
     expect(screen.queryByText(/Formula \(Unified\): Our Margin =/)).not.toBeInTheDocument();
@@ -406,7 +425,7 @@ describe("App UI", () => {
     await user.click(screen.getByRole("checkbox", { name: "Payout" }));
     expect((summaryPreview as HTMLTextAreaElement).value).toContain("PAYOUT:");
     expect((summaryPreview as HTMLTextAreaElement).value).toContain(
-      "Payout Minimum Fee: <=€2.5M: €1 / >€2.5M: N/A"
+      "Payin Minimum Fee: <=€2.5M: €1 / >€2.5M: N/A"
     );
 
     expect((summaryPreview as HTMLTextAreaElement).value).toContain("Agent / Introducer: No");

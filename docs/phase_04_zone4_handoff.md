@@ -7,7 +7,7 @@ Status: Completed (phase scope)
 - Zone 4: `Other Fees & Limits`
 - Covered sections:
   - Revenue-affecting `Payout Minimum Fee (Per Transaction)` with round-up-to-€0.10 normalization.
-  - Separate contract-summary-only payout minimum fee wording with overall or EU/WW informational values.
+  - Separate contract-summary-only Payin Minimum Fee wording with overall or EU/WW informational values.
   - `3DS Fee` with locked revenue (`€0.05`) and always-applied provider cost (`€0.03`).
   - `Settlement Fee` visibility dependency from Zone 3 (`Settlement Included`).
   - `Monthly Minimum Fee` uplift logic.
@@ -16,6 +16,7 @@ Status: Completed (phase scope)
     - `All Failed Volume` (affects profitability).
   - `Contract Summary Only` fields (non-profitability, Zone 6-targeted).
   - Formula breakdown lines with substituted values.
+  - Zone-level show/hide toggle for Zone 4 formula rows.
   - Zone-level collapse/expand support.
 
 ## 2) Files changed
@@ -34,7 +35,7 @@ Source: `Calculator_Описание.docx`, section `ZONE 4: OTHER FEES & TRANSA
   - `Settlement Fee = Net × Rate%`
   - `Client Net = Net - Settlement Fee`
 - Monthly minimum warning and payout minimum warning behavior implemented.
-- New contract-summary payout minimum fee fields are informational and do not replace the existing payout minimum fee business logic.
+- New contract-summary Payin Minimum Fee fields are informational and do not replace the existing payout minimum fee business logic.
 - Failed TRX modes aligned with DOCX behavior split.
 - Contract fields exposed without affecting profitability.
 

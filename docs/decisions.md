@@ -37,13 +37,14 @@ Use this file to record meaningful technical decisions for the project.
 - Follow-up actions:
   - Resolve open items progressively during implementation, starting from the first blocking module.
 
-### Decision: Zone 3 Payin Defaults and Scheme Visibility
+### Decision: Zone 3 Payin Defaults and Scheme / Interchange Visibility
 - Date: 2026-04-28
 - Context:
   - Product requested a Zone 3 defaults update.
   - The request states: `Payin pricing EU дефолт - blended`.
   - The same request also mentions Europe and WW together for TRX Fee Enabled, Rate Type, tier boundaries, MDR, and fees.
-  - Scheme handling was clarified separately: remove only `Scheme Fees` from Zone 3 UI; keep `Interchange (%)` in Zone 3.
+  - Scheme handling was clarified separately: remove `Scheme Fees` from Zone 3 UI.
+  - Interchange handling was later clarified: remove `Interchange (%)` from Zone 3 UI and keep it as a fixed hidden Zone 5 cost only for `Blended`.
 - Ambiguity recorded:
   - We had two possible readings for the payin model default: apply `Blended` only to Payin EU, or apply it to both Payin EU and Payin WW because other defaults were described for Europe and WW together.
 - Alternatives considered:
@@ -52,14 +53,15 @@ Use this file to record meaningful technical decisions for the project.
 - Decision:
   - Use the literal scope from the request: Payin EU defaults to `Blended`; Payin WW remains on its existing/default `IC++` model.
   - Apply the shared EU/WW defaults to TRX Fee Enabled, Rate Type, and tier boundaries.
-  - Remove only `Scheme Fees` from Zone 3 UI and formula breakdowns.
-  - Keep `Interchange (%)` visible in Zone 3.
+  - Remove `Scheme Fees` and `Interchange (%)` from Zone 3 UI and formula breakdowns.
   - Keep Scheme as an internal calculation cost with defaults EU `0.75%` and WW `2%`.
+  - Keep Interchange as an internal fixed calculation cost with defaults EU `0.75%` and WW `2%`.
   - Keep Scheme Fees visible in Zone 6 Offer Summary for now; this is not part of the Zone 3 removal scope.
+  - Hide Interchange from Zone 6 Offer Summary.
 - Consequences:
   - Prevents an accidental pricing model change for WW.
-  - Future Zone 3 edits should not re-add Scheme controls unless product explicitly asks for Scheme to be editable in that zone.
-  - Calculation sections may still mention Scheme as a cost; the removal scope is the Zone 3 configuration UI.
+  - Future Zone 3 edits should not re-add Scheme or Interchange controls unless product explicitly asks for them to be editable in that zone.
+  - Calculation sections may still mention Scheme and Interchange as Blended-only costs; the removal scope is the Zone 3 configuration UI.
   - Offer Summary can be adjusted separately later if product decides Scheme should be hidden from client-facing output too.
 
 ### Decision: Zone 2 Agent / Introducer Toggle
@@ -80,16 +82,17 @@ Use this file to record meaningful technical decisions for the project.
   - Total profitability now has an explicit disabled-introducer path instead of relying on zero rates.
   - Offer Summary clearly shows when no agent/introducer is applied.
 
-### Decision: Zone 4 Payout Minimum Fee Contract Summary Does Not Replace Calculation
+### Decision: Zone 4 Payin Minimum Fee Contract Summary Does Not Replace Calculation
 - Date: 2026-04-28
 - Context:
   - Product clarified that the new `Contract Summary Only` block is informational.
-  - It describes `Payout Minimum Fee (Per Transaction)` for contract generation.
+  - It describes `Payin Minimum Fee` for contract generation.
   - This clarification should not remove or change the pre-existing revenue-affecting payout minimum fee calculation.
   - Product requested an optional regional split using the project-standard regions `EU` and `WW`.
 - Decision:
   - Keep the existing revenue-affecting `Payout Minimum Fee (Per Transaction)` business logic unchanged.
-  - Add separate `Contract Summary Only` fields for contract wording.
+  - Add separate `Contract Summary Only` fields for `Payin Minimum Fee` contract wording.
+  - Keep legacy internal field names as `payoutMinimumFee*`; only the user-facing contract-summary wording is renamed.
   - Support two informational contract modes:
     - `overall`
     - `by region (EU / WW)`
@@ -112,21 +115,47 @@ Use this file to record meaningful technical decisions for the project.
 - Context:
   - Product noted that `Provider TRX` was included in payin costs but was not visible in the detailed Zone 5 breakdown.
   - Product also asked to verify why `Interchange` appeared in the cost breakdown and to keep these items in the Payin section.
-  - Existing domain methodology already treats `Scheme Fees` and `Interchange` as costs only for `Blended`; for `IC++` they are pass-through / zero cost impact.
+  - Existing domain methodology already treats `Scheme Fees` and `Interchange` as costs only for `Blended`; for `IC++` they have zero cost impact.
 - Decision:
   - Do not change Zone 5 business formulas.
   - Display `Total Payin Costs` as `EU Costs + WW Costs`.
-  - Expand each regional payin cost row into provider MDR tiers, provider TRX CC/APM, Scheme Fees, and Interchange.
-  - Label Scheme Fees and Interchange by model:
-    - `Blended`: calculated cost rows.
-    - `IC++`: pass-through informational rows with `€0` cost impact.
+  - Expand each `Blended` regional payin cost row into provider MDR tiers, provider TRX CC/APM, Scheme Fees, and Interchange.
+  - For `IC++`, do not show Scheme Fees or Interchange rows and keep their cost impact at `€0`.
 - Alternatives considered:
   - Keep top-level total as `Provider MDR + Provider TRX + Scheme + Interchange`.
   - Remove Interchange from the breakdown entirely.
 - Consequences:
   - The visible breakdown now matches the regional cost structure used by the calculation engine.
   - Provider TRX is auditable in Zone 5 without changing profitability.
-  - Interchange remains visible only where it belongs: inside Payin regional costs, with model-specific handling.
+  - Interchange remains visible only where it belongs: inside final Zone 5 Payin regional costs for `Blended`.
+
+### Decision: Zone 3/4 Formula Visibility Toggles
+- Date: 2026-04-29
+- Context:
+  - Zone 3 and Zone 4 contain long formula breakdowns that are useful for audit but can make the working UI noisy.
+- Decision:
+  - Add zone-level `Show formulas` / `Hide formulas` toggles for Zone 3 and Zone 4.
+  - Hide only formula text rows when toggled off.
+  - Keep metrics, inputs, warnings, and all calculations active.
+  - Defaults and reset restore formulas to visible.
+- Consequences:
+  - Users can keep the calculation cards compact without losing business outputs.
+  - The formula visibility state has no effect on profitability or offer-summary calculations.
+
+### Decision: Zone 5 3DS Display Placement
+- Date: 2026-04-29
+- Context:
+  - 3DS revenue and 3DS costs were calculated correctly but displayed as standalone rows under `Other Revenue`.
+  - Product requested the Profitability view to show those values in the corresponding Payin block with EU/WW split.
+- Decision:
+  - Keep all 3DS calculations unchanged.
+  - Display 3DS revenue and costs under `Payin Revenue & Costs`.
+  - Split Payin 3DS display into EU and WW using existing Payin successful transactions and Payin attempts.
+  - Remove separate 3DS Revenue and 3DS Costs child rows from `Other Revenue`.
+  - Keep `Other Revenue` total unchanged and show Payin 3DS Net in its formula.
+- Consequences:
+  - Profitability presentation now follows the Payin/Payout grouping without changing totals.
+  - No Payout 3DS rows are added because the current 3DS rule is Payin-based.
 
 ### Decision: Phase Sequencing (Zone 2 Next)
 - Date: 2026-04-22

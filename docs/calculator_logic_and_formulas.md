@@ -43,7 +43,8 @@ Initial/default state currently applies these defaults:
   - Payin EU/WW rate type: `Single Rate`
   - Payin EU/WW tier boundaries: `5M / 10M`
   - Scheme defaults used in calculation costs: EU `0.75%`, WW `2%`
-  - Scheme Fees are not shown in Zone 3 UI; `Interchange (%)` remains visible in Zone 3.
+  - Interchange fixed costs used in profitability: EU `0.75%`, WW `2%`
+  - Scheme Fees and Interchange are not shown in Zone 3 UI.
   - Zone 6 Offer Summary still includes Scheme Fees for now by product decision.
   - Payout rate type: `Single Rate`
   - Payout tier boundaries: `1M / 5M`
@@ -196,11 +197,16 @@ Input per region (EU/WW):
 - volume, average transaction
 - successful CC/APM counts
 - method volumes CC/APM
-- config (`model`, `rateMode`, rates, scheme/interchange)
+- config (`model`, `rateMode`, rates, hidden scheme/interchange defaults)
 
-Zone 3 UI shows `Interchange (%)` for Blended but does not show or edit `Scheme Fees (%)`.
-Scheme values remain internal defaults and appear as costs in calculation sections. Zone 6 Offer Summary
-still displays Scheme Fees for now; hiding Scheme there is a separate product decision.
+Zone 3 UI does not show or edit `Scheme Fees (%)` or `Interchange (%)`.
+Scheme and Interchange values remain internal defaults and appear as costs only in Zone 5 profitability
+for `Blended`. Zone 6 Offer Summary still displays Scheme Fees for now; Interchange is hidden from
+Offer Summary.
+
+Formula visibility:
+- Zone 3 has a zone-level `Show formulas` / `Hide formulas` UI toggle.
+- The toggle hides only formula text rows inside Zone 3; metrics, inputs, warnings, and calculations remain active.
 
 Single rate:
 - `mdrRevenue = volume * mdrPercent / 100`
@@ -218,6 +224,12 @@ Scheme cost impact preview:
 - `schemeCostImpact = volume * schemeFeesPercent / 100` only for `blended`.
 - For `icpp`, `schemeCostImpact = 0`.
 - Current Scheme defaults: EU `0.75%`, WW `2%`.
+
+Interchange fixed cost:
+- `interchange = volume * interchangePercent / 100` only for `blended`.
+- For `icpp`, `interchange = 0`.
+- Current hidden Interchange defaults: EU `0.75%`, WW `2%`.
+- Interchange is not user-editable in Zone 3 and is not shown in Zone 6 Offer Summary.
 
 Output:
 - `totalRevenue = mdrRevenue + trxRevenue`
@@ -246,10 +258,10 @@ From `zone4/otherFeesAndLimits.ts` and App wiring.
 
 ### 7.1 Payout minimum fee
 
-There are two separate payout minimum fee concerns:
+There are two separate minimum fee concerns:
 
 1. Existing `Revenue-Affecting Fees` control: `Payout Minimum Fee (Per Transaction)`.
-2. New `Contract Summary Only` wording for contract preparation.
+2. New `Contract Summary Only` wording: `Payin Minimum Fee`.
 
 Revenue-affecting rule:
 - The existing `Payout Minimum Fee (Per Transaction)` calculation remains unchanged.
@@ -265,6 +277,7 @@ Revenue-affecting rule:
 Contract-summary-only rule:
 - The new overall/EU/WW fields are informational and do not change profitability formulas by themselves.
 - They appear as contract wording in Zone 4 and Zone 6 Offer Summary.
+- The user-facing label is `Payin Minimum Fee`; legacy internal field names still use `payoutMinimumFee*` to avoid a broad state migration.
 - Default mode is `overall`.
 - Defaults:
   - overall threshold: `€2.5M`
@@ -342,6 +355,10 @@ Minimum reminders:
 - Refund provider minimum is `€10`; UI clamps lower edits back to `€10`.
 - Dispute/chargeback provider minimum is `€50`; UI clamps lower edits back to `€50`.
 
+Formula visibility:
+- Zone 4 has a zone-level `Show formulas` / `Hide formulas` UI toggle.
+- The toggle hides only formula text rows inside Zone 4; revenue/cost metrics, warnings, contract fields, and calculations remain active.
+
 ## 8. Zone 5 (Profitability)
 
 From `zone5/profitability.ts` and App wiring.
@@ -390,10 +407,10 @@ Zone 5 payin cost breakdown display:
   - provider MDR tiers,
   - provider TRX CC,
   - provider TRX APM,
-  - Scheme Fees,
-  - Interchange.
+  - Scheme Fees, when the region uses `blended`,
+  - Interchange, when the region uses `blended`.
 - Scheme Fees and Interchange are included as costs only for the `blended` model.
-- For `IC++`, Scheme Fees and Interchange are shown as pass-through informational rows with `€0` cost impact.
+- For `IC++`, Scheme Fees and Interchange are not shown as regional cost rows and have `€0` cost impact.
 - This is a display/breakdown rule only; it does not change the domain calculation formulas above.
 
 ### 8.3 Payout profitability
@@ -411,6 +428,12 @@ Zone 5 payin cost breakdown display:
 - `revenue.total = threeDsRevenue + settlementFeeRevenue + monthlyMinimumAdjustment`
 - `costs.total = threeDsCost`
 - `other.netMargin = revenue.total - costs.total`
+
+Zone 5 display rule:
+- 3DS revenue and 3DS costs remain in the same calculations above.
+- In profitability breakdowns, 3DS revenue/cost rows are displayed under `Payin Revenue & Costs`, split by `EU` and `WW`.
+- `Other Revenue` shows the resulting Payin 3DS net together with Settlement Fee and Monthly Minimum Adjustment, instead of duplicating separate 3DS revenue/cost rows.
+- There is no payout 3DS split because the current 3DS business rule is Payin-based (`successful Payin transactions` for revenue and `Payin attempts` for cost).
 
 ### 8.5 Total profitability
 

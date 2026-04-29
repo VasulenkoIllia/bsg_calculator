@@ -44,7 +44,8 @@ We return to an open question only when it blocks the current module or test cas
 - Resolution from product owner:
   - In IC++, Scheme Fees do not affect profitability calculation.
   - Scheme/Interchange costs are applied only for Blended model.
-  - In UI, Scheme Fees and Interchange inputs for IC++ can be hidden as non-applicable.
+  - Scheme Fees and Interchange are hidden from Zone 3 inputs.
+  - Interchange is a fixed hidden cost for Zone 5 profitability only, with defaults EU `0.75%` and WW `2%`.
 
 6. Provider 3DS cost base (resolved 2026-04-22)
 - Resolution from product owner:
@@ -79,6 +80,7 @@ We return to an open question only when it blocks the current module or test cas
 - Zone 3 -> Zone 5:
   - Zone 3 pricing state feeds Zone 5 profitability totals.
   - Scheme/Interchange are applied only for Blended model.
+  - Interchange is not editable in Zone 3; it is carried as a hidden fixed default into Zone 5.
 - Zone 4/5 -> Zone 6:
   - Offer Summary text now consumes current values from Zones 0-5 and updates dynamically.
   - PDF export currently uses print dialog ("Save as PDF") without a dedicated PDF renderer.

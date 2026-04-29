@@ -158,10 +158,8 @@ function buildPayinRegionPricingLines(
 
   if (pricing.model === "blended") {
     lines.push(`Scheme Fees: ${formatPercent(pricing.schemeFeesPercent, 2)}`);
-    lines.push(`Interchange: ${formatPercent(pricing.interchangePercent, 2)}`);
   } else {
     lines.push("Scheme Fees: N/A in IC++ (pass-through)");
-    lines.push("Interchange: N/A in IC++ (pass-through)");
   }
 
   return lines;
@@ -412,20 +410,20 @@ export function buildOfferSummaryText(input: OfferSummaryInput): string {
   if (input.calculatorType.payout) {
     if (input.contractSummary.payoutMinimumFeeMode === "overall") {
       lines.push(
-        `Payout Minimum Fee: ${formatPayoutMinimumFeeClause(
+        `Payin Minimum Fee: ${formatPayoutMinimumFeeClause(
           input.contractSummary.payoutMinimumFeeThresholdMillion,
           input.contractSummary.payoutMinimumFeePerTransaction
         )}`
       );
     } else {
       lines.push(
-        `Payout Minimum Fee EU: ${formatPayoutMinimumFeeClause(
+        `Payin Minimum Fee EU: ${formatPayoutMinimumFeeClause(
           input.contractSummary.payoutMinimumFeeEuThresholdMillion,
           input.contractSummary.payoutMinimumFeeEuPerTransaction
         )}`
       );
       lines.push(
-        `Payout Minimum Fee WW: ${formatPayoutMinimumFeeClause(
+        `Payin Minimum Fee WW: ${formatPayoutMinimumFeeClause(
           input.contractSummary.payoutMinimumFeeWwThresholdMillion,
           input.contractSummary.payoutMinimumFeeWwPerTransaction
         )}`

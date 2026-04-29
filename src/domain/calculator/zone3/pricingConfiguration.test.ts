@@ -20,12 +20,14 @@ describe("zone3/pricingConfiguration", () => {
     expect(DEFAULT_PAYIN_EU_PRICING_CONFIG.tier1UpToMillion).toBe(5);
     expect(DEFAULT_PAYIN_EU_PRICING_CONFIG.tier2UpToMillion).toBe(10);
     expect(DEFAULT_PAYIN_EU_PRICING_CONFIG.schemeFeesPercent).toBe(0.75);
+    expect(DEFAULT_PAYIN_EU_PRICING_CONFIG.interchangePercent).toBe(0.75);
 
     expect(DEFAULT_PAYIN_WW_PRICING_CONFIG.trxFeeEnabled).toBe(true);
     expect(DEFAULT_PAYIN_WW_PRICING_CONFIG.rateMode).toBe("single");
     expect(DEFAULT_PAYIN_WW_PRICING_CONFIG.tier1UpToMillion).toBe(5);
     expect(DEFAULT_PAYIN_WW_PRICING_CONFIG.tier2UpToMillion).toBe(10);
     expect(DEFAULT_PAYIN_WW_PRICING_CONFIG.schemeFeesPercent).toBe(2);
+    expect(DEFAULT_PAYIN_WW_PRICING_CONFIG.interchangePercent).toBe(2);
 
     expect(DEFAULT_PAYOUT_PRICING_CONFIG.rateMode).toBe("single");
     expect(DEFAULT_PAYOUT_PRICING_CONFIG.tier1UpToMillion).toBe(1);

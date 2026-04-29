@@ -132,7 +132,7 @@ export const DEFAULT_PAYIN_EU_PRICING_CONFIG: PayinRegionPricingConfig = {
     { mdrPercent: 4.0, trxCc: 0.25, trxApm: 0.35 }
   ],
   schemeFeesPercent: 0.75,
-  interchangePercent: 0.5
+  interchangePercent: 0.75
 };
 
 export const DEFAULT_PAYIN_WW_PRICING_CONFIG: PayinRegionPricingConfig = {
@@ -152,7 +152,7 @@ export const DEFAULT_PAYIN_WW_PRICING_CONFIG: PayinRegionPricingConfig = {
     { mdrPercent: 4.5, trxCc: 0.25, trxApm: 0.35 }
   ],
   schemeFeesPercent: 2,
-  interchangePercent: 1.8
+  interchangePercent: 2
 };
 
 export const DEFAULT_PAYOUT_PRICING_CONFIG: PayoutPricingConfig = {
