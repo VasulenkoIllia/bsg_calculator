@@ -11,7 +11,7 @@ Status: Completed (phase scope)
   - Payin models: `IC++` / `Blended`
   - Rate modes: `Single Rate` / `Tiered Rates`
   - Payin editable fields: MDR, TRX CC, TRX APM, tier boundaries/rates
-  - Hidden Blended-only cost defaults: Scheme Fees and Interchange
+  - Hidden Blended-only cost defaults: Scheme Fees
   - Payout pricing: `Single Rate` / `Tiered Rates`
   - Payout fields: MDR, TRX, tier boundaries/rates
   - Validation warnings per DOCX thresholds
@@ -37,9 +37,9 @@ Source: `Calculator_Описание.docx`, section `ZONE 3: PRICING CONFIGURATI
 - Payout pricing defaults and tier defaults implemented.
 - MDR/TRX preview calculations shown with explicit formulas and numeric substitutions.
 - `IC++` vs `Blended` now feeds downstream cost handling:
-  - `IC++`: Scheme Fees and Interchange have `0` cost impact.
-  - `Blended`: Scheme Fees and Interchange are carried as hidden costs for Zone 5 profitability.
-- Interchange is not editable or displayed in Zone 3. It is carried as a fixed hidden cost into Zone 5 profitability only for `Blended`, with defaults EU `0.75%` and WW `2%`.
+  - `IC++`: Scheme Fees have `0` cost impact.
+  - `Blended`: Scheme Fees are carried as hidden costs for Zone 5 profitability.
+- Interchange is not editable or displayed in Zone 3 and is not used in Zone 5 payin cost formulas.
 - Warnings implemented:
   - Payin MDR low-rate warning (`< 2.5%`).
   - Payout MDR min/max warning (`< 1.3%`, `> 5%`).

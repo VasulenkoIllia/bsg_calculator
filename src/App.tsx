@@ -1689,31 +1689,82 @@ export default function App() {
       payoutTrxRevenueAdjusted
     ]
   );
+  const payinProfitabilityWithThreeDs = useMemo(() => {
+    const euRevenueTotal =
+      payinProfitability.eu.revenue.total + threeDsPayinRegionalBreakdown.eu.revenue;
+    const wwRevenueTotal =
+      payinProfitability.ww.revenue.total + threeDsPayinRegionalBreakdown.ww.revenue;
+    const euCostsTotal =
+      payinProfitability.eu.costs.total + threeDsPayinRegionalBreakdown.eu.cost;
+    const wwCostsTotal =
+      payinProfitability.ww.costs.total + threeDsPayinRegionalBreakdown.ww.cost;
+
+    const revenueTotal = euRevenueTotal + wwRevenueTotal;
+    const costsTotal = euCostsTotal + wwCostsTotal;
+
+    return {
+      ...payinProfitability,
+      eu: {
+        ...payinProfitability.eu,
+        revenue: {
+          ...payinProfitability.eu.revenue,
+          total: euRevenueTotal
+        },
+        costs: {
+          ...payinProfitability.eu.costs,
+          total: euCostsTotal
+        },
+        netMargin: euRevenueTotal - euCostsTotal
+      },
+      ww: {
+        ...payinProfitability.ww,
+        revenue: {
+          ...payinProfitability.ww.revenue,
+          total: wwRevenueTotal
+        },
+        costs: {
+          ...payinProfitability.ww.costs,
+          total: wwCostsTotal
+        },
+        netMargin: wwRevenueTotal - wwCostsTotal
+      },
+      revenue: {
+        ...payinProfitability.revenue,
+        total: revenueTotal
+      },
+      costs: {
+        ...payinProfitability.costs,
+        total: costsTotal
+      },
+      netMargin: revenueTotal - costsTotal
+    };
+  }, [
+    payinProfitability,
+    threeDsPayinRegionalBreakdown.eu.cost,
+    threeDsPayinRegionalBreakdown.eu.revenue,
+    threeDsPayinRegionalBreakdown.ww.cost,
+    threeDsPayinRegionalBreakdown.ww.revenue
+  ]);
   const otherRevenueProfitability = useMemo(
     () =>
       calculateOtherRevenueProfitability({
-        threeDsRevenue: threeDsImpact.revenue,
-        threeDsCost: threeDsImpact.cost,
+        threeDsRevenue: 0,
+        threeDsCost: 0,
         settlementFeeRevenue: -settlementFeeImpact.fee,
         monthlyMinimumAdjustment: monthlyMinimumFeeImpact.upliftRevenue
       }),
-    [
-      monthlyMinimumFeeImpact.upliftRevenue,
-      settlementFeeImpact.fee,
-      threeDsImpact.cost,
-      threeDsImpact.revenue
-    ]
+    [monthlyMinimumFeeImpact.upliftRevenue, settlementFeeImpact.fee]
   );
   const revShareIntroducer = useMemo(
     () =>
       calculateRevShareIntroducerCommission({
-        totalRevenue: payinProfitability.revenue.total,
-        totalCosts: payinProfitability.costs.total,
+        totalRevenue: payinProfitabilityWithThreeDs.revenue.total,
+        totalCosts: payinProfitabilityWithThreeDs.costs.total,
         sharePercent: revSharePercent
       }),
     [
-      payinProfitability.costs.total,
-      payinProfitability.revenue.total,
+      payinProfitabilityWithThreeDs.costs.total,
+      payinProfitabilityWithThreeDs.revenue.total,
       revSharePercent
     ]
   );
@@ -1735,7 +1786,7 @@ export default function App() {
   const totalProfitability = useMemo(
     () =>
       calculateTotalProfitability({
-        payin: payinProfitability,
+        payin: payinProfitabilityWithThreeDs,
         payout: payoutProfitability,
         other: otherRevenueProfitability,
         introducerEnabled,
@@ -1748,7 +1799,7 @@ export default function App() {
       introducerEnabled,
       introducerCommissionType,
       otherRevenueProfitability,
-      payinProfitability,
+      payinProfitabilityWithThreeDs,
       payoutProfitability,
       selectedIntroducerCommissionAmount,
       revSharePercent
@@ -1812,7 +1863,7 @@ export default function App() {
               label: "Total Revenue",
               value: totalProfitability.totalRevenue,
               formula: `Total Revenue = Payin Revenue (${formatAmount2(
-                payinProfitability.revenue.total
+                payinProfitabilityWithThreeDs.revenue.total
               )}) + Payout Revenue (${formatAmount2(
                 payoutProfitability.revenue.total
               )}) + Other Revenue (${formatAmount2(otherRevenueProfitability.revenue.total)})`
@@ -1822,7 +1873,7 @@ export default function App() {
               label: "Total Costs",
               value: -totalProfitability.totalCosts,
               formula: `Total Costs = Payin Costs (${formatAmount2(
-                payinProfitability.costs.total
+                payinProfitabilityWithThreeDs.costs.total
               )}) + Payout Costs (${formatAmount2(
                 payoutProfitability.costs.total
               )}) + Other Costs (${formatAmount2(otherRevenueProfitability.costs.total)})`
@@ -1862,8 +1913,8 @@ export default function App() {
               label: "Payin Net Margin",
               value: totalProfitability.payinNetMargin,
               formula: `Payin Net Margin = Total Payin Revenue (${formatAmount2(
-                payinProfitability.revenue.total
-              )}) - Total Payin Costs (${formatAmount2(payinProfitability.costs.total)})`
+                payinProfitabilityWithThreeDs.revenue.total
+              )}) - Total Payin Costs (${formatAmount2(payinProfitabilityWithThreeDs.costs.total)})`
             },
             {
               id: "unified-payout-net",
@@ -1877,11 +1928,7 @@ export default function App() {
               id: "unified-total-other-net-margin",
               label: "Other Revenue",
               value: totalProfitability.otherNetMargin,
-              formula: `Other Revenue = 3DS Revenue (${formatAmount2(
-                otherRevenueProfitability.revenue.threeDs
-              )}) - 3DS Costs (${formatAmount2(
-                otherRevenueProfitability.costs.threeDs
-              )}) - Settlement Fee (${formatAmount2(
+              formula: `Other Revenue = - Settlement Fee (${formatAmount2(
                 Math.abs(otherRevenueProfitability.revenue.settlementFee)
               )}) + Monthly Minimum Adj (${formatAmount2(
                 otherRevenueProfitability.revenue.monthlyMinimumAdjustment
@@ -1962,24 +2009,14 @@ export default function App() {
 
       if (!isBlended) return children;
 
-      children.push(
-        {
-          id: `unified-payin-${regionKey}-scheme-fees`,
-          label: `Scheme Fees (${regionLabel}, Blended)`,
-          value: -regionProfitability.costs.schemeFees,
-          formula: `${formatAmountInteger(volume)} × ${formatInputNumber(
-            pricing.schemeFeesPercent
-          )}% = ${formatAmount2(regionProfitability.costs.schemeFees)}`
-        },
-        {
-          id: `unified-payin-${regionKey}-interchange`,
-          label: `Interchange (${regionLabel}, Blended fixed cost)`,
-          value: -regionProfitability.costs.interchange,
-          formula: `${formatAmountInteger(volume)} × fixed ${formatInputNumber(
-            pricing.interchangePercent
-          )}% = ${formatAmount2(regionProfitability.costs.interchange)}`
-        }
-      );
+      children.push({
+        id: `unified-payin-${regionKey}-scheme-fees`,
+        label: `Scheme Fees (${regionLabel}, Blended)`,
+        value: -regionProfitability.costs.schemeFees,
+        formula: `${formatAmountInteger(volume)} × ${formatInputNumber(
+          pricing.schemeFeesPercent
+        )}% = ${formatAmount2(regionProfitability.costs.schemeFees)}`
+      });
 
       return children;
     };
@@ -1996,7 +2033,6 @@ export default function App() {
 
       if (pricing.model === "blended") {
         parts.push(`Scheme Fees (${formatAmount2(profitability.costs.schemeFees)})`);
-        parts.push(`Interchange (${formatAmount2(profitability.costs.interchange)})`);
       }
 
       return `${regionLabel} Costs = ${parts.join(" + ")}`;
@@ -2014,20 +2050,24 @@ export default function App() {
       nodes.push({
         id: "unified-payin-root",
         label: "Payin Revenue & Costs",
-        value: payinProfitability.netMargin,
+        value: payinProfitabilityWithThreeDs.netMargin,
         formula: `Payin Net Margin = Total Payin Revenue (${formatAmount2(
-          payinProfitability.revenue.total
-        )}) - Total Payin Costs (${formatAmount2(payinProfitability.costs.total)})`,
+          payinProfitabilityWithThreeDs.revenue.total
+        )}) - Total Payin Costs (${formatAmount2(payinProfitabilityWithThreeDs.costs.total)})`,
         children: [
           {
             id: "unified-payin-total-revenue",
             label: "Total Payin Revenue",
-            value: payinProfitability.revenue.total,
+            value: payinProfitabilityWithThreeDs.revenue.total,
             formula: `Total Payin Revenue = MDR (${formatAmount2(
               payinProfitability.revenue.mdr
             )}) + TRX (${formatAmount2(payinProfitability.revenue.trx)}) + Failed TRX (${formatAmount2(
               payinProfitability.revenue.failedTrx
-            )})`,
+            )}) + 3DS Revenue (EU ${formatAmount2(
+              threeDsPayinRegionalBreakdown.eu.revenue
+            )} + WW ${formatAmount2(threeDsPayinRegionalBreakdown.ww.revenue)}) = ${formatAmount2(
+              payinProfitabilityWithThreeDs.revenue.total
+            )}`,
             children: [
               {
                 id: "unified-payin-eu-revenue",
@@ -2150,11 +2190,15 @@ export default function App() {
           {
             id: "unified-payin-total-costs",
             label: "Total Payin Costs",
-            value: -payinProfitability.costs.total,
+            value: -payinProfitabilityWithThreeDs.costs.total,
             formula: `Total Payin Costs = EU Costs (${formatAmount2(
               payinProfitability.eu.costs.total
             )}) + WW Costs (${formatAmount2(payinProfitability.ww.costs.total)}) = ${formatAmount2(
               payinProfitability.costs.total
+            )} + 3DS Costs (EU ${formatAmount2(
+              threeDsPayinRegionalBreakdown.eu.cost
+            )} + WW ${formatAmount2(threeDsPayinRegionalBreakdown.ww.cost)}) = ${formatAmount2(
+              payinProfitabilityWithThreeDs.costs.total
             )}`,
             children: [
               {
@@ -2253,9 +2297,7 @@ export default function App() {
       id: "unified-other-revenue-root",
       label: "Other Revenue",
       value: otherRevenueProfitability.netMargin,
-      formula: `Other Revenue = Payin 3DS Net (${formatAmount2(
-        threeDsPayinRegionalBreakdown.total.net
-      )}) - Settlement Fee (${formatAmount2(
+      formula: `Other Revenue = - Settlement Fee (${formatAmount2(
         Math.abs(otherRevenueProfitability.revenue.settlementFee)
       )}) + Monthly Minimum Adj (${formatAmount2(
         otherRevenueProfitability.revenue.monthlyMinimumAdjustment
@@ -2319,11 +2361,10 @@ export default function App() {
     monthlyMinimumFeeAmount,
     monthlyMinimumFeeImpact.appliedRevenue,
     monthlyMinimumFeeImpact.baseRevenue,
-    otherRevenueProfitability.costs.threeDs,
     otherRevenueProfitability.netMargin,
     otherRevenueProfitability.revenue.monthlyMinimumAdjustment,
     otherRevenueProfitability.revenue.settlementFee,
-    otherRevenueProfitability.revenue.threeDs,
+    payinProfitabilityWithThreeDs,
     payin.successful.byRegionMethod.euApm,
     payin.successful.byRegionMethod.euCc,
     payin.successful.byRegionMethod.wwApm,
@@ -2334,17 +2375,14 @@ export default function App() {
     payin.volume.ww,
     payinEuPreview.mdrRevenue,
     payinEuPreview.trxRevenue,
-    payinEuPricing.interchangePercent,
     payinEuPricing.model,
     payinEuPricing.rateMode,
     payinEuPricing.schemeFeesPercent,
     payinEuPricing.single.mdrPercent,
-    payinProfitability.costs.interchange,
     payinProfitability.costs.providerMdr,
     payinProfitability.costs.providerTrx,
     payinProfitability.costs.schemeFees,
     payinProfitability.costs.total,
-    payinProfitability.eu.costs.interchange,
     payinProfitability.eu.costs.providerMdr,
     payinProfitability.eu.costs.providerTrx,
     payinProfitability.eu.costs.schemeFees,
@@ -2360,7 +2398,6 @@ export default function App() {
     payinProfitability.revenue.mdr,
     payinProfitability.revenue.total,
     payinProfitability.revenue.trx,
-    payinProfitability.ww.costs.interchange,
     payinProfitability.ww.costs.providerMdr,
     payinProfitability.ww.costs.providerTrx,
     payinProfitability.ww.costs.schemeFees,
@@ -2373,7 +2410,6 @@ export default function App() {
     payinProfitability.ww.revenue.total,
     payinWwPreview.mdrRevenue,
     payinWwPreview.trxRevenue,
-    payinWwPricing.interchangePercent,
     payinWwPricing.model,
     payinWwPricing.rateMode,
     payinWwPricing.schemeFeesPercent,
@@ -4775,16 +4811,16 @@ export default function App() {
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     <MetricCard
                       name="Total Payin Revenue"
-                      value={formatAmount2(payinProfitability.revenue.total)}
+                      value={formatAmount2(payinProfitabilityWithThreeDs.revenue.total)}
                     />
                     <MetricCard
                       name="Total Payin Costs"
-                      value={formatSignedAmount(-payinProfitability.costs.total)}
+                      value={formatSignedAmount(-payinProfitabilityWithThreeDs.costs.total)}
                       className={hasAnySchemeIcPlusAmbiguity ? "border-rose-300 bg-rose-50" : ""}
                     />
                     <MetricCard
                       name="Payin Net Margin"
-                      value={formatAmount2(payinProfitability.netMargin)}
+                      value={formatAmount2(payinProfitabilityWithThreeDs.netMargin)}
                     />
                     <MetricCard
                       name="Failed TRX Revenue"
@@ -4794,15 +4830,15 @@ export default function App() {
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                       <p className="font-semibold text-slate-800">EU</p>
-                      <p>Revenue: {formatAmount2(payinProfitability.eu.revenue.total)}</p>
-                      <p>Costs: {formatSignedAmount(-payinProfitability.eu.costs.total)}</p>
-                      <p>Net: {formatAmount2(payinProfitability.eu.netMargin)}</p>
+                      <p>Revenue: {formatAmount2(payinProfitabilityWithThreeDs.eu.revenue.total)}</p>
+                      <p>Costs: {formatSignedAmount(-payinProfitabilityWithThreeDs.eu.costs.total)}</p>
+                      <p>Net: {formatAmount2(payinProfitabilityWithThreeDs.eu.netMargin)}</p>
                     </div>
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                       <p className="font-semibold text-slate-800">WW</p>
-                      <p>Revenue: {formatAmount2(payinProfitability.ww.revenue.total)}</p>
-                      <p>Costs: {formatSignedAmount(-payinProfitability.ww.costs.total)}</p>
-                      <p>Net: {formatAmount2(payinProfitability.ww.netMargin)}</p>
+                      <p>Revenue: {formatAmount2(payinProfitabilityWithThreeDs.ww.revenue.total)}</p>
+                      <p>Costs: {formatSignedAmount(-payinProfitabilityWithThreeDs.ww.costs.total)}</p>
+                      <p>Net: {formatAmount2(payinProfitabilityWithThreeDs.ww.netMargin)}</p>
                     </div>
                   </div>
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -4828,7 +4864,7 @@ export default function App() {
                         }, WW model: ${payinWwPricing.model === "icpp" ? "IC++" : "Blended"}`}
                         sourceContext="У DOCX є конфлікт: для IC++ Scheme Fees описані і як pass-through, і як складова наших витрат."
                         usedInFormulas={[
-                          "Zone 5: EU/WW Costs = Provider MDR + Provider TRX + Scheme + Interchange",
+                          "Zone 5: EU/WW Costs = Provider MDR + Provider TRX + Scheme",
                           "Zone 5: Payin Net Margin = Total Payin Revenue - Total Payin Costs"
                         ]}
                       />
@@ -4839,14 +4875,9 @@ export default function App() {
                       Formula: Total Payin Revenue = MDR ({formatAmount2(
                         payinProfitability.revenue.mdr
                       )}) + TRX ({formatAmount2(payinProfitability.revenue.trx)}) + Failed TRX (
-                      {formatAmount2(payinProfitability.revenue.failedTrx)}) ={" "}
-                      {formatAmount2(payinProfitability.revenue.total)}
-                    </FormulaLine>
-                    <FormulaLine>
-                      Formula: Payin 3DS Net = EU 3DS Net (
-                      {formatAmount2(threeDsPayinRegionalBreakdown.eu.net)}) + WW 3DS Net (
-                      {formatAmount2(threeDsPayinRegionalBreakdown.ww.net)}) ={" "}
-                      {formatAmount2(threeDsPayinRegionalBreakdown.total.net)}
+                      {formatAmount2(payinProfitability.revenue.failedTrx)}) + 3DS Revenue (
+                      {formatAmount2(threeDsPayinRegionalBreakdown.total.revenue)}) ={" "}
+                      {formatAmount2(payinProfitabilityWithThreeDs.revenue.total)}
                     </FormulaLine>
                     <FormulaLine
                       className={
@@ -4857,8 +4888,9 @@ export default function App() {
                     >
                       Formula: Total Payin Costs = EU Costs (
                       {formatAmount2(payinProfitability.eu.costs.total)}) + WW Costs (
-                      {formatAmount2(payinProfitability.ww.costs.total)}) ={" "}
-                      {formatAmount2(payinProfitability.costs.total)}
+                      {formatAmount2(payinProfitability.ww.costs.total)}) + 3DS Costs (
+                      {formatAmount2(threeDsPayinRegionalBreakdown.total.cost)}) ={" "}
+                      {formatAmount2(payinProfitabilityWithThreeDs.costs.total)}
                     </FormulaLine>
                     <FormulaLine
                       className={
@@ -4868,9 +4900,9 @@ export default function App() {
                       }
                     >
                       Formula: Payin Net Margin = Total Payin Revenue (
-                      {formatAmount2(payinProfitability.revenue.total)}) - Total Payin Costs (
-                      {formatAmount2(payinProfitability.costs.total)}) ={" "}
-                      {formatAmount2(payinProfitability.netMargin)}
+                      {formatAmount2(payinProfitabilityWithThreeDs.revenue.total)}) - Total Payin Costs (
+                      {formatAmount2(payinProfitabilityWithThreeDs.costs.total)}) ={" "}
+                      {formatAmount2(payinProfitabilityWithThreeDs.netMargin)}
                     </FormulaLine>
                   </div>
                 </div>
@@ -5005,8 +5037,7 @@ export default function App() {
                         : ""
                     }
                   >
-                    Formula: Other Revenue Net = Payin 3DS Net (
-                    {formatAmount2(threeDsPayinRegionalBreakdown.total.net)}) - Settlement Fee (
+                    Formula: Other Revenue Net = - Settlement Fee (
                     {formatAmount2(Math.abs(otherRevenueProfitability.revenue.settlementFee))}) + Monthly Minimum Adj (
                     {formatAmount2(otherRevenueProfitability.revenue.monthlyMinimumAdjustment)}) ={" "}
                     {formatAmount2(otherRevenueProfitability.netMargin)}
@@ -5017,12 +5048,12 @@ export default function App() {
                     <SpecAmbiguityNotice
                       title="База для Provider 3DS Cost у блоці Payin 3DS"
                       currentValue={`3DS Revenue ${formatAmount2(
-                        otherRevenueProfitability.revenue.threeDs
-                      )}; 3DS Cost ${formatAmount2(otherRevenueProfitability.costs.threeDs)}`}
-                      sourceContext="Потрібно зафіксувати єдину базу для 3DS cost (Total Attempts або Successful Transactions), бо це напряму змінює Payin 3DS Net."
+                        threeDsPayinRegionalBreakdown.total.revenue
+                      )}; 3DS Cost ${formatAmount2(threeDsPayinRegionalBreakdown.total.cost)}`}
+                      sourceContext="Потрібно зафіксувати єдину базу для 3DS cost (Total Attempts або Successful Transactions), бо це напряму змінює Total Payin Costs."
                       usedInFormulas={[
-                        "Zone 5: Payin 3DS Net = 3DS Revenue - 3DS Costs",
-                        "Zone 5: Total Margin includes Other Revenue Net"
+                        "Zone 5: Total Payin Revenue includes 3DS Revenue",
+                        "Zone 5: Total Payin Costs includes 3DS Costs"
                       ]}
                     />
                   </div>

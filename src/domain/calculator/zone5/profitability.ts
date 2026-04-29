@@ -271,6 +271,20 @@ function calculateProviderMdrRows(
   ];
 }
 
+function distributeProviderMdrRowsByShare(
+  rows: [TierPercentCostRow, TierPercentCostRow, TierPercentCostRow],
+  share: number
+): [TierPercentCostRow, TierPercentCostRow, TierPercentCostRow] {
+  const safeShare = Math.max(0, Math.min(1, safeNonNegative(share)));
+  const allocate = (row: TierPercentCostRow): TierPercentCostRow => ({
+    ...row,
+    volume: row.volume * safeShare,
+    cost: row.cost * safeShare
+  });
+
+  return [allocate(rows[0]), allocate(rows[1]), allocate(rows[2])];
+}
+
 function sumCosts(rows: { cost: number }[]): number {
   return rows.reduce((sum, row) => sum + row.cost, 0);
 }
@@ -346,18 +360,17 @@ export function calculatePayinRegionProfitability(
   const providerTrxApmTotal = attemptsApm * providerTrxApmCost;
   const providerTrx = providerTrxCcTotal + providerTrxApmTotal;
 
-  // Current assumption from Zone 3/5 implementation: scheme and interchange are costs only for Blended.
+  // Scheme fees are applied only for Blended.
   const schemeFees =
     input.pricingModel === "blended"
       ? volume * (normalizePercent(input.schemeFeesPercent) / 100)
       : 0;
-  const interchange =
-    input.pricingModel === "blended"
-      ? volume * (normalizePercent(input.interchangePercent) / 100)
-      : 0;
+  // Product correction (2026-04-29): interchange is not a payin cost component.
+  // Keep the field for compatibility in API shape, but exclude it from calculations.
+  const interchange = 0;
 
   const revenueTotal = mdrRevenue + trxRevenue + failedTrxRevenue;
-  const costsTotal = providerMdr + providerTrx + schemeFees + interchange;
+  const costsTotal = providerMdr + providerTrx + schemeFees;
 
   return {
     revenue: {
@@ -388,8 +401,54 @@ export function calculatePayinRegionProfitability(
 export function calculatePayinProfitability(
   input: PayinProfitabilityInput
 ): PayinProfitabilityResult {
-  const eu = calculatePayinRegionProfitability(input.eu);
-  const ww = calculatePayinRegionProfitability(input.ww);
+  const euBase = calculatePayinRegionProfitability(input.eu);
+  const wwBase = calculatePayinRegionProfitability(input.ww);
+
+  const euVolume = safeNonNegative(input.eu.volume);
+  const wwVolume = safeNonNegative(input.ww.volume);
+  const totalPayinVolume = euVolume + wwVolume;
+
+  // Product correction (2026-04-29): provider MDR tiers are applied on TOTAL payin volume first,
+  // then allocated back to EU/WW by volume share for regional transparency.
+  const totalProviderMdrRows = calculateProviderMdrRows(
+    totalPayinVolume,
+    DEFAULT_PROVIDER_PAYIN_MDR_TIERS
+  );
+  const euShare = totalPayinVolume > 0 ? euVolume / totalPayinVolume : 0;
+  const wwShare = totalPayinVolume > 0 ? wwVolume / totalPayinVolume : 0;
+  const euProviderMdrRows = distributeProviderMdrRowsByShare(totalProviderMdrRows, euShare);
+  const wwProviderMdrRows = distributeProviderMdrRowsByShare(totalProviderMdrRows, wwShare);
+
+  const euProviderMdr = sumCosts(euProviderMdrRows);
+  const wwProviderMdr = sumCosts(wwProviderMdrRows);
+
+  const euCosts = {
+    providerMdr: euProviderMdr,
+    providerTrx: euBase.costs.providerTrx,
+    schemeFees: euBase.costs.schemeFees,
+    interchange: 0,
+    total: euProviderMdr + euBase.costs.providerTrx + euBase.costs.schemeFees
+  };
+  const wwCosts = {
+    providerMdr: wwProviderMdr,
+    providerTrx: wwBase.costs.providerTrx,
+    schemeFees: wwBase.costs.schemeFees,
+    interchange: 0,
+    total: wwProviderMdr + wwBase.costs.providerTrx + wwBase.costs.schemeFees
+  };
+
+  const eu: PayinRegionProfitability = {
+    ...euBase,
+    providerMdrRows: euProviderMdrRows,
+    costs: euCosts,
+    netMargin: euBase.revenue.total - euCosts.total
+  };
+  const ww: PayinRegionProfitability = {
+    ...wwBase,
+    providerMdrRows: wwProviderMdrRows,
+    costs: wwCosts,
+    netMargin: wwBase.revenue.total - wwCosts.total
+  };
 
   const revenue = {
     mdr: eu.revenue.mdr + ww.revenue.mdr,

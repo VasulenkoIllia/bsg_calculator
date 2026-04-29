@@ -6,17 +6,16 @@ Status: Completed (phase scope)
 Update: 2026-04-28
 - Clarified Zone 5 payin cost presentation without changing calculation formulas.
 - `Total Payin Costs` is displayed as `EU Costs + WW Costs`.
-- Each regional cost breakdown now shows provider MDR tiers, provider TRX CC/APM, Scheme Fees, and Interchange.
-- Scheme Fees and Interchange remain costs only for `Blended`; for `IC++` they have `€0` cost impact.
+- Each regional cost breakdown now shows provider MDR tiers, provider TRX CC/APM, and Scheme Fees.
+- Scheme Fees remain costs only for `Blended`; for `IC++` they have `€0` cost impact.
 
 Update: 2026-04-29
-- Interchange is a hidden fixed cost, not a Zone 3 user input.
-- Interchange defaults are EU `0.75%` and WW `2%`.
-- Zone 5 shows Interchange only for regions using `Blended`; for `IC++`, Interchange is not shown and does not affect profitability.
-- 3DS revenue/cost rows are displayed under `Payin Revenue & Costs`, split by EU/WW, while the underlying profitability formulas remain unchanged.
+- Interchange is removed from payin cost formulas and has `€0` impact.
+- Provider MDR is now tiered on total payin volume (`EU + WW`) and then allocated to EU/WW by volume share.
+- 3DS revenue/cost rows are displayed under `Payin Revenue & Costs`, split by EU/WW, and included in Total Payin revenue/cost totals.
 - In unified hierarchy, `3DS Revenue (EU/WW)` rows are nested under `Total Payin Revenue` and `3DS Costs (EU/WW)` rows are nested under `Total Payin Costs`.
 - Unified `Payin Net Margin` child row is removed as duplicate; its formula is kept on parent `Payin Revenue & Costs`.
-- `Other Revenue` no longer duplicates separate 3DS Revenue and 3DS Costs rows; it references Payin 3DS Net in the formula.
+- `Other Revenue` now includes only Settlement Fee and Monthly Minimum Adjustment.
 
 ## 1) Completed zone/module
 - Zone 5: `Profitability Calculations`

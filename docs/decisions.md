@@ -61,7 +61,7 @@ Use this file to record meaningful technical decisions for the project.
 - Consequences:
   - Prevents an accidental pricing model change for WW.
   - Future Zone 3 edits should not re-add Scheme or Interchange controls unless product explicitly asks for them to be editable in that zone.
-  - Calculation sections may still mention Scheme and Interchange as Blended-only costs; the removal scope is the Zone 3 configuration UI.
+  - Interchange handling from this decision is superseded by `Zone 5 Payin Cost Formula Corrections (Global MDR + No Interchange)` dated 2026-04-29.
   - Offer Summary can be adjusted separately later if product decides Scheme should be hidden from client-facing output too.
 
 ### Decision: Zone 2 Agent / Introducer Toggle
@@ -139,6 +139,7 @@ Use this file to record meaningful technical decisions for the project.
 
 ### Decision: Zone 5 Payin Cost Breakdown Presentation
 - Date: 2026-04-28
+- Status: Superseded in part by `Zone 5 Payin Cost Formula Corrections (Global MDR + No Interchange)` on 2026-04-29.
 - Context:
   - Product noted that `Provider TRX` was included in payin costs but was not visible in the detailed Zone 5 breakdown.
   - Product also asked to verify why `Interchange` appeared in the cost breakdown and to keep these items in the Payin section.
@@ -155,6 +156,23 @@ Use this file to record meaningful technical decisions for the project.
   - The visible breakdown now matches the regional cost structure used by the calculation engine.
   - Provider TRX is auditable in Zone 5 without changing profitability.
   - Interchange remains visible only where it belongs: inside final Zone 5 Payin regional costs for `Blended`.
+
+### Decision: Zone 5 Payin Cost Formula Corrections (Global MDR + No Interchange)
+- Date: 2026-04-29
+- Context:
+  - Product validation against Excel showed two critical mismatches in Zone 5 payin costs:
+    - `Provider MDR` was calculated per region (`EU` and `WW` separately), while expected logic is tiering on total payin volume.
+    - `Interchange` appeared as an additional cost line, duplicating cost impact that should not be charged.
+  - Example mismatch case: total payin `€25.1M`, split `EU 80% / WW 20%`.
+- Decision:
+  - Apply provider MDR tiers on total payin volume first (`EU + WW`), then allocate tier rows and costs back to `EU/WW` by volume share.
+  - Remove `Interchange` from payin cost formulas and from Zone 5 payin cost breakdown rows.
+  - Keep `Scheme Fees` as Blended-only cost.
+  - Keep `Interchange` field in internal config shape for backward compatibility only; set calculation impact to `€0`.
+- Consequences:
+  - For the `€25.1M` / `80/20` case, total provider MDR becomes `€396,400` (instead of `€406,540` with per-region tiering).
+  - Zone 5 formulas and UI rows now match product Excel expectations.
+  - Historical entries mentioning Interchange as an active payin cost are superseded by this correction.
 
 ### Decision: Zone 3/4 Formula Visibility Toggles
 - Date: 2026-04-29
@@ -182,7 +200,8 @@ Use this file to record meaningful technical decisions for the project.
   - Split Payin 3DS display into EU and WW using existing Payin successful transactions and Payin attempts.
   - Remove the separate `Payin Net Margin` child row in unified Payin block and keep the same net-margin formula on parent `Payin Revenue & Costs`.
   - Remove separate 3DS Revenue and 3DS Costs child rows from `Other Revenue`.
-  - Keep `Other Revenue` total unchanged and show Payin 3DS Net in its formula.
+  - Include 3DS Revenue in `Total Payin Revenue` and 3DS Costs in `Total Payin Costs`.
+  - `Other Revenue` contains only Settlement Fee and Monthly Minimum Adjustment (no Payin 3DS Net).
 - Consequences:
   - Profitability presentation now follows the Payin/Payout grouping without changing totals.
   - Unified tree hierarchy is cleaner and avoids duplicate values for Payin net margin.
@@ -329,7 +348,7 @@ Use this file to record meaningful technical decisions for the project.
 - Decision:
   - `Introducer Commission` applies to Payin only.
   - Zone 2 `Commission Base Volume` = Payin monthly volume only.
-  - In IC++, `Scheme Fees` and `Interchange` do not affect calculations (Blended-only costs).
+  - In IC++, `Scheme Fees` do not affect calculations; `Interchange` does not affect calculations for any payin model.
   - `Provider 3DS Cost` is calculated on `Total Attempts`.
   - `3DS Revenue per Successful TRX` is editable with 2 decimal precision.
   - Minimum fee behavior must be explicitly displayed with applied values in formulas.

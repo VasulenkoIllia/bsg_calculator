@@ -400,7 +400,7 @@ describe("App UI", () => {
     expect(screen.getByText("Provider TRX CC (WW)")).toBeInTheDocument();
     expect(screen.getByText("Provider TRX APM (WW)")).toBeInTheDocument();
     expect(screen.getByText("Scheme Fees (EU, Blended)")).toBeInTheDocument();
-    expect(screen.getByText("Interchange (EU, Blended fixed cost)")).toBeInTheDocument();
+    expect(screen.queryByText(/Interchange \(/)).not.toBeInTheDocument();
     expect(screen.queryByText("Scheme Fees (WW, IC++ pass-through)")).not.toBeInTheDocument();
     expect(screen.queryByText("Interchange (WW, IC++ pass-through)")).not.toBeInTheDocument();
     expect(screen.queryByText("Payin 3DS Revenue & Costs")).not.toBeInTheDocument();
@@ -409,7 +409,9 @@ describe("App UI", () => {
     expect(screen.getByText("3DS Revenue (WW)")).toBeInTheDocument();
     expect(screen.getByText("3DS Costs (WW)")).toBeInTheDocument();
     expect(screen.queryByText("Other Revenue Net")).not.toBeInTheDocument();
-    expect(screen.getByText(/Formula \(Unified\): Other Revenue = Payin 3DS Net/)).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Formula \(Unified\): Other Revenue = - Settlement Fee/).length
+    ).toBeGreaterThanOrEqual(1);
 
     await user.click(screen.getByRole("checkbox", { name: "Show Formulas" }));
     expect(screen.queryByText(/Formula \(Unified\): Our Margin =/)).not.toBeInTheDocument();

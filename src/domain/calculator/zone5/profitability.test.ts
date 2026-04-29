@@ -30,7 +30,7 @@ describe("zone5/profitability", () => {
     expect(result.netMargin).toBeCloseTo(210_590.65, 6);
   });
 
-  it("adds scheme/interchange costs for blended payin model", () => {
+  it("adds blended scheme costs and excludes interchange cost", () => {
     const result = calculatePayinRegionProfitability({
       volume: 7_500_000,
       mdrRevenue: 337_500,
@@ -44,12 +44,12 @@ describe("zone5/profitability", () => {
     });
 
     expect(result.costs.schemeFees).toBe(22_500);
-    expect(result.costs.interchange).toBe(37_500);
-    expect(result.costs.total).toBeCloseTo(190_584.35, 6);
-    expect(result.netMargin).toBeCloseTo(150_590.65, 6);
+    expect(result.costs.interchange).toBe(0);
+    expect(result.costs.total).toBeCloseTo(153_084.35, 6);
+    expect(result.netMargin).toBeCloseTo(188_090.65, 6);
   });
 
-  it("aggregates payin EU+WW profitability", () => {
+  it("aggregates payin EU+WW profitability using global provider MDR tiers", () => {
     const result = calculatePayinProfitability({
       eu: {
         volume: 7_500_000,
@@ -79,10 +79,63 @@ describe("zone5/profitability", () => {
     expect(result.revenue.trx).toBe(7_350);
     expect(result.revenue.failedTrx).toBe(1_800);
     expect(result.revenue.total).toBe(721_650);
-    expect(result.costs.providerMdr).toBeCloseTo(255_000, 6);
+    expect(result.costs.providerMdr).toBeCloseTo(245_000, 6);
     expect(result.costs.providerTrx).toBeCloseTo(6_168.7, 6);
-    expect(result.costs.total).toBeCloseTo(261_168.7, 6);
-    expect(result.netMargin).toBeCloseTo(460_481.3, 6);
+    expect(result.costs.total).toBeCloseTo(251_168.7, 6);
+    expect(result.netMargin).toBeCloseTo(470_481.3, 6);
+    expect(result.eu.costs.providerMdr).toBeCloseTo(122_500, 6);
+    expect(result.ww.costs.providerMdr).toBeCloseTo(122_500, 6);
+  });
+
+  it("matches 25.1M payin (80/20) provider MDR allocation and no interchange cost", () => {
+    const result = calculatePayinProfitability({
+      eu: {
+        volume: 20_080_000,
+        mdrRevenue: 0,
+        trxRevenue: 0,
+        failedTrxRevenue: 0,
+        attemptsCcTransactions: 0,
+        attemptsApmTransactions: 0,
+        pricingModel: "blended",
+        schemeFeesPercent: 0.75,
+        interchangePercent: 0.75
+      },
+      ww: {
+        volume: 5_020_000,
+        mdrRevenue: 0,
+        trxRevenue: 0,
+        failedTrxRevenue: 0,
+        attemptsCcTransactions: 0,
+        attemptsApmTransactions: 0,
+        pricingModel: "blended",
+        schemeFeesPercent: 2,
+        interchangePercent: 2
+      }
+    });
+
+    expect(result.costs.providerMdr).toBeCloseTo(396_400, 6);
+    expect(result.eu.costs.providerMdr).toBeCloseTo(317_120, 6);
+    expect(result.ww.costs.providerMdr).toBeCloseTo(79_280, 6);
+
+    expect(result.eu.providerMdrRows[0].volume).toBeCloseTo(8_000_000, 6);
+    expect(result.eu.providerMdrRows[1].volume).toBeCloseTo(12_000_000, 6);
+    expect(result.eu.providerMdrRows[2].volume).toBeCloseTo(80_000, 6);
+    expect(result.eu.providerMdrRows[0].cost).toBeCloseTo(136_000, 6);
+    expect(result.eu.providerMdrRows[1].cost).toBeCloseTo(180_000, 6);
+    expect(result.eu.providerMdrRows[2].cost).toBeCloseTo(1_120, 6);
+
+    expect(result.ww.providerMdrRows[0].volume).toBeCloseTo(2_000_000, 6);
+    expect(result.ww.providerMdrRows[1].volume).toBeCloseTo(3_000_000, 6);
+    expect(result.ww.providerMdrRows[2].volume).toBeCloseTo(20_000, 6);
+    expect(result.ww.providerMdrRows[0].cost).toBeCloseTo(34_000, 6);
+    expect(result.ww.providerMdrRows[1].cost).toBeCloseTo(45_000, 6);
+    expect(result.ww.providerMdrRows[2].cost).toBeCloseTo(280, 6);
+
+    expect(result.eu.costs.schemeFees).toBeCloseTo(150_600, 6);
+    expect(result.ww.costs.schemeFees).toBeCloseTo(100_400, 6);
+    expect(result.eu.costs.interchange).toBe(0);
+    expect(result.ww.costs.interchange).toBe(0);
+    expect(result.costs.interchange).toBe(0);
   });
 
   it("calculates payout profitability with provider tier costs", () => {

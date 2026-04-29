@@ -15,7 +15,7 @@ We return to an open question only when it blocks the current module or test cas
   - `Payin Fees (ALL) = MDR + (if TRX enabled) TRX Rev + (if 3DS enabled) 3DS Rev`
   - `Payout Fees (ALL) = MDR + (if TRX enabled) TRX Rev + (if 3DS enabled) 3DS Rev`
 - Applies to formula:
-  - `Net = (Payin Vol + Payout Vol) - (Payin Fees + Payout Fees)`
+  - `Net = (Payin Vol - Payout Vol) - (Payin Fees + Payout Fees)`
 - Note:
   - This item is no longer open and should be used as canonical rule in Zone 4/5 implementation.
 
@@ -43,9 +43,9 @@ We return to an open question only when it blocks the current module or test cas
 5. Scheme Fees in IC++ (resolved 2026-04-22)
 - Resolution from product owner:
   - In IC++, Scheme Fees do not affect profitability calculation.
-  - Scheme/Interchange costs are applied only for Blended model.
+  - Scheme costs are applied only for Blended model.
   - Scheme Fees and Interchange are hidden from Zone 3 inputs.
-  - Interchange is a fixed hidden cost for Zone 5 profitability only, with defaults EU `0.75%` and WW `2%`.
+  - Interchange is not used in Zone 5 payin cost formulas (`€0` impact).
 
 6. Provider 3DS cost base (resolved 2026-04-22)
 - Resolution from product owner:
@@ -79,8 +79,8 @@ We return to an open question only when it blocks the current module or test cas
   - Source is Payin monthly volume only.
 - Zone 3 -> Zone 5:
   - Zone 3 pricing state feeds Zone 5 profitability totals.
-  - Scheme/Interchange are applied only for Blended model.
-  - Interchange is not editable in Zone 3; it is carried as a hidden fixed default into Zone 5.
+  - Scheme costs are applied only for Blended model.
+  - Interchange is not editable in Zone 3 and is not used in Zone 5 payin cost formulas.
 - Zone 4/5 -> Zone 6:
   - Offer Summary text now consumes current values from Zones 0-5 and updates dynamically.
   - PDF export currently uses print dialog ("Save as PDF") without a dedicated PDF renderer.
