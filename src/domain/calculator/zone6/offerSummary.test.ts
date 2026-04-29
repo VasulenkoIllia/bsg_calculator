@@ -149,6 +149,7 @@ describe("buildOfferSummaryText", () => {
     const summary = buildOfferSummaryText(input);
 
     expect(summary).not.toContain("PAYOUT:");
+    expect(summary).toContain("Payin Minimum Fee: <=€2.5M: €1 / >€2.5M: N/A");
     expect(summary).toContain("Settlement Fee: Enabled (0.75%)");
     expect(summary).toContain("Type: Rev Share");
     expect(summary).toContain("Partner Share (25%): €12,500");

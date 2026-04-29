@@ -64,6 +64,7 @@ type NumberFieldProps = {
   max?: number;
   step?: number;
   helper?: string;
+  helperTone?: "default" | "warning";
   readOnly?: boolean;
 };
 
@@ -393,6 +394,18 @@ function clampNumber(value: number, min?: number, max?: number): number {
   return clamped;
 }
 
+function getNumberFieldConstraintNotice(value: number, min?: number, max?: number): string | undefined {
+  if (typeof min === "number" && value < min) {
+    return `Minimum allowed value is ${formatInputNumber(min)}. Lower values reset to ${formatInputNumber(min)}.`;
+  }
+
+  if (typeof max === "number" && value > max) {
+    return `Maximum allowed value is ${formatInputNumber(max)}. Higher values reset to ${formatInputNumber(max)}.`;
+  }
+
+  return undefined;
+}
+
 function clampPercent(value: number): number {
   if (!Number.isFinite(value)) return 0;
   if (value < 0) return 0;
@@ -575,10 +588,12 @@ function NumberField({
   max,
   step,
   helper,
+  helperTone = "default",
   readOnly = false
 }: NumberFieldProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [draftValue, setDraftValue] = useState(formatInputNumber(value));
+  const [constraintNotice, setConstraintNotice] = useState<string | undefined>();
 
   useEffect(() => {
     if (!isFocused) {
@@ -592,9 +607,11 @@ function NumberField({
     const parsed = parseInputNumber(nextRaw);
 
     if (Number.isNaN(parsed)) {
+      setConstraintNotice(undefined);
       return;
     }
 
+    setConstraintNotice(getNumberFieldConstraintNotice(parsed, min, max));
     onChange(clampNumber(parsed, min, max));
   };
 
@@ -605,10 +622,12 @@ function NumberField({
 
     if (Number.isNaN(parsed)) {
       setDraftValue(formatInputNumber(value));
+      setConstraintNotice(undefined);
       return;
     }
 
     const clamped = clampNumber(parsed, min, max);
+    setConstraintNotice(getNumberFieldConstraintNotice(parsed, min, max));
     onChange(clamped);
     setDraftValue(formatInputNumber(clamped));
   };
@@ -618,6 +637,9 @@ function NumberField({
     setIsFocused(true);
     setDraftValue(String(value));
   };
+
+  const activeHelper = helperTone === "warning" && helper ? helper : constraintNotice ?? helper;
+  const activeHelperTone = constraintNotice || helperTone === "warning" ? "warning" : "default";
 
   return (
     <label className="block">
@@ -642,7 +664,18 @@ function NumberField({
         max={max}
         step={step}
       />
-      {helper ? <span className="mt-1 block text-xs text-slate-500">{helper}</span> : null}
+      {activeHelper ? (
+        <span
+          className={[
+            "mt-1 block text-xs",
+            activeHelperTone === "warning"
+              ? "rounded-md border border-amber-200 bg-amber-50 px-2 py-1 font-semibold text-amber-800"
+              : "text-slate-500"
+          ].join(" ")}
+        >
+          {activeHelper}
+        </span>
+      ) : null}
     </label>
   );
 }
@@ -3597,6 +3630,7 @@ export default function App() {
                               )}% (minimum floor).`
                             : undefined
                         }
+                        helperTone="warning"
                       />
                       <NumberField
                         label="TRX Fee (€)"
@@ -3613,6 +3647,7 @@ export default function App() {
                               )} (minimum floor).`
                             : undefined
                         }
+                        helperTone="warning"
                       />
                     </div>
                   ) : (
@@ -3660,6 +3695,7 @@ export default function App() {
                                     )}% (minimum floor).`
                                   : undefined
                               }
+                              helperTone="warning"
                             />
                             <NumberField
                               label="TRX Fee (€)"
@@ -3678,6 +3714,7 @@ export default function App() {
                                     )} (minimum floor).`
                                   : undefined
                               }
+                              helperTone="warning"
                             />
                           </div>
                         </div>
@@ -3851,6 +3888,7 @@ export default function App() {
                         min={0}
                         step={0.1}
                         helper="Rounding rule: always round up to the next €0.10."
+                        helperTone="warning"
                       />
                     </div>
                   </div>
@@ -3929,6 +3967,7 @@ export default function App() {
                         max={2}
                         step={0.1}
                         helper="Allowed range: 0.00% to 2.00%."
+                        helperTone="warning"
                       />
                     </div>
                   </div>
@@ -4006,7 +4045,8 @@ export default function App() {
                           min={50}
                           max={95}
                           step={5}
-                          helper="Informational mode only. Does not affect profitability in Zone 5."
+                          helper="Informational mode only. Allowed range: 50% to 95%; lower values reset to 50%."
+                          helperTone="warning"
                         />
                       ) : null}
                     </div>
@@ -4167,7 +4207,7 @@ export default function App() {
               <p className="mt-1 text-xs text-slate-500">
                 These parameters are shown in offer summary and do not affect Zone 5 profitability.
               </p>
-              {calculatorType.payout ? (
+              {calculatorType.payin ? (
                 <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div>
@@ -4207,7 +4247,7 @@ export default function App() {
                         }
                         min={0}
                         step={0.5}
-                        helper="Contract wording: minimum fee applies up to this payout volume tier."
+                        helper="Contract wording: minimum fee applies up to this payin volume tier."
                       />
                       <NumberField
                         label="Minimum Transaction Fee (€)"
@@ -4338,6 +4378,7 @@ export default function App() {
                   min={10}
                   step={5}
                   helper="Minimum provider cost is €10. Do not set below €10."
+                  helperTone="warning"
                 />
                 <NumberField
                   label="Dispute/Chargeback Cost (€)"
@@ -4346,6 +4387,7 @@ export default function App() {
                   min={50}
                   step={5}
                   helper="Minimum provider cost is €50. Do not set below €50."
+                  helperTone="warning"
                 />
                 <div>
                   <span className="field-label">Settlement Period</span>

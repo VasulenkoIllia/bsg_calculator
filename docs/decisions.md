@@ -110,6 +110,18 @@ Use this file to record meaningful technical decisions for the project.
   - The new overall/EU/WW contract fields do not affect Zone 5 by themselves.
   - Future contract generation can consume the stored overall/EU/WW values without changing existing profitability formulas.
 
+### Decision: Payin Minimum Fee Contract Block Visibility
+- Date: 2026-04-29
+- Context:
+  - The contract-summary block is labeled `Payin Minimum Fee`.
+  - It was previously rendered only when `Payout` mode was active, which created UI ambiguity.
+- Decision:
+  - Render the `Payin Minimum Fee` contract-summary block when `Payin` mode is active.
+  - Keep internal field names (`payoutMinimumFee*`) unchanged for compatibility.
+- Consequences:
+  - Zone 4 UI and Zone 6 summary now align with the `Payin` naming of this block.
+  - No profitability formulas changed; this is a visibility-gating fix only.
+
 ### Decision: Zone 5 Payin Cost Breakdown Presentation
 - Date: 2026-04-28
 - Context:
@@ -156,6 +168,24 @@ Use this file to record meaningful technical decisions for the project.
 - Consequences:
   - Profitability presentation now follows the Payin/Payout grouping without changing totals.
   - No Payout 3DS rows are added because the current 3DS rule is Payin-based.
+
+### Decision: Constraint Helper Warning Style
+- Date: 2026-04-29
+- Context:
+  - Several calculator fields clamp or normalize user input to a minimum, maximum, rounding rule, or
+    calculation floor.
+  - Product requested visible yellow/orange notes so users understand why an entered value may reset
+    to another value.
+- Decision:
+  - Keep all calculation and clamp rules unchanged.
+  - Add a shared amber warning style to `NumberField` helper text for explicit minimum/floor/rounding
+    notes.
+  - When a constrained numeric field receives an out-of-range value and has no explicit warning helper,
+    show an amber helper explaining the applied minimum or maximum.
+- Consequences:
+  - The UI explains clamped values consistently across zones without changing business logic.
+  - Existing informational helper text keeps the default muted style unless it describes a constraint,
+    floor, or normalization rule.
 
 ### Decision: Phase Sequencing (Zone 2 Next)
 - Date: 2026-04-22

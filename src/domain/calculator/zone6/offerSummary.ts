@@ -407,7 +407,7 @@ export function buildOfferSummaryText(input: OfferSummaryInput): string {
         : formatAmountInteger(input.contractSummary.payoutLimitMax)
     }`
   );
-  if (input.calculatorType.payout) {
+  if (input.calculatorType.payin) {
     if (input.contractSummary.payoutMinimumFeeMode === "overall") {
       lines.push(
         `Payin Minimum Fee: ${formatPayoutMinimumFeeClause(

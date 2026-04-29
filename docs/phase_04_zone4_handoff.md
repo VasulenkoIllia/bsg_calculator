@@ -8,7 +8,7 @@ Status: Completed (phase scope)
 - Covered sections:
   - Revenue-affecting `Payout Minimum Fee (Per Transaction)` with round-up-to-€0.10 normalization.
   - Separate contract-summary-only Payin Minimum Fee wording with overall or EU/WW informational values.
-  - `3DS Fee` with locked revenue (`€0.05`) and always-applied provider cost (`€0.03`).
+  - `3DS Fee` with editable revenue (default `€0.05`) and always-applied provider cost (`€0.03`).
   - `Settlement Fee` visibility dependency from Zone 3 (`Settlement Included`).
   - `Monthly Minimum Fee` uplift logic.
   - `Failed TRX Charging` modes:
@@ -36,6 +36,7 @@ Source: `Calculator_Описание.docx`, section `ZONE 4: OTHER FEES & TRANSA
   - `Client Net = Net - Settlement Fee`
 - Monthly minimum warning and payout minimum warning behavior implemented.
 - New contract-summary Payin Minimum Fee fields are informational and do not replace the existing payout minimum fee business logic.
+- Contract-summary Payin Minimum Fee block visibility is gated by `Payin` mode.
 - Failed TRX modes aligned with DOCX behavior split.
 - Contract fields exposed without affecting profitability.
 

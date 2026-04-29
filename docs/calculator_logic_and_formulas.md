@@ -1,6 +1,6 @@
 # Calculator Logic and Formulas (Current Code)
 
-Date: 2026-04-28
+Date: 2026-04-29
 Scope: current implementation in `src/App.tsx` and `src/domain/calculator/zone0..zone6`.
 
 This document is the technical source of truth for runtime calculation behavior.
@@ -190,6 +190,11 @@ From `zone3/pricingConfiguration.ts`.
   - Payin low MDR `< 2.5%`, high MDR `> 10%`
   - Payout MDR below 1.3 or above 5
   - Payout TRX below 0.2 (minimum) and below 0.4 (low warning)
+- UI constraint notes:
+  - Minimum/floor helper notes use the amber warning style when the configured value is clamped,
+    rounded, or replaced by a calculation floor.
+  - Generic minimum/maximum field constraints show an amber helper after an out-of-range value is
+    entered, so users can see why the displayed value resets.
 
 ### 6.2 Payin preview
 
@@ -267,6 +272,8 @@ Revenue-affecting rule:
 - The existing `Payout Minimum Fee (Per Transaction)` calculation remains unchanged.
 - User minimum fee is normalized upward to one decimal:
   - `normalizePayoutMinimumFeePerTransaction(x) = ceil(x * 10) / 10`
+- The rounding rule helper is shown with the amber warning style because the entered value may be
+  normalized upward.
 - Given base payout revenue and payout transactions:
   - `perTransactionRevenue = payoutRevenue / payoutTransactions` (if tx > 0)
   - If enabled and `perTransactionRevenue < minimumFee`, then minimum is applied.
@@ -277,6 +284,7 @@ Revenue-affecting rule:
 Contract-summary-only rule:
 - The new overall/EU/WW fields are informational and do not change profitability formulas by themselves.
 - They appear as contract wording in Zone 4 and Zone 6 Offer Summary.
+- The block is shown when `Payin` mode is active.
 - The user-facing label is `Payin Minimum Fee`; legacy internal field names still use `payoutMinimumFee*` to avoid a broad state migration.
 - Default mode is `overall`.
 - Defaults:
@@ -342,6 +350,10 @@ Given failed CC/APM tx counts and effective CC/APM failed fees:
 Additional values currently computed in code:
 - `overLimitAttempts = max(0, thresholdAttempts - totalAttempts)`
 - `belowLimitAttempts = max(0, totalAttempts - thresholdAttempts)`
+- Naming note:
+  - `overLimitAttempts` currently represents the remaining-attempt buffer to the threshold
+    (`thresholdAttempts - totalAttempts`), not exceeded attempts.
+  - In `overLimitOnly` mode this value is informational only and does not change revenue.
 
 ### 7.6 Contract summary reminders
 
