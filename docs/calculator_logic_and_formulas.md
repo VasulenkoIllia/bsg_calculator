@@ -311,6 +311,7 @@ Current defaults:
 
 Visibility:
 - Settlement fee block is visible only when `settlementIncludedInPricing === false`.
+- If `settlementIncludedInPricing === false` but Settlement Fee toggle is OFF, settlement formula trace shows that final Settlement Fee is `€0` and keeps the computed reference (`Chargeable Net × Rate`) for transparency.
 
 Math:
 - `baseNet = payinVolume - payoutVolume - payinFeesAll - payoutFeesAll`
@@ -321,7 +322,7 @@ Math:
 
 Important App wiring:
 - `payinFeesAll = payinBaseRevenue + threeDsRevenue`
-- `payoutFeesAll = payoutBaseRevenue`
+- `payoutFeesAll = payoutRevenueAdjusted` (includes payout minimum-fee uplift when the minimum trigger is active)
 
 Contract summary settlement period:
 - Allowed values are `T+1`, `T+2`, `T+3`, `T+4`, `T+5`.
@@ -442,7 +443,7 @@ Zone 5 payout display rule:
 
 ### 8.4 Other revenue profitability
 
-- `revenue.total = -settlementFeeDeduction + monthlyMinimumAdjustment`
+- `revenue.total = settlementFee + monthlyMinimumAdjustment`
 - `costs.total = 0`
 - `other.netMargin = revenue.total`
 
@@ -453,7 +454,10 @@ Zone 5 display rule:
   - `3DS Revenue (EU/WW)` rows are nested under `Total Payin Revenue`.
   - `3DS Costs (EU/WW)` rows are nested under `Total Payin Costs`.
   - A separate `Payin Net Margin` child row is not shown to avoid duplicating the parent `Payin Revenue & Costs` value; the net-margin formula is displayed on the parent row.
-- `Other Revenue` shows only Settlement Fee Deduction plus Monthly Minimum Adjustment.
+- `Other Revenue` shows only Settlement Fee plus Monthly Minimum Adjustment.
+- Formula display detail:
+  - if `monthlyMinimumAdjustment > 0`, show `Settlement Fee + Monthly Minimum Adj`;
+  - if `monthlyMinimumAdjustment = 0`, show only `Settlement Fee` in the formula line.
 - There is no payout 3DS split because the current 3DS business rule is Payin-based (`successful Payin transactions` for revenue and `Payin attempts` for cost).
 
 ### 8.5 Total profitability

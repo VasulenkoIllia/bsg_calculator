@@ -313,6 +313,7 @@ describe("App UI", () => {
     expect(screen.getByText("Payout Minimum Uplift")).toBeInTheDocument();
     expect(screen.getByText(/Formula: Applied Payout Revenue = max/)).toBeInTheDocument();
     expect(screen.getByText(/Formula: Payout Minimum Per-TRX Revenue =/)).toBeInTheDocument();
+    expect(screen.getByText(/Payout Fees ALL \(€7,000\)/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Hide Zone 4 formulas" }));
     expect(screen.queryByText(/Formula: Payout Minimum Per-TRX Revenue =/)).not.toBeInTheDocument();
     expect(screen.getByText("Formula Breakdown (Zone 4)")).toBeInTheDocument();
@@ -410,7 +411,7 @@ describe("App UI", () => {
     expect(screen.getByText("3DS Costs (WW)")).toBeInTheDocument();
     expect(screen.queryByText("Other Revenue Net")).not.toBeInTheDocument();
     expect(
-      screen.getAllByText(/Formula \(Unified\): Other Revenue = - Settlement Fee/).length
+      screen.getAllByText(/Formula \(Unified\): Other Revenue = Settlement Fee/).length
     ).toBeGreaterThanOrEqual(1);
 
     await user.click(screen.getByRole("checkbox", { name: "Show Formulas" }));

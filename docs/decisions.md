@@ -124,6 +124,7 @@ Use this file to record meaningful technical decisions for the project.
 
 ### Decision: Settlement Fee Sign and Net Formula Correction
 - Date: 2026-04-29
+- Status: Superseded in sign handling by `Settlement Fee Revenue Sign Clarification` on 2026-04-30.
 - Context:
   - Product requested a correction to settlement-fee math.
   - Previous implementation used `Payin + Payout` in settlement net and treated settlement fee as a positive addend in `Other Revenue`.
@@ -136,6 +137,51 @@ Use this file to record meaningful technical decisions for the project.
   - Zone 4 settlement base/fee values are lower when payout volume is non-zero.
   - Zone 5 total margin decreases by settlement fee amount (instead of increasing).
   - All formula traces and docs must show `- Settlement Fee` where relevant.
+
+### Decision: Settlement Fee Revenue Sign Clarification
+- Date: 2026-04-30
+- Context:
+  - Product clarified that Settlement Fee is a fee we earn from the client and must be treated as revenue.
+  - The settlement-base formula remains unchanged.
+- Decision:
+  - Keep settlement base/net formula:
+    - `Settlement Net = (Total Payin Volume - Total Payout Volume) - (Total Payin Fees + Total Payout Fees)`.
+    - `Chargeable Net = max(0, Settlement Net)`.
+    - `Settlement Fee = Chargeable Net × Rate`.
+  - Treat Settlement Fee as a positive component in `Other Revenue`.
+  - Update labels to remove `Deduction` wording.
+- Consequences:
+  - Zone 5 `Other Revenue` now uses `Settlement Fee + Monthly Minimum Adj`.
+  - Unified and Zone 5 formulas show Settlement Fee as positive revenue.
+
+### Decision: Settlement Net Must Use Applied Payout Fees
+- Date: 2026-04-30
+- Context:
+  - Product reported that `Chargeable Net` did not reflect `MIN PAYOUT TRX FEE` trigger.
+  - Settlement base used `payoutBaseRevenue` (before minimum uplift), which understated `Payout Fees ALL`.
+- Decision:
+  - In Settlement Net wiring, use applied payout revenue:
+    - `payoutFeesAll = payoutRevenueAdjusted`.
+  - Keep formula structure unchanged:
+    - `Settlement Net = (Total Payin Volume - Total Payout Volume) - (Total Payin Fees + Total Payout Fees)`.
+- Consequences:
+  - When payout minimum fee is triggered, `Chargeable Net` and settlement fee are recalculated from uplifted payout fees.
+  - UI formula trace now shows `Payout Fees ALL` with the applied payout revenue value.
+
+### Decision: Settlement / Other Revenue Formula Trace Clarity
+- Date: 2026-04-30
+- Context:
+  - Product reported ambiguity when `Chargeable Net` was positive but `Settlement Fee` displayed `€0` (because toggle OFF).
+  - Product also requested compact formula output when `Monthly Minimum Adj = €0`.
+- Decision:
+  - Keep full `Chargeable Net` calculation visible regardless of Settlement toggle.
+  - When Settlement toggle is OFF, show `Settlement Fee = €0` with reference formula (`Chargeable Net × Rate`) as informational.
+  - In `Other Revenue` formula line, show:
+    - only `Settlement Fee` when `Monthly Minimum Adj = 0`,
+    - `Settlement Fee + Monthly Minimum Adj` when uplift is positive.
+- Consequences:
+  - Formula traces remain mathematically transparent and unambiguous.
+  - Users see one-term or two-term `Other Revenue` formula depending on whether monthly uplift is actually applied.
 
 ### Decision: Zone 5 Payin Cost Breakdown Presentation
 - Date: 2026-04-28

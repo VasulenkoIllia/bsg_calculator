@@ -1455,6 +1455,10 @@ export default function App() {
       payoutMinimumFeePerTransaction
     ]
   );
+  const payoutRevenueAdjusted = useMemo(
+    () => (calculatorType.payout ? payoutMinimumFeeImpact.adjustedRevenue : 0),
+    [calculatorType.payout, payoutMinimumFeeImpact.adjustedRevenue]
+  );
   const threeDsImpact = useMemo(
     () =>
       calculateThreeDsImpact({
@@ -1526,7 +1530,7 @@ export default function App() {
         payinVolume: calculatorType.payin ? payin.normalized.monthlyVolume : 0,
         payoutVolume: calculatorType.payout ? payout.normalized.monthlyVolume : 0,
         payinFeesAll: payinBaseRevenue + threeDsImpact.revenue,
-        payoutFeesAll: payoutBaseRevenue
+        payoutFeesAll: payoutRevenueAdjusted
       }),
     [
       calculatorType.payin,
@@ -1534,7 +1538,7 @@ export default function App() {
       payin.normalized.monthlyVolume,
       payout.normalized.monthlyVolume,
       payinBaseRevenue,
-      payoutBaseRevenue,
+      payoutRevenueAdjusted,
       settlementFeeEnabled,
       settlementFeeRatePercent,
       settlementIncluded,
@@ -1610,10 +1614,6 @@ export default function App() {
     payinEffectiveTrxFeesByRegion.ww.apmFee,
     payinEffectiveTrxFeesByRegion.ww.ccFee
   ]);
-  const payoutRevenueAdjusted = useMemo(
-    () => (calculatorType.payout ? payoutMinimumFeeImpact.adjustedRevenue : 0),
-    [calculatorType.payout, payoutMinimumFeeImpact.adjustedRevenue]
-  );
   const payoutTrxRevenueAdjusted = useMemo(
     () =>
       Math.max(
@@ -1751,7 +1751,7 @@ export default function App() {
       calculateOtherRevenueProfitability({
         threeDsRevenue: 0,
         threeDsCost: 0,
-        settlementFeeRevenue: -settlementFeeImpact.fee,
+        settlementFeeRevenue: settlementFeeImpact.fee,
         monthlyMinimumAdjustment: monthlyMinimumFeeImpact.upliftRevenue
       }),
     [monthlyMinimumFeeImpact.upliftRevenue, settlementFeeImpact.fee]
@@ -1855,6 +1855,16 @@ export default function App() {
   );
   const unifiedProfitabilityTree = useMemo<UnifiedProfitabilityNode[]>(() => {
     const nodes: UnifiedProfitabilityNode[] = [];
+    const otherRevenueFormula =
+      otherRevenueProfitability.revenue.monthlyMinimumAdjustment > 0
+        ? `Other Revenue = Settlement Fee (${formatAmount2(
+            otherRevenueProfitability.revenue.settlementFee
+          )}) + Monthly Minimum Adj (${formatAmount2(
+            otherRevenueProfitability.revenue.monthlyMinimumAdjustment
+          )})`
+        : `Other Revenue = Settlement Fee (${formatAmount2(
+            otherRevenueProfitability.revenue.settlementFee
+          )})`;
 
     const totalChildren: UnifiedProfitabilityNode[] =
       introducerEnabled && introducerCommissionType === "revShare"
@@ -1929,11 +1939,7 @@ export default function App() {
               id: "unified-total-other-net-margin",
               label: "Other Revenue",
               value: totalProfitability.otherNetMargin,
-              formula: `Other Revenue = - Settlement Fee (${formatAmount2(
-                Math.abs(otherRevenueProfitability.revenue.settlementFee)
-              )}) + Monthly Minimum Adj (${formatAmount2(
-                otherRevenueProfitability.revenue.monthlyMinimumAdjustment
-              )})`
+              formula: otherRevenueFormula
             },
             {
               id: "unified-total-margin",
@@ -2090,7 +2096,18 @@ export default function App() {
                         : payinEuPreview.mdrRevenue > 0
                           ? (payinEuPreview.mdrRevenue / Math.max(payin.volume.eu, 1)) * 100
                           : 0
-                    )}%`
+                    )}%`,
+                    children:
+                      payinEuPricing.rateMode === "tiered"
+                        ? payinEuPreview.tierRows.map((row, index) => ({
+                            id: `unified-payin-eu-mdr-revenue-tier-${index}`,
+                            label: `MDR ${row.label} (EU)`,
+                            value: row.mdrRevenue,
+                            formula: `${formatAmountInteger(row.volume)} × ${formatInputNumber(
+                              row.mdrPercent
+                            )}% = ${formatAmount2(row.mdrRevenue)}`
+                          }))
+                        : undefined
                   },
                   {
                     id: "unified-payin-eu-trx-cc",
@@ -2098,7 +2115,18 @@ export default function App() {
                     value: euTrxRevenueCc,
                     formula: `${formatCount(
                       payin.successful.byRegionMethod.euCc
-                    )} trx × effective CC fee = ${formatAmount2(euTrxRevenueCc)}`
+                    )} trx × effective CC fee = ${formatAmount2(euTrxRevenueCc)}`,
+                    children:
+                      payinEuPricing.rateMode === "tiered" && payinEuPricing.trxFeeEnabled
+                        ? payinEuPreview.tierRows.map((row, index) => ({
+                            id: `unified-payin-eu-trx-cc-tier-${index}`,
+                            label: `TRX CC ${row.label} (EU)`,
+                            value: row.ccTransactions * row.trxCc,
+                            formula: `${formatInputNumber(row.ccTransactions)} trx × ${formatVariableAmount(
+                              row.trxCc
+                            )} = ${formatAmount2(row.ccTransactions * row.trxCc)}`
+                          }))
+                        : undefined
                   },
                   {
                     id: "unified-payin-eu-trx-apm",
@@ -2106,7 +2134,18 @@ export default function App() {
                     value: euTrxRevenueApm,
                     formula: `${formatCount(
                       payin.successful.byRegionMethod.euApm
-                    )} trx × effective APM fee = ${formatAmount2(euTrxRevenueApm)}`
+                    )} trx × effective APM fee = ${formatAmount2(euTrxRevenueApm)}`,
+                    children:
+                      payinEuPricing.rateMode === "tiered" && payinEuPricing.trxFeeEnabled
+                        ? payinEuPreview.tierRows.map((row, index) => ({
+                            id: `unified-payin-eu-trx-apm-tier-${index}`,
+                            label: `TRX APM ${row.label} (EU)`,
+                            value: row.apmTransactions * row.trxApm,
+                            formula: `${formatInputNumber(row.apmTransactions)} trx × ${formatVariableAmount(
+                              row.trxApm
+                            )} = ${formatAmount2(row.apmTransactions * row.trxApm)}`
+                          }))
+                        : undefined
                   },
                   {
                     id: "unified-payin-eu-failed-trx",
@@ -2138,7 +2177,18 @@ export default function App() {
                         : payinWwPreview.mdrRevenue > 0
                           ? (payinWwPreview.mdrRevenue / Math.max(payin.volume.ww, 1)) * 100
                           : 0
-                    )}%`
+                    )}%`,
+                    children:
+                      payinWwPricing.rateMode === "tiered"
+                        ? payinWwPreview.tierRows.map((row, index) => ({
+                            id: `unified-payin-ww-mdr-revenue-tier-${index}`,
+                            label: `MDR ${row.label} (WW)`,
+                            value: row.mdrRevenue,
+                            formula: `${formatAmountInteger(row.volume)} × ${formatInputNumber(
+                              row.mdrPercent
+                            )}% = ${formatAmount2(row.mdrRevenue)}`
+                          }))
+                        : undefined
                   },
                   {
                     id: "unified-payin-ww-trx-cc",
@@ -2146,7 +2196,18 @@ export default function App() {
                     value: wwTrxRevenueCc,
                     formula: `${formatCount(
                       payin.successful.byRegionMethod.wwCc
-                    )} trx × effective CC fee = ${formatAmount2(wwTrxRevenueCc)}`
+                    )} trx × effective CC fee = ${formatAmount2(wwTrxRevenueCc)}`,
+                    children:
+                      payinWwPricing.rateMode === "tiered" && payinWwPricing.trxFeeEnabled
+                        ? payinWwPreview.tierRows.map((row, index) => ({
+                            id: `unified-payin-ww-trx-cc-tier-${index}`,
+                            label: `TRX CC ${row.label} (WW)`,
+                            value: row.ccTransactions * row.trxCc,
+                            formula: `${formatInputNumber(row.ccTransactions)} trx × ${formatVariableAmount(
+                              row.trxCc
+                            )} = ${formatAmount2(row.ccTransactions * row.trxCc)}`
+                          }))
+                        : undefined
                   },
                   {
                     id: "unified-payin-ww-trx-apm",
@@ -2154,7 +2215,18 @@ export default function App() {
                     value: wwTrxRevenueApm,
                     formula: `${formatCount(
                       payin.successful.byRegionMethod.wwApm
-                    )} trx × effective APM fee = ${formatAmount2(wwTrxRevenueApm)}`
+                    )} trx × effective APM fee = ${formatAmount2(wwTrxRevenueApm)}`,
+                    children:
+                      payinWwPricing.rateMode === "tiered" && payinWwPricing.trxFeeEnabled
+                        ? payinWwPreview.tierRows.map((row, index) => ({
+                            id: `unified-payin-ww-trx-apm-tier-${index}`,
+                            label: `TRX APM ${row.label} (WW)`,
+                            value: row.apmTransactions * row.trxApm,
+                            formula: `${formatInputNumber(row.apmTransactions)} trx × ${formatVariableAmount(
+                              row.trxApm
+                            )} = ${formatAmount2(row.apmTransactions * row.trxApm)}`
+                          }))
+                        : undefined
                   },
                   {
                     id: "unified-payin-ww-failed-trx",
@@ -2194,9 +2266,9 @@ export default function App() {
             value: -payinProfitabilityWithThreeDs.costs.total,
             formula: `Total Payin Costs = EU Costs (${formatAmount2(
               payinProfitability.eu.costs.total
-            )}) + WW Costs (${formatAmount2(payinProfitability.ww.costs.total)}) = ${formatAmount2(
-              payinProfitability.costs.total
-            )} + 3DS Costs (EU ${formatAmount2(
+            )}) + WW Costs (${formatAmount2(
+              payinProfitability.ww.costs.total
+            )}) + 3DS Costs (EU ${formatAmount2(
               threeDsPayinRegionalBreakdown.eu.cost
             )} + WW ${formatAmount2(threeDsPayinRegionalBreakdown.ww.cost)}) = ${formatAmount2(
               payinProfitabilityWithThreeDs.costs.total
@@ -2243,6 +2315,65 @@ export default function App() {
     }
 
     if (calculatorType.payout) {
+      const payoutRevenueChildren: UnifiedProfitabilityNode[] = [
+        {
+          id: "unified-payout-mdr-revenue",
+          label: "MDR Revenue (Payout)",
+          value: payoutProfitability.revenue.mdr,
+          formula:
+            payoutPricing.rateMode === "single"
+              ? `MDR Revenue (Payout) = Monthly Payout Volume (${formatAmountInteger(
+                  payout.normalized.monthlyVolume
+                )}) × effective MDR (${formatInputNumber(
+                  payout.normalized.monthlyVolume > 0
+                    ? (payoutProfitability.revenue.mdr / payout.normalized.monthlyVolume) * 100
+                    : 0
+                )}%) = ${formatAmount2(payoutProfitability.revenue.mdr)}`
+              : `MDR Revenue (Payout) = ${payoutPreview.tierRows
+                  .map(row => `${row.label} (${formatAmount2(row.mdrRevenue)})`)
+                  .join(" + ")} = ${formatAmount2(payoutProfitability.revenue.mdr)}`,
+          children:
+            payoutPricing.rateMode === "tiered"
+              ? payoutPreview.tierRows.map((row, index) => ({
+                  id: `unified-payout-mdr-revenue-tier-${index}`,
+                  label: `MDR ${row.label} (Payout)`,
+                  value: row.mdrRevenue,
+                  formula: `${formatAmountInteger(row.volume)} × ${formatInputNumber(
+                    row.appliedMdrPercent
+                  )}% = ${formatAmount2(row.mdrRevenue)}`
+                }))
+              : undefined
+        },
+        {
+          id: "unified-payout-trx-revenue",
+          label: "TRX Revenue (Payout)",
+          value: payoutProfitability.revenue.trx,
+          formula:
+            payoutPricing.rateMode === "single" || payoutMinimumFeeImpact.warning
+              ? `TRX Revenue (Payout) = Payout Transactions (${formatCount(
+                  payout.normalized.totalTransactions
+                )}) × effective TRX (${formatVariableAmount(
+                  payout.normalized.totalTransactions > 0
+                    ? payoutProfitability.revenue.trx / payout.normalized.totalTransactions
+                    : 0
+                )}) = ${formatAmount2(payoutProfitability.revenue.trx)}`
+              : `TRX Revenue (Payout) = ${payoutPreview.tierRows
+                  .map(row => `${row.label} (${formatAmount2(row.trxRevenue)})`)
+                  .join(" + ")} = ${formatAmount2(payoutProfitability.revenue.trx)}`,
+          children:
+            payoutPricing.rateMode === "tiered" && !payoutMinimumFeeImpact.warning
+              ? payoutPreview.tierRows.map((row, index) => ({
+                  id: `unified-payout-trx-revenue-tier-${index}`,
+                  label: `TRX ${row.label} (Payout)`,
+                  value: row.trxRevenue,
+                  formula: `${formatCount(row.transactions)} trx × ${formatVariableAmount(
+                    row.appliedTrxFee
+                  )} = ${formatAmount2(row.trxRevenue)}`
+                }))
+              : undefined
+        }
+      ];
+
       const payoutCostChildren: UnifiedProfitabilityNode[] = [
         ...payoutProfitability.providerMdrRows.map((row, index) => ({
           id: `unified-payout-provider-mdr-tier-${index}`,
@@ -2286,7 +2417,8 @@ export default function App() {
                 )})) = ${formatAmount2(payoutProfitability.revenue.total)}`
               : `Total Payout Revenue = MDR (${formatAmount2(
                   payoutProfitability.revenue.mdr
-                )}) + TRX (${formatAmount2(payoutProfitability.revenue.trx)})`
+                )}) + TRX (${formatAmount2(payoutProfitability.revenue.trx)})`,
+            children: payoutRevenueChildren
           },
           {
             id: "unified-payout-total-costs",
@@ -2305,21 +2437,41 @@ export default function App() {
       id: "unified-other-revenue-root",
       label: "Other Revenue",
       value: otherRevenueProfitability.netMargin,
-      formula: `Other Revenue = - Settlement Fee (${formatAmount2(
-        Math.abs(otherRevenueProfitability.revenue.settlementFee)
-      )}) + Monthly Minimum Adj (${formatAmount2(
-        otherRevenueProfitability.revenue.monthlyMinimumAdjustment
-      )})`,
+      formula: otherRevenueFormula,
       children: [
         {
           id: "unified-other-settlement-fee",
-          label: "Settlement Fee (Deduction)",
+          label: "Settlement Fee",
           value: otherRevenueProfitability.revenue.settlementFee,
-          formula: `Settlement Fee Deduction = Chargeable Net (${formatAmount2(
-            settlementFeeImpact.chargeableNet
-          )}) × Settlement Rate (${formatInputNumber(settlementFeeRatePercent)}%) = -${formatAmount2(
-            settlementFeeImpact.fee
-          )}`
+          formula: settlementFeeEnabled
+            ? `Settlement Fee = Chargeable Net (${formatAmount2(
+                settlementFeeImpact.chargeableNet
+              )}) × Settlement Rate (${formatInputNumber(settlementFeeRatePercent)}%) = ${formatAmount2(
+                settlementFeeImpact.fee
+              )}`
+            : `Settlement Fee = €0 because Settlement Fee toggle is OFF (reference if enabled: Chargeable Net ${formatAmount2(
+                settlementFeeImpact.chargeableNet
+              )} × Settlement Rate ${formatInputNumber(settlementFeeRatePercent)}% = ${formatAmount2(
+                settlementFeeImpact.chargeableNet * (settlementFeeRatePercent / 100)
+              )})`,
+          children: [
+            {
+              id: "unified-other-settlement-chargeable-net",
+              label: "Chargeable Net",
+              value: settlementFeeImpact.chargeableNet,
+              formula: `Chargeable Net = max(0, (Total Payin Volume (${formatAmountInteger(
+                calculatorType.payin ? payin.normalized.monthlyVolume : 0
+              )}) - Total Payout Volume (${formatAmountInteger(
+                calculatorType.payout ? payout.normalized.monthlyVolume : 0
+              )})) - (Total Payin Fee (${formatAmount2(
+                payinBaseRevenue + threeDsImpact.revenue
+              )}) + Total Payout Fee (${formatAmount2(
+                payoutRevenueAdjusted
+              )}))) = max(0, ${formatAmount2(settlementFeeImpact.baseNet)}) = ${formatAmount2(
+                settlementFeeImpact.chargeableNet
+              )}`
+            }
+          ]
         },
         {
           id: "unified-other-monthly-minimum",
@@ -2377,16 +2529,20 @@ export default function App() {
     payin.successful.byRegionMethod.euCc,
     payin.successful.byRegionMethod.wwApm,
     payin.successful.byRegionMethod.wwCc,
+    payin.normalized.monthlyVolume,
     payin.attempts.total,
     payin.successful.total,
     payin.volume.eu,
     payin.volume.ww,
+    payinBaseRevenue,
     payinEuPreview.mdrRevenue,
+    payinEuPreview.tierRows,
     payinEuPreview.trxRevenue,
     payinEuPricing.model,
     payinEuPricing.rateMode,
     payinEuPricing.schemeFeesPercent,
     payinEuPricing.single.mdrPercent,
+    payinEuPricing.trxFeeEnabled,
     payinProfitability.costs.providerMdr,
     payinProfitability.costs.providerTrx,
     payinProfitability.costs.schemeFees,
@@ -2417,11 +2573,13 @@ export default function App() {
     payinProfitability.ww.providerTrxBreakdown.ccCost,
     payinProfitability.ww.revenue.total,
     payinWwPreview.mdrRevenue,
+    payinWwPreview.tierRows,
     payinWwPreview.trxRevenue,
     payinWwPricing.model,
     payinWwPricing.rateMode,
     payinWwPricing.schemeFeesPercent,
     payinWwPricing.single.mdrPercent,
+    payinWwPricing.trxFeeEnabled,
     payoutProfitability.costs.providerMdr,
     payoutProfitability.costs.providerTrx,
     payoutProfitability.costs.total,
@@ -2430,15 +2588,22 @@ export default function App() {
     payoutProfitability.revenue.mdr,
     payoutProfitability.revenue.total,
     payoutProfitability.revenue.trx,
+    payoutRevenueAdjusted,
+    payout.normalized.monthlyVolume,
     payout.normalized.totalTransactions,
+    payoutPreview.tierRows,
+    payoutPricing.rateMode,
     payoutMinimumFeeImpact.appliedPerTransactionRevenue,
     payoutMinimumFeeImpact.baseRevenue,
     payoutMinimumFeeImpact.warning,
     revShareIntroducer.sharePercent,
     revShareIntroducer.totalCosts,
     revShareIntroducer.totalRevenue,
+    settlementFeeImpact.baseNet,
     settlementFeeImpact.chargeableNet,
+    settlementFeeEnabled,
     settlementFeeRatePercent,
+    threeDsImpact.revenue,
     threeDsPayinRegionalBreakdown,
     threeDsRevenuePerSuccessfulTransaction,
     totalProfitability.introducerCommission,
@@ -4115,8 +4280,8 @@ export default function App() {
                   <MetricCard name="3DS Revenue" value={formatAmount2(threeDsImpact.revenue)} />
                   <MetricCard name="3DS Cost" value={formatAmount2(threeDsImpact.cost)} />
                   <MetricCard
-                    name="Settlement Fee Deduction"
-                    value={formatSignedAmount(-settlementFeeImpact.fee)}
+                    name="Settlement Fee"
+                    value={formatAmount2(settlementFeeImpact.fee)}
                   />
                   <MetricCard
                     name="Monthly Minimum Fee Uplift"
@@ -4184,16 +4349,26 @@ export default function App() {
                         ) - Payout Volume (
                         {formatAmountInteger(calculatorType.payout ? payout.normalized.monthlyVolume : 0)}
                         )) - (Payin Fees ALL ({formatAmount2(payinBaseRevenue + threeDsImpact.revenue)})
-                        + Payout Fees ALL ({formatAmount2(payoutBaseRevenue)})) ={" "}
+                        + Payout Fees ALL ({formatAmount2(payoutRevenueAdjusted)})) ={" "}
                         {formatAmount2(settlementFeeImpact.baseNet)}
                       </FormulaLine>
                     ) : null}
                     {!settlementIncluded ? (
                       <FormulaLine>
-                        Formula: Settlement Fee = Chargeable Net (
-                        {formatAmount2(settlementFeeImpact.chargeableNet)}) × Rate (
-                        {formatInputNumber(settlementFeeRatePercent)}%) ={" "}
-                        {formatAmount2(settlementFeeImpact.fee)}
+                        {settlementFeeEnabled
+                          ? `Formula: Settlement Fee = Chargeable Net (${formatAmount2(
+                              settlementFeeImpact.chargeableNet
+                            )}) × Rate (${formatInputNumber(
+                              settlementFeeRatePercent
+                            )}%) = ${formatAmount2(settlementFeeImpact.fee)}`
+                          : `Formula: Settlement Fee = €0 because Settlement Fee toggle is OFF (reference if enabled: Chargeable Net ${formatAmount2(
+                              settlementFeeImpact.chargeableNet
+                            )} × Rate ${formatInputNumber(
+                              settlementFeeRatePercent
+                            )}% = ${formatAmount2(
+                              settlementFeeImpact.chargeableNet *
+                                (settlementFeeRatePercent / 100)
+                            )})`}
                       </FormulaLine>
                     ) : null}
                     <FormulaLine>
@@ -5063,10 +5238,15 @@ export default function App() {
                         : ""
                     }
                   >
-                    Formula: Other Revenue Net = - Settlement Fee (
-                    {formatAmount2(Math.abs(otherRevenueProfitability.revenue.settlementFee))}) + Monthly Minimum Adj (
-                    {formatAmount2(otherRevenueProfitability.revenue.monthlyMinimumAdjustment)}) ={" "}
-                    {formatAmount2(otherRevenueProfitability.netMargin)}
+                    {otherRevenueProfitability.revenue.monthlyMinimumAdjustment > 0
+                      ? `Formula: Other Revenue Net = Settlement Fee (${formatAmount2(
+                          otherRevenueProfitability.revenue.settlementFee
+                        )}) + Monthly Minimum Adj (${formatAmount2(
+                          otherRevenueProfitability.revenue.monthlyMinimumAdjustment
+                        )}) = ${formatAmount2(otherRevenueProfitability.netMargin)}`
+                      : `Formula: Other Revenue Net = Settlement Fee (${formatAmount2(
+                          otherRevenueProfitability.revenue.settlementFee
+                        )}) = ${formatAmount2(otherRevenueProfitability.netMargin)}`}
                   </FormulaLine>
                 </div>
                 {hasThreeDsBaseAmbiguity ? (
