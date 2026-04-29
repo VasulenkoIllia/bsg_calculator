@@ -422,6 +422,13 @@ describe("App UI", () => {
     expect(
       screen.getAllByText(/Formula \(Unified\): Other Revenue = Settlement Fee/).length
     ).toBeGreaterThanOrEqual(1);
+    await user.click(screen.getByRole("checkbox", { name: "Settlement Included" }));
+    expect(
+      screen.getByText(
+        /Formula \(Unified\): Settlement Fee = €0 because Settlement Included is ON in Zone 3/
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText("Chargeable Net")).toBeInTheDocument();
 
     await user.click(screen.getByRole("checkbox", { name: "Show Formulas" }));
     expect(screen.queryByText(/Formula \(Unified\): Our Margin =/)).not.toBeInTheDocument();

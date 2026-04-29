@@ -175,6 +175,7 @@ Use this file to record meaningful technical decisions for the project.
   - Product also requested compact formula output when `Monthly Minimum Adj = €0`.
 - Decision:
   - Keep full `Chargeable Net` calculation visible regardless of Settlement toggle.
+  - When `Settlement Included` is ON in Zone 3, the unified settlement line must explicitly state this reason for `€0` (instead of attributing `€0` to Settlement toggle state).
   - When Settlement toggle is OFF, show `Settlement Fee = €0` with reference formula (`Chargeable Net × Rate`) as informational.
   - In `Other Revenue` formula line, show:
     - only `Settlement Fee` when `Monthly Minimum Adj = 0`,

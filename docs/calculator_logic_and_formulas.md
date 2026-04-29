@@ -312,6 +312,7 @@ Current defaults:
 
 Visibility:
 - Settlement fee block is visible only when `settlementIncludedInPricing === false`.
+- If `settlementIncludedInPricing === true`, unified trace must show `Settlement Fee = €0 because Settlement Included is ON in Zone 3`.
 - If `settlementIncludedInPricing === false` but Settlement Fee toggle is OFF, settlement formula trace shows that final Settlement Fee is `€0` and keeps the computed reference (`Chargeable Net × Rate`) for transparency.
 
 Math:

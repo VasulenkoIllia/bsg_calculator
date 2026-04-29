@@ -1080,6 +1080,14 @@ export default function App() {
           { label: "Payout MDR minimum floor", value: `${formatInputNumber(PAYOUT_MDR_MIN_PERCENT)}%` },
           { label: "Payout TRX minimum floor", value: formatVariableAmount(PAYOUT_TRX_MIN_FEE) },
           { label: "Payout TRX low-fee warning", value: `< ${formatVariableAmount(PAYOUT_TRX_LOW_WARNING_FEE)}` },
+          {
+            label: "Payout minimum fee default (Zone 4)",
+            value: formatVariableAmount(DEFAULT_PAYOUT_MINIMUM_FEE_CONFIG.minimumFeePerTransaction)
+          },
+          {
+            label: "Monthly minimum revenue default (Zone 4)",
+            value: formatAmountInteger(DEFAULT_MONTHLY_MINIMUM_FEE_CONFIG.minimumMonthlyRevenue)
+          },
           { label: "Payout minimum fee normalization", value: "Always round up to the next €0.10" }
         ]
       },
@@ -2530,7 +2538,9 @@ export default function App() {
           id: "unified-other-settlement-fee",
           label: "Settlement Fee",
           value: otherRevenueProfitability.revenue.settlementFee,
-          formula: settlementFeeEnabled
+          formula: !settlementFeeImpact.visible
+            ? "Settlement Fee = €0 because Settlement Included is ON in Zone 3"
+            : settlementFeeEnabled
             ? `Settlement Fee = Chargeable Net (${formatAmount2(
                 settlementFeeImpact.chargeableNet
               )}) × Settlement Rate (${formatInputNumber(settlementFeeRatePercent)}%) = ${formatAmount2(
@@ -2688,8 +2698,10 @@ export default function App() {
     revShareIntroducer.totalRevenue,
     settlementFeeImpact.baseNet,
     settlementFeeImpact.chargeableNet,
+    settlementFeeImpact.visible,
     settlementFeeEnabled,
     settlementFeeRatePercent,
+    settlementIncluded,
     threeDsImpact.revenue,
     threeDsPayinRegionalBreakdown,
     threeDsRevenuePerSuccessfulTransaction,
