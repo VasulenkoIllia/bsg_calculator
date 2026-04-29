@@ -207,6 +207,23 @@ Use this file to record meaningful technical decisions for the project.
   - Unified tree hierarchy is cleaner and avoids duplicate values for Payin net margin.
   - No Payout 3DS rows are added because the current 3DS rule is Payin-based.
 
+### Decision: Formula Display Precision for Variable Fees
+- Date: 2026-04-29
+- Context:
+  - Formula factors with decimal fees (for example `€2.5`, `€0.22`, `€0.27`) were rendered as integers in
+    several Zone 3/4/5 and unified formula rows because integer money formatter was reused for both totals
+    and variable coefficients.
+  - This created visible contradictions like `attempts × €0 = €59,400`.
+- Decision:
+  - Keep integer money formatting for final aggregate monetary outputs.
+  - Use variable-fee formatting (up to 2 decimals) for fee coefficients in formulas, warnings, and
+    contract-preview per-transaction values.
+  - Apply the rule consistently to TRX fee factors, 3DS per-attempt/per-successful factors, payout
+    minimum per-TRX factors, and configured/applied minimum-floor fee values.
+- Consequences:
+  - Formula traces are mathematically readable and match configured values.
+  - Business calculations and totals remain unchanged; this is a display-precision correction.
+
 ### Decision: Constraint Helper Warning Style
 - Date: 2026-04-29
 - Context:

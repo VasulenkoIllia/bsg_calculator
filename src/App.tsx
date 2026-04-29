@@ -354,6 +354,14 @@ function formatInputNumber(value: number): string {
   });
 }
 
+function formatVariableAmount(value: number): string {
+  if (!Number.isFinite(value)) return "€0";
+  return `€${value.toLocaleString("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2
+  })}`;
+}
+
 function formatSignedAmount(value: number): string {
   if (value < 0) {
     return `-${formatAmount2(Math.abs(value))}`;
@@ -1991,7 +1999,7 @@ export default function App() {
           value: -regionProfitability.providerTrxBreakdown.ccCost,
           formula: `${formatCount(
             regionProfitability.providerTrxBreakdown.attemptsCc
-          )} attempts × ${formatAmount2(DEFAULT_PROVIDER_PAYIN_TRX_CC_COST)} = ${formatAmount2(
+          )} attempts × ${formatVariableAmount(DEFAULT_PROVIDER_PAYIN_TRX_CC_COST)} = ${formatAmount2(
             regionProfitability.providerTrxBreakdown.ccCost
           )}`
         },
@@ -2001,7 +2009,7 @@ export default function App() {
           value: -regionProfitability.providerTrxBreakdown.apmCost,
           formula: `${formatCount(
             regionProfitability.providerTrxBreakdown.attemptsApm
-          )} attempts × ${formatAmount2(DEFAULT_PROVIDER_PAYIN_TRX_APM_COST)} = ${formatAmount2(
+          )} attempts × ${formatVariableAmount(DEFAULT_PROVIDER_PAYIN_TRX_APM_COST)} = ${formatAmount2(
             regionProfitability.providerTrxBreakdown.apmCost
           )}`
         }
@@ -2171,7 +2179,7 @@ export default function App() {
                 value: threeDsPayinRegionalBreakdown.eu.revenue,
                 formula: `3DS Revenue (EU) = Successful Payin EU Transactions (${formatCount(
                   threeDsPayinRegionalBreakdown.eu.successfulTransactions
-                )}) × 3DS Revenue per Successful (${formatAmount2(
+                )}) × 3DS Revenue per Successful (${formatVariableAmount(
                   threeDsRevenuePerSuccessfulTransaction
                 )})`
               },
@@ -2181,7 +2189,7 @@ export default function App() {
                 value: threeDsPayinRegionalBreakdown.ww.revenue,
                 formula: `3DS Revenue (WW) = Successful Payin WW Transactions (${formatCount(
                   threeDsPayinRegionalBreakdown.ww.successfulTransactions
-                )}) × 3DS Revenue per Successful (${formatAmount2(
+                )}) × 3DS Revenue per Successful (${formatVariableAmount(
                   threeDsRevenuePerSuccessfulTransaction
                 )})`
               }
@@ -2221,7 +2229,7 @@ export default function App() {
                 value: -threeDsPayinRegionalBreakdown.eu.cost,
                 formula: `3DS Costs (EU) = EU Payin Attempts (${formatCount(
                   threeDsPayinRegionalBreakdown.eu.attempts
-                )}) × Provider 3DS Cost per Attempt (${formatAmount2(
+                )}) × Provider 3DS Cost per Attempt (${formatVariableAmount(
                   DEFAULT_3DS_FEE_CONFIG.providerCostPerAttempt
                 )})`
               },
@@ -2231,7 +2239,7 @@ export default function App() {
                 value: -threeDsPayinRegionalBreakdown.ww.cost,
                 formula: `3DS Costs (WW) = WW Payin Attempts (${formatCount(
                   threeDsPayinRegionalBreakdown.ww.attempts
-                )}) × Provider 3DS Cost per Attempt (${formatAmount2(
+                )}) × Provider 3DS Cost per Attempt (${formatVariableAmount(
                   DEFAULT_3DS_FEE_CONFIG.providerCostPerAttempt
                 )})`
               }
@@ -2255,7 +2263,7 @@ export default function App() {
           id: `unified-payout-provider-trx-tier-${index}`,
           label: `Provider TRX ${row.label} (Payout)`,
           value: -row.cost,
-          formula: `${formatCount(row.transactions)} trx × ${formatAmount2(
+          formula: `${formatCount(row.transactions)} trx × ${formatVariableAmount(
             row.feePerTransaction
           )} = ${formatAmount2(row.cost)}`
         }))
@@ -2277,8 +2285,8 @@ export default function App() {
             value: payoutProfitability.revenue.total,
             formula: payoutMinimumFeeImpact.warning
               ? `Total Payout Revenue (minimum applied) = max(Base Payout Revenue (${formatAmount2(
-                  payoutMinimumFeeImpact.baseRevenue
-                )}), Minimum Per-TRX (${formatAmount2(
+                payoutMinimumFeeImpact.baseRevenue
+                )}), Minimum Per-TRX (${formatVariableAmount(
                   payoutMinimumFeeImpact.appliedPerTransactionRevenue
                 )}) × Transactions (${formatCount(
                   payout.normalized.totalTransactions
@@ -3360,11 +3368,11 @@ export default function App() {
                               {payinEuPricing.trxFeeEnabled
                                 ? `Successful EU CC (${formatCount(
                                     payin.successful.byRegionMethod.euCc
-                                  )}) × TRX CC (${formatAmount2(
+                                  )}) × TRX CC (${formatVariableAmount(
                                     payinEuPricing.single.trxCc
                                   )}) + Successful EU APM (${formatCount(
                                     payin.successful.byRegionMethod.euApm
-                                  )}) × TRX APM (${formatAmount2(
+                                  )}) × TRX APM (${formatVariableAmount(
                                     payinEuPricing.single.trxApm
                                   )})`
                                 : "TRX disabled"}
@@ -3379,8 +3387,10 @@ export default function App() {
                                 {row.label}: Volume {formatAmountInteger(row.volume)} × MDR{" "}
                                 {formatInputNumber(row.mdrPercent)}% = {formatAmount2(row.mdrRevenue)};
                                 TRX = ({formatInputNumber(row.ccTransactions)} CC trx ×{" "}
-                                {formatAmount2(row.trxCc)}) + ({formatInputNumber(row.apmTransactions)}{" "}
-                                APM trx × {formatAmount2(row.trxApm)}) ={" "}
+                                {formatVariableAmount(row.trxCc)}) + ({formatInputNumber(
+                                  row.apmTransactions
+                                )}{" "}
+                                APM trx × {formatVariableAmount(row.trxApm)}) ={" "}
                                 {formatAmount2(row.trxRevenue)}
                               </FormulaLine>
                             ))}
@@ -3579,11 +3589,11 @@ export default function App() {
                               {payinWwPricing.trxFeeEnabled
                                 ? `Successful WW CC (${formatCount(
                                     payin.successful.byRegionMethod.wwCc
-                                  )}) × TRX CC (${formatAmount2(
+                                  )}) × TRX CC (${formatVariableAmount(
                                     payinWwPricing.single.trxCc
                                   )}) + Successful WW APM (${formatCount(
                                     payin.successful.byRegionMethod.wwApm
-                                  )}) × TRX APM (${formatAmount2(
+                                  )}) × TRX APM (${formatVariableAmount(
                                     payinWwPricing.single.trxApm
                                   )})`
                                 : "TRX disabled"}
@@ -3598,8 +3608,10 @@ export default function App() {
                                 {row.label}: Volume {formatAmountInteger(row.volume)} × MDR{" "}
                                 {formatInputNumber(row.mdrPercent)}% = {formatAmount2(row.mdrRevenue)};
                                 TRX = ({formatInputNumber(row.ccTransactions)} CC trx ×{" "}
-                                {formatAmount2(row.trxCc)}) + ({formatInputNumber(row.apmTransactions)}{" "}
-                                APM trx × {formatAmount2(row.trxApm)}) ={" "}
+                                {formatVariableAmount(row.trxCc)}) + ({formatInputNumber(
+                                  row.apmTransactions
+                                )}{" "}
+                                APM trx × {formatVariableAmount(row.trxApm)}) ={" "}
                                 {formatAmount2(row.trxRevenue)}
                               </FormulaLine>
                             ))}
@@ -3670,9 +3682,9 @@ export default function App() {
                         step={0.01}
                         helper={
                           payoutSingleRateMinimumAdjustment?.trxMinimumApplied
-                            ? `Configured ${formatAmount2(
+                            ? `Configured ${formatVariableAmount(
                                 payoutSingleRateMinimumAdjustment.configuredTrxFee
-                              )} -> Applied ${formatAmount2(
+                              )} -> Applied ${formatVariableAmount(
                                 payoutSingleRateMinimumAdjustment.appliedTrxFee
                               )} (minimum floor).`
                             : undefined
@@ -3737,9 +3749,9 @@ export default function App() {
                               step={0.01}
                               helper={
                                 payoutPreview.minimumAdjustments[index]?.trxMinimumApplied
-                                  ? `Configured ${formatAmount2(
+                                  ? `Configured ${formatVariableAmount(
                                       payoutPreview.minimumAdjustments[index].configuredTrxFee
-                                    )} -> Applied ${formatAmount2(
+                                    )} -> Applied ${formatVariableAmount(
                                       payoutPreview.minimumAdjustments[index].appliedTrxFee
                                     )} (minimum floor).`
                                   : undefined
@@ -3771,10 +3783,10 @@ export default function App() {
                             : `MDR ${formatInputNumber(adjustment.appliedMdrPercent)}%`}{" "}
                           |{" "}
                           {adjustment.trxMinimumApplied
-                            ? `TRX ${formatAmount2(
+                            ? `TRX ${formatVariableAmount(
                                 adjustment.configuredTrxFee
-                              )} -> ${formatAmount2(adjustment.appliedTrxFee)}`
-                            : `TRX ${formatAmount2(adjustment.appliedTrxFee)}`}
+                              )} -> ${formatVariableAmount(adjustment.appliedTrxFee)}`
+                            : `TRX ${formatVariableAmount(adjustment.appliedTrxFee)}`}
                         </p>
                       ))}
                     </div>
@@ -3819,7 +3831,7 @@ export default function App() {
                           <FormulaLine>
                             Formula: TRX Revenue = Payout Transactions (
                             {formatCount(payout.normalized.totalTransactions)}) × TRX Fee (
-                            {formatAmount2(
+                            {formatVariableAmount(
                               payoutSingleRateMinimumAdjustment?.appliedTrxFee ??
                                 payoutPricing.single.trxFee
                             )}
@@ -3829,10 +3841,14 @@ export default function App() {
                           {payoutSingleRateMinimumAdjustment?.trxMinimumApplied ? (
                             <FormulaLine className="border-amber-300 bg-amber-50 text-amber-900">
                               Minimum TRX floor applied: configured{" "}
-                              {formatAmount2(payoutSingleRateMinimumAdjustment.configuredTrxFee)} {"->"}{" "}
-                              used in calculation{" "}
-                              {formatAmount2(payoutSingleRateMinimumAdjustment.appliedTrxFee)} (min{" "}
-                              {formatAmount2(PAYOUT_TRX_MIN_FEE)}).
+                              {formatVariableAmount(
+                                payoutSingleRateMinimumAdjustment.configuredTrxFee
+                              )}{" "}
+                              {"->"} used in calculation{" "}
+                              {formatVariableAmount(
+                                payoutSingleRateMinimumAdjustment.appliedTrxFee
+                              )}{" "}
+                              (min {formatVariableAmount(PAYOUT_TRX_MIN_FEE)}).
                             </FormulaLine>
                           ) : null}
                         </>
@@ -3849,11 +3865,11 @@ export default function App() {
                                 : ""}{" "}
                               = {formatAmount2(row.mdrRevenue)}; TRX = {formatInputNumber(
                                 row.transactions
-                              )} trx × {formatAmount2(row.appliedTrxFee)}
+                              )} trx × {formatVariableAmount(row.appliedTrxFee)}
                               {row.trxMinimumApplied
-                                ? ` (configured ${formatAmount2(
+                                ? ` (configured ${formatVariableAmount(
                                     row.configuredTrxFee
-                                  )} -> minimum ${formatAmount2(row.appliedTrxFee)})`
+                                  )} -> minimum ${formatVariableAmount(row.appliedTrxFee)})`
                                 : ""}{" "}
                               ={" "}
                               {formatAmount2(row.trxRevenue)}
@@ -3963,7 +3979,7 @@ export default function App() {
                       {hasThreeDsBaseAmbiguity ? (
                         <SpecAmbiguityNotice
                           title="База для Provider 3DS Cost: attempts чи successful?"
-                          currentValue={`Provider 3DS Cost = ${formatAmount2(
+                          currentValue={`Provider 3DS Cost = ${formatVariableAmount(
                             DEFAULT_3DS_FEE_CONFIG.providerCostPerAttempt
                           )} × Total Payin Attempts`}
                           sourceContext="У DOCX є розбіжність: місцями згадується база Total Attempts, але в детальній логіці описано розрахунок від Successful Transactions."
@@ -4089,11 +4105,11 @@ export default function App() {
                 <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   <MetricCard
                     name="Payout Base Per-TRX Revenue"
-                    value={formatAmount2(payoutMinimumFeeImpact.perTransactionRevenue)}
+                    value={formatVariableAmount(payoutMinimumFeeImpact.perTransactionRevenue)}
                   />
                   <MetricCard
                     name="Payout Applied Per-TRX Revenue"
-                    value={formatAmount2(payoutMinimumFeeImpact.appliedPerTransactionRevenue)}
+                    value={formatVariableAmount(payoutMinimumFeeImpact.appliedPerTransactionRevenue)}
                   />
                   <MetricCard
                     name="Payout Revenue After Min Fee"
@@ -4125,14 +4141,14 @@ export default function App() {
                         Formula: Payout Minimum Per-TRX Revenue = Base Payout Revenue (
                         {formatAmount2(payoutMinimumFeeImpact.baseRevenue)}) / Payout Transactions (
                         {formatCount(payout.normalized.totalTransactions)}) ={" "}
-                        {formatAmount2(payoutMinimumFeeImpact.perTransactionRevenue)}
+                        {formatVariableAmount(payoutMinimumFeeImpact.perTransactionRevenue)}
                       </FormulaLine>
                     ) : null}
                     {calculatorType.payout ? (
                       <FormulaLine>
                         Formula: Payout Revenue After Min Fee = max(Base Payout Revenue (
                         {formatAmount2(payoutMinimumFeeImpact.baseRevenue)}), Minimum Fee per TRX (
-                        {formatAmount2(payoutMinimumFeePerTransaction)}) × Payout Transactions (
+                        {formatVariableAmount(payoutMinimumFeePerTransaction)}) × Payout Transactions (
                         {formatCount(payout.normalized.totalTransactions)})) ={" "}
                         {formatAmount2(payoutMinimumFeeImpact.adjustedRevenue)}
                       </FormulaLine>
@@ -4149,7 +4165,7 @@ export default function App() {
                       <FormulaLine>
                         Formula: 3DS Revenue = Successful Payin Transactions (
                         {formatCount(threeDsImpact.successfulTransactions)}) × 3DS Revenue per Successful (
-                        {formatAmount2(threeDsRevenuePerSuccessfulTransaction)}) (if enabled) ={" "}
+                        {formatVariableAmount(threeDsRevenuePerSuccessfulTransaction)}) (if enabled) ={" "}
                         {formatAmount2(threeDsImpact.revenue)}
                       </FormulaLine>
                     ) : null}
@@ -4162,7 +4178,7 @@ export default function App() {
                         }
                       >
                         Formula: 3DS Cost = Total Payin Attempts ({formatCount(payin.attempts.total)}) ×
-                        Provider 3DS Cost per Attempt ({formatAmount2(
+                        Provider 3DS Cost per Attempt ({formatVariableAmount(
                           DEFAULT_3DS_FEE_CONFIG.providerCostPerAttempt
                         )}) (always) ={" "}
                         {formatAmount2(threeDsImpact.cost)}
@@ -4197,9 +4213,9 @@ export default function App() {
                       <FormulaLine>
                         Formula: Failed TRX All-Failed Revenue = Failed CC (
                         {formatCount(failedTrxImpact.failedCcTransactions)}) × CC TRX fee (
-                        {formatAmount2(effectiveFailedTrxFees.ccFee)}) + Failed APM (
+                        {formatVariableAmount(effectiveFailedTrxFees.ccFee)}) + Failed APM (
                         {formatCount(failedTrxImpact.failedApmTransactions)}) × APM TRX fee (
-                        {formatAmount2(effectiveFailedTrxFees.apmFee)}) ={" "}
+                        {formatVariableAmount(effectiveFailedTrxFees.apmFee)}) ={" "}
                         {formatAmount2(failedTrxImpact.allFailedRevenue)}
                       </FormulaLine>
                     ) : null}
@@ -4297,7 +4313,7 @@ export default function App() {
                         {formatInputNumber(
                           contractSummarySettings.payoutMinimumFeeThresholdMillion
                         )}
-                        M: {formatAmount2(contractSummarySettings.payoutMinimumFeePerTransaction)} /
+                        M: {formatVariableAmount(contractSummarySettings.payoutMinimumFeePerTransaction)} /
                         &gt;€
                         {formatInputNumber(
                           contractSummarySettings.payoutMinimumFeeThresholdMillion
@@ -4340,7 +4356,9 @@ export default function App() {
                           {formatInputNumber(
                             contractSummarySettings.payoutMinimumFeeEuThresholdMillion
                           )}
-                          M: {formatAmount2(contractSummarySettings.payoutMinimumFeeEuPerTransaction)} /
+                          M: {formatVariableAmount(
+                            contractSummarySettings.payoutMinimumFeeEuPerTransaction
+                          )} /
                           &gt;€
                           {formatInputNumber(
                             contractSummarySettings.payoutMinimumFeeEuThresholdMillion
@@ -4381,7 +4399,9 @@ export default function App() {
                           {formatInputNumber(
                             contractSummarySettings.payoutMinimumFeeWwThresholdMillion
                           )}
-                          M: {formatAmount2(contractSummarySettings.payoutMinimumFeeWwPerTransaction)} /
+                          M: {formatVariableAmount(
+                            contractSummarySettings.payoutMinimumFeeWwPerTransaction
+                          )} /
                           &gt;€
                           {formatInputNumber(
                             contractSummarySettings.payoutMinimumFeeWwThresholdMillion
@@ -4638,7 +4658,7 @@ export default function App() {
                   {hasThreeDsBaseAmbiguity ? (
                     <SpecAmbiguityNotice
                       title="Фінальний блок: база для Provider 3DS Cost — attempts чи successful?"
-                      currentValue={`Provider 3DS cost = ${formatAmount2(
+                      currentValue={`Provider 3DS cost = ${formatVariableAmount(
                         DEFAULT_3DS_FEE_CONFIG.providerCostPerAttempt
                       )} × Total Payin Attempts`}
                       sourceContext="У DOCX є розбіжність щодо бази для 3DS cost: Total Attempts або Successful Transactions."
@@ -4657,15 +4677,17 @@ export default function App() {
                       <p className="text-sm font-extrabold">Minimum Fee Applied: Payout</p>
                       <p className="mt-1">
                         Base per-TRX fee from pricing:{" "}
-                        <strong>{formatAmount2(payoutMinimumFeeImpact.perTransactionRevenue)}</strong>
+                        <strong>{formatVariableAmount(payoutMinimumFeeImpact.perTransactionRevenue)}</strong>
                       </p>
                       <p>
                         Configured minimum per-TRX fee:{" "}
-                        <strong>{formatAmount2(payoutMinimumFeePerTransaction)}</strong>
+                        <strong>{formatVariableAmount(payoutMinimumFeePerTransaction)}</strong>
                       </p>
                       <p>
                         Used in totals (per-TRX):{" "}
-                        <strong>{formatAmount2(payoutMinimumFeeImpact.appliedPerTransactionRevenue)}</strong>
+                        <strong>
+                          {formatVariableAmount(payoutMinimumFeeImpact.appliedPerTransactionRevenue)}
+                        </strong>
                       </p>
                       <p className="mt-1">
                         Base payout revenue: <strong>{formatAmount2(payoutMinimumFeeImpact.baseRevenue)}</strong>
@@ -4974,10 +4996,12 @@ export default function App() {
                                 )}% -> ${formatInputNumber(adjustment.appliedMdrPercent)}%`
                               : `MDR ${formatInputNumber(adjustment.appliedMdrPercent)}%`;
                             const trxPart = adjustment.trxMinimumApplied
-                              ? `TRX ${formatAmount2(adjustment.configuredTrxFee)} -> ${formatAmount2(
+                              ? `TRX ${formatVariableAmount(
+                                  adjustment.configuredTrxFee
+                                )} -> ${formatVariableAmount(
                                   adjustment.appliedTrxFee
                                 )}`
-                              : `TRX ${formatAmount2(adjustment.appliedTrxFee)}`;
+                              : `TRX ${formatVariableAmount(adjustment.appliedTrxFee)}`;
                             return `${adjustment.scopeLabel}: ${mdrPart}, ${trxPart}`;
                           })
                           .join(" | ")}
@@ -4987,8 +5011,10 @@ export default function App() {
                     {payoutMinimumFeeImpact.warning ? (
                       <FormulaLine className="border-amber-300 bg-amber-50 text-amber-900">
                         Minimum rule used in totals: Base per-TRX fee (
-                        {formatAmount2(payoutMinimumFeeImpact.perTransactionRevenue)}) → Applied per-TRX
-                        fee ({formatAmount2(payoutMinimumFeeImpact.appliedPerTransactionRevenue)}); Base
+                        {formatVariableAmount(payoutMinimumFeeImpact.perTransactionRevenue)}) → Applied
+                        per-TRX fee ({formatVariableAmount(
+                          payoutMinimumFeeImpact.appliedPerTransactionRevenue
+                        )}); Base
                         payout revenue ({formatAmount2(payoutMinimumFeeImpact.baseRevenue)}) → Used in
                         totals ({formatAmount2(payoutMinimumFeeImpact.adjustedRevenue)}).
                       </FormulaLine>
@@ -5108,8 +5134,9 @@ export default function App() {
             {payoutMinimumFeeImpact.warning ? (
               <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                 {payoutMinimumFeeImpact.warning} Used in totals: per-TRX fee{" "}
-                {formatAmount2(payoutMinimumFeeImpact.perTransactionRevenue)} →{" "}
-                {formatAmount2(payoutMinimumFeeImpact.appliedPerTransactionRevenue)}; payout revenue{" "}
+                {formatVariableAmount(payoutMinimumFeeImpact.perTransactionRevenue)} →{" "}
+                {formatVariableAmount(payoutMinimumFeeImpact.appliedPerTransactionRevenue)}; payout
+                revenue{" "}
                 {formatAmount2(payoutMinimumFeeImpact.baseRevenue)} →{" "}
                 {formatAmount2(payoutMinimumFeeImpact.adjustedRevenue)}.
               </p>
@@ -5133,10 +5160,10 @@ export default function App() {
                         )}%`
                       : `MDR ${formatInputNumber(adjustment.appliedMdrPercent)}%`;
                     const trxPart = adjustment.trxMinimumApplied
-                      ? `TRX ${formatAmount2(adjustment.configuredTrxFee)} → ${formatAmount2(
+                      ? `TRX ${formatVariableAmount(adjustment.configuredTrxFee)} → ${formatVariableAmount(
                           adjustment.appliedTrxFee
                         )}`
-                      : `TRX ${formatAmount2(adjustment.appliedTrxFee)}`;
+                      : `TRX ${formatVariableAmount(adjustment.appliedTrxFee)}`;
                     return `${adjustment.scopeLabel}: ${mdrPart}, ${trxPart}`;
                   })
                   .join(" | ")}

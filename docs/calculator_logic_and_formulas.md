@@ -70,7 +70,9 @@ From `src/domain/calculator/shared/math.ts`:
 Formatting from `src/domain/calculator/shared/format.ts`:
 
 - `formatAmountInteger` -> `€` + integer formatting.
-- `formatAmount2` currently truncates decimals before rendering (integer display).
+- `formatAmount2` truncates decimals before rendering and is used for final aggregate money amounts/cards.
+- `formatVariableAmount` keeps variable fee values with up to 2 decimals and is used in formula factors
+  (for example `TRX fee`, `3DS fee/revenue per transaction`, `minimum per-TRX` values).
 
 ## 3. Zone 0 (Calculator Type)
 
