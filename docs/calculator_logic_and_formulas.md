@@ -431,6 +431,13 @@ Zone 5 payin cost breakdown display:
 - Net:
   - `netMargin = revenue.total - costs.total`
 
+Zone 5 payout display rule:
+- In the unified tree, `Payout Revenue & Costs` shows the net-margin formula on the parent row.
+- A separate `Payout Net Margin` child row is not shown to avoid duplicate value display.
+- `Total Payout Costs` expands into:
+  - provider MDR tier rows,
+  - provider TRX tier rows with transaction-count formula breakdown.
+
 ### 8.4 Other revenue profitability
 
 - `revenue.total = -settlementFeeDeduction + monthlyMinimumAdjustment`

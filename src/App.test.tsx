@@ -424,6 +424,22 @@ describe("App UI", () => {
     expect(screen.getByText("TRX Revenue CC (EU)")).toBeInTheDocument();
   });
 
+  it("shows payout provider TRX tier formulas in unified breakdown", async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await user.click(screen.getByRole("checkbox", { name: "Payout" }));
+
+    expect(screen.getByText("Provider TRX Tier 1 (€0-€10M) (Payout)")).toBeInTheDocument();
+    expect(screen.getByText("Provider TRX Tier 2 (€10M-€25M) (Payout)")).toBeInTheDocument();
+    expect(screen.getByText("Provider TRX Tier 3 (>€25M) (Payout)")).toBeInTheDocument();
+    expect(screen.getByText(/Formula \(Unified\): Total Payout Costs = Provider MDR/)).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Formula \(Unified\): Payout Net Margin = Total Payout Revenue/).length
+    ).toBeGreaterThanOrEqual(1);
+  });
+
   it("renders zone 6 offer summary and updates preview", async () => {
     const user = userEvent.setup();
 

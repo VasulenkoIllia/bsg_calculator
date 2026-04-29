@@ -15,6 +15,8 @@ Update: 2026-04-29
 - 3DS revenue/cost rows are displayed under `Payin Revenue & Costs`, split by EU/WW, and included in Total Payin revenue/cost totals.
 - In unified hierarchy, `3DS Revenue (EU/WW)` rows are nested under `Total Payin Revenue` and `3DS Costs (EU/WW)` rows are nested under `Total Payin Costs`.
 - Unified `Payin Net Margin` child row is removed as duplicate; its formula is kept on parent `Payin Revenue & Costs`.
+- Unified `Payout Net Margin` child row is removed as duplicate; its formula is kept on parent `Payout Revenue & Costs`.
+- Unified `Total Payout Costs` now expands both Provider MDR tiers and Provider TRX tier formulas.
 - `Other Revenue` now includes only Settlement Fee and Monthly Minimum Adjustment.
 
 ## 1) Completed zone/module

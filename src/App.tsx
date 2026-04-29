@@ -2242,10 +2242,32 @@ export default function App() {
     }
 
     if (calculatorType.payout) {
+      const payoutCostChildren: UnifiedProfitabilityNode[] = [
+        ...payoutProfitability.providerMdrRows.map((row, index) => ({
+          id: `unified-payout-provider-mdr-tier-${index}`,
+          label: `Provider MDR ${row.label} (Payout)`,
+          value: -row.cost,
+          formula: `${formatAmountInteger(row.volume)} × ${formatInputNumber(
+            row.ratePercent
+          )}% = ${formatAmount2(row.cost)}`
+        })),
+        ...payoutProfitability.providerTrxRows.map((row, index) => ({
+          id: `unified-payout-provider-trx-tier-${index}`,
+          label: `Provider TRX ${row.label} (Payout)`,
+          value: -row.cost,
+          formula: `${formatCount(row.transactions)} trx × ${formatAmount2(
+            row.feePerTransaction
+          )} = ${formatAmount2(row.cost)}`
+        }))
+      ];
+
       nodes.push({
         id: "unified-payout-root",
         label: "Payout Revenue & Costs",
         value: payoutProfitability.netMargin,
+        formula: `Payout Net Margin = Total Payout Revenue (${formatAmount2(
+          payoutProfitability.revenue.total
+        )}) - Total Payout Costs (${formatAmount2(payoutProfitability.costs.total)})`,
         children: [
           {
             id: "unified-payout-total-revenue",
@@ -2272,22 +2294,7 @@ export default function App() {
             formula: `Total Payout Costs = Provider MDR (${formatAmount2(
               payoutProfitability.costs.providerMdr
             )}) + Provider TRX (${formatAmount2(payoutProfitability.costs.providerTrx)})`,
-            children: payoutProfitability.providerMdrRows.map((row, index) => ({
-              id: `unified-payout-provider-mdr-tier-${index}`,
-              label: `Provider MDR ${row.label} (Payout)`,
-              value: -row.cost,
-              formula: `${formatAmountInteger(row.volume)} × ${formatInputNumber(
-                row.ratePercent
-              )}% = ${formatAmount2(row.cost)}`
-            }))
-          },
-          {
-            id: "unified-payout-net-margin",
-            label: "Payout Net Margin",
-            value: payoutProfitability.netMargin,
-            formula: `Payout Net Margin = Total Payout Revenue (${formatAmount2(
-              payoutProfitability.revenue.total
-            )}) - Total Payout Costs (${formatAmount2(payoutProfitability.costs.total)})`
+            children: payoutCostChildren
           }
         ]
       });
