@@ -53,6 +53,47 @@ describe("App UI", () => {
     expect(payinVolumeInput).toHaveValue("1,234,567.89");
   });
 
+  it("normalizes decimal comma input across numeric fields", async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const payinVolumeInput = screen.getByLabelText("Monthly Payin Volume (€)");
+    await user.click(payinVolumeInput);
+    await user.clear(payinVolumeInput);
+    await user.type(payinVolumeInput, "1,000");
+    await user.tab();
+    expect(payinVolumeInput).toHaveValue("1,000");
+
+    await user.click(screen.getByRole("button", { name: "Commission model: Custom" }));
+    const tier1RateInput = screen.getByLabelText("Tier 1 Rate (%)");
+    await user.click(tier1RateInput);
+    await user.clear(tier1RateInput);
+    await user.type(tier1RateInput, "0,65");
+    await user.tab();
+    expect(tier1RateInput).toHaveValue("0.65");
+
+    await user.click(screen.getByRole("checkbox", { name: "Payout" }));
+    await user.click(screen.getByRole("checkbox", { name: "Payout Minimum Fee (Per Transaction)" }));
+
+    const payoutMinimumInput = screen.getByLabelText("Minimum Fee per Transaction (€)");
+    await user.click(payoutMinimumInput);
+    await user.clear(payoutMinimumInput);
+    await user.type(payoutMinimumInput, "0,2");
+    await user.tab();
+    expect(payoutMinimumInput).toHaveValue("0.2");
+
+    await user.click(screen.getByRole("checkbox", { name: "3D Secure Fee" }));
+    const threeDsRevenueInput = screen.getByRole("textbox", {
+      name: "3DS Revenue per Successful TRX (€)"
+    });
+    await user.click(threeDsRevenueInput);
+    await user.clear(threeDsRevenueInput);
+    await user.type(threeDsRevenueInput, "0,07");
+    await user.tab();
+    expect(threeDsRevenueInput).toHaveValue("0.07");
+  });
+
   it("applies zone defaults and resets editable values from the top controls", async () => {
     const user = userEvent.setup();
 
@@ -395,14 +436,15 @@ describe("App UI", () => {
     expect(screen.getByText("Zone 5: Profitability Calculations")).toBeInTheDocument();
     expect(screen.getAllByText("TOTAL PROFITABILITY").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Payin Revenue & Costs").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByRole("heading", { name: "Other Revenue" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("checkbox", { name: "3D Secure Fee" }));
     expect(screen.getAllByText("€500").length).toBeGreaterThanOrEqual(1);
 
     await user.click(screen.getByRole("checkbox", { name: "Agent / Introducer" }));
     await user.click(screen.getByRole("button", { name: "Commission model: Rev Share" }));
-    expect(screen.getAllByText(/Formula: Margin Before Split = Total Revenue/).length).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getAllByText(/Formula \(Unified\): Margin Before Split = Total Revenue/).length
+    ).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText(/Partner Share \(25%\)/).length).toBeGreaterThanOrEqual(1);
   });
 
@@ -509,31 +551,18 @@ describe("App UI", () => {
     expect(screen.queryByText(/Питання по специфікації:/)).not.toBeInTheDocument();
   });
 
-  it("shows formula traces in derived metrics blocks", async () => {
+  it("does not render derived metrics sections", async () => {
     const user = userEvent.setup();
 
     render(<App />);
 
-    expect(
-      screen.getByText(/Formula: Rounded Monthly Volume = roundUpToStep\(max\(0, Input Monthly Payin/)
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Formula: Total Attempts = ceil\(Successful Payin Transactions/)
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Formula: Failed Transactions = Total Attempts/)
-    ).toBeInTheDocument();
+    expect(screen.queryByText("Derived Metrics: Payin")).not.toBeInTheDocument();
+    expect(screen.queryByText("Calculation Details")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("checkbox", { name: "Payout" }));
 
-    expect(
-      screen.getByText(
-        /Formula: Rounded Monthly Volume = roundUpToStep\(max\(0, Input Monthly Payout/
-      )
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Formula: Average Transaction = Rounded Monthly Payout Volume/)
-    ).toBeInTheDocument();
+    expect(screen.queryByText("Derived Metrics: Payout")).not.toBeInTheDocument();
+    expect(screen.queryByText("Calculation Details")).not.toBeInTheDocument();
   });
 
   it("adds end-of-zone navigation controls from zone 1 onward", async () => {

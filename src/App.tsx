@@ -101,9 +101,7 @@ type ZoneId =
   | "zone3"
   | "zone4"
   | "zone5"
-  | "zone6"
-  | "derivedPayin"
-  | "derivedPayout";
+  | "zone6";
 
 type ZoneSectionProps = {
   id: ZoneId;
@@ -197,9 +195,7 @@ const INITIAL_ZONE_EXPANDED: Record<ZoneId, boolean> = {
   zone3: true,
   zone4: true,
   zone5: true,
-  zone6: true,
-  derivedPayin: true,
-  derivedPayout: true
+  zone6: true
 };
 
 const DEFAULT_CALCULATOR_TYPE: CalculatorTypeSelection = {
@@ -389,7 +385,36 @@ function escapeHtml(value: string): string {
 }
 
 function parseInputNumber(raw: string): number {
-  const normalized = raw.replace(/\s+/g, "").replace(/,/g, "");
+  const compact = raw.replace(/\s+/g, "");
+  if (compact === "") {
+    return Number.NaN;
+  }
+
+  const commaCount = (compact.match(/,/g) ?? []).length;
+  const dotCount = (compact.match(/\./g) ?? []).length;
+  let normalized = compact;
+
+  if (commaCount > 0 && dotCount > 0) {
+    const lastCommaIndex = compact.lastIndexOf(",");
+    const lastDotIndex = compact.lastIndexOf(".");
+    const decimalSeparator = lastCommaIndex > lastDotIndex ? "," : ".";
+
+    if (decimalSeparator === ",") {
+      normalized = compact.replace(/\./g, "").replace(",", ".");
+    } else {
+      normalized = compact.replace(/,/g, "");
+    }
+  } else if (commaCount > 0 && dotCount === 0) {
+    if (commaCount === 1) {
+      const [intPart = "", fracPart = ""] = compact.split(",");
+      const treatAsDecimal =
+        fracPart.length <= 2 || intPart === "" || intPart === "-" || intPart === "0" || intPart === "-0";
+      normalized = treatAsDecimal ? `${intPart}.${fracPart}` : compact.replace(/,/g, "");
+    } else {
+      normalized = compact.replace(/,/g, "");
+    }
+  }
+
   if (normalized === "" || normalized === "-" || normalized === "." || normalized === "-.") {
     return Number.NaN;
   }
@@ -1896,8 +1921,6 @@ export default function App() {
   const hasSchemeFeesIcPlusAmbiguityEu = false;
   const hasSchemeFeesIcPlusAmbiguityWw = false;
   const hasThreeDsBaseAmbiguity = false;
-  const hasAnySchemeIcPlusAmbiguity =
-    hasSchemeFeesIcPlusAmbiguityEu || hasSchemeFeesIcPlusAmbiguityWw;
   const euTrxRevenueCc = useMemo(
     () =>
       resolveMethodTrxRevenue(
@@ -3457,15 +3480,6 @@ export default function App() {
                 <p className="mt-2 text-xs text-slate-600">
                   If unchecked, Settlement Fee settings become active in Zone 4.
                 </p>
-                {showZone3Formulas ? (
-                  <div className="mt-3">
-                    <FormulaLine>
-                      Formula: Settlement Included ={" "}
-                      <strong>{settlementIncluded ? "ON" : "OFF"}</strong>. When OFF, Settlement Fee
-                      section should be shown in Zone 4.
-                    </FormulaLine>
-                  </div>
-                ) : null}
               </div>
             </div>
 
@@ -5028,204 +5042,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4">
-              <h3 className="text-lg font-bold text-slate-900">TOTAL PROFITABILITY</h3>
-              {introducerEnabled && introducerCommissionType === "revShare" ? (
-                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  <MetricCard name="Total Revenue" value={formatAmount2(totalProfitability.totalRevenue)} />
-                  <MetricCard
-                    name="Total Costs"
-                    value={formatSignedAmount(-totalProfitability.totalCosts)}
-                  />
-                  <MetricCard
-                    name="Margin Before Split"
-                    value={formatAmount2(totalProfitability.marginBeforeIntroducer)}
-                  />
-                  <MetricCard
-                    name={`Introducer Commission (${formatInputNumber(
-                      totalProfitability.revSharePercentApplied
-                    )}%)`}
-                    value={formatSignedAmount(-totalProfitability.introducerCommission)}
-                  />
-                  <MetricCard name="Our Margin" value={formatAmount2(totalProfitability.ourMargin)} />
-                </div>
-              ) : (
-                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  <MetricCard
-                    name="Payin Net Margin"
-                    value={formatAmount2(totalProfitability.payinNetMargin)}
-                  />
-                  <MetricCard
-                    name="Payout Net Margin"
-                    value={formatAmount2(totalProfitability.payoutNetMargin)}
-                  />
-                  <MetricCard
-                    name="Other Revenue"
-                    value={formatAmount2(totalProfitability.otherNetMargin)}
-                  />
-                  <MetricCard
-                    name="Total Margin"
-                    value={formatAmount2(totalProfitability.marginBeforeIntroducer)}
-                  />
-                  <MetricCard
-                    name="Introducer Commission"
-                    value={formatSignedAmount(-totalProfitability.introducerCommission)}
-                  />
-                  <MetricCard name="Our Margin" value={formatAmount2(totalProfitability.ourMargin)} />
-                </div>
-              )}
-              <div className="mt-3 space-y-2">
-                {introducerEnabled && introducerCommissionType === "revShare" ? (
-                  <>
-                    <FormulaLine>
-                      Formula: Margin Before Split = Total Revenue ({formatAmount2(
-                        totalProfitability.totalRevenue
-                      )}) - Total Costs ({formatAmount2(totalProfitability.totalCosts)}) ={" "}
-                      {formatAmount2(totalProfitability.marginBeforeIntroducer)}
-                    </FormulaLine>
-                    <FormulaLine>
-                      Formula: Introducer Commission = Payin Net Margin (
-                      {formatAmount2(totalProfitability.payinNetMargin)}) × Partner Share (
-                      {formatInputNumber(totalProfitability.revSharePercentApplied)}%) ={" "}
-                      {formatAmount2(totalProfitability.introducerCommission)}
-                    </FormulaLine>
-                  </>
-                ) : (
-                  <>
-                    <FormulaLine>
-                      Formula: Total Margin = Payin Net Margin (
-                      {formatAmount2(totalProfitability.payinNetMargin)}) + Payout Net Margin (
-                      {formatAmount2(totalProfitability.payoutNetMargin)}) + Other Revenue (
-                      {formatAmount2(totalProfitability.otherNetMargin)}) ={" "}
-                      {formatAmount2(totalProfitability.marginBeforeIntroducer)}
-                    </FormulaLine>
-                    <FormulaLine>
-                      {introducerEnabled
-                        ? `Formula: Our Margin = Total Margin (${formatAmount2(
-                            totalProfitability.marginBeforeIntroducer
-                          )}) - Introducer Commission (${formatAmount2(
-                            totalProfitability.introducerCommission
-                          )}) = ${formatAmount2(totalProfitability.ourMargin)}`
-                        : `Formula: Our Margin = Total Margin (${formatAmount2(
-                            totalProfitability.marginBeforeIntroducer
-                          )}) because Agent / Introducer is not enabled = ${formatAmount2(
-                            totalProfitability.ourMargin
-                          )}`}
-                    </FormulaLine>
-                  </>
-                )}
-              </div>
-              {totalProfitability.warning ? (
-                <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
-                  {totalProfitability.warning}
-                </p>
-              ) : null}
-            </div>
-
             <div className="grid gap-6 xl:grid-cols-2">
-              {calculatorType.payin ? (
-                <div className="rounded-xl border border-slate-200 bg-white p-4">
-                  <h4 className="text-base font-bold text-slate-800">Payin Revenue & Costs</h4>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <MetricCard
-                      name="Total Payin Revenue"
-                      value={formatAmount2(payinProfitabilityWithThreeDs.revenue.total)}
-                    />
-                    <MetricCard
-                      name="Total Payin Costs"
-                      value={formatSignedAmount(-payinProfitabilityWithThreeDs.costs.total)}
-                      className={hasAnySchemeIcPlusAmbiguity ? "border-rose-300 bg-rose-50" : ""}
-                    />
-                    <MetricCard
-                      name="Payin Net Margin"
-                      value={formatAmount2(payinProfitabilityWithThreeDs.netMargin)}
-                    />
-                    <MetricCard
-                      name="Failed TRX Revenue"
-                      value={formatAmount2(payinProfitability.revenue.failedTrx)}
-                    />
-                  </div>
-                  <div className="mt-3 grid gap-3 md:grid-cols-2">
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-                      <p className="font-semibold text-slate-800">EU</p>
-                      <p>Revenue: {formatAmount2(payinProfitabilityWithThreeDs.eu.revenue.total)}</p>
-                      <p>Costs: {formatSignedAmount(-payinProfitabilityWithThreeDs.eu.costs.total)}</p>
-                      <p>Net: {formatAmount2(payinProfitabilityWithThreeDs.eu.netMargin)}</p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-                      <p className="font-semibold text-slate-800">WW</p>
-                      <p>Revenue: {formatAmount2(payinProfitabilityWithThreeDs.ww.revenue.total)}</p>
-                      <p>Costs: {formatSignedAmount(-payinProfitabilityWithThreeDs.ww.costs.total)}</p>
-                      <p>Net: {formatAmount2(payinProfitabilityWithThreeDs.ww.netMargin)}</p>
-                    </div>
-                  </div>
-                  <div className="mt-3 grid gap-3 md:grid-cols-2">
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-                      <p className="font-semibold text-slate-800">EU 3DS</p>
-                      <p>3DS Revenue: {formatAmount2(threeDsPayinRegionalBreakdown.eu.revenue)}</p>
-                      <p>3DS Costs: {formatSignedAmount(-threeDsPayinRegionalBreakdown.eu.cost)}</p>
-                      <p>3DS Net: {formatAmount2(threeDsPayinRegionalBreakdown.eu.net)}</p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-                      <p className="font-semibold text-slate-800">WW 3DS</p>
-                      <p>3DS Revenue: {formatAmount2(threeDsPayinRegionalBreakdown.ww.revenue)}</p>
-                      <p>3DS Costs: {formatSignedAmount(-threeDsPayinRegionalBreakdown.ww.cost)}</p>
-                      <p>3DS Net: {formatAmount2(threeDsPayinRegionalBreakdown.ww.net)}</p>
-                    </div>
-                  </div>
-                  {hasAnySchemeIcPlusAmbiguity ? (
-                    <div className="mt-3">
-                      <SpecAmbiguityNotice
-                        title="Scheme Fees в IC++: pass-through чи наші витрати?"
-                        currentValue={`EU model: ${
-                          payinEuPricing.model === "icpp" ? "IC++" : "Blended"
-                        }, WW model: ${payinWwPricing.model === "icpp" ? "IC++" : "Blended"}`}
-                        sourceContext="У DOCX є конфлікт: для IC++ Scheme Fees описані і як pass-through, і як складова наших витрат."
-                        usedInFormulas={[
-                          "Zone 5: EU/WW Costs = Provider MDR + Provider TRX + Scheme",
-                          "Zone 5: Payin Net Margin = Total Payin Revenue - Total Payin Costs"
-                        ]}
-                      />
-                    </div>
-                  ) : null}
-                  <div className="mt-3 space-y-2">
-                    <FormulaLine>
-                      Formula: Total Payin Revenue = MDR ({formatAmount2(
-                        payinProfitability.revenue.mdr
-                      )}) + TRX ({formatAmount2(payinProfitability.revenue.trx)}) + Failed TRX (
-                      {formatAmount2(payinProfitability.revenue.failedTrx)}) + 3DS Revenue (
-                      {formatAmount2(threeDsPayinRegionalBreakdown.total.revenue)}) ={" "}
-                      {formatAmount2(payinProfitabilityWithThreeDs.revenue.total)}
-                    </FormulaLine>
-                    <FormulaLine
-                      className={
-                        hasAnySchemeIcPlusAmbiguity
-                          ? "border-rose-300 bg-rose-50 text-rose-900"
-                          : ""
-                      }
-                    >
-                      Formula: Total Payin Costs = EU Costs (
-                      {formatAmount2(payinProfitability.eu.costs.total)}) + WW Costs (
-                      {formatAmount2(payinProfitability.ww.costs.total)}) + 3DS Costs (
-                      {formatAmount2(threeDsPayinRegionalBreakdown.total.cost)}) ={" "}
-                      {formatAmount2(payinProfitabilityWithThreeDs.costs.total)}
-                    </FormulaLine>
-                    <FormulaLine
-                      className={
-                        hasAnySchemeIcPlusAmbiguity
-                          ? "border-rose-300 bg-rose-50 text-rose-900"
-                          : ""
-                      }
-                    >
-                      Formula: Payin Net Margin = Total Payin Revenue (
-                      {formatAmount2(payinProfitabilityWithThreeDs.revenue.total)}) - Total Payin Costs (
-                      {formatAmount2(payinProfitabilityWithThreeDs.costs.total)}) ={" "}
-                      {formatAmount2(payinProfitabilityWithThreeDs.netMargin)}
-                    </FormulaLine>
-                  </div>
-                </div>
-              ) : null}
-
               {calculatorType.payout ? (
                 <div className="rounded-xl border border-slate-200 bg-white p-4">
                   <h4 className="text-base font-bold text-slate-800">Payout Revenue & Costs</h4>
@@ -5323,106 +5140,6 @@ export default function App() {
                   </div>
                 </div>
               ) : null}
-            </div>
-
-            <div className="grid gap-6 xl:grid-cols-2">
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <h4 className="text-base font-bold text-slate-800">Other Revenue</h4>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <MetricCard
-                    name="Settlement Fee"
-                    value={formatSignedAmount(otherRevenueProfitability.revenue.settlementFee)}
-                  />
-                  <MetricCard
-                    name={
-                      monthlyMinimumFeeImpact.warning
-                        ? "Monthly Minimum Adj (Minimum Applied)"
-                        : "Monthly Minimum Adj"
-                    }
-                    value={formatAmount2(otherRevenueProfitability.revenue.monthlyMinimumAdjustment)}
-                    className={monthlyMinimumFeeImpact.warning ? "border-amber-300 bg-amber-50" : ""}
-                  />
-                </div>
-                <div className="mt-3 space-y-2">
-                  {monthlyMinimumFeeImpact.warning ? (
-                    <FormulaLine className="border-amber-300 bg-amber-50 text-amber-900">
-                      Minimum rule used in totals: Actual revenue (
-                      {formatAmount2(monthlyMinimumFeeImpact.baseRevenue)}) → Applied monthly revenue (
-                      {formatAmount2(monthlyMinimumFeeImpact.appliedRevenue)}), delta = +
-                      {formatAmount2(monthlyMinimumFeeImpact.upliftRevenue)}.
-                    </FormulaLine>
-                  ) : null}
-                  <FormulaLine
-                    className={
-                      hasThreeDsBaseAmbiguity
-                        ? "border-rose-300 bg-rose-50 text-rose-900"
-                        : ""
-                    }
-                  >
-                    {otherRevenueProfitability.revenue.monthlyMinimumAdjustment > 0
-                      ? `Formula: Other Revenue Net = Settlement Fee (${formatAmount2(
-                          otherRevenueProfitability.revenue.settlementFee
-                        )}) + Monthly Minimum Adj (${formatAmount2(
-                          otherRevenueProfitability.revenue.monthlyMinimumAdjustment
-                        )}) = ${formatAmount2(otherRevenueProfitability.netMargin)}`
-                      : `Formula: Other Revenue Net = Settlement Fee (${formatAmount2(
-                          otherRevenueProfitability.revenue.settlementFee
-                        )}) = ${formatAmount2(otherRevenueProfitability.netMargin)}`}
-                  </FormulaLine>
-                </div>
-                {hasThreeDsBaseAmbiguity ? (
-                  <div className="mt-3">
-                    <SpecAmbiguityNotice
-                      title="База для Provider 3DS Cost у блоці Payin 3DS"
-                      currentValue={`3DS Revenue ${formatAmount2(
-                        threeDsPayinRegionalBreakdown.total.revenue
-                      )}; 3DS Cost ${formatAmount2(threeDsPayinRegionalBreakdown.total.cost)}`}
-                      sourceContext="Потрібно зафіксувати єдину базу для 3DS cost (Total Attempts або Successful Transactions), бо це напряму змінює Total Payin Costs."
-                      usedInFormulas={[
-                        "Zone 5: Total Payin Revenue includes 3DS Revenue",
-                        "Zone 5: Total Payin Costs includes 3DS Costs"
-                      ]}
-                    />
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <h4 className="text-base font-bold text-slate-800">Introducer Commission</h4>
-                {!introducerEnabled ? (
-                  <div className="mt-3 space-y-2">
-                    <MetricCard name="Agent / Introducer" value="Not enabled" />
-                    <FormulaLine>
-                      Formula: Introducer Commission = 0 because Agent / Introducer is not enabled.
-                    </FormulaLine>
-                  </div>
-                ) : introducerCommissionType === "revShare" ? (
-                  <div className="mt-3 space-y-2">
-                    <MetricCard
-                      name={`Partner Share (${formatInputNumber(revShareIntroducer.sharePercent)}%)`}
-                      value={formatSignedAmount(-revShareIntroducer.partnerShare)}
-                    />
-                    <FormulaLine>
-                      Formula: Partner Share (Payin only) = (Payin Revenue ({formatAmount2(
-                        revShareIntroducer.totalRevenue
-                      )}) - Payin Costs ({formatAmount2(revShareIntroducer.totalCosts)})) ×{" "}
-                      {formatInputNumber(revShareIntroducer.sharePercent)}% ={" "}
-                      {formatAmount2(revShareIntroducer.partnerShare)}
-                    </FormulaLine>
-                  </div>
-                ) : (
-                  <div className="mt-3 space-y-2">
-                    <MetricCard
-                      name={`Commission (${introducerCommissionType === "standard" ? "Standard" : "Custom"})`}
-                      value={formatSignedAmount(-introducerCommissionAmount)}
-                    />
-                    <FormulaLine>
-                      Formula: Introducer Commission = Zone 2 Total Introducer Commission ={" "}
-                      {formatAmount2(introducerCommissionAmount)}
-                    </FormulaLine>
-                  </div>
-                )}
-              </div>
             </div>
 
             {payoutMinimumFeeImpact.warning ? (
@@ -5547,137 +5264,6 @@ export default function App() {
           </div>
         </ZoneSection>
 
-        {calculatorType.payin ? (
-          <ZoneSection
-            id="derivedPayin"
-            title="Derived Metrics: Payin"
-            expanded={zoneExpanded.derivedPayin}
-            onToggle={() => toggleZone("derivedPayin")}
-            contentClassName="px-5 pb-5 md:px-7 md:pb-7"
-          >
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <MetricCard
-                name="Rounded Monthly Volume"
-                value={formatAmountInteger(payin.normalized.monthlyVolume)}
-              />
-              <MetricCard
-                name="Average Transaction"
-                value={formatAmount2(payin.averageTransaction)}
-              />
-              <MetricCard name="Total Attempts" value={formatCount(payin.attempts.total)} />
-              <MetricCard
-                name="Failed Transactions"
-                value={formatCount(payin.failed.total)}
-              />
-              <MetricCard
-                name="Successful CC / APM"
-                value={`${formatCount(payin.successful.cc)} / ${formatCount(
-                  payin.successful.apm
-                )}`}
-              />
-              <MetricCard
-                name="Regional Volume EU / WW"
-                value={`${formatAmountInteger(payin.volume.eu)} / ${formatAmountInteger(
-                  payin.volume.ww
-                )}`}
-              />
-              <MetricCard
-                name="Payment Volume CC / APM"
-                value={`${formatAmountInteger(payin.volume.cc)} / ${formatAmountInteger(
-                  payin.volume.apm
-                )}`}
-              />
-            </div>
-            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <h3 className="text-base font-bold text-slate-800">Calculation Details</h3>
-              <div className="mt-3 space-y-2">
-                <FormulaLine>
-                  Formula: Rounded Monthly Volume = roundUpToStep(max(0, Input Monthly Payin
-                  Volume ({formatAmountInteger(payinVolume)})), €50,000) ={" "}
-                  {formatAmountInteger(payin.normalized.monthlyVolume)}
-                </FormulaLine>
-                <FormulaLine>
-                  Formula: Average Transaction = Rounded Monthly Volume (
-                  {formatAmountInteger(payin.normalized.monthlyVolume)}) / Successful Payin
-                  Transactions ({formatCount(payin.successful.total)}) ={" "}
-                  {formatAmount2(payin.averageTransaction)}
-                </FormulaLine>
-                <FormulaLine>
-                  Formula: Total Attempts = ceil(Successful Payin Transactions (
-                  {formatCount(payin.successful.total)}) / Approval Ratio (
-                  {formatInputNumber(payin.normalized.approvalRatioPercent)}%)) ={" "}
-                  {formatCount(payin.attempts.total)}
-                </FormulaLine>
-                <FormulaLine>
-                  Formula: Failed Transactions = Total Attempts ({formatCount(payin.attempts.total)}
-                  ) - Successful Payin Transactions ({formatCount(payin.successful.total)}) ={" "}
-                  {formatCount(payin.failed.total)}
-                </FormulaLine>
-                <FormulaLine>
-                  Formula: Successful CC = Successful EU CC (
-                  {formatCount(payin.successful.byRegionMethod.euCc)}) + Successful WW CC (
-                  {formatCount(payin.successful.byRegionMethod.wwCc)}) ={" "}
-                  {formatCount(payin.successful.cc)}; Successful APM = Successful EU APM (
-                  {formatCount(payin.successful.byRegionMethod.euApm)}) + Successful WW APM (
-                  {formatCount(payin.successful.byRegionMethod.wwApm)}) ={" "}
-                  {formatCount(payin.successful.apm)}
-                </FormulaLine>
-                <FormulaLine>
-                  Formula: Regional Volume EU / WW = Rounded Monthly Volume (
-                  {formatAmountInteger(payin.volume.total)}) × EU Split (
-                  {formatInputNumber(payin.normalized.euPercent)}%) / WW Split (
-                  {formatInputNumber(payin.normalized.wwPercent)}%) ={" "}
-                  {formatAmountInteger(payin.volume.eu)} / {formatAmountInteger(payin.volume.ww)}
-                </FormulaLine>
-                <FormulaLine>
-                  Formula: Payment Volume CC / APM = Rounded Monthly Volume (
-                  {formatAmountInteger(payin.volume.total)}) × CC Split (
-                  {formatInputNumber(payin.normalized.ccPercent)}%) / APM Split (
-                  {formatInputNumber(payin.normalized.apmPercent)}%) ={" "}
-                  {formatAmountInteger(payin.volume.cc)} / {formatAmountInteger(payin.volume.apm)}
-                </FormulaLine>
-              </div>
-            </div>
-          </ZoneSection>
-        ) : null}
-
-        {calculatorType.payout ? (
-          <ZoneSection
-            id="derivedPayout"
-            title="Derived Metrics: Payout"
-            expanded={zoneExpanded.derivedPayout}
-            onToggle={() => toggleZone("derivedPayout")}
-            panelClassName=""
-            contentClassName="px-5 pb-5 md:px-7 md:pb-7"
-          >
-            <div className="grid gap-4 md:grid-cols-2">
-              <MetricCard
-                name="Rounded Monthly Volume"
-                value={formatAmountInteger(payout.normalized.monthlyVolume)}
-              />
-              <MetricCard
-                name="Average Transaction"
-                value={formatAmount2(payout.averageTransaction)}
-              />
-            </div>
-            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <h3 className="text-base font-bold text-slate-800">Calculation Details</h3>
-              <div className="mt-3 space-y-2">
-                <FormulaLine>
-                  Formula: Rounded Monthly Volume = roundUpToStep(max(0, Input Monthly Payout
-                  Volume ({formatAmountInteger(payoutVolume)})), €50,000) ={" "}
-                  {formatAmountInteger(payout.normalized.monthlyVolume)}
-                </FormulaLine>
-                <FormulaLine>
-                  Formula: Average Transaction = Rounded Monthly Payout Volume (
-                  {formatAmountInteger(payout.normalized.monthlyVolume)}) / Total Payout
-                  Transactions ({formatCount(payout.normalized.totalTransactions)}) ={" "}
-                  {formatAmount2(payout.averageTransaction)}
-                </FormulaLine>
-              </div>
-            </div>
-          </ZoneSection>
-        ) : null}
       </div>
     </main>
   );

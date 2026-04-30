@@ -1,6 +1,6 @@
 # Calculator Logic and Formulas (Current Code)
 
-Date: 2026-04-29
+Date: 2026-04-30
 Scope: current implementation in `src/App.tsx` and `src/domain/calculator/zone0..zone6`.
 
 This document is the technical source of truth for runtime calculation behavior.
@@ -8,7 +8,7 @@ This document is the technical source of truth for runtime calculation behavior.
 ## 1. Runtime flow (high level)
 
 1. Zone 0 selects active modes (`payin`, `payout`) with at least one always enabled.
-2. Zone 1 normalizes traffic inputs and derives attempts/failed/splits.
+2. Zone 1 normalizes traffic inputs and derives attempts/failed/splits (used by calculations, not shown in a separate Derived Metrics section).
 3. Zone 2 computes introducer model outputs from payin base volume and Zone 5 payin totals (for rev share).
 4. Zone 3 computes pricing previews (payin EU/WW + payout) with tier logic and payout minimum floors.
 5. Zone 4 computes fee/limit impacts (payout minimum uplift, 3DS, settlement, monthly minimum, failed trx charging).
@@ -76,6 +76,15 @@ Formatting from `src/domain/calculator/shared/format.ts`:
 - `formatAmount2` truncates decimals before rendering and is used for final aggregate money amounts/cards.
 - `formatVariableAmount` keeps variable fee values with up to 2 decimals and is used in formula factors
   (for example `TRX fee`, `3DS fee/revenue per transaction`, `minimum per-TRX` values).
+
+UI numeric input parsing (`NumberField` in `src/App.tsx`):
+- Both decimal separators are accepted:
+  - `0,2` is interpreted as `0.2`
+  - `0.75` is interpreted as `0.75`
+- Thousand separators remain supported:
+  - `1,000` is interpreted as `1000`
+  - mixed locale forms are parsed by last decimal separator (`1,234.56` and `1.234,56` are both valid).
+- On blur, values are rendered in the project format (`en-US` style with `.` decimal separator).
 
 ## 3. Zone 0 (Calculator Type)
 
@@ -214,8 +223,9 @@ Scheme values remain internal defaults and appear as costs only in Zone 5 profit
 for `Blended`. Zone 6 Offer Summary still displays Scheme Fees for now.
 
 Formula visibility:
-- Zone 3 has a zone-level `Show formulas` / `Hide formulas` UI toggle.
-- The toggle hides only formula text rows inside Zone 3; metrics, inputs, warnings, and calculations remain active.
+- Zone 3 formula visibility is controlled by the global top button
+  `Show constants & formulas` / `Hide constants & formulas`.
+- The toggle hides only formula text rows in Zone 3; metrics, inputs, warnings, and calculations remain active.
 
 Single rate:
 - `mdrRevenue = volume * mdrPercent / 100`
@@ -368,8 +378,9 @@ Minimum reminders:
 - Dispute/chargeback provider minimum is `€50`; UI clamps lower edits back to `€50`.
 
 Formula visibility:
-- Zone 4 has a zone-level `Show formulas` / `Hide formulas` UI toggle.
-- The toggle hides only formula text rows inside Zone 4; revenue/cost metrics, warnings, contract fields, and calculations remain active.
+- Zone 4 formula visibility is controlled by the same global top button
+  `Show constants & formulas` / `Hide constants & formulas`.
+- The toggle hides only formula text rows in Zone 4; revenue/cost metrics, warnings, contract fields, and calculations remain active.
 
 ## 8. Zone 5 (Profitability)
 
@@ -512,3 +523,4 @@ Export actions in App:
 - Existing `server/` folder has only a lightweight health endpoint and is not used by the frontend runtime path.
 - For rev share, commission base is payin profitability only.
 - For IC++, scheme costs are excluded from payin cost totals.
+- Legacy UI summary sections `Derived Metrics: Payin/Payout` with `Calculation Details` are removed.

@@ -445,3 +445,22 @@ Use this file to record meaningful technical decisions for the project.
   - Backend can still be reintroduced later without blocking frontend tests.
 - Follow-up actions:
   - If backend is added, decide between single-container SSR/API serving or split frontend/backend services.
+
+### Decision: Decimal Comma Input Normalization and Removal of Derived Metrics UI Blocks
+- Date: 2026-04-30
+- Context:
+  - Users can input decimal values with comma (for example `0,2`) and the previous parsing path could interpret this as `2` in some fields.
+  - Product also requested to remove remaining `Derived Metrics` summary/UI sections, including `Calculation Details` blocks.
+- Decision:
+  - Standardize numeric parsing in shared `NumberField` flow:
+    - accept both `,` and `.` as decimal separators,
+    - keep thousand-separator support (for example `1,000`),
+    - normalize display to project format on blur (`.` as decimal separator).
+  - Remove `Derived Metrics: Payin` and `Derived Metrics: Payout` UI sections and their `Calculation Details` blocks.
+- Alternatives considered:
+  - Replacing comma with dot directly during typing in all cases.
+  - Keeping derived sections collapsed instead of removing them.
+- Consequences:
+  - Decimal inputs like `0,2`, `0,65`, `0,07` are interpreted correctly as `0.2`, `0.65`, `0.07`.
+  - Thousand input like `1,000` remains interpreted as one thousand.
+  - UI is cleaner; derived formulas are no longer duplicated in separate sections.
