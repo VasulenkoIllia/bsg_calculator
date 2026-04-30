@@ -181,6 +181,7 @@ type CalculatorStatePreset = {
   failedTrxOverLimitThresholdPercent: number;
   contractSummarySettings: ContractSummarySettings;
   clientNotes: string;
+  showHardcodedConstants: boolean;
   showZone3Formulas: boolean;
   showZone4Formulas: boolean;
   showUnifiedFormulas: boolean;
@@ -301,8 +302,9 @@ const DEFAULT_CALCULATOR_STATE: CalculatorStatePreset = {
   failedTrxOverLimitThresholdPercent: DEFAULT_FAILED_TRX_CHARGING_CONFIG.overLimitThresholdPercent,
   contractSummarySettings: DEFAULT_CONTRACT_SUMMARY_SETTINGS,
   clientNotes: "",
-  showZone3Formulas: true,
-  showZone4Formulas: true,
+  showHardcodedConstants: false,
+  showZone3Formulas: false,
+  showZone4Formulas: false,
   showUnifiedFormulas: true,
   unifiedExpandedById: {},
   zoneExpanded: INITIAL_ZONE_EXPANDED
@@ -342,8 +344,9 @@ const ZERO_CALCULATOR_STATE: CalculatorStatePreset = {
   failedTrxOverLimitThresholdPercent: 0,
   contractSummarySettings: ZERO_CONTRACT_SUMMARY_SETTINGS,
   clientNotes: "",
-  showZone3Formulas: true,
-  showZone4Formulas: true,
+  showHardcodedConstants: false,
+  showZone3Formulas: false,
+  showZone4Formulas: false,
   showUnifiedFormulas: true,
   unifiedExpandedById: {},
   zoneExpanded: INITIAL_ZONE_EXPANDED
@@ -796,29 +799,6 @@ function FormulaLine({
   );
 }
 
-function FormulaVisibilityToggle({
-  scopeLabel,
-  showFormulas,
-  onToggle
-}: {
-  scopeLabel: string;
-  showFormulas: boolean;
-  onToggle: () => void;
-}) {
-  const action = showFormulas ? "Hide" : "Show";
-
-  return (
-    <button
-      type="button"
-      aria-label={`${action} ${scopeLabel} formulas`}
-      onClick={onToggle}
-      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-    >
-      {action} formulas
-    </button>
-  );
-}
-
 function SpecAmbiguityNotice({
   title,
   currentValue,
@@ -1004,6 +984,9 @@ export default function App() {
   );
   const [clientNotes, setClientNotes] = useState(DEFAULT_CALCULATOR_STATE.clientNotes);
   const [offerSummaryActionMessage, setOfferSummaryActionMessage] = useState<string | null>(null);
+  const [showHardcodedConstants, setShowHardcodedConstants] = useState(
+    DEFAULT_CALCULATOR_STATE.showHardcodedConstants
+  );
   const [showZone3Formulas, setShowZone3Formulas] = useState(
     DEFAULT_CALCULATOR_STATE.showZone3Formulas
   );
@@ -1147,6 +1130,7 @@ export default function App() {
     setContractSummarySettings(cloneContractSummarySettings(preset.contractSummarySettings));
     setClientNotes(preset.clientNotes);
     setOfferSummaryActionMessage(null);
+    setShowHardcodedConstants(preset.showHardcodedConstants);
     setShowZone3Formulas(preset.showZone3Formulas);
     setShowZone4Formulas(preset.showZone4Formulas);
     setShowUnifiedFormulas(preset.showUnifiedFormulas);
@@ -1160,6 +1144,12 @@ export default function App() {
 
   const applyDefaultValues = () => {
     applyStatePreset(DEFAULT_CALCULATOR_STATE);
+  };
+  const toggleHardcodedConstantsAndZoneFormulas = () => {
+    const next = !showHardcodedConstants;
+    setShowHardcodedConstants(next);
+    setShowZone3Formulas(next);
+    setShowZone4Formulas(next);
   };
 
   const handleEuChange = (value: number) => setEuPercent(clampPercent(value));
@@ -2905,38 +2895,47 @@ export default function App() {
           </div>
         </header>
 
-        <section
-          aria-label="Hardcoded calculation constants"
-          className="panel mb-6 border border-slate-200 bg-slate-50 p-5 md:p-7"
-        >
-          <h2 className="text-lg font-bold text-slate-800">Hardcoded Calculation Constants</h2>
-          <p className="mt-1 text-xs text-slate-600">
-            Read-only values embedded in code and used by formulas during calculations/verification.
-          </p>
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            {hardcodedConstantGroups.map(group => (
-              <div
-                key={group.title}
-                className="rounded-xl border border-slate-200 bg-white p-4"
-              >
-                <h3 className="text-sm font-bold text-slate-800">{group.title}</h3>
-                <dl className="mt-3 space-y-2 text-xs">
-                  {group.items.map(item => (
-                    <div key={`${group.title}-${item.label}`} className="grid gap-1 sm:grid-cols-[1fr_auto] sm:items-center sm:gap-3">
-                      <dt className="text-slate-600">{item.label}</dt>
-                      <dd className="font-semibold text-slate-800 sm:text-right">{item.value}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </div>
-            ))}
-          </div>
-        </section>
+        {showHardcodedConstants ? (
+          <section
+            aria-label="Hardcoded calculation constants"
+            className="panel mb-6 border border-slate-200 bg-slate-50 p-5 md:p-7"
+          >
+            <h2 className="text-lg font-bold text-slate-800">Hardcoded Calculation Constants</h2>
+            <p className="mt-1 text-xs text-slate-600">
+              Read-only values embedded in code and used by formulas during calculations/verification.
+            </p>
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              {hardcodedConstantGroups.map(group => (
+                <div
+                  key={group.title}
+                  className="rounded-xl border border-slate-200 bg-white p-4"
+                >
+                  <h3 className="text-sm font-bold text-slate-800">{group.title}</h3>
+                  <dl className="mt-3 space-y-2 text-xs">
+                    {group.items.map(item => (
+                      <div key={`${group.title}-${item.label}`} className="grid gap-1 sm:grid-cols-[1fr_auto] sm:items-center sm:gap-3">
+                        <dt className="text-slate-600">{item.label}</dt>
+                        <dd className="font-semibold text-slate-800 sm:text-right">{item.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section
           aria-label="Calculator actions"
           className="panel mb-6 flex flex-col gap-3 p-5 sm:flex-row sm:justify-end md:p-7"
         >
+          <button
+            type="button"
+            onClick={toggleHardcodedConstantsAndZoneFormulas}
+            className="inline-flex w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 sm:w-auto"
+          >
+            {showHardcodedConstants ? "Hide constants & formulas" : "Show constants & formulas"}
+          </button>
           <button
             type="button"
             onClick={resetAllValuesToZero}
@@ -3443,13 +3442,6 @@ export default function App() {
           contentClassName="p-5 md:p-7"
         >
           <div className="grid gap-6">
-            <div className="flex justify-end">
-              <FormulaVisibilityToggle
-                scopeLabel="Zone 3"
-                showFormulas={showZone3Formulas}
-                onToggle={() => setShowZone3Formulas(current => !current)}
-              />
-            </div>
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <h3 className="text-lg font-bold text-slate-800">General Settings</h3>
               <div className="mt-4">
@@ -4195,13 +4187,6 @@ export default function App() {
           contentClassName="p-5 md:p-7"
         >
           <div className="grid gap-6">
-            <div className="flex justify-end">
-              <FormulaVisibilityToggle
-                scopeLabel="Zone 4"
-                showFormulas={showZone4Formulas}
-                onToggle={() => setShowZone4Formulas(current => !current)}
-              />
-            </div>
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <h3 className="text-lg font-bold text-slate-800">Revenue-Affecting Fees</h3>
               <div className="mt-4 grid gap-5">

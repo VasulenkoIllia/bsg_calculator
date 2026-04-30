@@ -4,9 +4,16 @@ import { describe, expect, it, vi } from "vitest";
 import App from "./App.js";
 
 describe("App UI", () => {
-  it("shows hardcoded calculation constants at the top", () => {
+  it("hides hardcoded constants by default and toggles them from top control", async () => {
+    const user = userEvent.setup();
+
     render(<App />);
 
+    expect(screen.queryByRole("heading", { name: "Hardcoded Calculation Constants" })).not.toBeInTheDocument();
+    const showButton = screen.getByRole("button", { name: "Show constants & formulas" });
+    expect(showButton).toBeInTheDocument();
+
+    await user.click(showButton);
     expect(screen.getByRole("heading", { name: "Hardcoded Calculation Constants" })).toBeInTheDocument();
     expect(screen.getByText("Provider Payin Costs (Zone 5)")).toBeInTheDocument();
     expect(screen.getByText("Provider TRX CC cost")).toBeInTheDocument();
@@ -232,6 +239,8 @@ describe("App UI", () => {
 
     render(<App />);
 
+    await user.click(screen.getByRole("button", { name: "Show constants & formulas" }));
+
     expect(screen.getByText("Zone 3: Pricing Configuration")).toBeInTheDocument();
     expect(screen.getByText("Payin EU Pricing")).toBeInTheDocument();
     expect(screen.getByText("Payin WW Pricing")).toBeInTheDocument();
@@ -257,11 +266,13 @@ describe("App UI", () => {
     expect(screen.queryByText(/Scheme Cost Impact/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Revenue After Scheme/)).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Hide Zone 3 formulas" }));
+    await user.click(screen.getByRole("button", { name: "Hide constants & formulas" }));
     expect(screen.queryByText(/Formula: MDR Revenue = EU Volume/)).not.toBeInTheDocument();
     expect(screen.getByText("Formula Breakdown (EU)")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Show Zone 3 formulas" }));
+    expect(screen.queryByText("Provider Payin Costs (Zone 5)")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Show constants & formulas" }));
     expect(screen.getByText(/Formula: MDR Revenue = EU Volume/)).toBeInTheDocument();
+    expect(screen.getByText("Provider Payin Costs (Zone 5)")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Payin EU tiered rates" }));
     expect(screen.getByText(/Tier 1 \(€0-€5M\): Volume/)).toBeInTheDocument();
@@ -299,6 +310,8 @@ describe("App UI", () => {
 
     render(<App />);
 
+    await user.click(screen.getByRole("button", { name: "Show constants & formulas" }));
+
     expect(screen.getByText("Zone 4: Other Fees & Limits")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Settlement Fee" })).toBeInTheDocument();
     expect(screen.getByText("Payin Minimum Fee")).toBeInTheDocument();
@@ -323,10 +336,10 @@ describe("App UI", () => {
     expect(screen.getByText(/Formula: Applied Payout Revenue = max/)).toBeInTheDocument();
     expect(screen.getByText(/Formula: Payout Minimum Per-TRX Revenue =/)).toBeInTheDocument();
     expect(screen.getByText(/Payout Fees ALL \(€7,000\)/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Hide Zone 4 formulas" }));
+    await user.click(screen.getByRole("button", { name: "Hide constants & formulas" }));
     expect(screen.queryByText(/Formula: Payout Minimum Per-TRX Revenue =/)).not.toBeInTheDocument();
     expect(screen.getByText("Formula Breakdown (Zone 4)")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Show Zone 4 formulas" }));
+    await user.click(screen.getByRole("button", { name: "Show constants & formulas" }));
     expect(screen.getByText(/Formula: Payout Minimum Per-TRX Revenue =/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("checkbox", { name: "By region (EU / WW)" }));
