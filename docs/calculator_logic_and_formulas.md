@@ -416,7 +416,7 @@ Payin aggregate:
   - `Payin Net Margin = Total Payin Revenue - Total Payin Costs`
 
 Zone 5 payin cost breakdown display:
-- `Total Payin Costs = EU Costs + WW Costs + 3DS Costs (EU+WW)`.
+- `Total Payin Costs = Provider MDR + Provider TRX + 3DS Costs (EU+WW) + Scheme Fees (if any region is blended)`.
 - EU/WW regional cost rows break down into:
   - provider MDR tiers,
   - provider TRX CC,

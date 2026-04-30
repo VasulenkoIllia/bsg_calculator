@@ -2139,6 +2139,23 @@ export default function App() {
 
       return `${regionLabel} Costs = ${parts.join(" + ")}`;
     };
+    const buildTotalPayinCostFormula = (): string => {
+      const parts = [
+        `Provider MDR (${formatAmount2(payinProfitability.costs.providerMdr)})`,
+        `Provider TRX (${formatAmount2(payinProfitability.costs.providerTrx)})`,
+        `3DS Costs (EU ${formatAmount2(
+          threeDsPayinRegionalBreakdown.eu.cost
+        )} + WW ${formatAmount2(threeDsPayinRegionalBreakdown.ww.cost)})`
+      ];
+
+      if (payinEuPricing.model === "blended" || payinWwPricing.model === "blended") {
+        parts.push(`Scheme Fees (${formatAmount2(payinProfitability.costs.schemeFees)})`);
+      }
+
+      return `Total Payin Costs = ${parts.join(" + ")} = ${formatAmount2(
+        payinProfitabilityWithThreeDs.costs.total
+      )}`;
+    };
 
     nodes.push({
       id: "unified-total-profitability",
@@ -2359,15 +2376,7 @@ export default function App() {
             id: "unified-payin-total-costs",
             label: "Total Payin Costs",
             value: -payinProfitabilityWithThreeDs.costs.total,
-            formula: `Total Payin Costs = EU Costs (${formatAmount2(
-              payinProfitability.eu.costs.total
-            )}) + WW Costs (${formatAmount2(
-              payinProfitability.ww.costs.total
-            )}) + 3DS Costs (EU ${formatAmount2(
-              threeDsPayinRegionalBreakdown.eu.cost
-            )} + WW ${formatAmount2(threeDsPayinRegionalBreakdown.ww.cost)}) = ${formatAmount2(
-              payinProfitabilityWithThreeDs.costs.total
-            )}`,
+            formula: buildTotalPayinCostFormula(),
             children: [
               {
                 id: "unified-payin-eu-costs",

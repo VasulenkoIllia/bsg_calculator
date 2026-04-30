@@ -404,7 +404,9 @@ describe("App UI", () => {
     expect(screen.getByRole("checkbox", { name: "Show Formulas" })).toBeChecked();
 
     expect(screen.getByText(/Formula \(Unified\): Our Margin =/)).toBeInTheDocument();
-    expect(screen.getByText(/Formula \(Unified\): Total Payin Costs = EU Costs/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Formula \(Unified\): Total Payin Costs = Provider MDR/)
+    ).toBeInTheDocument();
     expect(screen.getByText("Provider TRX CC (EU)")).toBeInTheDocument();
     expect(screen.getByText("Provider TRX APM (EU)")).toBeInTheDocument();
     expect(screen.getByText("Provider TRX CC (WW)")).toBeInTheDocument();
