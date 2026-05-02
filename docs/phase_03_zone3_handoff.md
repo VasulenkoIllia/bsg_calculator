@@ -3,6 +3,12 @@
 Date: 2026-04-22  
 Status: Completed (phase scope)
 
+Update: 2026-05-01
+- Zone 3 formula visibility is now controlled by the global top button
+  `Show constants & formulas` / `Hide constants & formulas`.
+- Zone-level formula toggle in Zone 3 UI is removed.
+- Zone 3 formula breakdown cards (`EU/WW/Payout`) are hidden/shown by the global toggle.
+
 ## 1) Completed zone/module
 - Zone 3: `Pricing Configuration`
 - Covered sections:
@@ -16,7 +22,7 @@ Status: Completed (phase scope)
   - Payout fields: MDR, TRX, tier boundaries/rates
   - Validation warnings per DOCX thresholds
   - Formula breakdown with substituted values for all Zone 3 preview calculations
-  - Zone-level show/hide toggle for Zone 3 formula rows
+  - Formula visibility in Zone 3 is controlled by the global top button
   - Zone-level collapse/expand support
 
 ## 2) Files changed

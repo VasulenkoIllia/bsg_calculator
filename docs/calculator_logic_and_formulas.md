@@ -1,7 +1,7 @@
 # Calculator Logic and Formulas (Current Code)
 
-Date: 2026-04-30
-Scope: current implementation in `src/App.tsx` and `src/domain/calculator/zone0..zone6`.
+Date: 2026-05-01
+Scope: current implementation in `src/App.tsx`, `src/components/calculator/*`, and `src/domain/calculator/zone0..zone6`.
 
 This document is the technical source of truth for runtime calculation behavior.
 
@@ -54,8 +54,13 @@ Global top controls:
 - `Apply defaults` reapplies the current default preset. More zone defaults can be added to this preset as they are defined.
 - `Reset all to 0` applies the zero preset to editable numeric values and resets optional toggles/settings. Zone 0 remains normalized to `Payin = on`, `Payout = off` because the calculator type domain requires at least one active mode. Complement split fields still follow the current `100 - primary` rule.
 - `Hardcoded Calculation Constants` block is rendered at the top of the calculator and lists embedded read-only values used by formulas (provider tiers/costs, floors/guards, and fixed calculation clamps) to simplify manual verification.
-- Top action button `Hide constants & formulas` / `Show constants & formulas` toggles this block and also toggles formula visibility in Zone 3 and Zone 4 together.
-- Default state is collapsed (`Show constants & formulas`), so this block and Zone 3/4 formula traces are hidden on first load.
+- Top action button `Hide constants & formulas` / `Show constants & formulas` is the single global formula-visibility switch.
+- It controls:
+  - hardcoded constants block visibility;
+  - Zone 2 `Formula Breakdown` visibility;
+  - Zone 3 formula rows and `Formula Breakdown (EU/WW/Payout)` cards;
+  - Zone 4 formula rows and `Formula Breakdown (Zone 4)` card.
+- Default state is collapsed (`Show constants & formulas`), so constants and formula traces are hidden on first load.
 
 ## 2. Shared normalization rules
 
@@ -77,12 +82,14 @@ Formatting from `src/domain/calculator/shared/format.ts`:
 - `formatVariableAmount` keeps variable fee values with up to 2 decimals and is used in formula factors
   (for example `TRX fee`, `3DS fee/revenue per transaction`, `minimum per-TRX` values).
 
-UI numeric input parsing (`NumberField` in `src/App.tsx`):
+UI numeric input parsing (`NumberField` in `src/components/calculator/NumberField.tsx`):
 - Both decimal separators are accepted:
   - `0,2` is interpreted as `0.2`
   - `0.75` is interpreted as `0.75`
 - Thousand separators remain supported:
   - `1,000` is interpreted as `1000`
+  - `1.000` is interpreted as `1000`
+  - `1.000.000` is interpreted as `1000000`
   - mixed locale forms are parsed by last decimal separator (`1,234.56` and `1.234,56` are both valid).
 - On blur, values are rendered in the project format (`en-US` style with `.` decimal separator).
 
@@ -185,6 +192,10 @@ Formula:
 - `partnerShare = marginBeforeSplit * sharePercent / 100`
 - `ourMargin = marginBeforeSplit - partnerShare`
 
+Zone 2 formula visibility:
+- The right-side `Formula Breakdown` panel is shown only when global top toggle is ON (`Hide constants & formulas` state).
+- Commission calculations themselves are always active; only visual traces are hidden.
+
 ## 6. Zone 3 (Pricing Configuration)
 
 From `zone3/pricingConfiguration.ts`.
@@ -225,7 +236,8 @@ for `Blended`. Zone 6 Offer Summary still displays Scheme Fees for now.
 Formula visibility:
 - Zone 3 formula visibility is controlled by the global top button
   `Show constants & formulas` / `Hide constants & formulas`.
-- The toggle hides only formula text rows in Zone 3; metrics, inputs, warnings, and calculations remain active.
+- The toggle hides Zone 3 formula text rows and Zone 3 formula breakdown cards (`EU/WW/Payout`).
+- Metrics, inputs, warnings, and calculations remain active.
 
 Single rate:
 - `mdrRevenue = volume * mdrPercent / 100`
@@ -380,7 +392,8 @@ Minimum reminders:
 Formula visibility:
 - Zone 4 formula visibility is controlled by the same global top button
   `Show constants & formulas` / `Hide constants & formulas`.
-- The toggle hides only formula text rows in Zone 4; revenue/cost metrics, warnings, contract fields, and calculations remain active.
+- The toggle hides Zone 4 formula text rows and the Zone 4 `Formula Breakdown` card.
+- Revenue/cost metrics, warnings, contract fields, and calculations remain active.
 
 ## 8. Zone 5 (Profitability)
 
@@ -455,6 +468,7 @@ Zone 5 payout display rule:
 - `Total Payout Costs` expands into:
   - provider MDR tier rows,
   - provider TRX tier rows with transaction-count formula breakdown.
+- Legacy standalone `Payout Revenue & Costs` summary card block is removed; unified tree is the source of truth.
 
 ### 8.4 Other revenue profitability
 
@@ -473,7 +487,18 @@ Zone 5 display rule:
 - Formula display detail:
   - if `monthlyMinimumAdjustment > 0`, show `Settlement Fee + Monthly Minimum Adj`;
   - if `monthlyMinimumAdjustment = 0`, show only `Settlement Fee` in the formula line.
+- Legacy standalone summary card blocks are removed:
+  - `TOTAL PROFITABILITY` card grid,
+  - `Payin Revenue & Costs` card grid,
+  - `Other Revenue` summary card,
+  - `Introducer Commission` summary card.
+  Unified profitability tree remains the single UI source for profitability breakdown.
 - There is no payout 3DS split because the current 3DS business rule is Payin-based (`successful Payin transactions` for revenue and `Payin attempts` for cost).
+
+Zone 5 formula visibility:
+- Zone 5 has its own local checkbox `Show Formulas`.
+- Global top button does not control Zone 5 unified formula rows.
+- This visibility behavior does not change any calculations or totals.
 
 ### 8.5 Total profitability
 
@@ -519,7 +544,16 @@ Export actions in App:
 ## 10. Current mode behavior and coupling notes
 
 - The project is currently frontend-first (single-page app).
-- Domain formulas are in `src/domain/calculator/*` and used by `src/App.tsx`.
+- Domain formulas are in `src/domain/calculator/*`.
+- App orchestration is in `src/App.tsx`.
+- State/actions are centralized in `src/components/calculator/useCalculatorState.ts`.
+- Derived calculations and unified profitability tree are centralized in `src/components/calculator/useCalculatorDerivedData.ts`.
+- UI foundation and calculator primitives are split into modules under `src/components/calculator/*`:
+  - `NumberField`, toggles, cards, zone section, unified row
+  - parsing/formatting helpers
+  - hardcoded constants composer
+  - state presets and cloning helpers
+  - app-level helper functions for pricing preview and navigation.
 - Existing `server/` folder has only a lightweight health endpoint and is not used by the frontend runtime path.
 - For rev share, commission base is payin profitability only.
 - For IC++, scheme costs are excluded from payin cost totals.

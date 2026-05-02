@@ -19,6 +19,15 @@ Update: 2026-04-29
 - Unified `Total Payout Costs` now expands both Provider MDR tiers and Provider TRX tier formulas.
 - `Other Revenue` now includes only Settlement Fee and Monthly Minimum Adjustment.
 
+Update: 2026-05-01
+- Legacy standalone Zone 5 summary card blocks are removed to avoid duplicate values:
+  - `TOTAL PROFITABILITY` card grid,
+  - `Payin Revenue & Costs` card grid,
+  - `Payout Revenue & Costs` summary card,
+  - `Other Revenue` summary card,
+  - `Introducer Commission` summary card.
+- Unified profitability tree remains the single source of truth in Zone 5.
+
 ## 1) Completed zone/module
 - Zone 5: `Profitability Calculations`
 - Covered sections:

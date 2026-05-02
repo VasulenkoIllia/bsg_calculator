@@ -3,6 +3,12 @@
 Date: 2026-04-22  
 Status: Completed (phase scope)
 
+Update: 2026-05-01
+- Zone 4 formula visibility is now controlled by the global top button
+  `Show constants & formulas` / `Hide constants & formulas`.
+- Zone-level formula toggle in Zone 4 UI is removed.
+- Zone 4 `Formula Breakdown` card is hidden/shown by the global toggle.
+
 ## 1) Completed zone/module
 - Zone 4: `Other Fees & Limits`
 - Covered sections:
@@ -16,7 +22,7 @@ Status: Completed (phase scope)
     - `All Failed Volume` (affects profitability).
   - `Contract Summary Only` fields (non-profitability, Zone 6-targeted).
   - Formula breakdown lines with substituted values.
-  - Zone-level show/hide toggle for Zone 4 formula rows.
+  - Formula visibility in Zone 4 is controlled by the global top button.
   - Zone-level collapse/expand support.
 
 ## 2) Files changed

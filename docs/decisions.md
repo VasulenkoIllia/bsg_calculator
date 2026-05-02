@@ -223,6 +223,7 @@ Use this file to record meaningful technical decisions for the project.
 
 ### Decision: Zone 3/4 Formula Visibility Toggles
 - Date: 2026-04-29
+- Status: Superseded by `Global constants/formulas toggle and Zone 5 summary cleanup` on 2026-05-01.
 - Context:
   - Zone 3 and Zone 4 contain long formula breakdowns that are useful for audit but can make the working UI noisy.
 - Decision:
@@ -233,6 +234,31 @@ Use this file to record meaningful technical decisions for the project.
 - Consequences:
   - Users can keep the calculation cards compact without losing business outputs.
   - The formula visibility state has no effect on profitability or offer-summary calculations.
+
+### Decision: Global constants/formulas toggle and Zone 5 summary cleanup
+- Date: 2026-05-01
+- Context:
+  - Product requested one top-level button for formula visibility behavior and removal of remaining duplicate summary cards.
+  - Zone 3/4 still had visible breakdown cards in some states, and Zone 5 still had legacy standalone summary blocks duplicated with unified tree.
+- Decision:
+  - Keep a single top action button `Show constants & formulas` / `Hide constants & formulas`.
+  - This button controls:
+    - hardcoded constants block visibility,
+    - Zone 2 formula breakdown panel visibility,
+    - Zone 3 formula rows and Zone 3 formula breakdown cards,
+    - Zone 4 formula rows and Zone 4 formula breakdown card.
+  - Zone 5 retains independent formula visibility control via local `Show Formulas` checkbox.
+  - Remove legacy Zone 5 standalone summary blocks:
+    - `TOTAL PROFITABILITY` card grid,
+    - `Payin Revenue & Costs` card grid,
+    - `Other Revenue` summary card,
+    - `Introducer Commission` summary card,
+    - `Payout Revenue & Costs` summary card.
+  - Keep only unified profitability tree as the canonical profitability display.
+- Consequences:
+  - UI is cleaner and avoids duplicate numbers.
+  - Formula visibility behavior is consistent for zones 2/3/4 from one entrypoint, while Zone 5 keeps local control by design.
+  - Business formulas and totals are unchanged (presentation-only change).
 
 ### Decision: Zone 5 3DS Display Placement
 - Date: 2026-04-29
@@ -252,7 +278,23 @@ Use this file to record meaningful technical decisions for the project.
 - Consequences:
   - Profitability presentation now follows the Payin/Payout grouping without changing totals.
   - Unified tree hierarchy is cleaner and avoids duplicate values for Payin net margin.
-  - No Payout 3DS rows are added because the current 3DS rule is Payin-based.
+- No Payout 3DS rows are added because the current 3DS rule is Payin-based.
+
+### Decision: Architecture Cleanup Pass (No Formula Changes)
+- Date: 2026-05-01
+- Context:
+  - Product requested full cleanup/decomposition while preserving current business behavior and visuals.
+  - Core checks were already green, but technical debt remained in test organization and dead UI plumbing.
+- Decision:
+  - Keep all calculation/business formulas unchanged.
+  - Remove dead ambiguity flags/components that were no longer active in runtime.
+  - Split monolithic app integration test suite into focused files by area/zone.
+  - Add CI verification workflow and a local `npm run verify` command (`typecheck` + `test` + `build`).
+  - Keep audit register in `docs/audit_2026-05-01.md` with explicit resolved/open items.
+- Consequences:
+  - Runtime behavior and rendered business outputs stay the same.
+  - Codebase is easier to maintain and review.
+  - Remaining large-module decomposition (`useCalculatorDerivedData`, Zone 3/4 internals) is tracked as the next refactor step.
 
 ### Decision: Formula Display Precision for Variable Fees
 - Date: 2026-04-29
@@ -464,3 +506,25 @@ Use this file to record meaningful technical decisions for the project.
   - Decimal inputs like `0,2`, `0,65`, `0,07` are interpreted correctly as `0.2`, `0.65`, `0.07`.
   - Thousand input like `1,000` remains interpreted as one thousand.
   - UI is cleaner; derived formulas are no longer duplicated in separate sections.
+
+### Decision: App.tsx modular refactor without business logic changes
+- Date: 2026-05-01
+- Context:
+  - `src/App.tsx` exceeded 5k lines and mixed state presets, parsing utilities, helper algorithms, and UI primitives in one file.
+  - This made maintenance and safe review harder.
+- Decision:
+  - Keep existing business formulas and behavior unchanged.
+  - Move reusable code out of `App.tsx` into `src/components/calculator/*`:
+    - UI primitives (`NumberField`, toggles, cards, zone shell, unified row),
+    - numeric parsing/formatting helpers,
+    - hardcoded constants builder,
+    - calculator state presets + cloning helpers,
+    - app helper functions (preview fee helpers, tree expansion helpers, zone navigation helper).
+  - Finalize decomposition by introducing dedicated hooks:
+    - `useCalculatorState` for state + UI actions.
+    - `useCalculatorDerivedData` for derived calculations + unified profitability tree construction.
+  - Keep `App.tsx` as a thin composition/orchestration layer across Zone 0..Zone 6 components.
+- Consequences:
+  - `App.tsx` dropped from monolithic size to a significantly smaller orchestration file.
+  - Reusable pieces are now isolated and easier to test/change without touching business logic.
+  - Profitability and formula behavior remains unchanged; verification must stay green after refactor.

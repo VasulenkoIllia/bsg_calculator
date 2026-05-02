@@ -11,7 +11,11 @@ Frontend-first pricing calculator with deterministic domain formulas and full zo
 
 ## Project structure
 
-- `src/App.tsx` - UI wiring, zone state, integration of all formulas
+- `src/App.tsx` - thin UI orchestrator (zone composition + summary actions)
+- `src/components/calculator/useCalculatorState.ts` - calculator state and UI handlers
+- `src/components/calculator/useCalculatorDerivedData.ts` - derived calculations and unified profitability tree
+- `src/components/calculator/zones/*` - zone-specific UI modules (Zone 0 -> Zone 6)
+- `src/test/app.*.test.tsx` - split UI integration tests by core + zone groups
 - `src/domain/calculator/zone0..zone6` - domain logic by calculator zone
 - `src/domain/calculator/shared` - shared math/format helpers
 - `docs/calculator_logic_and_formulas.md` - full up-to-date formulas and runtime flow
@@ -40,7 +44,11 @@ App starts on Vite dev server (default `http://localhost:5173`).
 npm run typecheck
 npm run test
 npm run build
+npm run verify
 ```
+
+CI:
+- GitHub Actions workflow `.github/workflows/ci.yml` runs `typecheck`, `test`, and `build` on push/PR.
 
 ## Docker test deploy (frontend)
 
@@ -68,4 +76,5 @@ Detailed steps are in `docs/deployment.md`.
 ## Documentation notes
 
 - `docs/calculator_logic_and_formulas.md` is the current formula source of truth.
+- `docs/audit_2026-05-01.md` is the latest critical technical audit with prioritized risks and cleanup plan.
 - `docs/phase_*` files are historical phase handoff snapshots.
