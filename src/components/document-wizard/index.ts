@@ -6,9 +6,12 @@ export { buildPdfUiKitHtml } from "./buildPdfUiKitHtml.js";
 
 export {
   buildDocumentHeaderMetaFromCalculator,
-  buildDocumentWizardTemplateDataFromCalculator,
+  buildDocumentTemplatePayloadManualBlank,
+  buildDocumentTemplatePayloadManualDefaults,
+  buildDocumentTemplatePayloadManual,
+  buildDocumentTemplatePayloadFromCalculator,
   resolveCollectionModelDisplay
 } from "./fromCalculator.js";
-export type { BuildDocumentWizardTemplateInput } from "./fromCalculator.js";
+export type { BuildDocumentTemplatePayloadInput } from "./fromCalculator.js";
 
-export type { DocumentHeaderMetaDraft, DocumentWizardTemplateData, WizardStep } from "./types.js";
+export type { DocumentHeaderMetaDraft, DocumentTemplatePayload, WizardStep } from "./types.js";

@@ -1,4 +1,4 @@
-import type { DocumentWizardTemplateData, PayinRegionMode, WizardStep } from "../types.js";
+import type { DocumentTemplatePayload, PayinRegionMode, WizardStep } from "../types.js";
 
 const STEP_ORDER: Array<{ value: WizardStep; label: string }> = [
   { value: 1, label: "Header / Meta" },
@@ -22,7 +22,7 @@ export function resolvePayinTableMode(
   regionMode: PayinRegionMode,
   euRateMode: "single" | "tiered",
   wwRateMode: "single" | "tiered"
-): DocumentWizardTemplateData["layout"]["payin"]["tableMode"] {
+): DocumentTemplatePayload["layout"]["payin"]["tableMode"] {
   if (regionMode === "none") {
     return euRateMode === "tiered" || wwRateMode === "tiered" ? "flatTiered" : "flatSingle";
   }

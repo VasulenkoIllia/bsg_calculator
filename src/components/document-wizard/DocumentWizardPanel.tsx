@@ -5,11 +5,17 @@ import { PayoutStep } from "./wizard/steps/PayoutStep.js";
 import { PreviewStep } from "./wizard/steps/PreviewStep.js";
 import { TermsStep } from "./wizard/steps/TermsStep.js";
 import { Stepper } from "./wizard/shared.js";
-import type { DocumentWizardTemplateData, WizardStep } from "./types.js";
+import type { DocumentTemplatePayload, WizardStep } from "./types.js";
+
+type SourceMode = "calculator" | "manualBlank" | "manualDefaults";
 
 export interface DocumentWizardPanelProps {
-  draft: DocumentWizardTemplateData;
-  onDraftChange: (next: DocumentWizardTemplateData) => void;
+  draft: DocumentTemplatePayload;
+  onDraftChange: (next: DocumentTemplatePayload) => void;
+  sourceMode: SourceMode;
+  onStartFromCalculator: () => void;
+  onStartFromManualBlank: () => void;
+  onStartFromManualDefaults: () => void;
   activeStep: WizardStep;
   onStepChange: (step: WizardStep) => void;
   previewHtml: string;
@@ -21,6 +27,10 @@ export interface DocumentWizardPanelProps {
 export function DocumentWizardPanel({
   draft,
   onDraftChange,
+  sourceMode,
+  onStartFromCalculator,
+  onStartFromManualBlank,
+  onStartFromManualDefaults,
   activeStep,
   onStepChange,
   previewHtml,
@@ -32,10 +42,53 @@ export function DocumentWizardPanel({
     <section className="panel mx-auto mt-6 max-w-6xl p-5 md:p-7">
       <h2 className="zone-title">Contract Wizard (Phase 1)</h2>
       <p className="mt-1 text-sm text-slate-600">
-        Calculator data is loaded into all blocks. Confirm or adjust Step 1-5 and generate PDF in
-        Step 6.
+        Select source, confirm or adjust Step 1-5 blocks, then generate PDF in Step 6.
       </p>
       <div className="mt-4 grid gap-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+            Document Source
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={onStartFromCalculator}
+              className={[
+                "rounded-xl border px-4 py-2 text-sm font-semibold transition",
+                sourceMode === "calculator"
+                  ? "border-blue-400 bg-blue-50 text-blue-900"
+                  : "border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50"
+              ].join(" ")}
+            >
+              From Calculator
+            </button>
+            <button
+              type="button"
+              onClick={onStartFromManualBlank}
+              className={[
+                "rounded-xl border px-4 py-2 text-sm font-semibold transition",
+                sourceMode === "manualBlank"
+                  ? "border-blue-400 bg-blue-50 text-blue-900"
+                  : "border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50"
+              ].join(" ")}
+            >
+              Manual (blank)
+            </button>
+            <button
+              type="button"
+              onClick={onStartFromManualDefaults}
+              className={[
+                "rounded-xl border px-4 py-2 text-sm font-semibold transition",
+                sourceMode === "manualDefaults"
+                  ? "border-blue-400 bg-blue-50 text-blue-900"
+                  : "border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50"
+              ].join(" ")}
+            >
+              Manual (defaults)
+            </button>
+          </div>
+        </div>
+
         <Stepper activeStep={activeStep} onStepChange={onStepChange} />
 
         {activeStep === 1 ? (

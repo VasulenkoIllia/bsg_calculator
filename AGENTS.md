@@ -3,6 +3,13 @@
 This file is the primary operating standard for AI agents working in this repository.
 If a global agent file exists, this project file overrides it for repository-specific behavior.
 
+## Project-specific hard rules
+
+1. **Calculator math is frozen.** Do not change formulas, calculation logic, or business rules in `src/domain/calculator/**` or in any derived calculation hooks (`useCalculatorDerivedData`, `derived/*`) without explicit user approval. Pure refactors are OK only if `npm run verify` stays green and outputs remain identical. When in doubt, ask first.
+2. **Two-document SoT split.** Calculator behavior is governed by `Calculator_Описание.docx`. PDF / wizard / backend phase is governed by `technical_specification_bsg.docx v2.0`. Implementation status of the latter is tracked in `docs/spec_v2_alignment.md`.
+3. **HubSpot is a future phase.** Do not call HubSpot APIs or add HubSpot client code. Only documentation under `docs/integrations.md` is allowed for now.
+4. **Backend is Phase 8.** `server/` is a skeleton and is not serving the frontend. Do not extend it without an explicit backend task.
+
 ## Mission
 Work predictably, safely, and with minimal unnecessary context usage.
 Prefer maintainable implementation over fast but fragile changes.

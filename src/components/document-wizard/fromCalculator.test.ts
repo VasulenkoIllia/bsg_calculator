@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import { buildOfferPdfHtml } from "./buildOfferPdfHtml.js";
 import {
   buildDocumentHeaderMetaFromCalculator,
+  buildDocumentTemplatePayloadManualBlank,
+  buildDocumentTemplatePayloadManualDefaults,
+  buildDocumentTemplatePayloadManual,
   resolveCollectionModelDisplay
 } from "./fromCalculator.js";
-import type { DocumentWizardTemplateData } from "./types.js";
+import type { DocumentTemplatePayload } from "./types.js";
 
 describe("resolveCollectionModelDisplay", () => {
   it("returns single model label when both regions match", () => {
@@ -28,8 +31,66 @@ describe("buildDocumentHeaderMetaFromCalculator", () => {
   });
 });
 
+describe("manual wizard builders", () => {
+  it("creates manual blank draft", () => {
+    const draft = buildDocumentTemplatePayloadManualBlank();
+
+    expect(draft.layout.source).toBe("manual");
+    expect(draft.layout.payin.regionMode).toBe("both");
+    expect(draft.layout.payin.tableMode).toBe("byRegionFlat");
+    expect(draft.layout.payout.regionMode).toBe("global");
+    expect(draft.layout.payout.tableMode).toBe("globalFlat");
+    expect(draft.calculatorType.payin).toBe(true);
+    expect(draft.calculatorType.payout).toBe(true);
+    expect(draft.contractSummary.refundCost).toBe(0);
+    expect(draft.payinPricing.eu.single.mdrPercent).toBe(0);
+    expect(draft.payoutPricing.single.trxFee).toBe(0);
+    expect(draft.payinPricing.eu.model).toBe("blended");
+    expect(draft.payinPricing.ww.model).toBe("icpp");
+  });
+
+  it("creates manual default-values draft", () => {
+    const draft = buildDocumentTemplatePayloadManualDefaults();
+
+    expect(draft.layout.source).toBe("manual");
+    expect(draft.payin.euPercent).toBe(80);
+    expect(draft.payin.wwPercent).toBe(20);
+    expect(draft.payinPricing.eu.single.mdrPercent).toBe(4.5);
+    expect(draft.payinPricing.ww.single.mdrPercent).toBe(5);
+    expect(draft.payoutPricing.single.trxFee).toBe(0.5);
+    expect(draft.contractSummary.refundCost).toBe(15);
+    expect(draft.toggles.failedTrxOverLimitThresholdPercent).toBe(70);
+  });
+
+  it("keeps manual alias mapped to blank builder", () => {
+    const draft = buildDocumentTemplatePayloadManual();
+    expect(draft.contractSummary.refundCost).toBe(0);
+    expect(draft.payinPricing.eu.single.mdrPercent).toBe(0);
+  });
+
+  it("returns independent nested objects on each call for blank builder", () => {
+    const first = buildDocumentTemplatePayloadManualBlank();
+    first.payinPricing.eu.tiers[0].mdrPercent = 9.99;
+    first.payoutPricing.tiers[0].trxFee = 0.99;
+
+    const second = buildDocumentTemplatePayloadManualBlank();
+    expect(second.payinPricing.eu.tiers[0].mdrPercent).toBe(0);
+    expect(second.payoutPricing.tiers[0].trxFee).toBe(0);
+  });
+
+  it("returns independent nested objects on each call for defaults builder", () => {
+    const first = buildDocumentTemplatePayloadManualDefaults();
+    first.payinPricing.eu.tiers[0].mdrPercent = 9.99;
+    first.payoutPricing.tiers[0].trxFee = 0.99;
+
+    const second = buildDocumentTemplatePayloadManualDefaults();
+    expect(second.payinPricing.eu.tiers[0].mdrPercent).toBe(4.5);
+    expect(second.payoutPricing.tiers[0].trxFee).toBe(0.5);
+  });
+});
+
 describe("buildOfferPdfHtml", () => {
-  function buildBaseTemplateData(): DocumentWizardTemplateData {
+  function buildBaseTemplateData(): DocumentTemplatePayload {
     return {
       header: {
         documentType: "Commercial Pricing Schedule",
@@ -77,7 +138,10 @@ describe("buildOfferPdfHtml", () => {
         payoutMinimumFeeWwPerTransaction: 1,
         accountSetupFee: 0,
         refundCost: 0,
-        disputeCost: 0
+        disputeCost: 0,
+        settlementNote: "Does not apply on weekends and bank holidays",
+        clientType: "STD",
+        restrictedJurisdictions: "OFAC, US"
       },
       payinPricing: {
         eu: {

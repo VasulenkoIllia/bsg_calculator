@@ -1,5 +1,5 @@
 import { MiniToggle, NumberField } from "../../../calculator/index.js";
-import type { DocumentWizardTemplateData } from "../../types.js";
+import type { DocumentTemplatePayload } from "../../types.js";
 import { parseNullableNumber, SETTLEMENT_PERIOD_OPTIONS, StepNavigation } from "../shared.js";
 
 export function TermsStep({
@@ -8,13 +8,13 @@ export function TermsStep({
   onBack,
   onNext
 }: {
-  draft: DocumentWizardTemplateData;
-  onDraftChange: (next: DocumentWizardTemplateData) => void;
+  draft: DocumentTemplatePayload;
+  onDraftChange: (next: DocumentTemplatePayload) => void;
   onBack: () => void;
   onNext: () => void;
 }) {
   const updateContractSummary = (
-    patch: Partial<DocumentWizardTemplateData["contractSummary"]>
+    patch: Partial<DocumentTemplatePayload["contractSummary"]>
   ) => {
     onDraftChange({
       ...draft,
@@ -48,6 +48,47 @@ export function TermsStep({
               ))}
             </select>
           </label>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm font-bold text-slate-800">Legal Terms (rendered in Section 4)</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Defaults match the standard BSG offer template. Edit per contract if a clause needs to differ.
+          </p>
+          <div className="mt-3 grid gap-3">
+            <label>
+              <span className="field-label">Settlement Note</span>
+              <input
+                className="field-input"
+                type="text"
+                value={draft.contractSummary.settlementNote}
+                onChange={event => updateContractSummary({ settlementNote: event.target.value })}
+                aria-label="Settlement note"
+              />
+            </label>
+            <label>
+              <span className="field-label">Client Type</span>
+              <input
+                className="field-input"
+                type="text"
+                value={draft.contractSummary.clientType}
+                onChange={event => updateContractSummary({ clientType: event.target.value })}
+                aria-label="Client type"
+              />
+            </label>
+            <label>
+              <span className="field-label">Restricted Jurisdictions</span>
+              <input
+                className="field-input"
+                type="text"
+                value={draft.contractSummary.restrictedJurisdictions}
+                onChange={event =>
+                  updateContractSummary({ restrictedJurisdictions: event.target.value })
+                }
+                aria-label="Restricted jurisdictions"
+              />
+            </label>
+          </div>
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">

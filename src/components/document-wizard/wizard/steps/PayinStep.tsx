@@ -1,5 +1,5 @@
 import { MiniToggle, NumberField } from "../../../calculator/index.js";
-import type { DocumentWizardTemplateData, PayinRegionMode } from "../../types.js";
+import type { DocumentTemplatePayload, PayinRegionMode } from "../../types.js";
 import {
   PAYIN_REGION_LABELS,
   type PayinRegionKey,
@@ -14,16 +14,16 @@ function PayinRegionEditor({
   onDraftChange
 }: {
   region: PayinRegionKey;
-  draft: DocumentWizardTemplateData;
-  onDraftChange: (next: DocumentWizardTemplateData) => void;
+  draft: DocumentTemplatePayload;
+  onDraftChange: (next: DocumentTemplatePayload) => void;
 }) {
   const regionLabel = PAYIN_REGION_LABELS[region];
   const pricing = draft.payinPricing[region];
 
   const updatePricing = (
     updater: (
-      current: DocumentWizardTemplateData["payinPricing"][PayinRegionKey]
-    ) => DocumentWizardTemplateData["payinPricing"][PayinRegionKey]
+      current: DocumentTemplatePayload["payinPricing"][PayinRegionKey]
+    ) => DocumentTemplatePayload["payinPricing"][PayinRegionKey]
   ) => {
     const nextPricing = updater(pricing);
     const tableMode = resolvePayinTableMode(
@@ -239,8 +239,8 @@ export function PayinStep({
   onBack,
   onNext
 }: {
-  draft: DocumentWizardTemplateData;
-  onDraftChange: (next: DocumentWizardTemplateData) => void;
+  draft: DocumentTemplatePayload;
+  onDraftChange: (next: DocumentTemplatePayload) => void;
   onBack: () => void;
   onNext: () => void;
 }) {

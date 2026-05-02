@@ -12,8 +12,11 @@ Ensure generated OFFER PDFs are visually and structurally consistent with approv
 Specification source:
 
 1. `technical_specification_bsg.docx` (Contract Generator System, version 2.0, date 2026-04-30 in document body)
-2. `docs/pdf_rendering_logic_matrix.md` (per-sample logic extraction + rendering mode matrix)
-3. `docs/pdf_ui_kit.md` (tokenized visual system for offer PDF)
+2. `Extended Schedule 4 - MSA format.docx` — AGREEMENT (long-form Service Agreement) template body.
+3. `docs/pdf_rendering_logic_matrix.md` (per-sample logic extraction + rendering mode matrix)
+4. `docs/pdf_renderer_audit_2026-05-02.md` (current renderer vs 8 reference samples — open discrepancies)
+5. `docs/agreement_structure.md` (AGREEMENT structural reference)
+6. `docs/pdf_ui_kit.md` (tokenized visual system for offer PDF)
 
 Reference PDF set:
 

@@ -37,7 +37,7 @@ export interface DocumentHeaderMetaDraft {
   collectionFrequency: string;
 }
 
-export interface DocumentWizardTemplateData {
+export interface DocumentTemplatePayload {
   header: DocumentHeaderMetaDraft;
   layout: DocumentWizardLayout;
   valueModes?: DocumentWizardValueModes;
@@ -70,6 +70,9 @@ export interface DocumentWizardTemplateData {
     accountSetupFee: number;
     refundCost: number;
     disputeCost: number;
+    settlementNote: string;
+    clientType: string;
+    restrictedJurisdictions: string;
   };
   payinPricing: {
     eu: {

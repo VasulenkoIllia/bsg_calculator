@@ -1,5 +1,5 @@
 import type { ChangeEvent } from "react";
-import type { DocumentHeaderMetaDraft, DocumentWizardTemplateData } from "../../types.js";
+import type { DocumentHeaderMetaDraft, DocumentTemplatePayload } from "../../types.js";
 import { StepNavigation } from "../shared.js";
 
 export function HeaderMetaStep({
@@ -9,8 +9,8 @@ export function HeaderMetaStep({
   onContinueToPayin,
   onContinueToPreview
 }: {
-  draft: DocumentWizardTemplateData;
-  onDraftChange: (next: DocumentWizardTemplateData) => void;
+  draft: DocumentTemplatePayload;
+  onDraftChange: (next: DocumentTemplatePayload) => void;
   onRefreshFromCalculator: () => void;
   onContinueToPayin: () => void;
   onContinueToPreview: () => void;

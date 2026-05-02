@@ -17,14 +17,17 @@ import {
 import {
   DocumentWizardPanel,
   buildDocumentHeaderMetaFromCalculator,
-  buildDocumentWizardTemplateDataFromCalculator,
+  buildDocumentTemplatePayloadManualBlank,
+  buildDocumentTemplatePayloadManualDefaults,
+  buildDocumentTemplatePayloadFromCalculator,
   buildOfferPdfHtml
 } from "./components/document-wizard/index.js";
-import type { DocumentWizardTemplateData, WizardStep } from "./components/document-wizard/index.js";
+import type { DocumentTemplatePayload, WizardStep } from "./components/document-wizard/index.js";
 import { useCalculatorState } from "./components/calculator/useCalculatorState.js";
 import { useCalculatorDerivedData } from "./components/calculator/useCalculatorDerivedData.js";
 
 type WorkspacePage = "calculator" | "wizard";
+type WizardSourceMode = "calculator" | "manualBlank" | "manualDefaults";
 
 function WorkspaceTabs({
   activePage,
@@ -233,7 +236,7 @@ export default function App() {
   );
   const calculatorWizardSeed = useMemo(
     () =>
-      buildDocumentWizardTemplateDataFromCalculator({
+      buildDocumentTemplatePayloadFromCalculator({
         header: calculatorHeaderSeed,
         calculatorType,
         payin,
@@ -278,7 +281,8 @@ export default function App() {
       threeDsRevenuePerSuccessfulTransaction
     ]
   );
-  const [wizardDraft, setWizardDraft] = useState<DocumentWizardTemplateData>(calculatorWizardSeed);
+  const [wizardDraft, setWizardDraft] = useState<DocumentTemplatePayload>(calculatorWizardSeed);
+  const [wizardSourceMode, setWizardSourceMode] = useState<WizardSourceMode>("calculator");
   const [wizardStep, setWizardStep] = useState<WizardStep>(1);
   const [wizardActionMessage, setWizardActionMessage] = useState<string | null>(null);
   const [workspacePage, setWorkspacePage] = useState<WorkspacePage>("calculator");
@@ -438,7 +442,29 @@ export default function App() {
 
   const handleWizardRefillFromCalculator = () => {
     setWizardDraft(calculatorWizardSeed);
+    setWizardSourceMode("calculator");
     setWizardActionMessage("Wizard fields were refilled from current calculator data.");
+  };
+
+  const handleWizardStartFromCalculator = () => {
+    setWizardDraft(calculatorWizardSeed);
+    setWizardSourceMode("calculator");
+    setWizardStep(1);
+    setWizardActionMessage("Wizard source switched to calculator data.");
+  };
+
+  const handleWizardStartFromManualBlank = () => {
+    setWizardDraft(buildDocumentTemplatePayloadManualBlank());
+    setWizardSourceMode("manualBlank");
+    setWizardStep(1);
+    setWizardActionMessage("Wizard source switched to manual blank mode.");
+  };
+
+  const handleWizardStartFromManualDefaults = () => {
+    setWizardDraft(buildDocumentTemplatePayloadManualDefaults());
+    setWizardSourceMode("manualDefaults");
+    setWizardStep(1);
+    setWizardActionMessage("Wizard source switched to manual defaults mode.");
   };
 
   const handleWizardGeneratePdf = () => {
@@ -463,6 +489,7 @@ export default function App() {
     setWorkspacePage("wizard");
     setWizardStep(1);
     setWizardDraft(calculatorWizardSeed);
+    setWizardSourceMode("calculator");
   };
 
   return (
@@ -673,6 +700,10 @@ export default function App() {
           <DocumentWizardPanel
             draft={wizardDraft}
             onDraftChange={setWizardDraft}
+            sourceMode={wizardSourceMode}
+            onStartFromCalculator={handleWizardStartFromCalculator}
+            onStartFromManualBlank={handleWizardStartFromManualBlank}
+            onStartFromManualDefaults={handleWizardStartFromManualDefaults}
             activeStep={wizardStep}
             onStepChange={setWizardStep}
             previewHtml={wizardPreviewHtml}

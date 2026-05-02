@@ -101,6 +101,28 @@ Validation:
 2. `npm run test` passed.
 3. `npm run build` passed.
 
+### 2026-05-02 — Stage 2A (manual wizard source mode) in progress
+
+Implemented:
+
+1. Added manual source draft builder:
+   - `buildDocumentWizardTemplateDataManual()`
+   - seeds full wizard payload from domain defaults (no calculator input required).
+2. Added source mode switch inside wizard shell:
+   - `From Calculator`
+   - `Manual (blank)`
+   - `Manual (defaults)`
+3. Wired source switching in app orchestration:
+   - calculator mode reseeds draft from live calculator state,
+   - manual blank mode reseeds draft from zero baseline,
+   - manual defaults mode reseeds draft from domain default values.
+4. Explicitly deferred Stage 2B value modes (`value/waived/na/tbd`) for this iteration.
+
+Validation:
+
+1. Added tests for manual draft builder baseline + nested-clone safety.
+2. Full verification (`typecheck/test/build`) executed after code updates.
+
 ## 1) Scope and target
 
 Build one modular system that generates contract PDF documents from three entry scenarios:

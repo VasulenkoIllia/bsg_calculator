@@ -1,5 +1,5 @@
 import { MiniToggle, NumberField } from "../../../calculator/index.js";
-import type { DocumentWizardTemplateData } from "../../types.js";
+import type { DocumentTemplatePayload } from "../../types.js";
 import { StepNavigation } from "../shared.js";
 
 export function PayoutStep({
@@ -8,8 +8,8 @@ export function PayoutStep({
   onBack,
   onNext
 }: {
-  draft: DocumentWizardTemplateData;
-  onDraftChange: (next: DocumentWizardTemplateData) => void;
+  draft: DocumentTemplatePayload;
+  onDraftChange: (next: DocumentTemplatePayload) => void;
   onBack: () => void;
   onNext: () => void;
 }) {
@@ -17,7 +17,7 @@ export function PayoutStep({
   const pricing = draft.payoutPricing;
 
   const updatePricing = (
-    updater: (current: DocumentWizardTemplateData["payoutPricing"]) => DocumentWizardTemplateData["payoutPricing"]
+    updater: (current: DocumentTemplatePayload["payoutPricing"]) => DocumentTemplatePayload["payoutPricing"]
   ) => {
     const nextPricing = updater(pricing);
     onDraftChange({

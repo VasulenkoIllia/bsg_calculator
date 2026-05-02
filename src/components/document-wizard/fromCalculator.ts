@@ -1,3 +1,14 @@
+import {
+  DEFAULT_3DS_FEE_CONFIG,
+  DEFAULT_CONTRACT_SUMMARY_SETTINGS,
+  DEFAULT_FAILED_TRX_CHARGING_CONFIG,
+  DEFAULT_MONTHLY_MINIMUM_FEE_CONFIG,
+  DEFAULT_PAYIN_EU_PRICING_CONFIG,
+  DEFAULT_PAYIN_WW_PRICING_CONFIG,
+  DEFAULT_PAYOUT_MINIMUM_FEE_CONFIG,
+  DEFAULT_PAYOUT_PRICING_CONFIG,
+  DEFAULT_SETTLEMENT_FEE_CONFIG
+} from "../../domain/calculator/index.js";
 import type {
   CalculatorTypeSelection,
   ContractSummarySettings,
@@ -8,7 +19,8 @@ import type {
   PayoutTrafficDerived,
   PricingModelType
 } from "../../domain/calculator/index.js";
-import type { DocumentHeaderMetaDraft, DocumentWizardTemplateData } from "./types.js";
+import { DEFAULT_DOCUMENT_LEGAL_TERMS } from "./legalDefaults.js";
+import type { DocumentHeaderMetaDraft, DocumentTemplatePayload } from "./types.js";
 
 const DEFAULT_COLLECTION_FREQUENCY = "Daily (unless agreed otherwise)";
 
@@ -20,6 +32,10 @@ function todayIsoDate(): string {
   return `${year}-${month}-${day}`;
 }
 
+// FN.1 placeholder: returns a transient draft number for UI preview.
+// Real numbering follows `BSG-#####-XXXXX` semantics and will be issued by the
+// Phase 8 backend numbering service. Replace at the call site once the backend
+// allocator is wired in.
 function defaultDraftNumber(): string {
   const suffix = String(Date.now() % 100_000).padStart(5, "0");
   return `BSG-DRAFT-${suffix}`;
@@ -66,7 +82,7 @@ function resolvePayinRegionMode(
   return "none";
 }
 
-export interface BuildDocumentWizardTemplateInput {
+export interface BuildDocumentTemplatePayloadInput {
   header: DocumentHeaderMetaDraft;
   calculatorType: CalculatorTypeSelection;
   payin: PayinTrafficDerived;
@@ -89,7 +105,7 @@ export interface BuildDocumentWizardTemplateInput {
   contractSummarySettings: ContractSummarySettings;
 }
 
-export function buildDocumentWizardTemplateDataFromCalculator({
+export function buildDocumentTemplatePayloadFromCalculator({
   header,
   calculatorType,
   payin,
@@ -110,7 +126,7 @@ export function buildDocumentWizardTemplateDataFromCalculator({
   failedTrxMode,
   failedTrxOverLimitThresholdPercent,
   contractSummarySettings
-}: BuildDocumentWizardTemplateInput): DocumentWizardTemplateData {
+}: BuildDocumentTemplatePayloadInput): DocumentTemplatePayload {
   const payinRegionMode = resolvePayinRegionMode(
     calculatorType.payin,
     payin.normalized.euPercent,
@@ -152,7 +168,10 @@ export function buildDocumentWizardTemplateDataFromCalculator({
       ccPercent: payin.normalized.ccPercent,
       apmPercent: payin.normalized.apmPercent
     },
-    contractSummary: { ...contractSummarySettings },
+    contractSummary: {
+      ...contractSummarySettings,
+      ...DEFAULT_DOCUMENT_LEGAL_TERMS
+    },
     payinPricing: {
       eu: {
         model: payinEuPricing.model,
@@ -195,4 +214,188 @@ export function buildDocumentWizardTemplateDataFromCalculator({
       failedTrxOverLimitThresholdPercent
     }
   };
+}
+
+function clonePayinRegionPricing(pricing: PayinRegionPricingConfig): DocumentTemplatePayload["payinPricing"]["eu"] {
+  return {
+    ...pricing,
+    single: { ...pricing.single },
+    tiers: pricing.tiers.map(tier => ({ ...tier }))
+  };
+}
+
+function clonePayoutPricing(pricing: PayoutPricingConfig): DocumentTemplatePayload["payoutPricing"] {
+  return {
+    ...pricing,
+    single: { ...pricing.single },
+    tiers: pricing.tiers.map(tier => ({ ...tier }))
+  };
+}
+
+export function buildDocumentTemplatePayloadManualDefaults(): DocumentTemplatePayload {
+  const header = buildDocumentHeaderMetaFromCalculator(
+    DEFAULT_PAYIN_EU_PRICING_CONFIG.model,
+    DEFAULT_PAYIN_WW_PRICING_CONFIG.model
+  );
+
+  return {
+    header,
+    layout: {
+      source: "manual",
+      payin: {
+        regionMode: "both",
+        tableMode: "byRegionFlat"
+      },
+      payout: {
+        regionMode: "global",
+        tableMode: "globalFlat"
+      }
+    },
+    calculatorType: {
+      payin: true,
+      payout: true
+    },
+    payin: {
+      euPercent: 80,
+      wwPercent: 20,
+      ccPercent: 90,
+      apmPercent: 10
+    },
+    contractSummary: {
+      ...DEFAULT_CONTRACT_SUMMARY_SETTINGS,
+      ...DEFAULT_DOCUMENT_LEGAL_TERMS
+    },
+    payinPricing: {
+      eu: clonePayinRegionPricing(DEFAULT_PAYIN_EU_PRICING_CONFIG),
+      ww: clonePayinRegionPricing(DEFAULT_PAYIN_WW_PRICING_CONFIG)
+    },
+    payoutPricing: clonePayoutPricing(DEFAULT_PAYOUT_PRICING_CONFIG),
+    toggles: {
+      settlementIncluded: false,
+      payoutMinimumFeeEnabled: DEFAULT_PAYOUT_MINIMUM_FEE_CONFIG.enabled,
+      payoutMinimumFeePerTransaction: DEFAULT_PAYOUT_MINIMUM_FEE_CONFIG.minimumFeePerTransaction,
+      threeDsEnabled: DEFAULT_3DS_FEE_CONFIG.enabled,
+      threeDsRevenuePerSuccessfulTransaction: DEFAULT_3DS_FEE_CONFIG.revenuePerSuccessfulTransaction,
+      settlementFeeEnabled: DEFAULT_SETTLEMENT_FEE_CONFIG.enabled,
+      settlementFeeRatePercent: DEFAULT_SETTLEMENT_FEE_CONFIG.ratePercent,
+      monthlyMinimumFeeEnabled: DEFAULT_MONTHLY_MINIMUM_FEE_CONFIG.enabled,
+      monthlyMinimumFeeAmount: DEFAULT_MONTHLY_MINIMUM_FEE_CONFIG.minimumMonthlyRevenue,
+      failedTrxEnabled: DEFAULT_FAILED_TRX_CHARGING_CONFIG.enabled,
+      failedTrxMode: DEFAULT_FAILED_TRX_CHARGING_CONFIG.mode,
+      failedTrxOverLimitThresholdPercent: DEFAULT_FAILED_TRX_CHARGING_CONFIG.overLimitThresholdPercent
+    }
+  };
+}
+
+export function buildDocumentTemplatePayloadManualBlank(): DocumentTemplatePayload {
+  const header = buildDocumentHeaderMetaFromCalculator(
+    DEFAULT_PAYIN_EU_PRICING_CONFIG.model,
+    DEFAULT_PAYIN_WW_PRICING_CONFIG.model
+  );
+
+  return {
+    header,
+    layout: {
+      source: "manual",
+      payin: {
+        regionMode: "both",
+        tableMode: "byRegionFlat"
+      },
+      payout: {
+        regionMode: "global",
+        tableMode: "globalFlat"
+      }
+    },
+    calculatorType: {
+      payin: true,
+      payout: true
+    },
+    payin: {
+      euPercent: 0,
+      wwPercent: 0,
+      ccPercent: 0,
+      apmPercent: 0
+    },
+    contractSummary: {
+      ...DEFAULT_CONTRACT_SUMMARY_SETTINGS,
+      ...DEFAULT_DOCUMENT_LEGAL_TERMS,
+      accountSetupFee: 0,
+      refundCost: 0,
+      disputeCost: 0,
+      payoutMinimumFeeThresholdMillion: 0,
+      payoutMinimumFeePerTransaction: 0,
+      payoutMinimumFeeEuThresholdMillion: 0,
+      payoutMinimumFeeEuPerTransaction: 0,
+      payoutMinimumFeeWwThresholdMillion: 0,
+      payoutMinimumFeeWwPerTransaction: 0,
+      collectionLimitMin: 0,
+      collectionLimitMax: 0,
+      payoutLimitMin: 0,
+      rollingReservePercent: 0,
+      rollingReserveHoldDays: 0
+    },
+    payinPricing: {
+      eu: {
+        ...clonePayinRegionPricing(DEFAULT_PAYIN_EU_PRICING_CONFIG),
+        tier1UpToMillion: 0,
+        tier2UpToMillion: 0,
+        single: {
+          mdrPercent: 0,
+          trxCc: 0,
+          trxApm: 0
+        },
+        tiers: DEFAULT_PAYIN_EU_PRICING_CONFIG.tiers.map(() => ({
+          mdrPercent: 0,
+          trxCc: 0,
+          trxApm: 0
+        }))
+      },
+      ww: {
+        ...clonePayinRegionPricing(DEFAULT_PAYIN_WW_PRICING_CONFIG),
+        tier1UpToMillion: 0,
+        tier2UpToMillion: 0,
+        single: {
+          mdrPercent: 0,
+          trxCc: 0,
+          trxApm: 0
+        },
+        tiers: DEFAULT_PAYIN_WW_PRICING_CONFIG.tiers.map(() => ({
+          mdrPercent: 0,
+          trxCc: 0,
+          trxApm: 0
+        }))
+      }
+    },
+    payoutPricing: {
+      ...clonePayoutPricing(DEFAULT_PAYOUT_PRICING_CONFIG),
+      tier1UpToMillion: 0,
+      tier2UpToMillion: 0,
+      single: {
+        mdrPercent: 0,
+        trxFee: 0
+      },
+      tiers: DEFAULT_PAYOUT_PRICING_CONFIG.tiers.map(() => ({
+        mdrPercent: 0,
+        trxFee: 0
+      }))
+    },
+    toggles: {
+      settlementIncluded: false,
+      payoutMinimumFeeEnabled: false,
+      payoutMinimumFeePerTransaction: 0,
+      threeDsEnabled: false,
+      threeDsRevenuePerSuccessfulTransaction: 0,
+      settlementFeeEnabled: false,
+      settlementFeeRatePercent: 0,
+      monthlyMinimumFeeEnabled: false,
+      monthlyMinimumFeeAmount: 0,
+      failedTrxEnabled: false,
+      failedTrxMode: DEFAULT_FAILED_TRX_CHARGING_CONFIG.mode,
+      failedTrxOverLimitThresholdPercent: 0
+    }
+  };
+}
+
+export function buildDocumentTemplatePayloadManual(): DocumentTemplatePayload {
+  return buildDocumentTemplatePayloadManualBlank();
 }

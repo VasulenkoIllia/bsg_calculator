@@ -661,3 +661,97 @@ Use this file to record meaningful technical decisions for the project.
   - Lower cognitive load per step and easier targeted changes in future phases.
   - Safer regression surface because step logic is isolated by concern.
   - No calculator logic change and no renderer behavior change.
+
+### Decision: Stage 2A Manual Wizard Mode Before Stage 2B Value Modes
+- Date: 2026-05-02
+- Context:
+  - Product confirmed that current priority is complete calculator-parity payload flow and manual wizard start without additional semantic states.
+  - Stage 2B field states (`value`, `waived`, `na`, `tbd`) are useful but not required for current milestone.
+- Decision:
+  - Implement Stage 2A first:
+    - allow contract creation flow from manual wizard source,
+    - provide two manual seeds (`blank` and `defaults`),
+    - keep all fields editable as concrete values only,
+    - reuse the same template payload and renderer path as calculator mode.
+  - Defer Stage 2B field-state controls to a later iteration.
+- Alternatives considered:
+  - Implement Stage 2A and Stage 2B together in one pass.
+  - Keep manual mode disabled until value modes are implemented.
+- Consequences:
+  - Faster delivery of calculator-parity wizard behavior.
+  - Lower regression risk while stabilizing shared payload mapping.
+  - Future Stage 2B will be additive on top of established manual source flow.
+
+### Decision: Calculator Frozen + Documentation Cleanup Pass
+- Date: 2026-05-02
+- Context:
+  - Calculator is product-confirmed as working (math + visual). User explicitly asked that no formula or business-logic change be made without permission.
+  - Repository accumulated phase handoff snapshots, a closed open-questions doc, and a backup `.docx` at the root.
+  - Two specification documents exist with overlapping but distinct scopes (`Calculator_Описание.docx` covers the calculator only; `technical_specification_bsg.docx v2.0` covers the new PDF/contract generator phase). Lack of an explicit alignment doc was creating scope confusion.
+  - HubSpot integration is deferred until after backend foundation is in place.
+- Decision:
+  - Pin "calculator math is frozen" rule into `README.md` and `AGENTS.md` as a project-specific hard rule.
+  - Establish `docs/spec_v2_alignment.md` as the section-by-section status map for the CGS spec.
+  - Establish `docs/architecture.md` as the module/data-flow reference.
+  - Refresh `docs/integrations.md` to document HubSpot as a planned future integration only (no API calls in code).
+  - Move historical phase handoffs (`phase_01..phase_06`), the closed `calculator_spec_open_questions.md`, the predates-Phase-7 `calculator_delivery_contract.md`, and the prior audit (`audit_2026-05-01.md`) to `docs/archive/`.
+  - Replace the prior audit with `docs/audit_2026-05-02.md`.
+  - Delete root-level `Calculator_Описание_backup_before_red_marks.docx` (stale 58 KB backup).
+  - Rename `package.json` `name` from `workflo-fullstack-template` to `bsg-calculator`.
+  - Keep `server/` as a skeleton (decision: do not delete; reuse during Phase 8).
+- Alternatives considered:
+  - Delete `server/` and start fresh in Phase 8. (Rejected per user preference.)
+  - Leave audit/historical docs at top level and only mark them stale. (Rejected; archive folder makes "active vs historical" instantly obvious.)
+  - Add ESLint as part of this pass. (Deferred — adds devDeps; user wants explicit approval before adding tooling.)
+- Consequences:
+  - No source code change in this pass; all calculator/wizard/PDF behavior unchanged.
+  - Future agents and reviewers can find current scope and constraints in two files instead of inferring from a sprawling `decisions.md`.
+  - Backend phase can begin from a clean documentation baseline.
+- Follow-up actions:
+  - Lock OFFER PDF templates against approved samples (final visual pass).
+  - Decide whether to modularize `buildOfferPdfHtml.ts` and `pdf-kit/primitives.ts` before or after AGREEMENT scope is reopened.
+  - Open backend phase discussion with user when frontend polish is complete.
+
+### Decision: Lift Section 4 Legal Defaults to Wizard Payload
+- Date: 2026-05-03
+- Context:
+  - Visual fidelity audit against 8 reference offer samples flagged that `Settlement Note`, `Client Type`, and `Restricted Jurisdictions` were hardcoded in the renderer (`offerPdf/sections/terms.ts`) and could not be edited per contract.
+- Decision:
+  - Add `src/components/document-wizard/legalDefaults.ts` holding canonical `DEFAULT_DOCUMENT_LEGAL_TERMS` (Settlement Note, Client Type, Restricted Jurisdictions).
+  - Extend `DocumentTemplatePayload.contractSummary` with `settlementNote`, `clientType`, `restrictedJurisdictions` (strings) seeded from the new defaults.
+  - Seed all three builders (`buildDocumentTemplatePayloadFromCalculator`, `…ManualDefaults`, `…ManualBlank`) with the new defaults via spread.
+  - Step 5 (Terms) gains an editable "Legal Terms" panel for the three new fields.
+  - Renderer (`offerPdf/sections/terms.ts`) reads values from payload; remove the old `TERMS_DEFAULTS` constant block.
+  - Annotate `defaultDraftNumber()` in `fromCalculator.ts` as a transient placeholder (FN.1) — Phase 8 backend numbering service will replace it.
+- Alternatives considered:
+  - Keep the three fields hardcoded as project-wide defaults (rejected — product needs per-contract editability).
+  - Add the fields to calculator state (rejected — not calculator concerns; pollutes calculation domain).
+- Consequences:
+  - Wizard now supports per-contract overrides for the three Section 4 legal lines without touching the calculator.
+  - All 151 tests still pass; calculator math, OFFER renderer pixel layout, and bundle remain stable (CSS unchanged at 21.85 kB).
+- Follow-up actions:
+  - Address remaining audit items (AGREEMENT renderer, document-scope selector) in a follow-up phase.
+
+### Decision: P1–P5 Decomposition Pass + ESLint
+- Date: 2026-05-02
+- Context:
+  - Audit `docs/audit_2026-05-02.md` flagged five maintainability items (P1 OFFER renderer size, P2 PDF UI Kit primitives size, P3 Zone 5 profitability size, P4 lint stage gap, P5 payload type naming drift).
+  - User explicitly approved acting on all five with the constraint that the calculator's business logic and visible behavior must not change.
+- Decision:
+  - **P5 (rename)** — Renamed canonical wizard payload type `DocumentWizardTemplateData` → `DocumentTemplatePayload` and the four `buildDocumentWizardTemplateData…` helpers to `buildDocumentTemplatePayload…`. `BuildDocumentWizardTemplateInput` → `BuildDocumentTemplatePayloadInput`. Aligns frontend code with `phase_07_unified_document_pipeline_plan.md` ahead of the backend phase. Pure rename across 13 files, no behavior change.
+  - **P1 (renderer split)** — `buildOfferPdfHtml.ts` (607 lines) reduced to ~80-line orchestrator. Helpers moved under `src/components/document-wizard/offerPdf/`: `formatters.ts`, `layoutResolution.ts`, `sections/{payin,payout,fees,terms}.ts`. Public entry `buildOfferPdfHtml(data)` unchanged.
+  - **P2 (PDF UI Kit split)** — `pdf-kit/primitives.ts` (447 lines) split into per-component files under `pdf-kit/components/` plus `pdf-kit/styles.ts` and `pdf-kit/types.ts`. `pdf-kit/primitives.ts` kept as a barrel re-export so existing imports remain valid.
+  - **P3 (Zone 5 split)** — `domain/calculator/zone5/profitability.ts` (615 lines) split into `types.ts`, `constants.ts`, `internals.ts`, `payin.ts`, `payout.ts`, `other.ts`, `total.ts`. Original file is now a barrel. **No formula or business-logic change**; this is the single hardest constraint of the cycle. Verified by identical 151/151 test outputs and identical final JS bundle hash to the pre-split build.
+  - **P4 (ESLint)** — Added flat-config ESLint v9 with `typescript-eslint@^8`, `eslint-plugin-react@^7`, `eslint-plugin-react-hooks@^7`, `@eslint/js@^9`, `globals@^17`. `npm run lint` script wired into `npm run verify` and `.github/workflows/ci.yml`. Ignores `dist/`, `node_modules/`, `coverage/`, `.claude/**` (worktrees), and `server/**` (Phase 8 skeleton). Current state: 0 errors, 3 pre-existing warnings left as-is.
+- Alternatives considered:
+  - Combine P3 with formula tuning (rejected — calculator frozen).
+  - Use stricter lint rules (e.g. `no-explicit-any` as error). Deferred — current goal is gate parity, not new policy.
+  - Delete pre-existing lint warnings now. Deferred — one of them is in calculator code (frozen) and the other two are tiny in non-blocking paths.
+- Consequences:
+  - `useCalculatorDerivedData.ts` and the calculator domain remain bit-for-bit identical at the bundle level.
+  - All decomposed modules have single, focused responsibilities; AGREEMENT or DOCX work in the future will land in clean structure.
+  - CI now runs `typecheck → lint → test → build`.
+  - Wizard ↔ backend payload contract is named consistently (`DocumentTemplatePayload`).
+- Follow-up actions:
+  - Address P6 (document number placeholder comment) when next touching wizard helpers.
+  - Optionally clean the 3 pre-existing lint warnings during a future calculator-touching pass with explicit product approval.

@@ -1,5 +1,5 @@
 import { MiniToggle, NumberField } from "../../../calculator/index.js";
-import type { DocumentWizardTemplateData } from "../../types.js";
+import type { DocumentTemplatePayload } from "../../types.js";
 import { StepNavigation } from "../shared.js";
 
 export function OtherFeesStep({
@@ -8,13 +8,13 @@ export function OtherFeesStep({
   onBack,
   onNext
 }: {
-  draft: DocumentWizardTemplateData;
-  onDraftChange: (next: DocumentWizardTemplateData) => void;
+  draft: DocumentTemplatePayload;
+  onDraftChange: (next: DocumentTemplatePayload) => void;
   onBack: () => void;
   onNext: () => void;
 }) {
   const updateContractSummary = (
-    patch: Partial<DocumentWizardTemplateData["contractSummary"]>
+    patch: Partial<DocumentTemplatePayload["contractSummary"]>
   ) => {
     onDraftChange({
       ...draft,
@@ -25,7 +25,7 @@ export function OtherFeesStep({
     });
   };
 
-  const updateToggles = (patch: Partial<DocumentWizardTemplateData["toggles"]>) => {
+  const updateToggles = (patch: Partial<DocumentTemplatePayload["toggles"]>) => {
     onDraftChange({
       ...draft,
       toggles: {
