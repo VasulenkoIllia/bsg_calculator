@@ -85,4 +85,6 @@ Detailed steps are in `docs/deployment.md`.
 
 - `docs/calculator_logic_and_formulas.md` is the current formula source of truth.
 - `docs/audit_2026-05-01.md` is the latest critical technical audit with prioritized risks and cleanup plan.
+- `docs/phase_07_unified_document_pipeline_plan.md` is the active implementation plan for unified PDF generation, immutable versioning, and wizard flow.
+- `docs/pdf_template_fidelity_requirements.md` defines mandatory PDF visual/structural fidelity against approved reference offers and specification styling.
 - `docs/phase_*` files are historical phase handoff snapshots.

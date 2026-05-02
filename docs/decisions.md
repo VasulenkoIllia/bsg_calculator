@@ -552,3 +552,112 @@ Use this file to record meaningful technical decisions for the project.
   - File sizes after: Zone3 ~180 lines, Zone4 ~169 lines, `buildUnifiedProfitabilityTree` 359 lines, `useCalculatorDerivedData` 541 lines.
   - All new modules are pure or focused single-responsibility units.
   - No business logic or visual changes; verified by 138/138 tests, typecheck, and build passing.
+
+### Decision: Unified Document Pipeline with Immutable Versioning
+- Date: 2026-05-02
+- Context:
+  - Product requires three entry scenarios for PDF creation:
+    - from calculator data,
+    - from manual step-by-step form,
+    - by cloning existing calculator/document as a base.
+  - Product also requires strict non-editability of saved calculators/documents and new numbering for each saved new document.
+  - UI flow must be block-by-block wizard style and backend/frontend should stay modular.
+- Decision:
+  - Introduce one canonical payload contract for rendering (`DocumentTemplatePayload`).
+  - Force all entry scenarios through one shared pipeline:
+    - source adapter -> normalize -> validate -> assign number -> save immutable version -> render PDF.
+  - Enforce immutable persistence model:
+    - no in-place edits for saved calculator snapshots or saved documents,
+    - changes are saved only as new versions/documents with lineage reference to parent.
+  - Enforce numbering on every saved new document using transaction-safe allocation.
+  - Keep one shared template renderer for all scenarios (no scenario-specific PDF templates).
+  - Implement block-based wizard modules matching document sections.
+- Alternatives considered:
+  - Separate pipelines/templates for each scenario.
+  - Allow mutable document edits with version field updates in the same record.
+  - Allocate numbers at draft creation time.
+- Consequences:
+  - Lower divergence risk between scenarios and simpler regression testing.
+  - Stronger auditability due to immutable history and lineage links.
+  - Clear modular ownership for frontend steps and backend services.
+  - Number sequence remains consistent and duplicate-safe under concurrency.
+- Follow-up actions:
+  - Track implementation tasks in `docs/phase_07_unified_document_pipeline_plan.md`.
+  - Enforce visual and structural baseline from `docs/pdf_template_fidelity_requirements.md`.
+  - Update integration and API docs when HubSpot sync endpoints are introduced.
+
+### Decision: OFFER PDF Renderer Uses One Mode-Driven Template
+- Date: 2026-05-02
+- Context:
+  - Product requires one global PDF creation logic for all flows (from calculator, manual, clone).
+  - Reference PDFs show stable visual skeleton with variable row/column structures by tiers and regional split.
+  - Calculator-origin contracts must hide missing values instead of inserting synthetic placeholders.
+- Decision:
+  - Keep a single OFFER renderer template and drive all structural variants by explicit layout modes.
+  - Introduce rendering mode matrix for Payin/Payout (`tiers/regions` combinations) and map calculator data into this matrix automatically.
+  - Add optional per-field value modes (`value`, `waived`, `na`, `tbd`) for manual/clone scenarios only.
+  - In calculator source mode, omit blocks/rows when values are absent and do not inject `TBD/N/A/Waived`.
+  - Track fidelity and sample-based logic in `docs/pdf_rendering_logic_matrix.md`.
+- Alternatives considered:
+  - Maintain separate template variants per scenario.
+  - Keep a single static table layout and fill with placeholder values.
+- Consequences:
+  - Rendering behavior is deterministic and testable across modes.
+  - Future wizard steps can reuse the same template while adding manual controls.
+  - Visual updates can be centralized without branch-specific divergence.
+- Follow-up actions:
+  - Add wizard controls in next phase for explicit manual region/tier/value-mode edits.
+
+### Decision: Introduce PDF UI Kit for OFFER Fidelity
+- Date: 2026-05-02
+- Context:
+  - Product identified visual drift between generated PDF preview and approved sample PDFs.
+  - Existing renderer mixed business logic and styling in one file, making precise visual tuning slow.
+- Decision:
+  - Introduce dedicated PDF UI Kit layer with tokens and reusable primitives.
+  - Keep business rendering logic separate from visual primitives.
+  - Add standalone UI kit preview page to calibrate colors/typography/sections without changing business data.
+- Alternatives considered:
+  - Continue patching CSS directly inside renderer.
+  - Split by customer-specific templates.
+- Consequences:
+  - Visual tuning becomes centralized and safer.
+  - Changes in palette/typography can be made through token profile first.
+  - One template path is preserved for all creation scenarios.
+- Follow-up actions:
+  - Add theme snapshot tests and compare key token values against approved reference profile.
+
+### Decision: Wizard Uses Full Draft Payload Across Steps 1-6
+- Date: 2026-05-02
+- Context:
+  - Product requested to keep calculator unchanged as source of truth and continue implementation of wizard steps 2-5 in the same block-based flow as step 1.
+  - Header-only wizard state was insufficient because edits in Payin/Payout/Fees/Terms could not be confirmed inside wizard before PDF generation.
+- Decision:
+  - Store wizard state as full `DocumentWizardTemplateData` draft instead of only header fields.
+  - Enable and render all wizard steps (1..6) with per-block editable controls.
+  - Keep calculator logic untouched; wizard draft is seeded/refilled from current calculator state.
+  - Render preview/PDF strictly from wizard draft so user edits in steps 2-5 are included.
+- Alternatives considered:
+  - Keep step 2-5 read-only and edit only in calculator.
+  - Add temporary step-local states and merge only on preview.
+- Consequences:
+  - Stage-1 integration now supports full calculator -> wizard -> PDF path with explicit per-block confirmation.
+  - Data flow is clearer for future manual/clone source modes because one canonical draft shape is already used in UI.
+
+### Decision: Wizard UI Decomposition for Step-Level Maintainability
+- Date: 2026-05-02
+- Context:
+  - `DocumentWizardPanel.tsx` grew to a large monolith after enabling full Step 1-6 editing.
+  - Upcoming phases include manual source mode, clone flows, and additional block logic that would further increase complexity.
+- Decision:
+  - Keep `DocumentWizardPanel` as a thin shell/orchestrator.
+  - Move step implementations into dedicated modules under `src/components/document-wizard/wizard/steps`.
+  - Move shared wizard helpers (stepper, step navigation, payin layout helpers, nullable-number parser) into `wizard/shared.tsx`.
+  - Keep behavior and payload contract unchanged.
+- Alternatives considered:
+  - Keep single-file implementation until next phase.
+  - Introduce larger state-management abstractions before splitting files.
+- Consequences:
+  - Lower cognitive load per step and easier targeted changes in future phases.
+  - Safer regression surface because step logic is isolated by concern.
+  - No calculator logic change and no renderer behavior change.

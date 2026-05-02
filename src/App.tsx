@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { buildOfferSummaryText } from "./domain/calculator/index.js";
 import {
   CalculatorActionsPanel,
@@ -14,8 +14,61 @@ import {
   Zone6OfferSummary,
   escapeHtml
 } from "./components/calculator/index.js";
+import {
+  DocumentWizardPanel,
+  buildDocumentHeaderMetaFromCalculator,
+  buildDocumentWizardTemplateDataFromCalculator,
+  buildOfferPdfHtml
+} from "./components/document-wizard/index.js";
+import type { DocumentWizardTemplateData, WizardStep } from "./components/document-wizard/index.js";
 import { useCalculatorState } from "./components/calculator/useCalculatorState.js";
 import { useCalculatorDerivedData } from "./components/calculator/useCalculatorDerivedData.js";
+
+type WorkspacePage = "calculator" | "wizard";
+
+function WorkspaceTabs({
+  activePage,
+  onChange
+}: {
+  activePage: WorkspacePage;
+  onChange: (page: WorkspacePage) => void;
+}) {
+  return (
+    <section className="panel mb-6 border border-slate-200 bg-white p-4 md:p-5">
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+        Workspace
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => onChange("calculator")}
+          className={[
+            "rounded-xl border px-4 py-2 text-sm font-semibold transition",
+            activePage === "calculator"
+              ? "border-blue-400 bg-blue-50 text-blue-900"
+              : "border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50"
+          ].join(" ")}
+          aria-pressed={activePage === "calculator"}
+        >
+          Calculator
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange("wizard")}
+          className={[
+            "rounded-xl border px-4 py-2 text-sm font-semibold transition",
+            activePage === "wizard"
+              ? "border-blue-400 bg-blue-50 text-blue-900"
+              : "border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50"
+          ].join(" ")}
+          aria-pressed={activePage === "wizard"}
+        >
+          Contract Wizard & PDF
+        </button>
+      </div>
+    </section>
+  );
+}
 
 export default function App() {
   const {
@@ -174,6 +227,87 @@ export default function App() {
     setUnifiedExpandedById
   });
 
+  const calculatorHeaderSeed = useMemo(
+    () => buildDocumentHeaderMetaFromCalculator(payinEuPricing.model, payinWwPricing.model),
+    [payinEuPricing.model, payinWwPricing.model]
+  );
+  const calculatorWizardSeed = useMemo(
+    () =>
+      buildDocumentWizardTemplateDataFromCalculator({
+        header: calculatorHeaderSeed,
+        calculatorType,
+        payin,
+        payout,
+        payinEuPricing,
+        payinWwPricing,
+        payoutPricing,
+        payoutMinimumFeeEnabled,
+        payoutMinimumFeePerTransaction,
+        threeDsEnabled,
+        threeDsRevenuePerSuccessfulTransaction,
+        settlementIncluded,
+        settlementFeeEnabled,
+        settlementFeeRatePercent,
+        monthlyMinimumFeeEnabled,
+        monthlyMinimumFeeAmount,
+        failedTrxEnabled,
+        failedTrxMode,
+        failedTrxOverLimitThresholdPercent,
+        contractSummarySettings
+      }),
+    [
+      calculatorHeaderSeed,
+      calculatorType,
+      contractSummarySettings,
+      failedTrxEnabled,
+      failedTrxMode,
+      failedTrxOverLimitThresholdPercent,
+      monthlyMinimumFeeAmount,
+      monthlyMinimumFeeEnabled,
+      payin,
+      payinEuPricing,
+      payinWwPricing,
+      payout,
+      payoutMinimumFeeEnabled,
+      payoutMinimumFeePerTransaction,
+      payoutPricing,
+      settlementFeeEnabled,
+      settlementFeeRatePercent,
+      settlementIncluded,
+      threeDsEnabled,
+      threeDsRevenuePerSuccessfulTransaction
+    ]
+  );
+  const [wizardDraft, setWizardDraft] = useState<DocumentWizardTemplateData>(calculatorWizardSeed);
+  const [wizardStep, setWizardStep] = useState<WizardStep>(1);
+  const [wizardActionMessage, setWizardActionMessage] = useState<string | null>(null);
+  const [workspacePage, setWorkspacePage] = useState<WorkspacePage>("calculator");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const syncFromHash = () => {
+      const hash = window.location.hash.toLowerCase();
+      if (hash === "#wizard") {
+        setWorkspacePage("wizard");
+        return;
+      }
+      setWorkspacePage("calculator");
+    };
+
+    syncFromHash();
+    window.addEventListener("hashchange", syncFromHash);
+    return () => window.removeEventListener("hashchange", syncFromHash);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const targetHash = workspacePage === "wizard" ? "#wizard" : "#calculator";
+    if (window.location.hash !== targetHash) {
+      window.history.replaceState(null, "", targetHash);
+    }
+  }, [workspacePage]);
+
   const offerSummaryText = useMemo(
     () =>
       buildOfferSummaryText({
@@ -237,6 +371,12 @@ export default function App() {
     setOfferSummaryActionMessage(null);
   }, [offerSummaryText]);
 
+  const wizardPreviewHtml = useMemo(() => buildOfferPdfHtml(wizardDraft), [wizardDraft]);
+
+  useEffect(() => {
+    setWizardActionMessage(null);
+  }, [wizardPreviewHtml]);
+
   const handleCopyOfferSummary = async () => {
     try {
       if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
@@ -296,204 +436,251 @@ export default function App() {
     openOfferSummaryPrintView("print");
   };
 
+  const handleWizardRefillFromCalculator = () => {
+    setWizardDraft(calculatorWizardSeed);
+    setWizardActionMessage("Wizard fields were refilled from current calculator data.");
+  };
+
+  const handleWizardGeneratePdf = () => {
+    if (typeof window === "undefined") return;
+
+    const popup = window.open("", "_blank", "noopener,noreferrer,width=1120,height=880");
+    if (!popup) {
+      setWizardActionMessage("Popup was blocked. Please allow popups, then retry PDF generation.");
+      return;
+    }
+
+    popup.document.open();
+    popup.document.write(wizardPreviewHtml);
+    popup.document.close();
+    popup.focus();
+    popup.print();
+
+    setWizardActionMessage('Print dialog opened. Choose "Save as PDF" to export.');
+  };
+
+  const handleOpenWizardWorkspace = () => {
+    setWorkspacePage("wizard");
+    setWizardStep(1);
+    setWizardDraft(calculatorWizardSeed);
+  };
+
   return (
     <main className="min-h-screen">
       <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8 md:py-10">
         <CalculatorHeader />
-        <HardcodedConstantsPanel
-          visible={showHardcodedConstants}
-          groups={hardcodedConstantGroups}
-        />
-        <CalculatorActionsPanel
-          showHardcodedConstants={showHardcodedConstants}
-          onToggleConstantsAndFormulas={toggleHardcodedConstantsAndZoneFormulas}
-          onReset={resetAllValuesToZero}
-          onApplyDefaults={applyDefaultValues}
-        />
+        <WorkspaceTabs activePage={workspacePage} onChange={setWorkspacePage} />
 
-        <Zone0CalculatorType
-          expanded={zoneExpanded.zone0}
-          onToggle={() => toggleZone("zone0")}
-          calculatorType={calculatorType}
-          onPayinEnabledChange={setPayinEnabled}
-          onPayoutEnabledChange={setPayoutEnabled}
-        />
+        {workspacePage === "calculator" ? (
+          <>
+            <HardcodedConstantsPanel
+              visible={showHardcodedConstants}
+              groups={hardcodedConstantGroups}
+            />
+            <CalculatorActionsPanel
+              showHardcodedConstants={showHardcodedConstants}
+              onToggleConstantsAndFormulas={toggleHardcodedConstantsAndZoneFormulas}
+              onReset={resetAllValuesToZero}
+              onApplyDefaults={applyDefaultValues}
+            />
 
-        {calculatorType.payin ? (
-          <Zone1PayinTraffic
-            expanded={zoneExpanded.zone1a}
-            onToggle={() => toggleZone("zone1a")}
-            navigation={getZoneNavigation("zone1a")}
-            payinVolume={payinVolume}
-            payinTransactions={payinTransactions}
-            approvalRatioPercent={approvalRatioPercent}
-            euPercent={euPercent}
-            wwPercent={wwPercent}
-            ccPercent={ccPercent}
-            apmPercent={apmPercent}
-            payin={payin}
-            onPayinVolumeChange={setPayinVolume}
-            onPayinTransactionsChange={setPayinTransactions}
-            onApprovalRatioPercentChange={setApprovalRatioPercent}
-            onEuPercentChange={handleEuChange}
-            onWwPercentChange={handleWwChange}
-            onCcPercentChange={handleCcChange}
-            onApmPercentChange={handleApmChange}
+            <Zone0CalculatorType
+              expanded={zoneExpanded.zone0}
+              onToggle={() => toggleZone("zone0")}
+              calculatorType={calculatorType}
+              onPayinEnabledChange={setPayinEnabled}
+              onPayoutEnabledChange={setPayoutEnabled}
+            />
+
+            {calculatorType.payin ? (
+              <Zone1PayinTraffic
+                expanded={zoneExpanded.zone1a}
+                onToggle={() => toggleZone("zone1a")}
+                navigation={getZoneNavigation("zone1a")}
+                payinVolume={payinVolume}
+                payinTransactions={payinTransactions}
+                approvalRatioPercent={approvalRatioPercent}
+                euPercent={euPercent}
+                wwPercent={wwPercent}
+                ccPercent={ccPercent}
+                apmPercent={apmPercent}
+                payin={payin}
+                onPayinVolumeChange={setPayinVolume}
+                onPayinTransactionsChange={setPayinTransactions}
+                onApprovalRatioPercentChange={setApprovalRatioPercent}
+                onEuPercentChange={handleEuChange}
+                onWwPercentChange={handleWwChange}
+                onCcPercentChange={handleCcChange}
+                onApmPercentChange={handleApmChange}
+              />
+            ) : null}
+
+            {calculatorType.payout ? (
+              <Zone1PayoutTraffic
+                expanded={zoneExpanded.zone1b}
+                onToggle={() => toggleZone("zone1b")}
+                navigation={getZoneNavigation("zone1b")}
+                payoutVolume={payoutVolume}
+                payoutTransactions={payoutTransactions}
+                payout={payout}
+                onPayoutVolumeChange={setPayoutVolume}
+                onPayoutTransactionsChange={setPayoutTransactions}
+              />
+            ) : null}
+
+            <Zone2IntroducerCommission
+              expanded={zoneExpanded.zone2}
+              onToggle={() => toggleZone("zone2")}
+              navigation={getZoneNavigation("zone2")}
+              showFormulas={showHardcodedConstants}
+              introducerEnabled={introducerEnabled}
+              onIntroducerEnabledChange={setIntroducerEnabled}
+              introducerCommissionType={introducerCommissionType}
+              onIntroducerCommissionTypeChange={setIntroducerCommissionType}
+              hasPayin={calculatorType.payin}
+              payinMonthlyVolume={payin.normalized.monthlyVolume}
+              introducerBaseVolume={introducerBaseVolume}
+              customTier1UpToMillion={customTier1UpToMillion}
+              customTier2UpToMillion={customTier2UpToMillion}
+              customTier1RatePerMillion={customTier1RatePerMillion}
+              customTier2RatePerMillion={customTier2RatePerMillion}
+              customTier3RatePerMillion={customTier3RatePerMillion}
+              onCustomTier1UpToChange={handleCustomTier1UpToChange}
+              onCustomTier2UpToChange={handleCustomTier2UpToChange}
+              onCustomTier1RatePerMillionChange={setCustomTier1RatePerMillion}
+              onCustomTier2RatePerMillionChange={setCustomTier2RatePerMillion}
+              onCustomTier3RatePerMillionChange={setCustomTier3RatePerMillion}
+              revSharePercent={revSharePercent}
+              onRevSharePercentChange={handleRevSharePercentChange}
+              standardIntroducer={standardIntroducer}
+              customIntroducer={customIntroducer}
+              revShareIntroducer={revShareIntroducer}
+            />
+
+            <Zone3PricingConfiguration
+              expanded={zoneExpanded.zone3}
+              onToggle={() => toggleZone("zone3")}
+              navigation={getZoneNavigation("zone3")}
+              settlementIncluded={settlementIncluded}
+              setSettlementIncluded={setSettlementIncluded}
+              calculatorType={calculatorType}
+              payin={payin}
+              payout={payout}
+              payinEuPricing={payinEuPricing}
+              payinWwPricing={payinWwPricing}
+              payinEuPreview={payinEuPreview}
+              payinWwPreview={payinWwPreview}
+              payoutPricing={payoutPricing}
+              payoutPreview={payoutPreview}
+              payoutRateMinimumAdjustments={payoutRateMinimumAdjustments}
+              payoutSingleRateMinimumAdjustment={payoutSingleRateMinimumAdjustment}
+              showZone3Formulas={showHardcodedConstants && showZone3Formulas}
+              setPayinRegionModel={setPayinRegionModel}
+              setPayinRegionRateMode={setPayinRegionRateMode}
+              setPayinRegionTrxEnabled={setPayinRegionTrxEnabled}
+              setPayinRegionSingleField={setPayinRegionSingleField}
+              setPayinRegionTierField={setPayinRegionTierField}
+              setPayinRegionTierBoundary={setPayinRegionTierBoundary}
+              setPayoutRateMode={setPayoutRateMode}
+              setPayoutSingleField={setPayoutSingleField}
+              setPayoutTierField={setPayoutTierField}
+              setPayoutTierBoundary={setPayoutTierBoundary}
+            />
+
+            <Zone4OtherFeesAndLimits
+              expanded={zoneExpanded.zone4}
+              onToggle={() => toggleZone("zone4")}
+              navigation={getZoneNavigation("zone4")}
+              calculatorType={calculatorType}
+              payin={payin}
+              payout={payout}
+              payoutMinimumFeeEnabled={payoutMinimumFeeEnabled}
+              setPayoutMinimumFeeEnabled={setPayoutMinimumFeeEnabled}
+              payoutMinimumFeePerTransaction={payoutMinimumFeePerTransaction}
+              setPayoutMinimumFeePerTransaction={setPayoutMinimumFeePerTransaction}
+              threeDsEnabled={threeDsEnabled}
+              setThreeDsEnabled={setThreeDsEnabled}
+              threeDsRevenuePerSuccessfulTransaction={threeDsRevenuePerSuccessfulTransaction}
+              setThreeDsRevenuePerSuccessfulTransaction={setThreeDsRevenuePerSuccessfulTransaction}
+              settlementIncluded={settlementIncluded}
+              settlementFeeEnabled={settlementFeeEnabled}
+              setSettlementFeeEnabled={setSettlementFeeEnabled}
+              settlementFeeRatePercent={settlementFeeRatePercent}
+              setSettlementFeeRatePercent={setSettlementFeeRatePercent}
+              monthlyMinimumFeeEnabled={monthlyMinimumFeeEnabled}
+              setMonthlyMinimumFeeEnabled={setMonthlyMinimumFeeEnabled}
+              monthlyMinimumFeeAmount={monthlyMinimumFeeAmount}
+              setMonthlyMinimumFeeAmount={setMonthlyMinimumFeeAmount}
+              failedTrxEnabled={failedTrxEnabled}
+              setFailedTrxEnabled={setFailedTrxEnabled}
+              failedTrxMode={failedTrxMode}
+              setFailedTrxMode={setFailedTrxMode}
+              failedTrxOverLimitThresholdPercent={failedTrxOverLimitThresholdPercent}
+              setFailedTrxOverLimitThresholdPercent={setFailedTrxOverLimitThresholdPercent}
+              showZone4Formulas={showHardcodedConstants && showZone4Formulas}
+              payoutMinimumFeeImpact={payoutMinimumFeeImpact}
+              threeDsImpact={threeDsImpact}
+              settlementFeeImpact={settlementFeeImpact}
+              monthlyMinimumFeeImpact={monthlyMinimumFeeImpact}
+              failedTrxImpact={failedTrxImpact}
+              effectiveFailedTrxFees={effectiveFailedTrxFees}
+              payinBaseRevenue={payinBaseRevenue}
+              payoutRevenueAdjusted={payoutRevenueAdjusted}
+              contractSummarySettings={contractSummarySettings}
+              setContractSummaryField={setContractSummaryField}
+            />
+
+            <Zone5ProfitabilityCalculations
+              expanded={zoneExpanded.zone5}
+              onToggle={() => toggleZone("zone5")}
+              navigation={getZoneNavigation("zone5")}
+              showUnifiedFormulas={showUnifiedFormulas}
+              onShowUnifiedFormulasChange={setShowUnifiedFormulas}
+              onExpandAllRows={expandAllUnifiedRows}
+              onCollapseAllRows={collapseAllUnifiedRows}
+              unifiedProfitabilityTree={unifiedProfitabilityTree}
+              unifiedExpandedById={unifiedExpandedById}
+              onToggleUnifiedRow={toggleUnifiedRow}
+              payoutMinimumFeeWarning={payoutMinimumFeeImpact.warning}
+              payoutPerTransactionRevenue={payoutMinimumFeeImpact.perTransactionRevenue}
+              payoutAppliedPerTransactionRevenue={payoutMinimumFeeImpact.appliedPerTransactionRevenue}
+              payoutBaseRevenue={payoutMinimumFeeImpact.baseRevenue}
+              payoutAdjustedRevenue={payoutMinimumFeeImpact.adjustedRevenue}
+              payoutMinimumFeePerTransaction={payoutMinimumFeePerTransaction}
+              monthlyMinimumWarning={monthlyMinimumFeeImpact.warning}
+              monthlyMinimumBaseRevenue={monthlyMinimumFeeImpact.baseRevenue}
+              monthlyMinimumAppliedRevenue={monthlyMinimumFeeImpact.appliedRevenue}
+              monthlyMinimumFeeAmount={monthlyMinimumFeeAmount}
+              monthlyMinimumUpliftRevenue={monthlyMinimumFeeImpact.upliftRevenue}
+              payoutRateMinimumAdjustments={payoutRateMinimumAdjustments}
+            />
+
+            <Zone6OfferSummary
+              expanded={zoneExpanded.zone6}
+              onToggle={() => toggleZone("zone6")}
+              navigation={getZoneNavigation("zone6")}
+              clientNotes={clientNotes}
+              onClientNotesChange={setClientNotes}
+              offerSummaryText={offerSummaryText}
+              offerSummaryActionMessage={offerSummaryActionMessage}
+              onCopy={handleCopyOfferSummary}
+              onExportPdf={handleExportOfferSummaryPdf}
+              onPrint={handlePrintOfferSummary}
+              onOpenWizard={handleOpenWizardWorkspace}
+            />
+          </>
+        ) : (
+          <DocumentWizardPanel
+            draft={wizardDraft}
+            onDraftChange={setWizardDraft}
+            activeStep={wizardStep}
+            onStepChange={setWizardStep}
+            previewHtml={wizardPreviewHtml}
+            onGeneratePdf={handleWizardGeneratePdf}
+            onRefreshFromCalculator={handleWizardRefillFromCalculator}
+            actionMessage={wizardActionMessage}
           />
-        ) : null}
-
-        {calculatorType.payout ? (
-          <Zone1PayoutTraffic
-            expanded={zoneExpanded.zone1b}
-            onToggle={() => toggleZone("zone1b")}
-            navigation={getZoneNavigation("zone1b")}
-            payoutVolume={payoutVolume}
-            payoutTransactions={payoutTransactions}
-            payout={payout}
-            onPayoutVolumeChange={setPayoutVolume}
-            onPayoutTransactionsChange={setPayoutTransactions}
-          />
-        ) : null}
-
-        <Zone2IntroducerCommission
-          expanded={zoneExpanded.zone2}
-          onToggle={() => toggleZone("zone2")}
-          navigation={getZoneNavigation("zone2")}
-          showFormulas={showHardcodedConstants}
-          introducerEnabled={introducerEnabled}
-          onIntroducerEnabledChange={setIntroducerEnabled}
-          introducerCommissionType={introducerCommissionType}
-          onIntroducerCommissionTypeChange={setIntroducerCommissionType}
-          hasPayin={calculatorType.payin}
-          payinMonthlyVolume={payin.normalized.monthlyVolume}
-          introducerBaseVolume={introducerBaseVolume}
-          customTier1UpToMillion={customTier1UpToMillion}
-          customTier2UpToMillion={customTier2UpToMillion}
-          customTier1RatePerMillion={customTier1RatePerMillion}
-          customTier2RatePerMillion={customTier2RatePerMillion}
-          customTier3RatePerMillion={customTier3RatePerMillion}
-          onCustomTier1UpToChange={handleCustomTier1UpToChange}
-          onCustomTier2UpToChange={handleCustomTier2UpToChange}
-          onCustomTier1RatePerMillionChange={setCustomTier1RatePerMillion}
-          onCustomTier2RatePerMillionChange={setCustomTier2RatePerMillion}
-          onCustomTier3RatePerMillionChange={setCustomTier3RatePerMillion}
-          revSharePercent={revSharePercent}
-          onRevSharePercentChange={handleRevSharePercentChange}
-          standardIntroducer={standardIntroducer}
-          customIntroducer={customIntroducer}
-          revShareIntroducer={revShareIntroducer}
-        />
-
-        <Zone3PricingConfiguration
-          expanded={zoneExpanded.zone3}
-          onToggle={() => toggleZone("zone3")}
-          navigation={getZoneNavigation("zone3")}
-          settlementIncluded={settlementIncluded}
-          setSettlementIncluded={setSettlementIncluded}
-          calculatorType={calculatorType}
-          payin={payin}
-          payout={payout}
-          payinEuPricing={payinEuPricing}
-          payinWwPricing={payinWwPricing}
-          payinEuPreview={payinEuPreview}
-          payinWwPreview={payinWwPreview}
-          payoutPricing={payoutPricing}
-          payoutPreview={payoutPreview}
-          payoutRateMinimumAdjustments={payoutRateMinimumAdjustments}
-          payoutSingleRateMinimumAdjustment={payoutSingleRateMinimumAdjustment}
-          showZone3Formulas={showHardcodedConstants && showZone3Formulas}
-          setPayinRegionModel={setPayinRegionModel}
-          setPayinRegionRateMode={setPayinRegionRateMode}
-          setPayinRegionTrxEnabled={setPayinRegionTrxEnabled}
-          setPayinRegionSingleField={setPayinRegionSingleField}
-          setPayinRegionTierField={setPayinRegionTierField}
-          setPayinRegionTierBoundary={setPayinRegionTierBoundary}
-          setPayoutRateMode={setPayoutRateMode}
-          setPayoutSingleField={setPayoutSingleField}
-          setPayoutTierField={setPayoutTierField}
-          setPayoutTierBoundary={setPayoutTierBoundary}
-        />
-
-        <Zone4OtherFeesAndLimits
-          expanded={zoneExpanded.zone4}
-          onToggle={() => toggleZone("zone4")}
-          navigation={getZoneNavigation("zone4")}
-          calculatorType={calculatorType}
-          payin={payin}
-          payout={payout}
-          payoutMinimumFeeEnabled={payoutMinimumFeeEnabled}
-          setPayoutMinimumFeeEnabled={setPayoutMinimumFeeEnabled}
-          payoutMinimumFeePerTransaction={payoutMinimumFeePerTransaction}
-          setPayoutMinimumFeePerTransaction={setPayoutMinimumFeePerTransaction}
-          threeDsEnabled={threeDsEnabled}
-          setThreeDsEnabled={setThreeDsEnabled}
-          threeDsRevenuePerSuccessfulTransaction={threeDsRevenuePerSuccessfulTransaction}
-          setThreeDsRevenuePerSuccessfulTransaction={setThreeDsRevenuePerSuccessfulTransaction}
-          settlementIncluded={settlementIncluded}
-          settlementFeeEnabled={settlementFeeEnabled}
-          setSettlementFeeEnabled={setSettlementFeeEnabled}
-          settlementFeeRatePercent={settlementFeeRatePercent}
-          setSettlementFeeRatePercent={setSettlementFeeRatePercent}
-          monthlyMinimumFeeEnabled={monthlyMinimumFeeEnabled}
-          setMonthlyMinimumFeeEnabled={setMonthlyMinimumFeeEnabled}
-          monthlyMinimumFeeAmount={monthlyMinimumFeeAmount}
-          setMonthlyMinimumFeeAmount={setMonthlyMinimumFeeAmount}
-          failedTrxEnabled={failedTrxEnabled}
-          setFailedTrxEnabled={setFailedTrxEnabled}
-          failedTrxMode={failedTrxMode}
-          setFailedTrxMode={setFailedTrxMode}
-          failedTrxOverLimitThresholdPercent={failedTrxOverLimitThresholdPercent}
-          setFailedTrxOverLimitThresholdPercent={setFailedTrxOverLimitThresholdPercent}
-          showZone4Formulas={showHardcodedConstants && showZone4Formulas}
-          payoutMinimumFeeImpact={payoutMinimumFeeImpact}
-          threeDsImpact={threeDsImpact}
-          settlementFeeImpact={settlementFeeImpact}
-          monthlyMinimumFeeImpact={monthlyMinimumFeeImpact}
-          failedTrxImpact={failedTrxImpact}
-          effectiveFailedTrxFees={effectiveFailedTrxFees}
-          payinBaseRevenue={payinBaseRevenue}
-          payoutRevenueAdjusted={payoutRevenueAdjusted}
-          contractSummarySettings={contractSummarySettings}
-          setContractSummaryField={setContractSummaryField}
-        />
-
-        <Zone5ProfitabilityCalculations
-          expanded={zoneExpanded.zone5}
-          onToggle={() => toggleZone("zone5")}
-          navigation={getZoneNavigation("zone5")}
-          showUnifiedFormulas={showUnifiedFormulas}
-          onShowUnifiedFormulasChange={setShowUnifiedFormulas}
-          onExpandAllRows={expandAllUnifiedRows}
-          onCollapseAllRows={collapseAllUnifiedRows}
-          unifiedProfitabilityTree={unifiedProfitabilityTree}
-          unifiedExpandedById={unifiedExpandedById}
-          onToggleUnifiedRow={toggleUnifiedRow}
-          payoutMinimumFeeWarning={payoutMinimumFeeImpact.warning}
-          payoutPerTransactionRevenue={payoutMinimumFeeImpact.perTransactionRevenue}
-          payoutAppliedPerTransactionRevenue={payoutMinimumFeeImpact.appliedPerTransactionRevenue}
-          payoutBaseRevenue={payoutMinimumFeeImpact.baseRevenue}
-          payoutAdjustedRevenue={payoutMinimumFeeImpact.adjustedRevenue}
-          payoutMinimumFeePerTransaction={payoutMinimumFeePerTransaction}
-          monthlyMinimumWarning={monthlyMinimumFeeImpact.warning}
-          monthlyMinimumBaseRevenue={monthlyMinimumFeeImpact.baseRevenue}
-          monthlyMinimumAppliedRevenue={monthlyMinimumFeeImpact.appliedRevenue}
-          monthlyMinimumFeeAmount={monthlyMinimumFeeAmount}
-          monthlyMinimumUpliftRevenue={monthlyMinimumFeeImpact.upliftRevenue}
-          payoutRateMinimumAdjustments={payoutRateMinimumAdjustments}
-        />
-
-        <Zone6OfferSummary
-          expanded={zoneExpanded.zone6}
-          onToggle={() => toggleZone("zone6")}
-          navigation={getZoneNavigation("zone6")}
-          clientNotes={clientNotes}
-          onClientNotesChange={setClientNotes}
-          offerSummaryText={offerSummaryText}
-          offerSummaryActionMessage={offerSummaryActionMessage}
-          onCopy={handleCopyOfferSummary}
-          onExportPdf={handleExportOfferSummaryPdf}
-          onPrint={handlePrintOfferSummary}
-        />
+        )}
 
       </div>
     </main>

@@ -12,6 +12,7 @@ export interface Zone6OfferSummaryProps {
   onCopy: () => void;
   onExportPdf: () => void;
   onPrint: () => void;
+  onOpenWizard?: () => void;
 }
 
 export function Zone6OfferSummary({
@@ -24,7 +25,8 @@ export function Zone6OfferSummary({
   offerSummaryActionMessage,
   onCopy,
   onExportPdf,
-  onPrint
+  onPrint,
+  onOpenWizard
 }: Zone6OfferSummaryProps) {
   return (
     <ZoneSection
@@ -60,6 +62,15 @@ export function Zone6OfferSummary({
             Copy the summary, open print dialog, or export via "Save as PDF".
           </p>
           <div className="mt-3 flex flex-wrap gap-3">
+            {onOpenWizard ? (
+              <button
+                type="button"
+                onClick={onOpenWizard}
+                className="rounded-xl border border-blue-500 bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+              >
+                Open Contract Wizard
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={onCopy}
