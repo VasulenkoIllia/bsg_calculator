@@ -374,7 +374,117 @@ tbody tr:nth-child(even) {
   }
 }
 
+/* AGREEMENT (long-form) typography and layout */
+.agreement-body { margin-top: 24px; }
+
+.agreement-section {
+  margin-top: 18px;
+  page-break-inside: avoid;
+}
+
+.agreement-h2 {
+  margin: 0 0 8px;
+  font-size: 16pt;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.01em;
+}
+
+.agreement-h3 {
+  margin: 12px 0 6px;
+  font-size: 12pt;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.agreement-p {
+  margin: 0 0 8px;
+  font-size: 10pt;
+  line-height: 1.45;
+  color: var(--text-primary);
+  text-align: justify;
+}
+
+.signature-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  page-break-inside: avoid;
+}
+
+.signature-panel {
+  border: 1px solid var(--border);
+  background: var(--paper);
+  padding: 12px;
+  min-height: 160px;
+}
+
+.signature-name {
+  margin: 0 0 12px;
+  font-size: 11pt;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.signature-line {
+  margin: 4px 0;
+  font-size: 9pt;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.signature-label {
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.signature-blank {
+  flex: 1;
+  font-family: monospace;
+  letter-spacing: 0;
+  color: var(--text-light);
+}
+
+/* Variable highlighting in agreement preview.
+ * Print stylesheet strips highlighting so generated PDF stays clean. */
+.var-substituted {
+  display: inline;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+@media screen {
+  body.highlight-variables .var-substituted.var-filled {
+    background: #fef08a;
+    box-shadow: inset 0 -1px 0 #ca8a04;
+  }
+  body.highlight-variables .var-substituted.var-default {
+    background: #e0e7ff;
+    box-shadow: inset 0 -1px 0 #6366f1;
+  }
+  body.highlight-variables .var-substituted.var-placeholder {
+    background: #fed7aa;
+    color: #9a3412;
+    box-shadow: inset 0 -1px 0 #ea580c;
+    font-style: italic;
+  }
+}
+
 @media print {
+  .var-substituted {
+    background: transparent !important;
+    box-shadow: none !important;
+    color: inherit !important;
+    font-style: inherit !important;
+    padding: 0 !important;
+  }
+
+  .agreement-h2 { page-break-after: avoid; }
+  .agreement-h3 { page-break-after: avoid; }
+
   .sheet { padding: 0; }
   .kit-panel { display: none; }
 }

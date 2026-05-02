@@ -285,6 +285,7 @@ export default function App() {
   const [wizardSourceMode, setWizardSourceMode] = useState<WizardSourceMode>("calculator");
   const [wizardStep, setWizardStep] = useState<WizardStep>(1);
   const [wizardActionMessage, setWizardActionMessage] = useState<string | null>(null);
+  const [wizardHighlightVariables, setWizardHighlightVariables] = useState(false);
   const [workspacePage, setWorkspacePage] = useState<WorkspacePage>("calculator");
 
   useEffect(() => {
@@ -375,7 +376,11 @@ export default function App() {
     setOfferSummaryActionMessage(null);
   }, [offerSummaryText]);
 
-  const wizardPreviewHtml = useMemo(() => buildOfferPdfHtml(wizardDraft), [wizardDraft]);
+  const wizardPreviewHtml = useMemo(
+    () => buildOfferPdfHtml(wizardDraft, { highlightVariables: wizardHighlightVariables }),
+    [wizardDraft, wizardHighlightVariables]
+  );
+  const wizardPdfHtml = useMemo(() => buildOfferPdfHtml(wizardDraft), [wizardDraft]);
 
   useEffect(() => {
     setWizardActionMessage(null);
@@ -477,7 +482,7 @@ export default function App() {
     }
 
     popup.document.open();
-    popup.document.write(wizardPreviewHtml);
+    popup.document.write(wizardPdfHtml);
     popup.document.close();
     popup.focus();
     popup.print();
@@ -707,6 +712,8 @@ export default function App() {
             activeStep={wizardStep}
             onStepChange={setWizardStep}
             previewHtml={wizardPreviewHtml}
+            highlightVariables={wizardHighlightVariables}
+            onHighlightVariablesChange={setWizardHighlightVariables}
             onGeneratePdf={handleWizardGeneratePdf}
             onRefreshFromCalculator={handleWizardRefillFromCalculator}
             actionMessage={wizardActionMessage}

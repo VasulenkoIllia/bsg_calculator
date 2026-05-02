@@ -99,6 +99,17 @@ describe("buildOfferPdfHtml", () => {
         collectionModel: "IC++",
         collectionFrequency: "Daily (unless agreed otherwise)"
       },
+      documentScope: "offer",
+      agreementParties: {
+        merchantLegalName: "",
+        merchantJurisdiction: "",
+        merchantRegisteredAddress: "",
+        serviceProviderCoEntityName: "KASEF PAY INC",
+        serviceProviderCoEntityJurisdiction: "British Columbia, Canada",
+        serviceProviderCoEntityAddress:
+          "3200 - 650 West Georgia Street, Vancouver BC V6B 4P7, Canada",
+        serviceProviderCoEntityShortLabel: "KASEF PAY"
+      },
       layout: {
         source: "calculator",
         payin: {

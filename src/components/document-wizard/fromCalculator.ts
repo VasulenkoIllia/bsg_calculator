@@ -19,7 +19,12 @@ import type {
   PayoutTrafficDerived,
   PricingModelType
 } from "../../domain/calculator/index.js";
-import { DEFAULT_DOCUMENT_LEGAL_TERMS } from "./legalDefaults.js";
+import {
+  DEFAULT_AGREEMENT_PARTIES,
+  DEFAULT_DOCUMENT_LEGAL_TERMS,
+  DEFAULT_DOCUMENT_SCOPE,
+  DOCUMENT_TYPE_LABELS
+} from "./legalDefaults.js";
 import type { DocumentHeaderMetaDraft, DocumentTemplatePayload } from "./types.js";
 
 const DEFAULT_COLLECTION_FREQUENCY = "Daily (unless agreed otherwise)";
@@ -60,7 +65,7 @@ export function buildDocumentHeaderMetaFromCalculator(
   payinWwModel: PricingModelType
 ): DocumentHeaderMetaDraft {
   return {
-    documentType: "Commercial Pricing Schedule",
+    documentType: DOCUMENT_TYPE_LABELS[DEFAULT_DOCUMENT_SCOPE],
     documentNumber: defaultDraftNumber(),
     documentDateIso: todayIsoDate(),
     collectionModel: resolveCollectionModelDisplay(payinEuModel, payinWwModel),
@@ -150,6 +155,8 @@ export function buildDocumentTemplatePayloadFromCalculator({
 
   return {
     header: { ...header },
+    documentScope: DEFAULT_DOCUMENT_SCOPE,
+    agreementParties: { ...DEFAULT_AGREEMENT_PARTIES },
     layout: {
       source: "calculator",
       payin: {
@@ -240,6 +247,8 @@ export function buildDocumentTemplatePayloadManualDefaults(): DocumentTemplatePa
 
   return {
     header,
+    documentScope: DEFAULT_DOCUMENT_SCOPE,
+    agreementParties: { ...DEFAULT_AGREEMENT_PARTIES },
     layout: {
       source: "manual",
       payin: {
@@ -295,6 +304,8 @@ export function buildDocumentTemplatePayloadManualBlank(): DocumentTemplatePaylo
 
   return {
     header,
+    documentScope: DEFAULT_DOCUMENT_SCOPE,
+    agreementParties: { ...DEFAULT_AGREEMENT_PARTIES },
     layout: {
       source: "manual",
       payin: {

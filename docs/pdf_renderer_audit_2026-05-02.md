@@ -48,7 +48,30 @@ Decision: **add comment** (no functional change). Implemented:
 
 - Documented `defaultDraftNumber()` in `fromCalculator.ts` as a Phase 1 placeholder; replacement target is the Phase 8 backend numbering service.
 
-## Open — confirmed scope
+### Foundation for FA.1 (AGREEMENT)
+
+Implemented:
+- New `documentScope: "offer" | "agreement" | "offerAndAgreement"` field added to `DocumentTemplatePayload` and seeded by all three builders. Default value: `offer`.
+- No UI / renderer change yet — Phase 2 will add the Step 1 dropdown, Step "Parties & Signatures", and the `agreementPdf/` module per [agreement_structure.md](agreement_structure.md).
+
+## ✅ Phase 2 delivered (2026-05-03)
+
+### FA.1 — AGREEMENT renderer + Document Type dropdown
+Implemented:
+- `Document Type` dropdown in Step 1 drives `documentScope` (`offer` / `agreement` / `offerAndAgreement`). No separate "Scope" field.
+- Static MSA body text in `agreementPdf/sections.ts` (16 sections + sub-sections); only counterparty placeholders are user-editable.
+- `agreementPdf/parties.ts` and `agreementPdf/signatureBlock.ts` substitute placeholders with values.
+- Scope-aware renderer in `buildOfferPdfHtml.ts`:
+  - `offer` → unchanged behavior.
+  - `agreement` → header (without pricing meta) + AGREEMENT body + footer.
+  - `offerAndAgreement` → both bodies in one document.
+- New `Parties & Signatures` wizard step shown only for `agreement` / `offerAndAgreement`.
+- Pricing wizard steps (Payin/Payout/Other Fees/Terms) hidden when scope is `agreement`.
+- Variable highlight toggle in preview (yellow = filled, indigo = default, orange = unfilled placeholder). Print stylesheet strips highlight so generated PDF stays clean.
+
+Verification: `npm run verify` green (typecheck + lint + 151/151 tests + build).
+
+(Original Phase 2 plan kept below for historical reference.)
 
 ### FA.1 🟥 AGREEMENT (long-form) renderer + document-scope dropdown
 
@@ -59,9 +82,19 @@ Decision: **add comment** (no functional change). Implemented:
 - **Counterparty data caveat**: party fields (Merchant legal name, jurisdiction, address; Service Provider co-entity details) are **not yet available** in the system — they will arrive with the backend / DB / HubSpot phase. For now the AGREEMENT renderer must accept manual input via the wizard (Step 7 — "Parties & Signatures"), with optional field-level placeholders (e.g. `[Merchant legal name]`) when the user has nothing to enter.
 - The same caveat applies to OFFER fields that name a counterparty — those entries will become real once we have the data layer.
 
-## Recommended next steps
+## Recommended next steps (Phase 2)
 
-1. Implement `documentScope` selector + AGREEMENT renderer (FA.1) — see [agreement_structure.md](agreement_structure.md).
-2. (Deferred) DOCX export pipeline — separate phase, not blocking.
+1. Step 1 dropdown — `Offer` / `Agreement` / `Offer + Agreement` — bound to existing `documentScope` field.
+2. New "Parties & Signatures" wizard step — visible only when `documentScope ∈ {agreement, offerAndAgreement}`.
+3. `agreementPdf/` module per [agreement_structure.md](agreement_structure.md):
+   - 14 section files (`overview.ts` … `other.ts`),
+   - `parties.ts` and `signatureBlock.ts`,
+   - placeholder substitution only — MSA body text stays static.
+4. Scope-aware orchestrator:
+   - `offer` → render Sections 1–4 only (today's behavior).
+   - `agreement` → render header + MSA appendix + signature block (no pricing).
+   - `offerAndAgreement` → render Sections 1–4 + MSA appendix + signature block in one document.
+5. Stepper adapts to scope (skips pricing steps when scope = `agreement`).
+6. (Deferred) DOCX export pipeline — separate phase, not blocking.
 
 Keep all other items closed unless a future sample reveals a new structural shape.

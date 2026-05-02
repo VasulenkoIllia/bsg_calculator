@@ -1,13 +1,71 @@
+import type { DocumentScope } from "../legalDefaults.js";
 import type { DocumentTemplatePayload, PayinRegionMode, WizardStep } from "../types.js";
 
-const STEP_ORDER: Array<{ value: WizardStep; label: string }> = [
+interface StepDef {
+  value: WizardStep;
+  label: string;
+}
+
+const ALL_STEPS: StepDef[] = [
   { value: 1, label: "Header / Meta" },
   { value: 2, label: "Payin" },
   { value: 3, label: "Payout" },
   { value: 4, label: "Other Fees" },
   { value: 5, label: "Terms" },
+  { value: 7, label: "Parties & Signatures" },
   { value: 6, label: "Preview" }
 ];
+
+const PRICING_STEP_VALUES: ReadonlyArray<WizardStep> = [2, 3, 4, 5];
+
+export function isPricingStep(step: WizardStep): boolean {
+  return PRICING_STEP_VALUES.includes(step);
+}
+
+export function isPartiesStep(step: WizardStep): boolean {
+  return step === 7;
+}
+
+export function isPreviewStep(step: WizardStep): boolean {
+  return step === 6;
+}
+
+export function getVisibleSteps(scope: DocumentScope): StepDef[] {
+  if (scope === "offer") {
+    return ALL_STEPS.filter(step => !isPartiesStep(step.value));
+  }
+  if (scope === "agreement") {
+    return ALL_STEPS.filter(
+      step => !isPricingStep(step.value)
+    );
+  }
+  // offerAndAgreement — all steps
+  return [...ALL_STEPS];
+}
+
+export function nextStep(scope: DocumentScope, current: WizardStep): WizardStep {
+  const visible = getVisibleSteps(scope);
+  const index = visible.findIndex(step => step.value === current);
+  if (index < 0 || index >= visible.length - 1) return current;
+  return visible[index + 1].value;
+}
+
+export function previousStep(scope: DocumentScope, current: WizardStep): WizardStep {
+  const visible = getVisibleSteps(scope);
+  const index = visible.findIndex(step => step.value === current);
+  if (index <= 0) return current;
+  return visible[index - 1].value;
+}
+
+export function clampStepToScope(scope: DocumentScope, current: WizardStep): WizardStep {
+  const visible = getVisibleSteps(scope);
+  if (visible.some(step => step.value === current)) return current;
+  return visible[0]?.value ?? 1;
+}
+
+export function getStepLabel(step: WizardStep): string {
+  return ALL_STEPS.find(entry => entry.value === step)?.label ?? `Step ${step}`;
+}
 
 export const SETTLEMENT_PERIOD_OPTIONS = ["T+1", "T+2", "T+3", "T+4", "T+5"] as const;
 
@@ -61,19 +119,25 @@ export function parseNullableNumber(raw: string): number | null {
 
 export function Stepper({
   activeStep,
+  scope,
   onStepChange
 }: {
   activeStep: WizardStep;
+  scope: DocumentScope;
   onStepChange: (step: WizardStep) => void;
 }) {
+  const visibleSteps = getVisibleSteps(scope);
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5">
       <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
         Wizard Steps
       </p>
       <div className="mt-4 flex items-center gap-2 overflow-x-auto pb-1">
-        {STEP_ORDER.map(step => {
+        {visibleSteps.map((step, index) => {
           const isActive = step.value === activeStep;
+          const isLast = index === visibleSteps.length - 1;
+          const displayIndex = index + 1;
           return (
             <div key={`wizard-step-${step.value}`} className="flex items-center gap-2">
               <button
@@ -85,21 +149,22 @@ export function Stepper({
                     ? "border-blue-500 bg-blue-50 text-blue-700 shadow-[0_0_0_3px_rgba(59,130,246,0.15)]"
                     : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
                 ].join(" ")}
-                aria-label={`Go to step ${step.value}`}
+                aria-label={`Go to step ${step.label}`}
                 aria-pressed={isActive}
               >
-                {step.value}
+                {displayIndex}
               </button>
               <div className="min-w-[84px]">
                 <p className="text-xs font-semibold text-slate-700">{step.label}</p>
               </div>
-              {step.value < 6 ? <div className="h-px w-8 bg-slate-300" /> : null}
+              {!isLast ? <div className="h-px w-8 bg-slate-300" /> : null}
             </div>
           );
         })}
       </div>
       <p className="mt-3 text-xs text-slate-500">
-        Phase 1 flow: calculator data to confirm/edit by blocks, then preview, then generate PDF.
+        Selected document scope drives which steps are shown. Pricing steps are hidden when
+        scope is &quot;Agreement only&quot;.
       </p>
     </div>
   );

@@ -712,25 +712,84 @@ Use this file to record meaningful technical decisions for the project.
   - Decide whether to modularize `buildOfferPdfHtml.ts` and `pdf-kit/primitives.ts` before or after AGREEMENT scope is reopened.
   - Open backend phase discussion with user when frontend polish is complete.
 
-### Decision: Lift Section 4 Legal Defaults to Wizard Payload
+### Decision: PDF Renderer Phase 2 — AGREEMENT renderer, Document Type dropdown, scope-aware wizard
+- Date: 2026-05-03
+- Context:
+  - Phase 1 added `documentScope` and lifted hardcoded Section 4 legal terms into the wizard payload.
+  - Product confirmed three document scopes: `Offer` / `Agreement (Terms of Agreement only)` / `Offer + Agreement (full bundle)`.
+  - Product also clarified that the scope selector lives inside the existing `Document Type` field — no separate "Document Scope" field in UI.
+  - AGREEMENT body must use the static MSA text from `Extended Schedule 4 - MSA format.docx` with placeholder substitution (no editable paragraphs); only counterparty fields are user input.
+  - Preview must visually highlight changed/substituted variables; the generated PDF must remain clean (highlights screen-only).
+- Decision:
+  - **Single `Document Type` dropdown** — drives `documentScope` and `header.documentType` together. Three options:
+    - `Commercial Pricing Schedule` → scope `offer`,
+    - `Commercial Pricing Schedule Terms of Agreement` → scope `agreement`,
+    - `Commercial Pricing Schedule + Terms of Agreement` → scope `offerAndAgreement`.
+  - **AGREEMENT renderer** in new `src/components/document-wizard/agreementPdf/`:
+    - `sections.ts` — full MSA body as a typed array of sections (16 main sections, with sub-sectioned Payment and Dispute Resolution).
+    - `parties.ts` — opening Parties block with placeholder substitution.
+    - `signatureBlock.ts` — three-panel signature block.
+    - `highlightVar.ts` — `<span class="var-substituted var-{filled|default|placeholder}">` wrapping for screen-only highlight.
+    - `index.ts` — `buildAgreementBodyHtml(payload)` orchestrator.
+  - **Counterparty data** in `legalDefaults.ts`:
+    - `BSG_ENTITY` (static identity).
+    - `DEFAULT_AGREEMENT_PARTIES` (KASEF PAY co-entity defaults + empty merchant fields).
+    - `AGREEMENT_PARTY_PLACEHOLDERS` (`[Merchant legal name]`, `[*]`) — rendered when merchant fields are blank.
+  - **Renderer composition** in `buildOfferPdfHtml.ts` is scope-aware:
+    - `offer` → header (with COLLECTION MODEL / FREQUENCY) + Sections 1–4 + footer.
+    - `agreement` → header (without pricing meta and meta-note) + AGREEMENT body + footer.
+    - `offerAndAgreement` → header + Sections 1–4 + AGREEMENT body + footer (one document, page numbering via CSS `counter(pages)`).
+    - New `BuildOfferPdfHtmlOptions { highlightVariables }` adds `class="highlight-variables"` to body when set; print stylesheet strips highlights.
+  - **Wizard payload extension**: `agreementParties: AgreementParties` added to `DocumentTemplatePayload`. All three builders seed defaults.
+  - **Wizard steps now scope-aware**:
+    - `getVisibleSteps(scope)` returns only relevant steps.
+    - `agreement` scope hides pricing steps (2–5).
+    - All scopes show new `Parties & Signatures` step (id 7) when scope ∈ {agreement, offerAndAgreement}.
+    - Stepper UI numbers visible steps sequentially (1..N) regardless of step value, so the sparse step ids stay invisible to the user.
+  - **`PartiesStep`** holds three groups: BSG (static info card), Service Provider co-entity (4 editable fields, KASEF PAY defaults), Merchant (3 editable fields, blank by default).
+  - **`PreviewStep`** gets a "Highlight variables" toggle and a legend (yellow = filled, indigo = default, orange = unfilled placeholder).
+  - **Calculator math untouched.** All 151 tests still pass.
+- Alternatives considered:
+  - Keep a separate "Document Scope" dropdown alongside readonly Document Type. Rejected — duplicate UI per product feedback.
+  - Render AGREEMENT as a separate PDF document instead of one bundle. Rejected — spec section 6 + sample bundles (ZenCreator, ATOM, CEI) confirm a single combined document with shared header/footer.
+  - Make MSA paragraphs editable in wizard. Rejected — product wants static legal text; only placeholder fields editable.
+  - Add highlight via post-process of preview HTML in the iframe. Rejected — cleaner to set body class once at render time and let CSS do the rest.
+- Consequences:
+  - Wizard now supports three real document outputs from a single payload contract.
+  - AGREEMENT body lives in one TypeScript file; changing legal text is a single edit.
+  - Bundle JS grew from ~390 KB to ~440 KB (compressed 103 → 119 KB) — primarily MSA text.
+  - Variable highlighting helps reviewers quickly scan filled-in fields without polluting the printed PDF.
+- Follow-up actions:
+  - DOCX export — separate phase.
+  - Backend numbering service replaces `defaultDraftNumber()` (FN.1) when Phase 8 lands.
+  - When HubSpot phase opens, party fields (`agreementParties`) become auto-filled from HubSpot Deal/Company records.
+
+### Decision: PDF Renderer Phase 1 — Lift Section 4 Legal Defaults + DocumentScope Foundation
 - Date: 2026-05-03
 - Context:
   - Visual fidelity audit against 8 reference offer samples flagged that `Settlement Note`, `Client Type`, and `Restricted Jurisdictions` were hardcoded in the renderer (`offerPdf/sections/terms.ts`) and could not be edited per contract.
+  - Product also confirmed that the wizard must support a document-scope choice — `Offer` / `Agreement` / `Offer + Agreement` — with the AGREEMENT body sourced from the MSA Extended Schedule 4 template.
+  - To keep the change small and verifiable, AGREEMENT renderer + UI dropdown were deferred to Phase 2; Phase 1 lays the type-level foundation only.
 - Decision:
-  - Add `src/components/document-wizard/legalDefaults.ts` holding canonical `DEFAULT_DOCUMENT_LEGAL_TERMS` (Settlement Note, Client Type, Restricted Jurisdictions).
-  - Extend `DocumentTemplatePayload.contractSummary` with `settlementNote`, `clientType`, `restrictedJurisdictions` (strings) seeded from the new defaults.
-  - Seed all three builders (`buildDocumentTemplatePayloadFromCalculator`, `…ManualDefaults`, `…ManualBlank`) with the new defaults via spread.
+  - Add `src/components/document-wizard/legalDefaults.ts` holding canonical `DEFAULT_DOCUMENT_LEGAL_TERMS` (Settlement Note, Client Type, Restricted Jurisdictions) and `DocumentScope` type with default `offer`.
+  - Extend `DocumentTemplatePayload`:
+    - new top-level field `documentScope: "offer" | "agreement" | "offerAndAgreement"`,
+    - new `contractSummary` fields `settlementNote`, `clientType`, `restrictedJurisdictions` (strings).
+  - Seed all three builders (`buildDocumentTemplatePayloadFromCalculator`, `…ManualDefaults`, `…ManualBlank`) with the new defaults via spread from `DEFAULT_DOCUMENT_LEGAL_TERMS` and `DEFAULT_DOCUMENT_SCOPE`.
   - Step 5 (Terms) gains an editable "Legal Terms" panel for the three new fields.
   - Renderer (`offerPdf/sections/terms.ts`) reads values from payload; remove the old `TERMS_DEFAULTS` constant block.
-  - Annotate `defaultDraftNumber()` in `fromCalculator.ts` as a transient placeholder (FN.1) — Phase 8 backend numbering service will replace it.
+  - Annotate `defaultDraftNumber()` in `fromCalculator.ts` as the Phase 1 placeholder (FN.1) — Phase 8 numbering service will replace it.
 - Alternatives considered:
   - Keep the three fields hardcoded as project-wide defaults (rejected — product needs per-contract editability).
   - Add the fields to calculator state (rejected — not calculator concerns; pollutes calculation domain).
+  - Implement the AGREEMENT renderer in the same pass (rejected — too large to land safely; split into Phase 2).
 - Consequences:
   - Wizard now supports per-contract overrides for the three Section 4 legal lines without touching the calculator.
+  - `documentScope` is a stable type-level foundation that Phase 2 will hook into for scope-aware step orchestration and renderer composition.
   - All 151 tests still pass; calculator math, OFFER renderer pixel layout, and bundle remain stable (CSS unchanged at 21.85 kB).
 - Follow-up actions:
-  - Address remaining audit items (AGREEMENT renderer, document-scope selector) in a follow-up phase.
+  - Phase 2: Step 1 dropdown, Parties & Signatures step, `agreementPdf/` module, scope-aware orchestrator.
+  - Update `pdf_renderer_audit_2026-05-02.md` once Phase 2 lands.
 
 ### Decision: P1–P5 Decomposition Pass + ESLint
 - Date: 2026-05-02

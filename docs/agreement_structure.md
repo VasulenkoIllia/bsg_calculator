@@ -78,6 +78,12 @@ The MSA template is mostly static, but the following fields vary per contract:
 
 BSG details (`Black Stripe Group LTD`, UK address) are the same across all contracts and can stay as constants in the renderer.
 
+### Counterparty data availability (current phase)
+
+These party fields are **not yet available** from any system source — neither calculator, nor backend, nor HubSpot. Until the data layer is built (Phase 8 + HubSpot phase), the wizard collects them manually in Step 7 (Parties & Signatures). When the user leaves a field blank, the renderer falls back to the bracketed placeholder used in the source MSA template (`[Merchant legal name]`, `[*]`), so the rendered AGREEMENT remains usable as a draft.
+
+The same caveat applies to any OFFER text that names a counterparty (e.g. on cover pages or party headers when those are added in the future). The handling pattern stays the same: manual wizard input now → automatic fill from HubSpot/DB once those exist.
+
 ## 5. Visual rules (proposed)
 
 1. Reuse the OFFER paper, header, and footer.

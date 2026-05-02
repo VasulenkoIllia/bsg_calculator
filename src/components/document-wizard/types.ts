@@ -1,4 +1,6 @@
-export type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
+import type { AgreementParties, DocumentScope } from "./legalDefaults.js";
+
+export type WizardStep = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 export type ValueMode = "value" | "waived" | "na" | "tbd";
 export type PayinRegionMode = "both" | "euOnly" | "wwOnly" | "none";
@@ -30,7 +32,7 @@ export interface DocumentWizardValueModes {
 }
 
 export interface DocumentHeaderMetaDraft {
-  documentType: "Commercial Pricing Schedule";
+  documentType: string;
   documentNumber: string;
   documentDateIso: string;
   collectionModel: string;
@@ -39,6 +41,8 @@ export interface DocumentHeaderMetaDraft {
 
 export interface DocumentTemplatePayload {
   header: DocumentHeaderMetaDraft;
+  documentScope: DocumentScope;
+  agreementParties: AgreementParties;
   layout: DocumentWizardLayout;
   valueModes?: DocumentWizardValueModes;
   calculatorType: {
