@@ -528,3 +528,26 @@ Use this file to record meaningful technical decisions for the project.
   - `App.tsx` dropped from monolithic size to a significantly smaller orchestration file.
   - Reusable pieces are now isolated and easier to test/change without touching business logic.
   - Profitability and formula behavior remains unchanged; verification must stay green after refactor.
+
+### Decision: Extract Unified Profitability Tree Builder from useCalculatorDerivedData
+- Date: 2026-05-02
+- Context:
+  - `useCalculatorDerivedData.ts` remained the largest technical risk and mixed two responsibilities:
+    - computing derived financial inputs;
+    - constructing the large Zone 5 unified profitability display tree.
+  - The inline tree builder made review and safe edits difficult.
+- Decision:
+  - Keep all formulas and displayed wording unchanged.
+  - Move unified tree construction into a dedicated pure module:
+    - `src/components/calculator/derived/buildUnifiedProfitabilityTree.ts`
+  - Move unified tree expand/collapse/toggle state logic into:
+    - `src/components/calculator/derived/useUnifiedTreeExpansion.ts`
+  - Keep `useCalculatorDerivedData` as orchestration layer that computes inputs and wires the modules.
+  - Keep Zone 5 local formula visibility behavior unchanged.
+- Alternatives considered:
+  - Further growing `useCalculatorDerivedData` with internal helper blocks only.
+  - Splitting by editing formulas simultaneously (rejected due regression risk).
+- Consequences:
+  - Lower blast radius for future UI/tree changes in Zone 5.
+  - Clearer boundary between calculation derivation and presentation tree mapping.
+  - No business logic changes; verification (`typecheck`, `test`, `build`) must remain green.
