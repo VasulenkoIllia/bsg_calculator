@@ -13,8 +13,16 @@ Frontend-first pricing calculator with deterministic domain formulas and full zo
 
 - `src/App.tsx` - thin UI orchestrator (zone composition + summary actions)
 - `src/components/calculator/useCalculatorState.ts` - calculator state and UI handlers
-- `src/components/calculator/useCalculatorDerivedData.ts` - derived calculations and unified profitability tree
+- `src/components/calculator/useCalculatorDerivedData.ts` - derived calculations orchestration (delegates to derived/ modules)
+- `src/components/calculator/derived/buildUnifiedProfitabilityTree.ts` - unified profitability tree orchestrator (pure)
+- `src/components/calculator/derived/buildPayinSubtree.ts` - payin subtree builder (pure)
+- `src/components/calculator/derived/buildPayoutSubtree.ts` - payout subtree builder (pure)
+- `src/components/calculator/derived/usePricingPreviews.ts` - pricing preview memos hook
+- `src/components/calculator/derived/useFeeImpacts.ts` - fee impact memos hook
+- `src/components/calculator/derived/useUnifiedTreeExpansion.ts` - unified tree expand/collapse state hook
 - `src/components/calculator/zones/*` - zone-specific UI modules (Zone 0 -> Zone 6)
+- `src/components/calculator/zones/zone3/` - Zone 3 payin/payout pricing panel components
+- `src/components/calculator/zones/zone4/` - Zone 4 fee toggles and contract summary components
 - `src/test/app.*.test.tsx` - split UI integration tests by core + zone groups
 - `src/domain/calculator/zone0..zone6` - domain logic by calculator zone
 - `src/domain/calculator/shared` - shared math/format helpers

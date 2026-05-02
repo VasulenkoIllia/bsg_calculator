@@ -529,25 +529,26 @@ Use this file to record meaningful technical decisions for the project.
   - Reusable pieces are now isolated and easier to test/change without touching business logic.
   - Profitability and formula behavior remains unchanged; verification must stay green after refactor.
 
-### Decision: Extract Unified Profitability Tree Builder from useCalculatorDerivedData
+### Decision: P1 Large-File Decomposition (Zone 3, Zone 4, derived/)
 - Date: 2026-05-02
 - Context:
-  - `useCalculatorDerivedData.ts` remained the largest technical risk and mixed two responsibilities:
-    - computing derived financial inputs;
-    - constructing the large Zone 5 unified profitability display tree.
-  - The inline tree builder made review and safe edits difficult.
+  - Four files exceeded 750 lines and were flagged as P1 risk in `docs/audit_2026-05-01.md`:
+    - `Zone3PricingConfiguration.tsx` (846 lines) — mixed EU/WW/Payout panels
+    - `Zone4OtherFeesAndLimits.tsx` (777 lines) — mixed fee toggles and contract summary
+    - `buildUnifiedProfitabilityTree.ts` (795 lines) — all payin/payout/other/introducer nodes inline
+    - `useCalculatorDerivedData.ts` (814 lines) — pricing previews, fee impacts, and tree construction mixed
+  - Phase 2 (PDF + HubSpot) will consume this code; smaller focused modules reduce integration blast radius.
 - Decision:
-  - Keep all formulas and displayed wording unchanged.
-  - Move unified tree construction into a dedicated pure module:
-    - `src/components/calculator/derived/buildUnifiedProfitabilityTree.ts`
-  - Move unified tree expand/collapse/toggle state logic into:
-    - `src/components/calculator/derived/useUnifiedTreeExpansion.ts`
-  - Keep `useCalculatorDerivedData` as orchestration layer that computes inputs and wires the modules.
-  - Keep Zone 5 local formula visibility behavior unchanged.
+  - Keep all formulas, displayed wording, and UI behavior unchanged.
+  - Zone 3: extract shared `PayinRegionPricingPanel` and `PayoutPricingPanel` into `zones/zone3/`.
+  - Zone 4: extract `Zone4RevenueAffectingFees` and `ContractSummarySection` into `zones/zone4/`.
+  - `useCalculatorDerivedData`: extract pricing preview memos into `derived/usePricingPreviews.ts` and fee impact memos into `derived/useFeeImpacts.ts`.
+  - `buildUnifiedProfitabilityTree`: extract payin subtree into `derived/buildPayinSubtree.ts` and payout subtree into `derived/buildPayoutSubtree.ts`; orchestrator calls them and keeps only total/other/introducer node building.
+  - `useCalculatorDerivedData`: delegate tree construction to `buildUnifiedProfitabilityTree` and expansion logic to `useUnifiedTreeExpansion`.
 - Alternatives considered:
-  - Further growing `useCalculatorDerivedData` with internal helper blocks only.
-  - Splitting by editing formulas simultaneously (rejected due regression risk).
+  - Decompose only one file at a time across multiple PRs.
+  - Introduce abstraction layers or shared hooks beyond plain extraction.
 - Consequences:
-  - Lower blast radius for future UI/tree changes in Zone 5.
-  - Clearer boundary between calculation derivation and presentation tree mapping.
-  - No business logic changes; verification (`typecheck`, `test`, `build`) must remain green.
+  - File sizes after: Zone3 ~180 lines, Zone4 ~169 lines, `buildUnifiedProfitabilityTree` 359 lines, `useCalculatorDerivedData` 541 lines.
+  - All new modules are pure or focused single-responsibility units.
+  - No business logic or visual changes; verified by 138/138 tests, typecheck, and build passing.
