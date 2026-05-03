@@ -15,3 +15,5 @@ export {
 export type { BuildDocumentTemplatePayloadInput } from "./fromCalculator.js";
 
 export type { DocumentHeaderMetaDraft, DocumentTemplatePayload, WizardStep } from "./types.js";
+
+export { clampStepToScope } from "./wizard/shared.js";
