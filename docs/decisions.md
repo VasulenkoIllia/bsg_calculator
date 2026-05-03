@@ -744,6 +744,30 @@ Use this file to record meaningful technical decisions for the project.
   - Implement Phase 8 backend per [phase_08_backend_plan.md](phase_08_backend_plan.md).
   - Wire deep-links (`/calculator/:id`, `/wizard/:id/edit`, `/share/:token`) once backend ships.
 
+### Decision: AGREEMENT Template Updated to DRAFT TEXT.docx (1:1 alignment)
+- Date: 2026-05-03
+- Context:
+  - User provided the canonical `DRAFT TEXT.docx` MSA template and asked for the renderer to match it 1:1, dropping any older content.
+  - Old template was based on `Extended Schedule 4 - MSA format.docx` and used inline `(i) (ii) (iii)` enumerations, title-case main headings, and inline bold leads for every subsection (including Dispute Resolution).
+  - New draft restructures content with explicit bullet lists, uppercase main headings, and standalone uppercase headings for Dispute Resolution sub-clauses while keeping inline leads only for Payment subsections.
+- Decision:
+  - Replace `agreementPdf/sections.ts` content verbatim from DRAFT TEXT.docx; introduce typed block model: `paragraph` | `lead` | `heading` | `list` (with optional nested `subItems`).
+  - Renderer: `agreementPdf/index.ts` dispatches per block kind. Lists become `<ul class="agreement-list">` with `<ul class="agreement-sublist">` for the nested Merchant-Offering items in Reps & Warranties (m).
+  - Styles: `.agreement-h2` and `.agreement-h3` both `text-transform: uppercase` 11pt bold black; new `.agreement-list` / `.agreement-sublist` rules; new `.agreement-p-bold` for the bold uppercase opener.
+  - Parties block: drop the standalone "Parties" heading; open with `THIS SERVICE AGREEMENT (THE "AGREEMENT") IS ENTERED INTO BETWEEN:` rendered as bold uppercase paragraph.
+  - Restore the missing Binding Arbitration paragraph: "If Merchant demands arbitration, it shall simultaneously send a copy of the completed demand to the following addresses: 1) [KASEF PAY address] …" — this content was previously omitted.
+  - `[]` placeholders unchanged: `[Merchant legal name]`, `[*]` for jurisdiction, `[*]` for registered office. All three already exposed in `PartiesStep`. No new variables introduced.
+- Alternatives considered:
+  - Keep the old template + apply only style tweaks (rejected — content was structurally outdated).
+  - Use `<ol type="i">` numbered lists (rejected — DRAFT TEXT renders as plain bullet items without explicit enumeration).
+  - Hard-code "Section 13" reference and KASEF PAY address verbatim (kept verbatim per draft, with note that any future co-entity override in the wizard does not affect this hardcoded clause).
+- Consequences:
+  - AGREEMENT body now matches the authoritative draft 1:1.
+  - 183/183 tests pass (added 3 new tests for standalone DR-headings, inline Payment leads, and bulleted lists; 1 existing test relaxed for "Parties" heading removal).
+  - `agreement_structure.md` updated with new visual rules and source attribution.
+- Follow-up actions:
+  - If product later wraps additional contract values in `[brackets]`, add them as fields to `AgreementParties` and corresponding inputs in `PartiesStep`.
+
 ### Decision: Phase 8 Backend Spec Finalized — Express + Drizzle + Postgres + Puppeteer + JWT
 - Date: 2026-05-03
 - Context:

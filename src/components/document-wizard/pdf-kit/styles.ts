@@ -382,19 +382,28 @@ tbody tr:nth-child(even) {
   page-break-inside: avoid;
 }
 
-/* AGREEMENT typography matches the signed CEI / ZenCreator references:
- * plain bold black headings (no accent color, no large size), justified body,
- * consistent paragraph rhythm, sub-sections as inline bold leads. */
+/* AGREEMENT typography mirrors the DRAFT TEXT.docx template: plain bold black
+ * uppercase main headings, standalone uppercase Dispute-Resolution subheadings,
+ * inline bold leads for Payment subsections, justified body, bulleted lists. */
 .agreement-h2 {
   margin: 22px 0 12px;
   font-size: 11pt;
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: 0;
+  text-transform: uppercase;
 }
 
 .agreement-section:first-child .agreement-h2 {
   margin-top: 0;
+}
+
+.agreement-h3 {
+  margin: 18px 0 10px;
+  font-size: 11pt;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
 }
 
 .agreement-p {
@@ -405,8 +414,36 @@ tbody tr:nth-child(even) {
   text-align: justify;
 }
 
+.agreement-p.agreement-p-bold {
+  font-weight: 700;
+}
+
 .agreement-p .agreement-lead {
   font-weight: 700;
+}
+
+.agreement-list {
+  margin: 0 0 14px;
+  padding-left: 24px;
+  list-style: disc;
+}
+
+.agreement-list > li {
+  font-size: 10.5pt;
+  line-height: 1.5;
+  margin-bottom: 8px;
+  color: var(--text-primary);
+  text-align: justify;
+}
+
+.agreement-sublist {
+  margin: 6px 0 0;
+  padding-left: 22px;
+  list-style: circle;
+}
+
+.agreement-sublist > li {
+  margin-bottom: 4px;
 }
 
 .signature-grid {
@@ -487,6 +524,7 @@ tbody tr:nth-child(even) {
   }
 
   .agreement-h2 { page-break-after: avoid; }
+  .agreement-h3 { page-break-after: avoid; }
 
   .sheet { padding: 0; }
   .kit-panel { display: none; }

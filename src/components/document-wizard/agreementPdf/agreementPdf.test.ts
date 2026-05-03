@@ -19,12 +19,13 @@ function withScope(
 }
 
 describe("buildAgreementBodyHtml", () => {
-  it("renders all 16 MSA sections plus parties and signature blocks", () => {
+  it("renders all MSA sections, opening parties block, and signature block", () => {
     const draft = buildDocumentTemplatePayloadManualDefaults();
     const html = buildAgreementBodyHtml(draft);
 
     expect(html).toContain("agreement-body");
-    expect(html).toContain("Parties");
+    // Parties block opens with the bold uppercase opener (no separate heading).
+    expect(html).toContain("THIS SERVICE AGREEMENT (THE “AGREEMENT”) IS ENTERED INTO BETWEEN");
     expect(html).toContain("Overview of this Agreement");
     expect(html).toContain("Your Service Provider Account");
     expect(html).toContain("Validation and Underwriting");
@@ -42,6 +43,39 @@ describe("buildAgreementBodyHtml", () => {
     expect(html).toContain("Other");
     expect(html).toContain("By signing below");
     expect(html).toContain("signature-grid");
+  });
+
+  it("renders Dispute Resolution sub-headings as standalone uppercase headings", () => {
+    const draft = buildDocumentTemplatePayloadManualDefaults();
+    const html = buildAgreementBodyHtml(draft);
+
+    expect(html).toContain('<h3 class="agreement-h3">Binding Arbitration</h3>');
+    expect(html).toContain('<h3 class="agreement-h3">Class Action Waiver</h3>');
+    expect(html).toContain('<h3 class="agreement-h3">Choice of Law/No Jury Trial</h3>');
+    expect(html).toContain('<h3 class="agreement-h3">Injunctive Relief/Attorneys’ Fees</h3>');
+  });
+
+  it("renders Payment sub-sections as inline bold leads, not standalone headings", () => {
+    const draft = buildDocumentTemplatePayloadManualDefaults();
+    const html = buildAgreementBodyHtml(draft);
+
+    expect(html).toContain('<span class="agreement-lead">Tax Levy.</span>');
+    expect(html).toContain('<span class="agreement-lead">Taxes Generally.</span>');
+    expect(html).toContain('<span class="agreement-lead">Transaction Taxes.</span>');
+    expect(html).toContain('<span class="agreement-lead">Withholding Taxes.</span>');
+    expect(html).not.toContain('<h3 class="agreement-h3">Tax Levy</h3>');
+  });
+
+  it("renders bullet lists for itemised clauses", () => {
+    const draft = buildDocumentTemplatePayloadManualDefaults();
+    const html = buildAgreementBodyHtml(draft);
+
+    expect(html).toContain('<ul class="agreement-list">');
+    // Responsibilities list (5 items in draft).
+    expect(html).toContain("accurately communicate, and not misrepresent");
+    // Reps & Warranties list with nested sub-list (Merchant Offering: free from defects, ...).
+    expect(html).toContain('<ul class="agreement-sublist">');
+    expect(html).toContain("free from defects in workmanship");
   });
 
   it("renders Payment sub-sections (Tax Levy / Taxes Generally / etc)", () => {

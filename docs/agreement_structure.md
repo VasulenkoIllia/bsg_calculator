@@ -1,7 +1,8 @@
 # Offer + Terms of Agreement — Document Structure
 
 Date: 2026-05-03 (refreshed)
-Status: Reference for the AGREEMENT renderer. Source: `Extended Schedule 4 - MSA format.docx`. Visual style aligned to the signed `CEI Commercial Offer 1.0 and MSA (for signature).pdf` and `ZenCreator Commercial Offer 1.1 (signed).pdf` references.
+Status: Reference for the AGREEMENT renderer.
+Source of truth: **`DRAFT TEXT.docx`** (provided 2026-05-03). Visual style aligned to the signed `CEI Commercial Offer 1.0 and MSA (for signature).pdf` and `ZenCreator Commercial Offer 1.1 (signed).pdf` references.
 
 ## 1. What this document is
 
@@ -85,14 +86,18 @@ These party fields are **not yet available** from any system source — neither 
 
 The same caveat applies to any OFFER text that names a counterparty (e.g. on cover pages or party headers when those are added in the future). The handling pattern stays the same: manual wizard input now → automatic fill from HubSpot/DB once those exist.
 
-## 5. Visual rules (current implementation, matches signed references)
+## 5. Visual rules (current implementation, matches DRAFT TEXT.docx)
 
 1. Reuse the OFFER paper, header, and footer.
-2. **MSA section headings**: bold, **black** (`var(--text-primary)`, no accent color), 11pt — visually similar weight to body text but bold. No numeric prefix, no icon, no underline. Top margin 22pt to separate from previous block.
-3. **Sub-section titles** (e.g. `Tax Levy`, `Taxes Generally`, `Binding Arbitration`): rendered as **inline bold leads** on the first paragraph of the block, terminated with a period. Example: `**Tax Levy.** In the event Service Provider receives…`. They are NOT separate headings on their own line.
-4. **Body paragraphs**: 10.5pt, line-height 1.5, fully justified, 14pt bottom margin.
-5. **Capitalized clauses** (Limitation of Liability body, Class Action Waiver, Choice of Law) preserved verbatim in uppercase as in source MSA.
-6. **Signature block**: 3 columns, equal width, with bordered panels.
+2. **Opening line** (`THIS SERVICE AGREEMENT (THE "AGREEMENT") IS ENTERED INTO BETWEEN:`): bold uppercase paragraph, no separate "Parties" heading.
+3. **Main section headings** (`OVERVIEW OF THIS AGREEMENT`, `PAYMENT`, `INDEMNIFICATION`, …): bold black 11pt rendered uppercase via CSS `text-transform`. Top margin 22pt to separate from previous block. Source data is title case for readability.
+4. **Two subsection styles**:
+   - **Inline bold leads** — `Tax Levy.`, `Taxes Generally.`, `Transaction Taxes.`, `Withholding Taxes.` open the first paragraph of the Payment block. Rendered via `<span class="agreement-lead">…</span>` on the same paragraph.
+   - **Standalone uppercase headings** — `BINDING ARBITRATION`, `CLASS ACTION WAIVER`, `CHOICE OF LAW/NO JURY TRIAL`, `INJUNCTIVE RELIEF/ATTORNEYS' FEES` appear as their own lines under Dispute Resolution. Rendered via `<h3 class="agreement-h3">…</h3>` with CSS uppercase.
+5. **Body paragraphs**: 10.5pt, line-height 1.5, fully justified, 14pt bottom margin.
+6. **Bullet lists** (`<ul class="agreement-list">`): used wherever the draft has itemised clauses — `(i)–(v)` Responsibilities, `(a)–(m)` Representations & Warranties, `(a)–(i)` Indemnification, etc. List item `(m)` of Reps & Warranties carries a nested `<ul class="agreement-sublist">` for the three Merchant Offering qualities.
+7. **Capitalized clauses** (Limitation of Liability body, Class Action Waiver, Choice of Law list) preserved verbatim in uppercase as in source MSA.
+8. **Signature block**: 3 columns, equal width, with bordered panels.
 
 ### Future user-supplied template
 
@@ -169,6 +174,7 @@ The existing footer (`renderFooter`) keeps emitting per-page numbers because CSS
 
 ## 8. References
 
-- Source template: `Extended Schedule 4 - MSA format.docx` (provided 2026-05-02).
-- Sample bundles: `ZenCreator Commercial Offer 1.1 (3).pdf`, `ATOM Commercial Offer 1.0 and MSA.pdf`, `CEI Commercial Offer 1.0 and MSA_Director Signed.pdf`.
-- Implementation plan: `docs/phase_07_unified_document_pipeline_plan.md` (will be extended once AGREEMENT scope is approved).
+- **Authoritative source**: `DRAFT TEXT.docx` (provided 2026-05-03). Earlier `Extended Schedule 4 - MSA format.docx` superseded by this draft.
+- Visual baseline: `CEI Commercial Offer 1.0 and MSA (for signature).pdf` and `ZenCreator Commercial Offer 1.1 (signed).pdf`.
+- Reference bundle samples (older): `ZenCreator Commercial Offer 1.1 (3).pdf`, `ATOM Commercial Offer 1.0 and MSA.pdf`, `CEI Commercial Offer 1.0 and MSA_Director Signed.pdf`.
+- Implementation plan: [phase_07_unified_document_pipeline_plan.md](phase_07_unified_document_pipeline_plan.md).
