@@ -71,7 +71,16 @@ function resolvePayinRegionContexts(
   return contexts;
 }
 
-function buildPayinRows(data: DocumentTemplatePayload, layout: DocumentWizardLayout): string {
+function hasAnyPayinMinFee(data: DocumentTemplatePayload, layout: DocumentWizardLayout): boolean {
+  const regions = resolvePayinRegionContexts(data, layout);
+  return regions.some(region => formatPayinMinTransactionFee(data, region.code) !== null);
+}
+
+function buildPayinRows(
+  data: DocumentTemplatePayload,
+  layout: DocumentWizardLayout,
+  showMinFeeColumn: boolean
+): string {
   const methodLabel = "Credit / Debit — Visa, Mastercard";
   const apmLabel = "APM — Apple Pay, Google Pay";
   const showRegionColumn = layout.payin.tableMode === "byRegionTiered" || layout.payin.tableMode === "byRegionFlat";
@@ -116,7 +125,7 @@ function buildPayinRows(data: DocumentTemplatePayload, layout: DocumentWizardLay
                 : ""
             }
           </td>
-          <td>${minFee ? escapeHtml(minFee) : ""}</td>
+          ${showMinFeeColumn ? `<td>${minFee ? escapeHtml(minFee) : ""}</td>` : ""}
         </tr>`);
       });
       return;
@@ -147,7 +156,7 @@ function buildPayinRows(data: DocumentTemplatePayload, layout: DocumentWizardLay
             : ""
         }
       </td>
-      <td>${minFee ? escapeHtml(minFee) : ""}</td>
+      ${showMinFeeColumn ? `<td>${minFee ? escapeHtml(minFee) : ""}</td>` : ""}
     </tr>`);
   });
 
@@ -161,8 +170,11 @@ export function buildPayinSection(data: DocumentTemplatePayload, layout: Documen
 
   const showRegionColumn = layout.payin.tableMode === "byRegionTiered" || layout.payin.tableMode === "byRegionFlat";
   const showTierColumn = layout.payin.tableMode === "byRegionTiered" || layout.payin.tableMode === "flatTiered";
+  // Hide-if-empty rule: drop the MIN. TRANSACTION FEE column entirely when no
+  // region has a configured threshold/fee pair to display.
+  const showMinFeeColumn = hasAnyPayinMinFee(data, layout);
 
-  const payinRows = buildPayinRows(data, layout);
+  const payinRows = buildPayinRows(data, layout, showMinFeeColumn);
 
   return `<section class="offer-section">
     ${renderSectionHeader(1, "Card Acquiring — Credit / Debit Cards, APM & E-wallet", showTierColumn ? "VOLUME TIERED" : "FIXED RATE")}
@@ -175,7 +187,7 @@ export function buildPayinSection(data: DocumentTemplatePayload, layout: Documen
           ${showTierColumn ? "<th>MONTHLY VOLUME TIER</th>" : ""}
           <th>MDR / RATE</th>
           <th>TRANSACTION FEE</th>
-          <th>MIN. TRANSACTION FEE</th>
+          ${showMinFeeColumn ? "<th>MIN. TRANSACTION FEE</th>" : ""}
         </tr>
       </thead>
       <tbody>${payinRows}</tbody>

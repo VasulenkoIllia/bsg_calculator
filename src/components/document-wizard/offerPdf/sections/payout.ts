@@ -8,14 +8,22 @@ import {
   hasPositiveNumber
 } from "../formatters.js";
 
-function buildPayoutRows(data: DocumentTemplatePayload, layout: DocumentWizardLayout): string {
+function resolveMinimumFeeLabel(data: DocumentTemplatePayload): string {
+  return data.toggles.payoutMinimumFeeEnabled &&
+    hasPositiveNumber(data.toggles.payoutMinimumFeePerTransaction)
+    ? formatEuro(data.toggles.payoutMinimumFeePerTransaction)
+    : "";
+}
+
+function buildPayoutRows(
+  data: DocumentTemplatePayload,
+  layout: DocumentWizardLayout,
+  showMinimumFeeColumn: boolean
+): string {
   const showRegionColumn = layout.payout.regionMode === "global";
   const showTierColumn = layout.payout.tableMode === "globalTiered";
   const payout = data.payoutPricing;
-  const minimumFeeLabel =
-    data.toggles.payoutMinimumFeeEnabled && hasPositiveNumber(data.toggles.payoutMinimumFeePerTransaction)
-      ? formatEuro(data.toggles.payoutMinimumFeePerTransaction)
-      : "";
+  const minimumFeeLabel = showMinimumFeeColumn ? resolveMinimumFeeLabel(data) : "";
 
   if (!showTierColumn) {
     return `<tr>
@@ -26,7 +34,7 @@ function buildPayoutRows(data: DocumentTemplatePayload, layout: DocumentWizardLa
       }
       <td><span class="cell-line">${escapeHtml(formatPercent(payout.single.mdrPercent))}</span><span class="cell-line">Non-tiered, fixed</span></td>
       <td><span class="cell-line accent-text">${escapeHtml(formatEuro(payout.single.trxFee))}</span><span class="cell-line">Credit / Debit & APM</span></td>
-      <td>${minimumFeeLabel ? escapeHtml(minimumFeeLabel) : ""}</td>
+      ${showMinimumFeeColumn ? `<td>${escapeHtml(minimumFeeLabel)}</td>` : ""}
     </tr>`;
   }
 
@@ -38,7 +46,7 @@ function buildPayoutRows(data: DocumentTemplatePayload, layout: DocumentWizardLa
         <td class="accent-text">${escapeHtml(tierLabel)}</td>
         <td>${escapeHtml(formatPercent(tier.mdrPercent))}</td>
         <td class="accent-text">${escapeHtml(formatEuro(tier.trxFee))}</td>
-        <td>${minimumFeeLabel ? escapeHtml(minimumFeeLabel) : ""}</td>
+        ${showMinimumFeeColumn ? `<td>${escapeHtml(minimumFeeLabel)}</td>` : ""}
       </tr>`;
     })
     .join("");
@@ -51,6 +59,10 @@ export function buildPayoutSection(data: DocumentTemplatePayload, layout: Docume
 
   const showRegionColumn = layout.payout.regionMode === "global";
   const showTierColumn = layout.payout.tableMode === "globalTiered";
+  // Hide-if-empty rule: drop the MINIMUM FEE column entirely when the toggle
+  // is off or the value is missing — keeps the table consistent with our
+  // "no data, no block" promise from the OFFER fidelity audit.
+  const showMinimumFeeColumn = resolveMinimumFeeLabel(data).length > 0;
 
   return `<section class="offer-section">
     ${renderSectionHeader(2, "Card Acquiring — Pay Out / Push to Card", showTierColumn ? "VOLUME TIERED" : "FIXED RATE")}
@@ -58,13 +70,13 @@ export function buildPayoutSection(data: DocumentTemplatePayload, layout: Docume
       <thead>
         <tr>
           ${showRegionColumn ? "<th>REGION</th>" : ""}
-          ${showTierColumn ? "<th>MONTHLY VOLUME TIER</th>" : "<th>MDR / PROCESSING RATE</th>"}
-          ${showTierColumn ? "<th>MDR / PROCESSING RATE</th>" : "<th>TRANSACTION FEE</th>"}
-          ${showTierColumn ? "<th>TRANSACTION FEE</th>" : "<th>MINIMUM FEE</th>"}
-          ${showTierColumn ? "<th>MINIMUM FEE</th>" : ""}
+          ${showTierColumn ? "<th>MONTHLY VOLUME TIER</th>" : ""}
+          <th>MDR / PROCESSING RATE</th>
+          <th>TRANSACTION FEE</th>
+          ${showMinimumFeeColumn ? "<th>MINIMUM FEE</th>" : ""}
         </tr>
       </thead>
-      <tbody>${buildPayoutRows(data, layout)}</tbody>
+      <tbody>${buildPayoutRows(data, layout, showMinimumFeeColumn)}</tbody>
     </table>
   </section>`;
 }

@@ -190,3 +190,39 @@ describe("buildOfferPdfHtml — scope-aware composition", () => {
     expect(withoutHighlight).not.toContain('class="highlight-variables"');
   });
 });
+
+describe("hide-if-empty column rule", () => {
+  it("payout MINIMUM FEE column is hidden when payoutMinimumFeeEnabled toggle is off", () => {
+    const draft = withScope(buildDocumentTemplatePayloadManualDefaults(), "offer");
+    // manualDefaults seed: payoutMinimumFeeEnabled = false → column must hide.
+    expect(draft.toggles.payoutMinimumFeeEnabled).toBe(false);
+
+    const html = buildOfferPdfHtml(draft);
+    expect(html).not.toContain("MINIMUM FEE");
+  });
+
+  it("payout MINIMUM FEE column is shown when toggle is on with positive value", () => {
+    const draft = withScope(buildDocumentTemplatePayloadManualDefaults(), "offer");
+    draft.toggles.payoutMinimumFeeEnabled = true;
+    draft.toggles.payoutMinimumFeePerTransaction = 2.5;
+
+    const html = buildOfferPdfHtml(draft);
+    expect(html).toContain("MINIMUM FEE");
+    expect(html).toContain("€2.50");
+  });
+
+  it("payin MIN. TRANSACTION FEE column is hidden when no threshold/fee pair is configured", () => {
+    const draft = withScope(buildDocumentTemplatePayloadManualBlank(), "offer");
+    // manualBlank seed: all payin minimum-fee fields are 0 → column must hide.
+    const html = buildOfferPdfHtml(draft);
+    expect(html).not.toContain("MIN. TRANSACTION FEE");
+  });
+
+  it("payin MIN. TRANSACTION FEE column is shown when defaults provide threshold + fee", () => {
+    const draft = withScope(buildDocumentTemplatePayloadManualDefaults(), "offer");
+    // manualDefaults seed pre-fills 2.5M / €1.00 in overall mode.
+    const html = buildOfferPdfHtml(draft);
+    expect(html).toContain("MIN. TRANSACTION FEE");
+    expect(html).toContain("≤2.5M: €1.00");
+  });
+});
