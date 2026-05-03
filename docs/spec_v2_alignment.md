@@ -16,6 +16,8 @@ The calculator itself is governed by `Calculator_Описание.docx` and is c
 - ⏳ **Planned** — explicitly in `phase_07_unified_document_pipeline_plan.md`, not yet implemented.
 - ⛔ **Out of scope (current phase)** — acknowledged in spec but deliberately deferred.
 
+> **Backend status (2026-05-03):** Phase 8 backend specification is **finalized** in [phase_08_backend_plan.md](phase_08_backend_plan.md) — confirmed stack (Express + Drizzle + Postgres + Puppeteer + JWT), DB schema, API surface, document save flow, seed data are all decided. Implementation has **not started yet**. No server code, no database, no API endpoints exist. ⏳ items below remain ⏳ until implementation work begins.
+
 ## Section-by-section status
 
 ### 1. General
@@ -44,7 +46,7 @@ The calculator itself is governed by `Calculator_Описание.docx` and is c
 | Frontend SPA | ✅ | React + Vite + Tailwind. |
 | Backend API | ⏳ | `server/` skeleton exists; full backend in Phase 8. |
 | HubSpot Integration Layer | ⛔ | Documented future shape only. |
-| Document Generation Engine | 🟡 | OFFER HTML→PDF via browser print. No DOCX. No AGREEMENT. |
+| Document Generation Engine | 🟡 | Two document types (Offer / Offer + Terms of Agreement) rendered as HTML → PDF via browser print. DOCX export still deferred. Backend-side Puppeteer planned in Phase 8. |
 | Database | ⏳ | Phase 8. |
 | Numbering Service | ⏳ | Phase 8. |
 
@@ -73,7 +75,7 @@ The spec defines Zones 0–4 of the **document** (not calculator). Mapping to cu
 | Zone 3 — Other Services & Fees | `buildOtherServicesSection` | ✅ |
 | Zone 4 — Terms & Limitations | `buildTermsSection` | ✅ |
 | Document type OFFER | full | ✅ |
-| Document type AGREEMENT (1–15 pages) | spec drafted, no code | 🟡 — see [agreement_structure.md](agreement_structure.md) |
+| Document type Offer + Terms of Agreement (~11 pages) | implemented | ✅ — `agreementPdf/` module appends MSA text + signature block when Document Type = bundle. See [agreement_structure.md](agreement_structure.md). |
 
 ### 7. Data structures and API
 
@@ -99,7 +101,7 @@ The spec defines Zones 0–4 of the **document** (not calculator). Mapping to cu
 | Sections 1–4 in fixed order | ✅ | Enforced in `buildBody()`. |
 | Footer with confidentiality + page numbering | ✅ | `renderFooter()`. |
 | Table styling (`#366092` header, alt rows, borders, padding) | ✅ | Matched to spec tokens. |
-| OFFER vs AGREEMENT differences | 🟡 | OFFER fully covered. AGREEMENT structure specified in `agreement_structure.md`; renderer module not yet implemented. |
+| Offer vs Offer + Terms of Agreement | ✅ | Two scopes (`offer` / `offerAndAgreement`) selectable via Document Type dropdown. Bundle scope appends static MSA text + party placeholders + signature block. |
 
 ### 10. UI
 
@@ -107,7 +109,8 @@ The spec defines Zones 0–4 of the **document** (not calculator). Mapping to cu
 |---|---|---|---|
 | 10.1 Home page (recent contracts, search, filter) | ⏳ | Phase 8 (needs DB). |
 | 10.2 Wizard flow | ✅ | Steps 1–6 implemented. Step 0 (HubSpot Deal/Client lookup) deferred. |
-| 10.3 Stepper navigation, autosave, leave-page warning | 🟡 | Stepper present. No autosave (no backend). No leave-page warning. |
+| 10.3 Stepper navigation, autosave, leave-page warning | 🟡 | Scope-aware stepper present. URL exposes `?source/?scope/?step` for shareable wizard state. No autosave (waits backend). No leave-page warning. |
+| 10.x Routing / deep-links | ✅ partial | URL contract defined in `docs/url_contract.md`; current routes implemented. Snapshot/document deep-links wait for Phase 8. |
 | 10.4 Real-time validation | 🟡 | Numeric clamps and min-floor warnings present in calculator zones. Cross-step validation deferred. |
 
 ### 11. Security

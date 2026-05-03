@@ -51,7 +51,7 @@ Decision: **add comment** (no functional change). Implemented:
 ### Foundation for FA.1 (AGREEMENT)
 
 Implemented:
-- New `documentScope: "offer" | "agreement" | "offerAndAgreement"` field added to `DocumentTemplatePayload` and seeded by all three builders. Default value: `offer`.
+- New `documentScope: "offer" | "offerAndAgreement"` field added to `DocumentTemplatePayload` and seeded by all three builders. Default value: `offer`.
 - No UI / renderer change yet — Phase 2 will add the Step 1 dropdown, Step "Parties & Signatures", and the `agreementPdf/` module per [agreement_structure.md](agreement_structure.md).
 
 ## ✅ Phase 2 delivered (2026-05-03)
@@ -78,7 +78,7 @@ Verification: `npm run verify` green (typecheck + lint + 151/151 tests + build).
 - **Confirmed by product**: needed.
 - **Spec**: see [agreement_structure.md](agreement_structure.md).
 - **UI**: dropdown in Step 1 (Header / Meta) — `Commercial Pricing Schedule (Offer)` vs `Service Agreement (Offer + MSA)`.
-- **Internal change**: add `documentScope: "offer" | "agreement"` to `DocumentTemplatePayload`; render conditional MSA appendix + 3-party signature block.
+- **Internal change**: `documentScope: "offer" | "offerAndAgreement"` on `DocumentTemplatePayload` controls whether the MSA appendix + 3-party signature block is appended after the pricing schedule.
 - **Counterparty data caveat**: party fields (Merchant legal name, jurisdiction, address; Service Provider co-entity details) are **not yet available** in the system — they will arrive with the backend / DB / HubSpot phase. For now the AGREEMENT renderer must accept manual input via the wizard (Step 7 — "Parties & Signatures"), with optional field-level placeholders (e.g. `[Merchant legal name]`) when the user has nothing to enter.
 - The same caveat applies to OFFER fields that name a counterparty — those entries will become real once we have the data layer.
 

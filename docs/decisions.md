@@ -712,11 +712,95 @@ Use this file to record meaningful technical decisions for the project.
   - Decide whether to modularize `buildOfferPdfHtml.ts` and `pdf-kit/primitives.ts` before or after AGREEMENT scope is reopened.
   - Open backend phase discussion with user when frontend polish is complete.
 
+### Decision: React Router + Page Split + URL Contract
+- Date: 2026-05-03
+- Context:
+  - `App.tsx` was ~720 lines and rendered both calculator and wizard via a hash flag.
+  - Backend phase will need shareable deep-links (open document/calculator by ID, share read-only links, pre-fill from HubSpot context).
+  - Stepper UI was breaking ("Parties & Signatures" wrapped to two lines) and pre-existing F5/F6 UX issues lingered (source mode reset scope/parties).
+- Decision:
+  - Adopt `react-router-dom` v7 (`BrowserRouter`); nginx already serves SPA fallback (`try_files`).
+  - Lift calculator state into `CalculatorProvider` so both pages share the same live data.
+  - Split `App.tsx` into router shell + `AppShell` + `pages/CalculatorPage` + `pages/WizardPage` + `NotFoundPage`.
+  - Wizard exposes `?source`, `?scope`, `?step` query params as URL contract.
+  - Document the contract in `docs/url_contract.md` (current routes + planned `/calculator/:id`, `/wizard/:id/edit`, `/share/:token`).
+  - Stepper labels shortened (`Header`, `Fees`, `Parties`) and `whitespace-nowrap` enforced.
+  - Preserve `documentScope` and `agreementParties` when source mode changes.
+  - Fixed 2 wizard lint warnings; only the calculator-frozen warning remains.
+  - Decompose `fromCalculator.ts` (412 → 175 lines) into:
+    - `seedHelpers.ts` — shared helpers (cloning, header builder).
+    - `manualSeeds.ts` — `buildDocumentTemplatePayloadManualBlank` + `…ManualDefaults`.
+    - `fromCalculator.ts` — calculator-source builder + re-exports.
+- Alternatives considered:
+  - Keep hash routing — uglier URLs, harder to share.
+  - TanStack Router — overkill for two pages.
+  - Reset draft on source switch — loses user's party data.
+- Consequences:
+  - URL is shareable: `/wizard?source=manualBlank&scope=offerAndAgreement&step=7`.
+  - Adding `/calculator/:snapshotId` and `/wizard/:documentId/edit` in Phase 8 is purely additive.
+  - JS bundle: 391 → 482 KB (+90 KB for router); gzipped 103 → 132 KB. Acceptable.
+  - Test count: 151 → 176 (+25: AGREEMENT renderer, Stepper, scope clamp).
+- Follow-up actions:
+  - Implement Phase 8 backend per [phase_08_backend_plan.md](phase_08_backend_plan.md).
+  - Wire deep-links (`/calculator/:id`, `/wizard/:id/edit`, `/share/:token`) once backend ships.
+
+### Decision: Phase 8 Backend Spec Finalized — Express + Drizzle + Postgres + Puppeteer + JWT
+- Date: 2026-05-03
+- Context:
+  - All open questions from the initial Phase 8 kickoff plan answered by product.
+  - Frontend is locked at 173 → 180 tests, two document scopes, AGREEMENT styled to signed references.
+- Decision (summary; full spec in [phase_08_backend_plan.md](phase_08_backend_plan.md)):
+  - **Stack**: Node 20 + Express + Drizzle ORM/Kit + PostgreSQL 15 + Puppeteer + bcrypt + JWT.
+  - **Auth**: email/password, admin-created users only, JWT access (15 min) + refresh (30 d).
+  - **Save flow**: explicit "Confirm" creates immutable `documents` row with allocated `BSG-#####` number; preview-only stays as today.
+  - **HubSpot**: columns reserved on `documents` and `clients`; no API calls until Phase 9.
+  - **Out of scope**: webhooks, public share tokens, RBAC, email delivery, DOCX export, multi-tenant, audit table, object-storage caching of PDFs.
+  - **Schema**: 7 tables — `users`, `refresh_tokens`, `clients`, `calculator_snapshots`, `documents`, `document_number_sequence`, `wizard_drafts`.
+  - **Seed data**: 3 users, 3 clients, 2 snapshots, 3 documents for dev/test.
+- Alternatives considered:
+  - NestJS + Prisma (rejected — heavier than needed for the API surface).
+  - Object storage / S3 caching of rendered PDFs (rejected for Phase 8 — Puppeteer on-demand is enough).
+  - Public share tokens (deferred — not needed before HubSpot phase).
+- Consequences:
+  - Frontend payload contract (`DocumentTemplatePayload`) becomes the canonical Zod schema shared with backend.
+  - `BSG-DRAFT-{ts}` placeholder will be replaced by the real numbering service per spec.
+  - HubSpot phase (Phase 9) is unblocked once Phase 8 ships — only API calls and outbound sync need wiring.
+- Follow-up actions:
+  - Begin implementation work in `server/` per the spec.
+  - Track ⏳ → ✅ progress in `spec_v2_alignment.md` as endpoints land.
+
+### Decision: AGREEMENT Visual Style Aligned to Signed References + Two-Scope Lock + Backend Not Yet Started
+- Date: 2026-05-03
+- Context:
+  - Product confirmed only two document scopes: `offer` and `offerAndAgreement`. The transitional `agreement` (agreement-only) scope was removed entirely.
+  - User provided two signed MSA references (`CEI Commercial Offer 1.0 and MSA (for signature).pdf`, `ZenCreator Commercial Offer 1.1 (signed).pdf`) showing the desired AGREEMENT typography.
+  - User requested explicit clarity in documentation that backend implementation has not started — the only artifact for Phase 8 is a kickoff plan awaiting product decisions on stack and schema.
+- Decision:
+  - **DocumentScope** is now `"offer" | "offerAndAgreement"`. All UI options, dropdown values, URL params, tests, and docs use these two values. Stale `"agreement"` references removed across code and docs.
+  - **AGREEMENT typography** updated in `pdf-kit/styles.ts`:
+    - Section headings (`.agreement-h2`): plain bold black, 11pt, top-margin 22pt — no accent color, no large size.
+    - Body paragraphs (`.agreement-p`): 10.5pt, line-height 1.5, fully justified, 14pt bottom margin.
+    - Removed `.agreement-h3` block-level subsection style.
+  - **Subsection titles** (`Tax Levy`, `Taxes Generally`, `Binding Arbitration`, etc.) now render as **inline bold leads** on the first paragraph of the block via `<span class="agreement-lead">`, ending with a period. They no longer occupy their own line.
+  - **Backend status documented**: `docs/phase_08_backend_plan.md`, `docs/architecture.md`, and `docs/spec_v2_alignment.md` carry an explicit "implementation not started — kickoff plan only" notice.
+  - **Future variable template note**: `docs/agreement_structure.md` records the planned `[variable]` extension path: when the user supplies an updated MSA template with `[variable]` markers, those become typed inputs in the wizard's Parties step and substitute via the existing variable-highlight helpers.
+- Alternatives considered:
+  - Keep accent color on agreement headings (rejected — references show plain black bold).
+  - Render subsections as separate `<h3>` lines (rejected — references show inline bold leads).
+  - Start Phase 8 implementation in parallel (rejected — pending product confirmation of stack and schema).
+- Consequences:
+  - AGREEMENT body now reads as a clean legal document matching the signed-version look.
+  - All 173 tests still pass; no functional change to OFFER body or calculator.
+  - Backend phase remains explicitly gated on product answers to the open questions in `phase_08_backend_plan.md`.
+- Follow-up actions:
+  - Wait for product to provide the updated MSA template with `[variable]` markers.
+  - Wait for product answers to Phase 8 open questions before backend implementation begins.
+
 ### Decision: PDF Renderer Phase 2 — AGREEMENT renderer, Document Type dropdown, scope-aware wizard
 - Date: 2026-05-03
 - Context:
   - Phase 1 added `documentScope` and lifted hardcoded Section 4 legal terms into the wizard payload.
-  - Product confirmed three document scopes: `Offer` / `Agreement (Terms of Agreement only)` / `Offer + Agreement (full bundle)`.
+  - Product confirmed two document scopes: `Offer` (Commercial Pricing Schedule) and `Offer + Agreement` (Commercial Pricing Schedule + Terms of Agreement). A standalone "agreement-only" output is not offered.
   - Product also clarified that the scope selector lives inside the existing `Document Type` field — no separate "Document Scope" field in UI.
   - AGREEMENT body must use the static MSA text from `Extended Schedule 4 - MSA format.docx` with placeholder substitution (no editable paragraphs); only counterparty fields are user input.
   - Preview must visually highlight changed/substituted variables; the generated PDF must remain clean (highlights screen-only).
@@ -773,7 +857,7 @@ Use this file to record meaningful technical decisions for the project.
 - Decision:
   - Add `src/components/document-wizard/legalDefaults.ts` holding canonical `DEFAULT_DOCUMENT_LEGAL_TERMS` (Settlement Note, Client Type, Restricted Jurisdictions) and `DocumentScope` type with default `offer`.
   - Extend `DocumentTemplatePayload`:
-    - new top-level field `documentScope: "offer" | "agreement" | "offerAndAgreement"`,
+    - new top-level field `documentScope: "offer" | "offerAndAgreement"`,
     - new `contractSummary` fields `settlementNote`, `clientType`, `restrictedJurisdictions` (strings).
   - Seed all three builders (`buildDocumentTemplatePayloadFromCalculator`, `…ManualDefaults`, `…ManualBlank`) with the new defaults via spread from `DEFAULT_DOCUMENT_LEGAL_TERMS` and `DEFAULT_DOCUMENT_SCOPE`.
   - Step 5 (Terms) gains an editable "Legal Terms" panel for the three new fields.

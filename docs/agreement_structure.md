@@ -1,17 +1,18 @@
-# AGREEMENT (Service Agreement) Structure
+# Offer + Terms of Agreement — Document Structure
 
-Date: 2026-05-02
-Status: Reference for the planned AGREEMENT renderer. Source: `Extended Schedule 4 - MSA format.docx`.
+Date: 2026-05-03 (refreshed)
+Status: Reference for the AGREEMENT renderer. Source: `Extended Schedule 4 - MSA format.docx`. Visual style aligned to the signed `CEI Commercial Offer 1.0 and MSA (for signature).pdf` and `ZenCreator Commercial Offer 1.1 (signed).pdf` references.
 
 ## 1. What this document is
 
-The AGREEMENT (`Commercial Pricing Schedule Terms of Agreement` per spec section 6.1) is the long-form contract that bundles:
+The system supports exactly **two** document types (per product decision 2026-05-03):
 
-1. The OFFER body (Sections 1–4 — same layout used today).
-2. The Master Service Agreement (MSA) legal text — ~10 pages of standard clauses.
-3. A 3-party signature block.
+1. **Offer** — `Commercial Pricing Schedule`. Sections 1–4 of pricing only.
+2. **Offer + Terms of Agreement** — `Commercial Pricing Schedule + Terms of Agreement`. Sections 1–4 of pricing + Master Service Agreement long-form legal body + 3-party signature block.
 
-In the reference set, AGREEMENT is observed as 11-page bundles in `ZenCreator Commercial Offer 1.1`, `ATOM Commercial Offer 1.0 and MSA`, and `CEI Commercial Offer 1.0 and MSA_Director Signed`.
+There is no standalone "agreement-only" output. Every contract carries the pricing schedule.
+
+This file describes the structure of the second, larger output. In the reference set the bundle is observed as 11-page documents in `ZenCreator Commercial Offer 1.1`, `ATOM Commercial Offer 1.0 and MSA`, and `CEI Commercial Offer 1.0 and MSA_Director Signed`.
 
 ## 2. Top-level structure
 
@@ -84,13 +85,24 @@ These party fields are **not yet available** from any system source — neither 
 
 The same caveat applies to any OFFER text that names a counterparty (e.g. on cover pages or party headers when those are added in the future). The handling pattern stays the same: manual wizard input now → automatic fill from HubSpot/DB once those exist.
 
-## 5. Visual rules (proposed)
+## 5. Visual rules (current implementation, matches signed references)
 
 1. Reuse the OFFER paper, header, and footer.
-2. MSA section headings: same color and weight as OFFER section badges, smaller font (≈14pt instead of 49px).
-3. Body paragraphs: 10–11pt, line-height 1.45, justified or left-aligned (consistent with reference samples).
-4. Capitalized clauses (Limitation of Liability, Class Action Waiver, etc.) preserved verbatim.
-5. Signature block: 3 columns, equal width, with bordered panels matching the OFFER `terms-item` style.
+2. **MSA section headings**: bold, **black** (`var(--text-primary)`, no accent color), 11pt — visually similar weight to body text but bold. No numeric prefix, no icon, no underline. Top margin 22pt to separate from previous block.
+3. **Sub-section titles** (e.g. `Tax Levy`, `Taxes Generally`, `Binding Arbitration`): rendered as **inline bold leads** on the first paragraph of the block, terminated with a period. Example: `**Tax Levy.** In the event Service Provider receives…`. They are NOT separate headings on their own line.
+4. **Body paragraphs**: 10.5pt, line-height 1.5, fully justified, 14pt bottom margin.
+5. **Capitalized clauses** (Limitation of Liability body, Class Action Waiver, Choice of Law) preserved verbatim in uppercase as in source MSA.
+6. **Signature block**: 3 columns, equal width, with bordered panels.
+
+### Future user-supplied template
+
+The user will later supply an updated MSA template where every editable variable is wrapped as `[variable]`. When that template arrives:
+
+- The wizard's Parties step will expose those variables as labeled inputs.
+- The renderer substitutes them inline, using the existing `var-filled` / `var-default` / `var-placeholder` highlight styles for screen preview.
+- Final PDF stays clean (highlights screen-only).
+
+The current renderer already supports this pattern for the parties block (Merchant legal name / jurisdiction / address, Service Provider co-entity name / jurisdiction / address). Adding new variables is additive — extend `AgreementParties` in `legalDefaults.ts`, add inputs in `PartiesStep`, reference them in `sections.ts` text via the same substitution helper.
 
 ## 6. Proposed implementation
 
@@ -123,7 +135,7 @@ src/components/document-wizard/
 Wizard payload extension:
 
 ```
-documentScope: "offer" | "agreement";
+documentScope: "offer" | "offerAndAgreement";
 agreementParties?: {
   merchantLegalName: string;
   merchantJurisdiction: string;       // e.g. "England and Wales"
@@ -139,8 +151,10 @@ Renderer wiring:
 ```ts
 function buildBody(data, layout) {
   const offerBody = [payinSection, payoutSection, feesSection, termsSection].filter(Boolean).join("");
-  if (data.documentScope !== "agreement") return offerBody;
-  return offerBody + buildAgreementAppendixHtml(data);
+  if (data.documentScope === "offerAndAgreement") {
+    return offerBody + buildAgreementAppendixHtml(data);
+  }
+  return offerBody;
 }
 ```
 

@@ -18,13 +18,18 @@ Specification source:
 5. `docs/agreement_structure.md` (AGREEMENT structural reference)
 6. `docs/pdf_ui_kit.md` (tokenized visual system for offer PDF)
 
-Reference PDF set:
+Reference PDF set (offer-only and bundled):
 
 1. `ZenCreator Commercial Offer 1.1 (3).pdf`
 2. `Aron Group Commercial Offer 1.0 (2).pdf`
 3. `CEI Commercial Offer 1.0 and MSA_Director Signed.pdf`
 4. `Finera Commercial Offer 1.0.pdf`
 5. `ATOM Commercial Offer 1.0 and MSA.pdf`
+
+Signed bundle references (used to lock AGREEMENT visual style in 2026-05-03 pass):
+
+1. `CEI Commercial Offer 1.0 and MSA (for signature).pdf`
+2. `ZenCreator Commercial Offer 1.1 (signed).pdf`
 6. `Pay.cc Commercial Offer 1.1.pdf`
 7. `SoftGaming Commercial Offer 1.0.docx.pdf`
 8. `TodaPay Commercial Offer 1.0.pdf`
