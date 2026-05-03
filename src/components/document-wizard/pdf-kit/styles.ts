@@ -382,27 +382,31 @@ tbody tr:nth-child(even) {
   page-break-inside: avoid;
 }
 
+/* AGREEMENT typography matches the signed CEI / ZenCreator references:
+ * plain bold black headings (no accent color, no large size), justified body,
+ * consistent paragraph rhythm, sub-sections as inline bold leads. */
 .agreement-h2 {
-  margin: 0 0 8px;
-  font-size: 16pt;
-  font-weight: 700;
-  color: var(--accent);
-  letter-spacing: 0.01em;
-}
-
-.agreement-h3 {
-  margin: 12px 0 6px;
-  font-size: 12pt;
+  margin: 22px 0 12px;
+  font-size: 11pt;
   font-weight: 700;
   color: var(--text-primary);
+  letter-spacing: 0;
+}
+
+.agreement-section:first-child .agreement-h2 {
+  margin-top: 0;
 }
 
 .agreement-p {
-  margin: 0 0 8px;
-  font-size: 10pt;
-  line-height: 1.45;
+  margin: 0 0 14px;
+  font-size: 10.5pt;
+  line-height: 1.5;
   color: var(--text-primary);
   text-align: justify;
+}
+
+.agreement-p .agreement-lead {
+  font-weight: 700;
 }
 
 .signature-grid {
@@ -483,7 +487,6 @@ tbody tr:nth-child(even) {
   }
 
   .agreement-h2 { page-break-after: avoid; }
-  .agreement-h3 { page-break-after: avoid; }
 
   .sheet { padding: 0; }
   .kit-panel { display: none; }

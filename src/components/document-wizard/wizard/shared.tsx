@@ -7,12 +7,12 @@ interface StepDef {
 }
 
 const ALL_STEPS: StepDef[] = [
-  { value: 1, label: "Header / Meta" },
+  { value: 1, label: "Header" },
   { value: 2, label: "Payin" },
   { value: 3, label: "Payout" },
-  { value: 4, label: "Other Fees" },
+  { value: 4, label: "Fees" },
   { value: 5, label: "Terms" },
-  { value: 7, label: "Parties & Signatures" },
+  { value: 7, label: "Parties" },
   { value: 6, label: "Preview" }
 ];
 
@@ -32,14 +32,10 @@ export function isPreviewStep(step: WizardStep): boolean {
 
 export function getVisibleSteps(scope: DocumentScope): StepDef[] {
   if (scope === "offer") {
+    // Offer-only flow: no Parties & Signatures step.
     return ALL_STEPS.filter(step => !isPartiesStep(step.value));
   }
-  if (scope === "agreement") {
-    return ALL_STEPS.filter(
-      step => !isPricingStep(step.value)
-    );
-  }
-  // offerAndAgreement — all steps
+  // offerAndAgreement — all steps including Parties & Signatures.
   return [...ALL_STEPS];
 }
 
@@ -154,17 +150,19 @@ export function Stepper({
               >
                 {displayIndex}
               </button>
-              <div className="min-w-[84px]">
-                <p className="text-xs font-semibold text-slate-700">{step.label}</p>
+              <div className="shrink-0">
+                <p className="whitespace-nowrap text-xs font-semibold text-slate-700">
+                  {step.label}
+                </p>
               </div>
-              {!isLast ? <div className="h-px w-8 bg-slate-300" /> : null}
+              {!isLast ? <div className="h-px w-6 shrink-0 bg-slate-300" /> : null}
             </div>
           );
         })}
       </div>
       <p className="mt-3 text-xs text-slate-500">
-        Selected document scope drives which steps are shown. Pricing steps are hidden when
-        scope is &quot;Agreement only&quot;.
+        Selected document type drives which steps are shown. The Parties &amp; Signatures step
+        appears only when generating Offer + Terms of Agreement.
       </p>
     </div>
   );

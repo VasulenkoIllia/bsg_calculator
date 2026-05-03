@@ -4,7 +4,7 @@ import type { DocumentScope } from "../../legalDefaults.js";
 import type { DocumentHeaderMetaDraft, DocumentTemplatePayload } from "../../types.js";
 import { StepNavigation } from "../shared.js";
 
-const SCOPE_VALUES: DocumentScope[] = ["offer", "agreement", "offerAndAgreement"];
+const SCOPE_VALUES: DocumentScope[] = ["offer", "offerAndAgreement"];
 
 export function HeaderMetaStep({
   draft,
@@ -23,7 +23,6 @@ export function HeaderMetaStep({
 }) {
   const manualSource = draft.layout.source === "manual";
   const scope = draft.documentScope;
-  const showPricingMeta = scope === "offer" || scope === "offerAndAgreement";
 
   const update = <K extends keyof DocumentHeaderMetaDraft>(
     field: K,
@@ -97,33 +96,24 @@ export function HeaderMetaStep({
             aria-label="Document Date"
           />
         </label>
-        {showPricingMeta ? (
-          <>
-            <label>
-              <span className="field-label">Collection Model</span>
-              <input
-                className="field-input"
-                value={draft.header.collectionModel}
-                onChange={event => update("collectionModel", event)}
-                aria-label="Collection Model"
-              />
-            </label>
-            <label>
-              <span className="field-label">Collection Frequency</span>
-              <input
-                className="field-input"
-                value={draft.header.collectionFrequency}
-                onChange={event => update("collectionFrequency", event)}
-                aria-label="Collection Frequency"
-              />
-            </label>
-          </>
-        ) : (
-          <p className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-            Collection Model and Frequency are pricing-specific and are hidden when the
-            document type is "Terms of Agreement" only.
-          </p>
-        )}
+        <label>
+          <span className="field-label">Collection Model</span>
+          <input
+            className="field-input"
+            value={draft.header.collectionModel}
+            onChange={event => update("collectionModel", event)}
+            aria-label="Collection Model"
+          />
+        </label>
+        <label>
+          <span className="field-label">Collection Frequency</span>
+          <input
+            className="field-input"
+            value={draft.header.collectionFrequency}
+            onChange={event => update("collectionFrequency", event)}
+            aria-label="Collection Frequency"
+          />
+        </label>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-3">

@@ -11,7 +11,14 @@ export const DEFAULT_DOCUMENT_LEGAL_TERMS = {
   restrictedJurisdictions: "OFAC, US"
 } as const;
 
-export type DocumentScope = "offer" | "agreement" | "offerAndAgreement";
+// Only two document scopes are exposed to users:
+//   - `offer`             — Commercial Pricing Schedule (proposal only)
+//   - `offerAndAgreement` — Commercial Pricing Schedule + Terms of Agreement (proposal + MSA)
+//
+// A standalone "agreement only" output is intentionally not offered: every
+// generated document carries the pricing schedule, with the long-form Service
+// Agreement appended on top when the second scope is selected.
+export type DocumentScope = "offer" | "offerAndAgreement";
 
 export const DEFAULT_DOCUMENT_SCOPE: DocumentScope = "offer";
 
@@ -23,9 +30,19 @@ export const BSG_ENTITY = {
   shortLabel: "BSG"
 } as const;
 
+export interface AgreementParties {
+  merchantLegalName: string;
+  merchantJurisdiction: string;
+  merchantRegisteredAddress: string;
+  serviceProviderCoEntityName: string;
+  serviceProviderCoEntityJurisdiction: string;
+  serviceProviderCoEntityAddress: string;
+  serviceProviderCoEntityShortLabel: string;
+}
+
 // Defaults for the second Service Provider entity (acquiring/processing/settling).
 // Editable per contract via wizard "Parties & Signatures" step.
-export const DEFAULT_AGREEMENT_PARTIES = {
+export const DEFAULT_AGREEMENT_PARTIES: AgreementParties = {
   merchantLegalName: "",
   merchantJurisdiction: "",
   merchantRegisteredAddress: "",
@@ -33,9 +50,7 @@ export const DEFAULT_AGREEMENT_PARTIES = {
   serviceProviderCoEntityJurisdiction: "British Columbia, Canada",
   serviceProviderCoEntityAddress: "3200 - 650 West Georgia Street, Vancouver BC V6B 4P7, Canada",
   serviceProviderCoEntityShortLabel: "KASEF PAY"
-} as const;
-
-export type AgreementParties = typeof DEFAULT_AGREEMENT_PARTIES;
+};
 
 // Placeholders rendered when a party field is left blank (taken from the
 // source MSA template). Keeps the document usable as a draft.
@@ -48,15 +63,13 @@ export const AGREEMENT_PARTY_PLACEHOLDERS = {
 // Document type labels per scope (per spec section 6.1).
 // One canonical label per scope — used both as the dropdown option in Step 1
 // and as the rendered DOCUMENT TYPE in the PDF meta block.
-export const DOCUMENT_TYPE_LABELS = {
+export const DOCUMENT_TYPE_LABELS: Record<DocumentScope, string> = {
   offer: "Commercial Pricing Schedule",
-  agreement: "Commercial Pricing Schedule Terms of Agreement",
   offerAndAgreement: "Commercial Pricing Schedule + Terms of Agreement"
-} as const;
+};
 
 export const DOCUMENT_TYPE_HINTS: Record<DocumentScope, string> = {
   offer: "Sections 1–4 with pricing tables. 1–3 pages.",
-  agreement: "Long-form Master Service Agreement with parties and signatures. ~9 pages.",
   offerAndAgreement:
     "Sections 1–4 plus the long-form Service Agreement. ~11 pages — matches ZenCreator / ATOM / CEI sample bundles."
 };

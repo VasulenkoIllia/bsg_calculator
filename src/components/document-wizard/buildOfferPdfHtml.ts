@@ -36,8 +36,11 @@ function buildOfferBody(data: DocumentTemplatePayload, layout: DocumentWizardLay
   return sections.join("");
 }
 
-function shouldShowPricingMeta(scope: DocumentTemplatePayload["documentScope"]): boolean {
-  return scope === "offer" || scope === "offerAndAgreement";
+// Pricing meta (Collection Model + Frequency) is shown for both scopes because
+// pricing sections are always present. Kept as a helper so future scope
+// additions stay explicit.
+function shouldShowPricingMeta(_scope: DocumentTemplatePayload["documentScope"]): boolean {
+  return true;
 }
 
 export interface BuildOfferPdfHtmlOptions {
@@ -58,10 +61,11 @@ export function buildOfferPdfHtml(
   const scope = data.documentScope;
   const bodyClass = options.highlightVariables ? "highlight-variables" : "";
 
-  const includePricing = scope === "offer" || scope === "offerAndAgreement";
-  const includeAgreement = scope === "agreement" || scope === "offerAndAgreement";
+  // Pricing sections are always rendered. The MSA appendix is appended only
+  // for the bundle scope. There is no agreement-only output by product design.
+  const includeAgreement = scope === "offerAndAgreement";
 
-  const offerBody = includePricing ? buildOfferBody(data, layout) : "";
+  const offerBody = buildOfferBody(data, layout);
   const agreementBody = includeAgreement ? buildAgreementBodyHtml(data) : "";
 
   const showPricingMeta = shouldShowPricingMeta(scope);
@@ -79,11 +83,9 @@ export function buildOfferPdfHtml(
     .filter(Boolean)
     .join("");
 
-  const metaNote = includePricing
-    ? `<p class="meta-note">
+  const metaNote = `<p class="meta-note">
         All fees are collected on a daily basis unless otherwise instructed in writing. Rates are subject to applicable interchange and scheme fees under the IC++ model unless otherwise instructed in writing.
-      </p>`
-    : "";
+      </p>`;
 
   return `<!doctype html>
 <html lang="en">

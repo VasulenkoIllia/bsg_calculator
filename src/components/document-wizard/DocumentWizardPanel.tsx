@@ -167,6 +167,7 @@ export function DocumentWizardPanel({
 
         {activeStep === 6 ? (
           <PreviewStep
+            draft={draft}
             previewHtml={previewHtml}
             highlightVariables={highlightVariables}
             onHighlightVariablesChange={onHighlightVariablesChange}
