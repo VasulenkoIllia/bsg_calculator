@@ -19,7 +19,7 @@ export interface PdfUiKitTokens {
 }
 
 export const OFFER_REFERENCE_TOKENS: PdfUiKitTokens = {
-  pageMarginCm: 2.5,
+  pageMarginCm: 2.0,
   fontFamily: "Arial, Helvetica, sans-serif",
   colorAccent: "#4f46e5",
   colorAccentSoft: "#c8c7ff",

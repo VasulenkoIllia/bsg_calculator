@@ -60,9 +60,9 @@ body {
 }
 
 .offer-title {
-  margin: 10px 0 0;
-  font-size: 76px;
-  line-height: 0.96;
+  margin: 8px 0 0;
+  font-size: 36pt;
+  line-height: 1;
   font-weight: 700;
   color: var(--text-primary);
 }
@@ -70,8 +70,9 @@ body {
 .offer-title .accent { color: var(--accent); }
 
 .offer-subtitle {
-  margin: 12px 0 0;
-  font-size: 22px;
+  margin: 10px 0 0;
+  font-size: 10pt;
+  line-height: 1.4;
   color: var(--text-muted);
 }
 
@@ -86,8 +87,8 @@ body {
 .meta-item {
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
-  padding: 10px 12px;
-  min-height: 76px;
+  padding: 8px 10px;
+  min-height: 56px;
   background: var(--paper);
 }
 
@@ -97,28 +98,30 @@ body {
 .meta-label {
   display: block;
   margin: 0;
-  font-size: 9pt;
+  font-size: 7pt;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-light);
 }
 
 .meta-value {
   display: block;
-  margin: 6px 0 0;
-  font-size: 18px;
+  margin: 4px 0 0;
+  font-size: 11pt;
   font-weight: 700;
   color: var(--text-primary);
+  line-height: 1.25;
 }
 
 .meta-note {
-  margin: 14px 0 0;
+  margin: 10px 0 0;
   background: #f5f6fb;
-  border-left: 4px solid var(--accent);
+  border-left: 3px solid var(--accent);
   color: var(--text-muted);
-  padding: 8px 10px;
-  font-size: 15px;
+  padding: 6px 8px;
+  font-size: 8pt;
+  line-height: 1.4;
 }
 
 .offer-section { margin-top: 20px; }
@@ -127,14 +130,14 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
+  gap: 10px;
+  margin-bottom: 6px;
 }
 
 .section-title-wrap {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   min-width: 0;
 }
 
@@ -142,12 +145,12 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  width: 22px;
+  height: 22px;
   border-radius: ${tokens.radiusS};
   background: var(--accent);
   color: #ffffff;
-  font-size: 40px;
+  font-size: 11pt;
   font-weight: 700;
   line-height: 1;
 }
@@ -156,18 +159,18 @@ body {
   margin: 0;
   color: var(--text-primary);
   font-weight: 700;
-  font-size: 49px;
-  line-height: 1.1;
+  font-size: 14pt;
+  line-height: 1.15;
 }
 
 .section-badge {
   border: 1px solid var(--accent-soft);
   color: var(--accent);
   background: var(--accent-surface);
-  font-size: 15px;
+  font-size: 7pt;
   font-weight: 700;
-  letter-spacing: 0.02em;
-  padding: 8px 14px;
+  letter-spacing: 0.04em;
+  padding: 4px 9px;
   border-radius: ${tokens.radiusS};
   text-transform: uppercase;
 }
@@ -182,20 +185,22 @@ table {
 th,
 td {
   border: 1px solid var(--border);
-  padding: 8px;
+  padding: 5px 7px;
   vertical-align: top;
   word-wrap: break-word;
-  font-size: 16px;
+  font-size: 9pt;
+  line-height: 1.3;
 }
 
 th {
   background: var(--table-header-bg);
   color: var(--table-header-text);
   font-weight: 700;
-  font-size: 15px;
-  line-height: 1.1;
+  font-size: 7pt;
+  line-height: 1.15;
   text-align: left;
   text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 tbody tr:nth-child(even) {
@@ -214,30 +219,33 @@ tbody tr:nth-child(even) {
 
 .fee-card {
   border: 1px solid var(--border);
-  padding: 10px;
-  min-height: 100px;
+  padding: 8px 10px;
+  min-height: 64px;
   background: var(--paper);
 }
 
 .fee-card h3 {
   margin: 0;
-  font-size: 11px;
+  font-size: 7pt;
   letter-spacing: 0.05em;
   font-weight: 700;
   color: var(--text-light);
+  text-transform: uppercase;
 }
 
 .fee-value {
-  margin: 8px 0 0;
-  font-size: 24px;
+  margin: 4px 0 0;
+  font-size: 14pt;
   font-weight: 700;
   color: var(--text-primary);
+  line-height: 1.15;
 }
 
 .fee-subtitle {
-  margin: 5px 0 0;
-  font-size: 12px;
+  margin: 3px 0 0;
+  font-size: 7.5pt;
   color: var(--text-muted);
+  line-height: 1.3;
 }
 
 .terms-grid {
@@ -251,26 +259,27 @@ tbody tr:nth-child(even) {
 }
 
 .terms-item {
-  padding: 9px 10px;
+  padding: 6px 9px;
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
-  min-height: 58px;
+  min-height: 38px;
   background: var(--paper);
 }
 
 .terms-item:nth-child(2n) { border-right: 0; }
 .terms-label {
   display: block;
-  font-size: 12px;
+  font-size: 7.5pt;
   color: var(--text-light);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .terms-value {
   display: block;
-  font-size: 15px;
+  font-size: 9.5pt;
   color: var(--text-primary);
   font-weight: 700;
+  line-height: 1.25;
 }
 
 .print-footer {
@@ -386,8 +395,8 @@ tbody tr:nth-child(even) {
  * uppercase main headings, standalone uppercase Dispute-Resolution subheadings,
  * inline bold leads for Payment subsections, justified body, bulleted lists. */
 .agreement-h2 {
-  margin: 22px 0 12px;
-  font-size: 11pt;
+  margin: 14px 0 8px;
+  font-size: 10.5pt;
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: 0;
@@ -399,17 +408,17 @@ tbody tr:nth-child(even) {
 }
 
 .agreement-h3 {
-  margin: 18px 0 10px;
-  font-size: 11pt;
+  margin: 12px 0 6px;
+  font-size: 10.5pt;
   font-weight: 700;
   color: var(--text-primary);
   text-transform: uppercase;
 }
 
 .agreement-p {
-  margin: 0 0 14px;
-  font-size: 10.5pt;
-  line-height: 1.5;
+  margin: 0 0 8px;
+  font-size: 9.5pt;
+  line-height: 1.4;
   color: var(--text-primary);
   text-align: justify;
 }
@@ -423,27 +432,27 @@ tbody tr:nth-child(even) {
 }
 
 .agreement-list {
-  margin: 0 0 14px;
-  padding-left: 24px;
+  margin: 0 0 8px;
+  padding-left: 20px;
   list-style: disc;
 }
 
 .agreement-list > li {
-  font-size: 10.5pt;
-  line-height: 1.5;
-  margin-bottom: 8px;
+  font-size: 9.5pt;
+  line-height: 1.4;
+  margin-bottom: 4px;
   color: var(--text-primary);
   text-align: justify;
 }
 
 .agreement-sublist {
-  margin: 6px 0 0;
-  padding-left: 22px;
+  margin: 4px 0 0;
+  padding-left: 18px;
   list-style: circle;
 }
 
 .agreement-sublist > li {
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .signature-grid {
@@ -462,15 +471,15 @@ tbody tr:nth-child(even) {
 }
 
 .signature-name {
-  margin: 0 0 12px;
-  font-size: 11pt;
+  margin: 0 0 8px;
+  font-size: 9.5pt;
   font-weight: 700;
   color: var(--text-primary);
 }
 
 .signature-line {
-  margin: 4px 0;
-  font-size: 9pt;
+  margin: 3px 0;
+  font-size: 8pt;
   color: var(--text-muted);
   display: flex;
   align-items: center;
