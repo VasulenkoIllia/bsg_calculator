@@ -20,6 +20,15 @@ export function buildPdfUiKitHtml(): string {
   <style>${buildPdfUiKitStyles(tokens)}</style>
 </head>
 <body>
+  <table class="page-layout">
+    <tfoot class="page-layout-foot">
+      <tr>
+        <td class="page-footer-cell">${renderFooter("BSG-UIKIT-REFERENCE")}</td>
+      </tr>
+    </tfoot>
+    <tbody class="page-layout-body">
+      <tr>
+        <td class="page-content-cell">
   <div class="sheet">
     <header class="offer-header">
       <div class="offer-top-line"></div>
@@ -104,8 +113,11 @@ export function buildPdfUiKitHtml(): string {
       </div>
     </section>
 
-    ${renderFooter("BSG-UIKIT-REFERENCE")}
   </div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
 </body>
 </html>`;
 }

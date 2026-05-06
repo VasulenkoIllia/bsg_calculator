@@ -96,20 +96,32 @@ export function buildOfferPdfHtml(
   <style>${styles}</style>
 </head>
 <body${bodyClass ? ` class="${bodyClass}"` : ""}>
-  <div class="sheet">
-    <header class="offer-header">
-      <div class="offer-top-line"></div>
-      <p class="offer-eyebrow">${OFFER_CONFIDENTIAL_TITLE}</p>
-      <h1 class="offer-title">Service<br/><span class="accent">Agreement</span></h1>
-      <p class="offer-subtitle">${escapeHtml(OFFER_SUBTITLE)}</p>
-      <div class="meta-grid">${metaItems}</div>
-      ${metaNote}
-    </header>
+  <table class="page-layout">
+    <tfoot class="page-layout-foot">
+      <tr>
+        <td class="page-footer-cell">${renderFooter(data.header.documentNumber)}</td>
+      </tr>
+    </tfoot>
+    <tbody class="page-layout-body">
+      <tr>
+        <td class="page-content-cell">
+          <div class="sheet">
+            <header class="offer-header">
+              <div class="offer-top-line"></div>
+              <p class="offer-eyebrow">${OFFER_CONFIDENTIAL_TITLE}</p>
+              <h1 class="offer-title">Service<br/><span class="accent">Agreement</span></h1>
+              <p class="offer-subtitle">${escapeHtml(OFFER_SUBTITLE)}</p>
+              <div class="meta-grid">${metaItems}</div>
+              ${metaNote}
+            </header>
 
-    ${offerBody}
-    ${agreementBody}
-    ${renderFooter(data.header.documentNumber)}
-  </div>
+            ${offerBody}
+            ${agreementBody}
+          </div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
 </body>
 </html>`;
 }

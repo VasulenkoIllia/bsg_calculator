@@ -5,6 +5,17 @@ export function buildPdfUiKitStyles(tokens: PdfUiKitTokens): string {
 @page {
   size: A4;
   margin: ${tokens.pageMarginCm}cm;
+
+  /* Page number lives in the @page bottom-right margin box because
+   * counter(page) / counter(pages) inside <table><tfoot> evaluates to
+   * 0 in Chrome (long-standing Chromium bug 678485). The margin box
+   * is the reliable cross-version place for paged-media counters. */
+  @bottom-right {
+    content: "Page " counter(page) " of " counter(pages);
+    font-size: 7.5pt;
+    color: #6b7280;
+    padding-top: 6pt;
+  }
 }
 
 :root {
@@ -34,6 +45,29 @@ body {
   line-height: 1.35;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
+}
+
+/* Page layout table. Wraps all content so the disclaimer footer in
+ * <tfoot> is repeated on every printed page by Chrome's print engine,
+ * which also reserves vertical space for it on each page (preventing
+ * the overlap that position: fixed footers cause). */
+table.page-layout {
+  width: 100%;
+  border-collapse: collapse;
+  border: 0;
+}
+
+table.page-layout > tbody > tr > td.page-content-cell,
+table.page-layout > tfoot > tr > td.page-footer-cell {
+  padding: 0;
+  border: 0;
+  vertical-align: top;
+}
+
+table.page-layout > tfoot > tr > td.page-footer-cell {
+  /* Ensure tfoot is treated as a running footer rather than placed at
+   * the end of the table only. Chrome respects table-footer-group. */
+  display: table-cell;
 }
 
 .sheet {
@@ -124,7 +158,13 @@ body {
   line-height: 1.4;
 }
 
-.offer-section { margin-top: 20px; }
+.offer-section {
+  margin-top: 20px;
+  /* Keep each numbered pricing block intact across page breaks; push
+   * whole sections to the next page rather than splitting them. */
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
 
 .section-header {
   display: flex;
@@ -132,6 +172,8 @@ body {
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 6px;
+  page-break-after: avoid;
+  break-after: avoid;
 }
 
 .section-title-wrap {
@@ -192,6 +234,15 @@ td {
   line-height: 1.3;
 }
 
+/* Keep individual data-table rows (Card Acquiring / Pay Out) intact
+ * across page breaks. Excludes the page-layout wrapper table — that
+ * table MUST be allowed to break across pages so its tfoot can repeat
+ * the per-page footer. */
+table:not(.page-layout) tr {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
 th {
   background: var(--table-header-bg);
   color: var(--table-header-text);
@@ -222,6 +273,8 @@ tbody tr:nth-child(even) {
   padding: 8px 10px;
   min-height: 64px;
   background: var(--paper);
+  page-break-inside: avoid;
+  break-inside: avoid;
 }
 
 .fee-card h3 {
@@ -264,6 +317,8 @@ tbody tr:nth-child(even) {
   border-bottom: 1px solid var(--border);
   min-height: 38px;
   background: var(--paper);
+  page-break-inside: avoid;
+  break-inside: avoid;
 }
 
 .terms-item:nth-child(2n) { border-right: 0; }
@@ -283,12 +338,12 @@ tbody tr:nth-child(even) {
 }
 
 .print-footer {
-  position: fixed;
-  left: ${tokens.pageMarginCm}cm;
-  right: ${tokens.pageMarginCm}cm;
-  bottom: 0.85cm;
+  /* Lives inside table.page-layout > tfoot so Chrome repeats it on every
+   * printed page. No position: fixed — that approach overlapped content
+   * because fixed elements do not reserve flow space. */
   font-size: 7.6pt;
   color: var(--text-muted);
+  padding-top: 8pt;
 }
 
 .print-footer p {
@@ -305,9 +360,6 @@ tbody tr:nth-child(even) {
   font-size: 8pt;
   color: var(--text-muted);
 }
-
-.page-number::before { content: counter(page); }
-.page-total::before { content: counter(pages); }
 
 .kit-panel {
   margin-top: 18px;
@@ -368,18 +420,12 @@ tbody tr:nth-child(even) {
   .meta-value { font-size: 34px; }
 
   .print-footer {
-    position: static;
     margin-top: 16px;
   }
 
   .footer-meta {
     justify-content: flex-start;
     gap: 16px;
-  }
-
-  .page-number::before,
-  .page-total::before {
-    content: "-";
   }
 }
 
@@ -388,7 +434,9 @@ tbody tr:nth-child(even) {
 
 .agreement-section {
   margin-top: 18px;
-  page-break-inside: avoid;
+  /* page-break-inside avoid removed: long MSA sections were forcing
+   * full-section pushes and leaving blank gaps. Heading orphans still
+   * prevented by page-break-after avoid on h2/h3 in print rules. */
 }
 
 /* AGREEMENT typography mirrors the DRAFT TEXT.docx template: plain bold black
@@ -468,6 +516,8 @@ tbody tr:nth-child(even) {
   background: var(--paper);
   padding: 12px;
   min-height: 160px;
+  page-break-inside: avoid;
+  break-inside: avoid;
 }
 
 .signature-name {
@@ -535,8 +585,24 @@ tbody tr:nth-child(even) {
   .agreement-h2 { page-break-after: avoid; }
   .agreement-h3 { page-break-after: avoid; }
 
+  /* In bundled offer+agreement PDFs the MSA must start on a fresh page so
+   * the offer pricing schedule has its own footer at the end of the
+   * offer pages, and the agreement body has its own ending block. */
+  .agreement-body {
+    page-break-before: always;
+    break-before: page;
+  }
+
   .sheet { padding: 0; }
   .kit-panel { display: none; }
+
+  /* The footer lives in table.page-layout > tfoot so Chrome's print
+   * engine repeats it on every printed page and reserves flow space
+   * for it (no overlap with content). */
+  .print-footer {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
 }
 `;
 }

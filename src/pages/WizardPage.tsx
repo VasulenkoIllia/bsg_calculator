@@ -12,6 +12,7 @@ import {
 import type { DocumentTemplatePayload, WizardStep } from "../components/document-wizard/index.js";
 import type { DocumentScope } from "../components/document-wizard/legalDefaults.js";
 import { useCalculator } from "../contexts/CalculatorContext.js";
+import { printHtmlViaIframe } from "../lib/printHtmlViaIframe.js";
 
 type WizardSourceMode = "calculator" | "manualBlank" | "manualDefaults";
 
@@ -185,20 +186,11 @@ export function WizardPage() {
   };
 
   const handleWizardGeneratePdf = () => {
-    if (typeof window === "undefined") return;
-
-    const popup = window.open("", "_blank", "noopener,noreferrer,width=1120,height=880");
-    if (!popup) {
-      setWizardActionMessage("Popup was blocked. Please allow popups, then retry PDF generation.");
+    const ok = printHtmlViaIframe(wizardPdfHtml);
+    if (!ok) {
+      setWizardActionMessage("Could not open the print dialog in this environment.");
       return;
     }
-
-    popup.document.open();
-    popup.document.write(wizardPdfHtml);
-    popup.document.close();
-    popup.focus();
-    popup.print();
-
     setWizardActionMessage('Print dialog opened. Choose "Save as PDF" to export.');
   };
 

@@ -15,6 +15,7 @@ import {
   escapeHtml
 } from "../components/calculator/index.js";
 import { useCalculator } from "../contexts/CalculatorContext.js";
+import { printHtmlViaIframe } from "../lib/printHtmlViaIframe.js";
 
 export function CalculatorPage() {
   const navigate = useNavigate();
@@ -98,18 +99,7 @@ export function CalculatorPage() {
   };
 
   const openOfferSummaryPrintView = (mode: "pdf" | "print") => {
-    if (typeof window === "undefined") return;
-
-    const popup = window.open("", "_blank", "noopener,noreferrer,width=980,height=760");
-    if (!popup) {
-      calc.setOfferSummaryActionMessage(
-        "Popup was blocked. Please allow popups, then retry export/print."
-      );
-      return;
-    }
-
-    popup.document.open();
-    popup.document.write(`<!doctype html>
+    const html = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -124,10 +114,15 @@ export function CalculatorPage() {
 <body>
   <pre>${escapeHtml(offerSummaryText)}</pre>
 </body>
-</html>`);
-    popup.document.close();
-    popup.focus();
-    popup.print();
+</html>`;
+
+    const ok = printHtmlViaIframe(html);
+    if (!ok) {
+      calc.setOfferSummaryActionMessage(
+        "Could not open the print dialog in this environment."
+      );
+      return;
+    }
 
     calc.setOfferSummaryActionMessage(
       mode === "pdf" ? 'Print dialog opened. Choose "Save as PDF" to export.' : "Print dialog opened."
