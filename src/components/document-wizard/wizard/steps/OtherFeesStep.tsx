@@ -1,6 +1,6 @@
 import { MiniToggle, NumberField } from "../../../calculator/index.js";
 import type { DocumentTemplatePayload } from "../../types.js";
-import { StepNavigation } from "../shared.js";
+import { FeeFieldWithNa, StepNavigation } from "../shared.js";
 
 export function OtherFeesStep({
   draft,
@@ -57,15 +57,17 @@ export function OtherFeesStep({
               Payout Minimum Fee (Per Transaction)
             </label>
             <div className="mt-3">
-              <NumberField
+              <FeeFieldWithNa
                 label="Minimum Fee per Transaction (€)"
                 value={draft.toggles.payoutMinimumFeePerTransaction}
-                onChange={value =>
+                na={draft.toggles.payoutMinimumFeePerTransactionNa}
+                onValueChange={value =>
                   updateToggles({ payoutMinimumFeePerTransaction: Math.max(0, value) })
                 }
+                onNaChange={na => updateToggles({ payoutMinimumFeePerTransactionNa: na })}
                 min={0}
                 step={0.1}
-                helper="Shown in Section 2 table as MINIMUM FEE."
+                ariaPrefix="payout-min-fee"
               />
             </div>
           </div>

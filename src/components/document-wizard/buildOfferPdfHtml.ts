@@ -69,16 +69,21 @@ export function buildOfferPdfHtml(
   const agreementBody = includeAgreement ? buildAgreementBodyHtml(data) : "";
 
   const showPricingMeta = shouldShowPricingMeta(scope);
+  // Order: identification first (NUMBER, DATE, TYPE), then pricing meta
+  // (MODEL, FREQUENCY). When pricing meta is hidden, the grid collapses
+  // to a single 3-column row with no empty trailing cell. When pricing
+  // meta is shown the grid has exactly 5 items; the .meta-item rule in
+  // styles.ts widens the 5th item to fill the empty 6th column.
   const metaItems = [
+    renderMetaItem({ label: "DOCUMENT NUMBER", value: data.header.documentNumber }),
+    renderMetaItem({ label: "DOCUMENT DATE", value: displayDate }),
     renderMetaItem({ label: "DOCUMENT TYPE", value: data.header.documentType }),
     showPricingMeta
       ? renderMetaItem({ label: modelLabel, value: data.header.collectionModel })
       : "",
     showPricingMeta
       ? renderMetaItem({ label: "COLLECTION FREQUENCY", value: data.header.collectionFrequency })
-      : "",
-    renderMetaItem({ label: "DOCUMENT NUMBER", value: data.header.documentNumber }),
-    renderMetaItem({ label: "DOCUMENT DATE", value: displayDate })
+      : ""
   ]
     .filter(Boolean)
     .join("");

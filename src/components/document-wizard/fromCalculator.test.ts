@@ -147,6 +147,8 @@ describe("buildOfferPdfHtml", () => {
         payoutMinimumFeeEuPerTransaction: 1,
         payoutMinimumFeeWwThresholdMillion: 2.5,
         payoutMinimumFeeWwPerTransaction: 1,
+        payoutMinimumFeeEuNa: false,
+        payoutMinimumFeeWwNa: false,
         accountSetupFee: 0,
         refundCost: 0,
         disputeCost: 0,
@@ -161,11 +163,11 @@ describe("buildOfferPdfHtml", () => {
           trxFeeEnabled: true,
           tier1UpToMillion: 10,
           tier2UpToMillion: 25,
-          single: { mdrPercent: 4.5, trxCc: 0.3, trxApm: 0.35 },
+          single: { mdrPercent: 4.5, trxCc: 0.3, trxCcNa: false, trxApm: 0.35, trxApmNa: false },
           tiers: [
-            { mdrPercent: 4.5, trxCc: 0.3, trxApm: 0.35 },
-            { mdrPercent: 4.3, trxCc: 0.3, trxApm: 0.35 },
-            { mdrPercent: 4.1, trxCc: 0.3, trxApm: 0.35 }
+            { mdrPercent: 4.5, trxCc: 0.3, trxCcNa: false, trxApm: 0.35, trxApmNa: false },
+            { mdrPercent: 4.3, trxCc: 0.3, trxCcNa: false, trxApm: 0.35, trxApmNa: false },
+            { mdrPercent: 4.1, trxCc: 0.3, trxCcNa: false, trxApm: 0.35, trxApmNa: false }
           ]
         },
         ww: {
@@ -174,11 +176,11 @@ describe("buildOfferPdfHtml", () => {
           trxFeeEnabled: true,
           tier1UpToMillion: 10,
           tier2UpToMillion: 25,
-          single: { mdrPercent: 4.5, trxCc: 0.3, trxApm: 0.35 },
+          single: { mdrPercent: 4.5, trxCc: 0.3, trxCcNa: false, trxApm: 0.35, trxApmNa: false },
           tiers: [
-            { mdrPercent: 4.5, trxCc: 0.3, trxApm: 0.35 },
-            { mdrPercent: 4.3, trxCc: 0.3, trxApm: 0.35 },
-            { mdrPercent: 4.1, trxCc: 0.3, trxApm: 0.35 }
+            { mdrPercent: 4.5, trxCc: 0.3, trxCcNa: false, trxApm: 0.35, trxApmNa: false },
+            { mdrPercent: 4.3, trxCc: 0.3, trxCcNa: false, trxApm: 0.35, trxApmNa: false },
+            { mdrPercent: 4.1, trxCc: 0.3, trxCcNa: false, trxApm: 0.35, trxApmNa: false }
           ]
         }
       },
@@ -186,17 +188,18 @@ describe("buildOfferPdfHtml", () => {
         rateMode: "single",
         tier1UpToMillion: 1,
         tier2UpToMillion: 5,
-        single: { mdrPercent: 2, trxFee: 0.5 },
+        single: { mdrPercent: 2, trxFee: 0.5, trxFeeNa: false },
         tiers: [
-          { mdrPercent: 2, trxFee: 0.5 },
-          { mdrPercent: 1.8, trxFee: 0.45 },
-          { mdrPercent: 1.5, trxFee: 0.4 }
+          { mdrPercent: 2, trxFee: 0.5, trxFeeNa: false },
+          { mdrPercent: 1.8, trxFee: 0.45, trxFeeNa: false },
+          { mdrPercent: 1.5, trxFee: 0.4, trxFeeNa: false }
         ]
       },
       toggles: {
         settlementIncluded: false,
         payoutMinimumFeeEnabled: false,
         payoutMinimumFeePerTransaction: 0,
+        payoutMinimumFeePerTransactionNa: false,
         threeDsEnabled: false,
         threeDsRevenuePerSuccessfulTransaction: 0,
         settlementFeeEnabled: false,
@@ -249,7 +252,7 @@ describe("buildOfferPdfHtml", () => {
     const html = buildOfferPdfHtml(data);
     expect(html).toContain("VOLUME TIERED");
     expect(html).toContain("MONTHLY VOLUME TIER");
-    expect(html).toContain("● EU");
+    expect(html).toContain("● EEA + UK");
     expect(html).toContain("● Global");
     expect(html).not.toContain("Rolling Reserve Cap");
     expect(html).not.toContain("Max. Payout Transaction Size");
@@ -263,7 +266,7 @@ describe("buildOfferPdfHtml", () => {
 
     const html = buildOfferPdfHtml(data);
     expect(html).toContain("FAILED TRX CHARGING");
-    expect(html).toContain("Over limit only (70%)");
+    expect(html).toContain("Over limit only (70.00%)");
   });
 
   it("renders payout minimum fee in section 2 when enabled", () => {
@@ -274,5 +277,173 @@ describe("buildOfferPdfHtml", () => {
     const html = buildOfferPdfHtml(data);
     expect(html).toContain("MINIMUM FEE");
     expect(html).toContain("€2.50");
+  });
+
+  describe("N/A toggles", () => {
+    it("payin TRX C/D N/A renders C/D: N/A while APM keeps its value", () => {
+      const data = buildBaseTemplateData();
+      data.layout.payin.regionMode = "both";
+      data.layout.payin.tableMode = "byRegionFlat";
+      data.payinPricing.eu.single.trxCcNa = true;
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).toContain("C/D: N/A");
+      expect(html).toContain("APM: €0.35");
+    });
+
+    it("payin TRX APM N/A renders APM: N/A independently of C/D", () => {
+      const data = buildBaseTemplateData();
+      data.layout.payin.regionMode = "both";
+      data.layout.payin.tableMode = "byRegionFlat";
+      data.payinPricing.eu.single.trxApmNa = true;
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).toContain("C/D: €0.30");
+      expect(html).toContain("APM: N/A");
+    });
+
+    it("payin tiered TRX N/A toggles only the affected tier", () => {
+      const data = buildBaseTemplateData();
+      data.layout.payin.regionMode = "both";
+      data.layout.payin.tableMode = "byRegionTiered";
+      data.payinPricing.eu.rateMode = "tiered";
+      data.payinPricing.ww.rateMode = "tiered";
+      data.payinPricing.eu.tiers[1].trxCcNa = true;
+
+      const html = buildOfferPdfHtml(data);
+      // Tier 0 still shows numeric, tier 1 shows N/A.
+      expect(html).toContain("C/D: N/A");
+      expect(html).toContain("C/D: €0.30");
+    });
+
+    it("payin MIN. TRX FEE N/A renders 'N/A' for the toggled region only", () => {
+      const data = buildBaseTemplateData();
+      data.layout.payin.regionMode = "both";
+      data.layout.payin.tableMode = "byRegionFlat";
+      data.contractSummary.payoutMinimumFeeMode = "byRegion";
+      data.contractSummary.payoutMinimumFeeEuThresholdMillion = 2.5;
+      data.contractSummary.payoutMinimumFeeEuPerTransaction = 1;
+      data.contractSummary.payoutMinimumFeeWwThresholdMillion = 2.5;
+      data.contractSummary.payoutMinimumFeeWwPerTransaction = 1;
+      data.contractSummary.payoutMinimumFeeEuNa = true;
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).toContain("MIN. TRANSACTION FEE");
+      // EU row shows N/A; WW row keeps the threshold-based value
+      // (secondary line uses the escaped &gt; entity).
+      expect(html).toContain("&gt;2.5M: N/A");
+      expect(html).toContain("≤2.5M: €1.00");
+    });
+
+    it("payout TRX Fee N/A renders N/A in the muted gray class", () => {
+      const data = buildBaseTemplateData();
+      data.payoutPricing.single.trxFeeNa = true;
+
+      const html = buildOfferPdfHtml(data);
+      // value-na class wraps the standalone "N/A" so it renders in the
+      // muted gray colour instead of the accent (purple) used for €.
+      expect(html).toContain("value-na");
+      expect(html).toMatch(/value-na[^"]*">N\/A</);
+    });
+
+    it("payout MIN. FEE N/A renders 'N/A' in the muted gray class", () => {
+      const data = buildBaseTemplateData();
+      data.toggles.payoutMinimumFeePerTransactionNa = true;
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).toContain("MINIMUM FEE");
+      expect(html).toContain('<span class="value-na">N/A</span>');
+    });
+
+    it("payin TRX C/D N/A uses the muted gray class instead of the tier blue", () => {
+      const data = buildBaseTemplateData();
+      data.layout.payin.regionMode = "both";
+      data.layout.payin.tableMode = "byRegionFlat";
+      data.payinPricing.eu.single.trxCcNa = true;
+
+      const html = buildOfferPdfHtml(data);
+      // C/D switches to the muted value-na class; APM keeps the
+      // single-mode default tier-color-1 (blue).
+      expect(html).toMatch(/value-na[^"]*">C\/D: N\/A</);
+      expect(html).toMatch(/tier-color-1[^"]*">APM: €0\.35</);
+    });
+  });
+
+  describe("tiered visual styling", () => {
+    it("payin tiered rows colour each tier with tier-color-1/2/3", () => {
+      const data = buildBaseTemplateData();
+      data.layout.payin.regionMode = "both";
+      data.layout.payin.tableMode = "byRegionTiered";
+      data.payinPricing.eu.rateMode = "tiered";
+      data.payinPricing.ww.rateMode = "tiered";
+
+      const html = buildOfferPdfHtml(data);
+      // Each tier has its own colour class applied to label + fees.
+      expect(html).toContain("tier-color-1");
+      expect(html).toContain("tier-color-2");
+      expect(html).toContain("tier-color-3");
+    });
+
+    it("payin tiered rows keep MDR percent in the default body colour", () => {
+      const data = buildBaseTemplateData();
+      data.layout.payin.regionMode = "both";
+      data.layout.payin.tableMode = "byRegionTiered";
+      data.payinPricing.eu.rateMode = "tiered";
+      data.payinPricing.ww.rateMode = "tiered";
+
+      const html = buildOfferPdfHtml(data);
+      // The percent value lives in a plain cell-line span, not coloured.
+      expect(html).toMatch(/<span class="cell-line">4\.50%/);
+    });
+
+    it("payout tiered rows colour each tier with tier-color-1/2/3", () => {
+      const data = buildBaseTemplateData();
+      data.layout.payout.regionMode = "global";
+      data.layout.payout.tableMode = "globalTiered";
+      data.payoutPricing.rateMode = "tiered";
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).toContain("tier-color-1");
+      expect(html).toContain("tier-color-2");
+      expect(html).toContain("tier-color-3");
+    });
+
+    it("APM brand list line uses the muted cell-subtitle class", () => {
+      const data = buildBaseTemplateData();
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).toMatch(
+        /<span class="cell-line cell-subtitle">APM - Apple Pay, Google Pay/
+      );
+    });
+
+    it("MIN. TRANSACTION FEE secondary line is rendered in muted gray", () => {
+      const data = buildBaseTemplateData();
+      data.layout.payin.regionMode = "both";
+      data.layout.payin.tableMode = "byRegionFlat";
+      data.contractSummary.payoutMinimumFeeMode = "byRegion";
+      data.contractSummary.payoutMinimumFeeEuThresholdMillion = 2.5;
+      data.contractSummary.payoutMinimumFeeEuPerTransaction = 1;
+      data.contractSummary.payoutMinimumFeeWwThresholdMillion = 2.5;
+      data.contractSummary.payoutMinimumFeeWwPerTransaction = 1;
+
+      const html = buildOfferPdfHtml(data);
+      // The "≤2.5M: €1.00" primary line stays in default colour;
+      // the ">2.5M: N/A" secondary line carries the muted value-na class.
+      expect(html).toContain('<span class="cell-line">≤2.5M: €1.00</span>');
+      expect(html).toContain('<span class="cell-line value-na">&gt;2.5M: N/A</span>');
+    });
+
+    it("FAILED TRX CHARGING card no longer shows the Calculator mode subtitle", () => {
+      const data = buildBaseTemplateData();
+      data.toggles.failedTrxEnabled = true;
+      data.toggles.failedTrxMode = "allFailedVolume";
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).toContain("FAILED TRX CHARGING");
+      expect(html).toContain("All failed volume");
+      // The hint subtitle was removed by request.
+      expect(html).not.toContain("Calculator mode");
+    });
   });
 });

@@ -54,7 +54,9 @@ export function buildDocumentTemplatePayloadManualDefaults(): DocumentTemplatePa
     },
     contractSummary: {
       ...DEFAULT_CONTRACT_SUMMARY_SETTINGS,
-      ...DEFAULT_DOCUMENT_LEGAL_TERMS
+      ...DEFAULT_DOCUMENT_LEGAL_TERMS,
+      payoutMinimumFeeEuNa: false,
+      payoutMinimumFeeWwNa: false
     },
     payinPricing: {
       eu: clonePayinRegionPricing(DEFAULT_PAYIN_EU_PRICING_CONFIG),
@@ -65,6 +67,7 @@ export function buildDocumentTemplatePayloadManualDefaults(): DocumentTemplatePa
       settlementIncluded: false,
       payoutMinimumFeeEnabled: DEFAULT_PAYOUT_MINIMUM_FEE_CONFIG.enabled,
       payoutMinimumFeePerTransaction: DEFAULT_PAYOUT_MINIMUM_FEE_CONFIG.minimumFeePerTransaction,
+      payoutMinimumFeePerTransactionNa: false,
       threeDsEnabled: DEFAULT_3DS_FEE_CONFIG.enabled,
       threeDsRevenuePerSuccessfulTransaction: DEFAULT_3DS_FEE_CONFIG.revenuePerSuccessfulTransaction,
       settlementFeeEnabled: DEFAULT_SETTLEMENT_FEE_CONFIG.enabled,
@@ -121,6 +124,8 @@ export function buildDocumentTemplatePayloadManualBlank(): DocumentTemplatePaylo
       payoutMinimumFeeEuPerTransaction: 0,
       payoutMinimumFeeWwThresholdMillion: 0,
       payoutMinimumFeeWwPerTransaction: 0,
+      payoutMinimumFeeEuNa: false,
+      payoutMinimumFeeWwNa: false,
       collectionLimitMin: 0,
       collectionLimitMax: 0,
       payoutLimitMin: 0,
@@ -135,12 +140,16 @@ export function buildDocumentTemplatePayloadManualBlank(): DocumentTemplatePaylo
         single: {
           mdrPercent: 0,
           trxCc: 0,
-          trxApm: 0
+          trxCcNa: false,
+          trxApm: 0,
+          trxApmNa: false
         },
         tiers: DEFAULT_PAYIN_EU_PRICING_CONFIG.tiers.map(() => ({
           mdrPercent: 0,
           trxCc: 0,
-          trxApm: 0
+          trxCcNa: false,
+          trxApm: 0,
+          trxApmNa: false
         }))
       },
       ww: {
@@ -150,12 +159,16 @@ export function buildDocumentTemplatePayloadManualBlank(): DocumentTemplatePaylo
         single: {
           mdrPercent: 0,
           trxCc: 0,
-          trxApm: 0
+          trxCcNa: false,
+          trxApm: 0,
+          trxApmNa: false
         },
         tiers: DEFAULT_PAYIN_WW_PRICING_CONFIG.tiers.map(() => ({
           mdrPercent: 0,
           trxCc: 0,
-          trxApm: 0
+          trxCcNa: false,
+          trxApm: 0,
+          trxApmNa: false
         }))
       }
     },
@@ -165,17 +178,20 @@ export function buildDocumentTemplatePayloadManualBlank(): DocumentTemplatePaylo
       tier2UpToMillion: 0,
       single: {
         mdrPercent: 0,
-        trxFee: 0
+        trxFee: 0,
+        trxFeeNa: false
       },
       tiers: DEFAULT_PAYOUT_PRICING_CONFIG.tiers.map(() => ({
         mdrPercent: 0,
-        trxFee: 0
+        trxFee: 0,
+        trxFeeNa: false
       }))
     },
     toggles: {
       settlementIncluded: false,
       payoutMinimumFeeEnabled: false,
       payoutMinimumFeePerTransaction: 0,
+      payoutMinimumFeePerTransactionNa: false,
       threeDsEnabled: false,
       threeDsRevenuePerSuccessfulTransaction: 0,
       settlementFeeEnabled: false,

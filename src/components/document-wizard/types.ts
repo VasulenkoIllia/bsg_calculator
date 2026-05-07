@@ -71,6 +71,12 @@ export interface DocumentTemplatePayload {
     payoutMinimumFeeEuPerTransaction: number;
     payoutMinimumFeeWwThresholdMillion: number;
     payoutMinimumFeeWwPerTransaction: number;
+    // Per-region "N/A" toggles for the MIN. TRANSACTION FEE column on
+    // the payin (Card Acquiring) table. When true, the corresponding
+    // region row renders the literal "N/A" instead of the threshold-
+    // based value, regardless of payoutMinimumFeeMode.
+    payoutMinimumFeeEuNa: boolean;
+    payoutMinimumFeeWwNa: boolean;
     accountSetupFee: number;
     refundCost: number;
     disputeCost: number;
@@ -79,36 +85,23 @@ export interface DocumentTemplatePayload {
     restrictedJurisdictions: string;
   };
   payinPricing: {
-    eu: {
-      model: "icpp" | "blended";
-      rateMode: "single" | "tiered";
-      trxFeeEnabled: boolean;
-      tier1UpToMillion: number;
-      tier2UpToMillion: number;
-      single: { mdrPercent: number; trxCc: number; trxApm: number };
-      tiers: Array<{ mdrPercent: number; trxCc: number; trxApm: number }>;
-    };
-    ww: {
-      model: "icpp" | "blended";
-      rateMode: "single" | "tiered";
-      trxFeeEnabled: boolean;
-      tier1UpToMillion: number;
-      tier2UpToMillion: number;
-      single: { mdrPercent: number; trxCc: number; trxApm: number };
-      tiers: Array<{ mdrPercent: number; trxCc: number; trxApm: number }>;
-    };
+    eu: PayinRegionPricing;
+    ww: PayinRegionPricing;
   };
   payoutPricing: {
     rateMode: "single" | "tiered";
     tier1UpToMillion: number;
     tier2UpToMillion: number;
-    single: { mdrPercent: number; trxFee: number };
-    tiers: Array<{ mdrPercent: number; trxFee: number }>;
+    single: PayoutFeeBlock;
+    tiers: PayoutFeeBlock[];
   };
   toggles: {
     settlementIncluded: boolean;
     payoutMinimumFeeEnabled: boolean;
     payoutMinimumFeePerTransaction: number;
+    // "N/A" toggle for the MINIMUM FEE column on the payout (Pay Out)
+    // table. When true, the cell renders "N/A".
+    payoutMinimumFeePerTransactionNa: boolean;
     threeDsEnabled: boolean;
     threeDsRevenuePerSuccessfulTransaction: number;
     settlementFeeEnabled: boolean;
@@ -119,4 +112,34 @@ export interface DocumentTemplatePayload {
     failedTrxMode: "overLimitOnly" | "allFailedVolume";
     failedTrxOverLimitThresholdPercent: number;
   };
+}
+
+// Per-region payin pricing block (extracted so single + tiers share the
+// same shape and the new N/A flags live next to their numeric siblings).
+export interface PayinFeeBlock {
+  mdrPercent: number;
+  trxCc: number;
+  // "N/A" toggle for the C/D transaction fee. Renders "C/D: N/A" in PDF.
+  trxCcNa: boolean;
+  trxApm: number;
+  // "N/A" toggle for the APM transaction fee. Renders "APM: N/A" in PDF.
+  trxApmNa: boolean;
+}
+
+export interface PayinRegionPricing {
+  model: "icpp" | "blended";
+  rateMode: "single" | "tiered";
+  trxFeeEnabled: boolean;
+  tier1UpToMillion: number;
+  tier2UpToMillion: number;
+  single: PayinFeeBlock;
+  tiers: PayinFeeBlock[];
+}
+
+// Payout pricing block — single trx fee per row plus its N/A toggle.
+export interface PayoutFeeBlock {
+  mdrPercent: number;
+  trxFee: number;
+  // "N/A" toggle for the payout transaction fee. Renders "N/A" in PDF.
+  trxFeeNa: boolean;
 }

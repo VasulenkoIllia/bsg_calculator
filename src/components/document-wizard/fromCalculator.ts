@@ -130,7 +130,11 @@ export function buildDocumentTemplatePayloadFromCalculator({
     },
     contractSummary: {
       ...contractSummarySettings,
-      ...DEFAULT_DOCUMENT_LEGAL_TERMS
+      ...DEFAULT_DOCUMENT_LEGAL_TERMS,
+      // N/A toggles default off — calculator only emits numeric values.
+      // The user can flip them on in the wizard.
+      payoutMinimumFeeEuNa: false,
+      payoutMinimumFeeWwNa: false
     },
     payinPricing: {
       eu: {
@@ -139,8 +143,8 @@ export function buildDocumentTemplatePayloadFromCalculator({
         trxFeeEnabled: payinEuPricing.trxFeeEnabled,
         tier1UpToMillion: payinEuPricing.tier1UpToMillion,
         tier2UpToMillion: payinEuPricing.tier2UpToMillion,
-        single: { ...payinEuPricing.single },
-        tiers: payinEuPricing.tiers.map(tier => ({ ...tier }))
+        single: { ...payinEuPricing.single, trxCcNa: false, trxApmNa: false },
+        tiers: payinEuPricing.tiers.map(tier => ({ ...tier, trxCcNa: false, trxApmNa: false }))
       },
       ww: {
         model: payinWwPricing.model,
@@ -148,21 +152,22 @@ export function buildDocumentTemplatePayloadFromCalculator({
         trxFeeEnabled: payinWwPricing.trxFeeEnabled,
         tier1UpToMillion: payinWwPricing.tier1UpToMillion,
         tier2UpToMillion: payinWwPricing.tier2UpToMillion,
-        single: { ...payinWwPricing.single },
-        tiers: payinWwPricing.tiers.map(tier => ({ ...tier }))
+        single: { ...payinWwPricing.single, trxCcNa: false, trxApmNa: false },
+        tiers: payinWwPricing.tiers.map(tier => ({ ...tier, trxCcNa: false, trxApmNa: false }))
       }
     },
     payoutPricing: {
       rateMode: payoutPricing.rateMode,
       tier1UpToMillion: payoutPricing.tier1UpToMillion,
       tier2UpToMillion: payoutPricing.tier2UpToMillion,
-      single: { ...payoutPricing.single },
-      tiers: payoutPricing.tiers.map(tier => ({ ...tier }))
+      single: { ...payoutPricing.single, trxFeeNa: false },
+      tiers: payoutPricing.tiers.map(tier => ({ ...tier, trxFeeNa: false }))
     },
     toggles: {
       settlementIncluded,
       payoutMinimumFeeEnabled,
       payoutMinimumFeePerTransaction,
+      payoutMinimumFeePerTransactionNa: false,
       threeDsEnabled,
       threeDsRevenuePerSuccessfulTransaction,
       settlementFeeEnabled,

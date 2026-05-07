@@ -1,6 +1,6 @@
 import { MiniToggle, NumberField } from "../../../calculator/index.js";
 import type { DocumentTemplatePayload } from "../../types.js";
-import { StepNavigation } from "../shared.js";
+import { FeeFieldWithNa, StepNavigation } from "../shared.js";
 
 export function PayoutStep({
   draft,
@@ -103,17 +103,25 @@ export function PayoutStep({
                   max={5}
                   step={0.05}
                 />
-                <NumberField
+                <FeeFieldWithNa
                   label="TRX Fee (€)"
                   value={pricing.single.trxFee}
-                  onChange={value =>
+                  na={pricing.single.trxFeeNa}
+                  onValueChange={value =>
                     updatePricing(current => ({
                       ...current,
                       single: { ...current.single, trxFee: value }
                     }))
                   }
+                  onNaChange={na =>
+                    updatePricing(current => ({
+                      ...current,
+                      single: { ...current.single, trxFeeNa: na }
+                    }))
+                  }
                   min={0}
                   step={0.01}
+                  ariaPrefix="payout-single-trxfee"
                 />
               </div>
             ) : (
@@ -170,10 +178,11 @@ export function PayoutStep({
                           max={5}
                           step={0.05}
                         />
-                        <NumberField
+                        <FeeFieldWithNa
                           label="TRX Fee (€)"
                           value={tier.trxFee}
-                          onChange={value =>
+                          na={tier.trxFeeNa}
+                          onValueChange={value =>
                             updatePricing(current => ({
                               ...current,
                               tiers: current.tiers.map((item, itemIndex) =>
@@ -181,8 +190,17 @@ export function PayoutStep({
                               ) as typeof current.tiers
                             }))
                           }
+                          onNaChange={na =>
+                            updatePricing(current => ({
+                              ...current,
+                              tiers: current.tiers.map((item, itemIndex) =>
+                                itemIndex === index ? { ...item, trxFeeNa: na } : item
+                              ) as typeof current.tiers
+                            }))
+                          }
                           min={0}
                           step={0.01}
+                          ariaPrefix={`payout-tier-${index}-trxfee`}
                         />
                       </div>
                     </div>

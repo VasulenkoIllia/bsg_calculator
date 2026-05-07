@@ -56,7 +56,7 @@ function buildTermsItems(data: DocumentTemplatePayload, layout: DocumentWizardLa
   if (hasPositiveNumber(summary.rollingReservePercent) && hasPositiveNumber(summary.rollingReserveHoldDays)) {
     items.push({
       label: "Rolling Reserve",
-      value: `${formatPercent(summary.rollingReservePercent, 0)} · ${Math.round(summary.rollingReserveHoldDays)} days`
+      value: `${formatPercent(summary.rollingReservePercent)} · ${Math.round(summary.rollingReserveHoldDays)} days`
     });
   }
 

@@ -32,6 +32,11 @@ export function buildPdfUiKitStyles(tokens: PdfUiKitTokens): string {
   --table-alt: ${tokens.colorTableAltRow};
   --paper: ${tokens.colorPaper};
   --screen-bg: ${tokens.colorScreenBackground};
+  /* Label colour applied to small uppercase column / card / meta
+   * labels (REGION, METHODS, REFUND, DOCUMENT NUMBER …). Matches
+   * tier-color-1 (#2358EA) so headings and the first tier read in
+   * the same blue shade. */
+  --label-color: #2358EA;
 }
 
 * { box-sizing: border-box; }
@@ -115,7 +120,13 @@ table.page-layout > tfoot > tr > td.page-footer-cell {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0;
-  border: 1px solid var(--border);
+  /* Only top + left container borders. Right and bottom outer edges
+   * are provided by item borders, so an empty trailing cell (e.g. the
+   * 6th slot when there are 5 items) is invisible — the item before
+   * it draws its own right edge and the row below it just doesn't
+   * exist. */
+  border-top: 1px solid var(--border);
+  border-left: 1px solid var(--border);
 }
 
 .meta-item {
@@ -126,8 +137,6 @@ table.page-layout > tfoot > tr > td.page-footer-cell {
   background: var(--paper);
 }
 
-.meta-item:nth-child(3n) { border-right: 0; }
-.meta-item:nth-last-child(-n + 2) { border-bottom: 0; }
 
 .meta-label {
   display: block;
@@ -136,7 +145,7 @@ table.page-layout > tfoot > tr > td.page-footer-cell {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--text-light);
+  color: var(--label-color);
 }
 
 .meta-value {
@@ -245,13 +254,24 @@ table:not(.page-layout) tr {
 
 th {
   background: var(--table-header-bg);
-  color: var(--table-header-text);
+  color: var(--label-color);
   font-weight: 700;
   font-size: 7pt;
   line-height: 1.15;
-  text-align: left;
+  /* Headers are centered horizontally and pinned to the top so wrapped
+   * multi-line labels still align with neighbouring single-line ones. */
+  text-align: center;
+  vertical-align: top;
   text-transform: uppercase;
   letter-spacing: 0.02em;
+}
+
+/* Body cells: left-aligned with a noticeable left indent so values do
+ * not hug the cell edge. All cells share the same indent so values
+ * line up vertically across rows. */
+td {
+  text-align: left;
+  padding-left: 14px;
 }
 
 tbody tr:nth-child(even) {
@@ -261,6 +281,43 @@ tbody tr:nth-child(even) {
 .cell-line { display: block; }
 .cell-region { font-weight: 700; }
 .accent-text { color: var(--accent); font-weight: 700; }
+
+/* Inactive / "N/A" values rendered in muted gray to visually
+ * distinguish them from numeric fees (which are accent-coloured). */
+.value-na { color: var(--text-muted); font-weight: 400; }
+
+/* Per-tier colours used in tiered pricing tables. Each tier row gets
+ * its own shade for the tier label, model name and trx-fee values so
+ * scanning across rows is easier. MDR percent stays in default body
+ * colour on every tier (so percentages read as plain dark text).
+ *
+ * tier-color-1 #2358EA (blue) → tier 0 (e.g. "Up to €0.1M")
+ * tier-color-2 #3F38E3 (blue-purple) → tier 1
+ * tier-color-3 #7D2AEB (purple) → tier 2 (e.g. "Above ...M") */
+.tier-color-1 { color: #2358EA; font-weight: 700; }
+.tier-color-2 { color: #3F38E3; font-weight: 700; }
+.tier-color-3 { color: #7D2AEB; font-weight: 700; }
+
+/* Secondary / subtitle line inside a cell (APM brand list under the
+ * primary methods line, "All Visa & Mastercard" sub-text in payout,
+ * etc.) rendered in muted light gray so the primary line stays
+ * prominent. Matches the design token --text-light (#9ca3af). */
+.cell-subtitle { color: var(--text-light); }
+
+/* Card Acquiring (payin) table column widths.
+ * Numbers sum to 100% when all six columns are shown; when optional
+ * columns are hidden the browser scales the remaining ones
+ * proportionally because table-layout fixed is set on the table.
+ * Compact columns (region/currency/mdr) are ~25% narrower than the
+ * default equal split so METHODS can grow to fit two-line wrapped
+ * values without breaking awkwardly. */
+.col-region   { width: 11%; }
+.col-methods  { width: 25%; }
+.col-currency { width: 11%; }
+.col-tier     { width: 13%; }
+.col-mdr      { width: 12%; }
+.col-trxfee   { width: 17%; }
+.col-minfee   { width: 22%; }
 
 .fees-grid {
   display: grid;
@@ -282,7 +339,7 @@ tbody tr:nth-child(even) {
   font-size: 7pt;
   letter-spacing: 0.05em;
   font-weight: 700;
-  color: var(--text-light);
+  color: var(--label-color);
   text-transform: uppercase;
 }
 
@@ -325,7 +382,7 @@ tbody tr:nth-child(even) {
 .terms-label {
   display: block;
   font-size: 7.5pt;
-  color: var(--text-light);
+  color: var(--label-color);
   margin-bottom: 2px;
 }
 

@@ -9,6 +9,7 @@ If a global agent file exists, this project file overrides it for repository-spe
 2. **Two-document SoT split.** Calculator behavior is governed by `Calculator_Описание.docx`. PDF / wizard / backend phase is governed by `technical_specification_bsg.docx v2.0`. Implementation status of the latter is tracked in `docs/spec_v2_alignment.md`.
 3. **HubSpot is a future phase.** Do not call HubSpot APIs or add HubSpot client code. Only documentation under `docs/integrations.md` is allowed for now.
 4. **Backend is Phase 8.** `server/` is a skeleton and is not serving the frontend. Do not extend it without an explicit backend task.
+5. **Commits go out under the user's identity only.** Never add a `Co-Authored-By:` trailer (or any other co-author line) for an AI assistant — no `Co-Authored-By: Claude …`, no `🤖 Generated with Claude Code`, no `Assisted-By:` etc. Commit messages stay clean: title + body. The user's git config is the sole author and committer on every commit.
 
 ## Mission
 Work predictably, safely, and with minimal unnecessary context usage.

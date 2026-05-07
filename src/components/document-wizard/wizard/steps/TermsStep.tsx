@@ -184,59 +184,128 @@ export function TermsStep({
             />
           </div>
 
-          {draft.contractSummary.payoutMinimumFeeMode === "overall" ? (
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <NumberField
-                label="Threshold (M)"
-                value={draft.contractSummary.payoutMinimumFeeThresholdMillion}
-                onChange={value => updateContractSummary({ payoutMinimumFeeThresholdMillion: value })}
-                min={0}
-                step={0.1}
-              />
-              <NumberField
-                label="Fee per transaction (€)"
-                value={draft.contractSummary.payoutMinimumFeePerTransaction}
-                onChange={value => updateContractSummary({ payoutMinimumFeePerTransaction: value })}
-                min={0}
-                step={0.01}
-              />
-            </div>
-          ) : (
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <NumberField
-                label="EU Threshold (M)"
-                value={draft.contractSummary.payoutMinimumFeeEuThresholdMillion}
-                onChange={value =>
-                  updateContractSummary({ payoutMinimumFeeEuThresholdMillion: value })
+          {/* Lock helpers:
+              - Overall mode: the threshold + fee pair is shared between
+                regions, so it only locks when BOTH region NA flags are
+                on (otherwise at least one region still uses the values).
+              - By-region mode: each region's pair locks based on its
+                own NA flag.
+              The "Show … as N/A" checkboxes themselves are below and
+              never disabled — the user can always toggle NA on/off. */}
+          {(() => {
+            const euNa = draft.contractSummary.payoutMinimumFeeEuNa;
+            const wwNa = draft.contractSummary.payoutMinimumFeeWwNa;
+            const overallLocked = euNa && wwNa;
+            return draft.contractSummary.payoutMinimumFeeMode === "overall" ? (
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <NumberField
+                  label="Threshold (M)"
+                  value={draft.contractSummary.payoutMinimumFeeThresholdMillion}
+                  onChange={value =>
+                    updateContractSummary({ payoutMinimumFeeThresholdMillion: value })
+                  }
+                  min={0}
+                  step={0.1}
+                  readOnly={overallLocked}
+                  helper={
+                    overallLocked
+                      ? "Locked — both regions render MIN. TRX FEE as N/A"
+                      : undefined
+                  }
+                />
+                <NumberField
+                  label="Fee per transaction (€)"
+                  value={draft.contractSummary.payoutMinimumFeePerTransaction}
+                  onChange={value =>
+                    updateContractSummary({ payoutMinimumFeePerTransaction: value })
+                  }
+                  min={0}
+                  step={0.01}
+                  readOnly={overallLocked}
+                  helper={
+                    overallLocked
+                      ? "Locked — both regions render MIN. TRX FEE as N/A"
+                      : undefined
+                  }
+                />
+              </div>
+            ) : (
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <NumberField
+                  label="EU Threshold (M)"
+                  value={draft.contractSummary.payoutMinimumFeeEuThresholdMillion}
+                  onChange={value =>
+                    updateContractSummary({ payoutMinimumFeeEuThresholdMillion: value })
+                  }
+                  min={0}
+                  step={0.1}
+                  readOnly={euNa}
+                  helper={euNa ? "Locked — EEA + UK row renders as N/A" : undefined}
+                />
+                <NumberField
+                  label="EU Fee per transaction (€)"
+                  value={draft.contractSummary.payoutMinimumFeeEuPerTransaction}
+                  onChange={value =>
+                    updateContractSummary({ payoutMinimumFeeEuPerTransaction: value })
+                  }
+                  min={0}
+                  step={0.01}
+                  readOnly={euNa}
+                  helper={euNa ? "Locked — EEA + UK row renders as N/A" : undefined}
+                />
+                <NumberField
+                  label="WW Threshold (M)"
+                  value={draft.contractSummary.payoutMinimumFeeWwThresholdMillion}
+                  onChange={value =>
+                    updateContractSummary({ payoutMinimumFeeWwThresholdMillion: value })
+                  }
+                  min={0}
+                  step={0.1}
+                  readOnly={wwNa}
+                  helper={wwNa ? "Locked — Global row renders as N/A" : undefined}
+                />
+                <NumberField
+                  label="WW Fee per transaction (€)"
+                  value={draft.contractSummary.payoutMinimumFeeWwPerTransaction}
+                  onChange={value =>
+                    updateContractSummary({ payoutMinimumFeeWwPerTransaction: value })
+                  }
+                  min={0}
+                  step={0.01}
+                  readOnly={wwNa}
+                  helper={wwNa ? "Locked — Global row renders as N/A" : undefined}
+                />
+              </div>
+            );
+          })()}
+
+          {/* Per-region "show as N/A" toggles for the MIN. TRANSACTION FEE
+              column. Independent of payoutMinimumFeeMode — when on, the
+              corresponding row in the OFFER PDF renders the literal "N/A". */}
+          <div className="mt-3 flex flex-wrap gap-4 text-xs font-medium text-slate-600">
+            <label className="inline-flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                className="h-3.5 w-3.5 accent-blue-600"
+                checked={draft.contractSummary.payoutMinimumFeeEuNa}
+                onChange={event =>
+                  updateContractSummary({ payoutMinimumFeeEuNa: event.target.checked })
                 }
-                min={0}
-                step={0.1}
               />
-              <NumberField
-                label="EU Fee per transaction (€)"
-                value={draft.contractSummary.payoutMinimumFeeEuPerTransaction}
-                onChange={value => updateContractSummary({ payoutMinimumFeeEuPerTransaction: value })}
-                min={0}
-                step={0.01}
-              />
-              <NumberField
-                label="WW Threshold (M)"
-                value={draft.contractSummary.payoutMinimumFeeWwThresholdMillion}
-                onChange={value =>
-                  updateContractSummary({ payoutMinimumFeeWwThresholdMillion: value })
+              Show EEA + UK MIN. TRX FEE as N/A
+            </label>
+            <label className="inline-flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                className="h-3.5 w-3.5 accent-blue-600"
+                checked={draft.contractSummary.payoutMinimumFeeWwNa}
+                onChange={event =>
+                  updateContractSummary({ payoutMinimumFeeWwNa: event.target.checked })
                 }
-                min={0}
-                step={0.1}
               />
-              <NumberField
-                label="WW Fee per transaction (€)"
-                value={draft.contractSummary.payoutMinimumFeeWwPerTransaction}
-                onChange={value => updateContractSummary({ payoutMinimumFeeWwPerTransaction: value })}
-                min={0}
-                step={0.01}
-              />
-            </div>
-          )}
+              Show Global MIN. TRX FEE as N/A
+            </label>
+          </div>
         </div>
       </div>
 

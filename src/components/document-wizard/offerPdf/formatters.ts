@@ -21,15 +21,14 @@ export function formatEuroInteger(value: number): string {
   return `€${Math.round(safeValue).toLocaleString("en-US")}`;
 }
 
+// Always render exactly `fractionDigits` decimal places so percentage
+// values throughout the OFFER PDF look uniform (e.g. "5.00%", "4.50%",
+// "0.30%", "0.01%"). Callers can still override fractionDigits if a
+// different precision is needed.
 export function formatPercent(value: number, fractionDigits = 2): string {
   const safeValue = Number.isFinite(value) ? value : 0;
-  const rounded = Number(safeValue.toFixed(fractionDigits));
-  if (Number.isInteger(rounded)) {
-    return `${rounded}%`;
-  }
-
-  return `${rounded.toLocaleString("en-US", {
-    minimumFractionDigits: 1,
+  return `${safeValue.toLocaleString("en-US", {
+    minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits
   })}%`;
 }

@@ -1,3 +1,4 @@
+import { NumberField } from "../../calculator/index.js";
 import type { DocumentScope } from "../legalDefaults.js";
 import type { DocumentTemplatePayload, PayinRegionMode, WizardStep } from "../types.js";
 
@@ -68,7 +69,7 @@ export const SETTLEMENT_PERIOD_OPTIONS = ["T+1", "T+2", "T+3", "T+4", "T+5"] as 
 export type PayinRegionKey = "eu" | "ww";
 
 export const PAYIN_REGION_LABELS: Record<PayinRegionKey, string> = {
-  eu: "EU",
+  eu: "EEA + UK",
   ww: "Global"
 };
 
@@ -164,6 +165,68 @@ export function Stepper({
         Selected document type drives which steps are shown. The Parties &amp; Signatures step
         appears only when generating Offer + Terms of Agreement.
       </p>
+    </div>
+  );
+}
+
+// Fee input paired with an "N/A" checkbox. When the checkbox is on,
+// the numeric field is disabled and the corresponding cell in the PDF
+// renders the literal "N/A" instead of the value (handled by the
+// renderer based on the boolean flag).
+//
+// Three states the wizard payload can express via the (value, na)
+// pair, mirroring the OFFER PDF rendering rules:
+//   - na = false, value > 0 → display value
+//   - na = false, value = 0 (or empty) → block hidden by global
+//     hide-if-empty rule
+//   - na = true → display "N/A"
+export function FeeFieldWithNa({
+  label,
+  value,
+  na,
+  onValueChange,
+  onNaChange,
+  min,
+  max,
+  step,
+  ariaPrefix
+}: {
+  label: string;
+  value: number;
+  na: boolean;
+  onValueChange: (next: number) => void;
+  onNaChange: (next: boolean) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  ariaPrefix?: string;
+}) {
+  const checkboxId = `${ariaPrefix ?? label.replace(/\W+/g, "-")}-na`;
+  return (
+    <div className="space-y-1">
+      <NumberField
+        label={label}
+        value={na ? 0 : value}
+        onChange={onValueChange}
+        min={min}
+        max={max}
+        step={step}
+        readOnly={na}
+        helper={na ? "Locked — cell renders as N/A" : undefined}
+      />
+      <label
+        htmlFor={checkboxId}
+        className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-600"
+      >
+        <input
+          id={checkboxId}
+          type="checkbox"
+          className="h-3.5 w-3.5 accent-blue-600"
+          checked={na}
+          onChange={event => onNaChange(event.target.checked)}
+        />
+        Show as N/A
+      </label>
     </div>
   );
 }

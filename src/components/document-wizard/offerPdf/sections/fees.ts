@@ -12,7 +12,10 @@ import {
 interface ServiceCard {
   title: string;
   value: string;
-  subtitle: string;
+  // Optional secondary line under the value (e.g. "Per action · EUR").
+  // FAILED TRX CHARGING omits this on purpose since its value already
+  // describes the mode.
+  subtitle?: string;
 }
 
 function buildOtherServicesCards(data: DocumentTemplatePayload, layout: DocumentWizardLayout): ServiceCard[] {
@@ -86,8 +89,9 @@ function buildOtherServicesCards(data: DocumentTemplatePayload, layout: Document
       value:
         data.toggles.failedTrxMode === "allFailedVolume"
           ? "All failed volume"
-          : `Over limit only (${formatPercent(data.toggles.failedTrxOverLimitThresholdPercent, 0)})`,
-      subtitle: "Calculator mode"
+          : `Over limit only (${formatPercent(data.toggles.failedTrxOverLimitThresholdPercent)})`
+      // No subtitle — the "Calculator mode" hint was removed by request
+      // because the card already conveys the mode through its value.
     });
   }
 

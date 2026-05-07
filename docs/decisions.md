@@ -922,3 +922,177 @@ Use this file to record meaningful technical decisions for the project.
 - Follow-up actions:
   - Address P6 (document number placeholder comment) when next touching wizard helpers.
   - Optionally clean the 3 pre-existing lint warnings during a future calculator-touching pass with explicit product approval.
+
+### Decision: PDF Visual Pass + Per-Fee "N/A" Toggles
+- Date: 2026-05-07
+- Context:
+  - The frontend PDF generation flow had several rough edges that were
+    blocking real visual testing against the CEI / ZenCreator reference
+    PDFs:
+    1. Print path opened a popup window, which Brave/Safari blocked or
+       returned `null` for when `noopener` was set.
+    2. Multi-page documents had no per-page footer that matched the
+       references (`position: fixed` overlapped content).
+    3. Long agreement sections were forced to fit on one page via
+       `page-break-inside: avoid`, leaving large blank gaps.
+    4. Numeric pricing values had inconsistent visual treatment
+       (single accent purple; the references use distinct colours
+       per tier and gray for "not applicable" states).
+    5. The schema had no notion of "this fee is intentionally N/A";
+       there was no way to express e.g. "C/D: €0.50, APM: N/A".
+    6. Region label `EU` did not match the regulatory wording the
+       business uses externally (`EEA + UK`).
+  - All work had to land in the wizard payload + PDF renderer only;
+    the calculator is frozen by product (see user memory
+    `feedback_calculator_frozen.md`). Any calculator-side parity
+    work is deferred and tracked in
+    `docs/calculator_deferred_changes.md`.
+- Decision:
+  - **Iframe-based print** — replaced `window.open` + `popup.print()`
+    with a hidden `<iframe>` that loads a Blob URL and calls
+    `iframe.contentWindow.print()` after `document.fonts.ready` and
+    two animation frames. Helper lives in
+    `src/lib/printHtmlViaIframe.ts`. Eliminates popup blockers,
+    avoids the `noopener` `null`-return trap, and works around
+    Safari's `srcdoc` "about:blank" print bug.
+  - **Per-page footer via `<table><tfoot>`** — the document content
+    is wrapped in `<table class="page-layout">`; the disclaimer
+    footer lives in `<tfoot>`. Chrome's print engine reliably
+    repeats `<tfoot>` on every printed page and reserves vertical
+    space for it (no overlap). Single source of HTML implies a
+    single visual definition.
+  - **Page counter via `@page` margin box** — `counter(page)` and
+    `counter(pages)` evaluate to 0 inside `<table><tfoot>`
+    (long-standing Chromium bug 678485), so the page number lives
+    in `@page { @bottom-right }` instead. Footer in tfoot keeps
+    the disclaimer + meta line; bottom-right margin box prints
+    `Page N of M`.
+  - **Targeted page-break protections** — added
+    `page-break-inside: avoid` to small leaf blocks that must not
+    split (`.fee-card`, `.terms-item`, `.signature-panel`, data
+    table `tr`, `.offer-section` for whole numbered blocks); added
+    `page-break-before: always` on `.agreement-body` so the MSA
+    starts on a fresh page in the bundled scope. Removed the
+    aggressive avoid-rule on `.agreement-section` so long MSA
+    paragraphs split across pages cleanly.
+  - **Per-fee N/A toggles (boolean flags option)** — each fee value
+    in `DocumentTemplatePayload` now has a sibling `*Na: boolean`
+    flag. Specifically: `PayinFeeBlock.{trxCcNa,trxApmNa}` (single
+    + each tier, both regions), `PayoutFeeBlock.trxFeeNa` (single
+    + each tier), `contractSummary.{payoutMinimumFeeEuNa,
+    payoutMinimumFeeWwNa}`, `toggles.payoutMinimumFeePerTransactionNa`.
+    Three render states per fee:
+      1. value > 0 + flag off → display value
+      2. value = 0 / empty → block hidden by global hide-if-empty rule
+      3. flag on → display literal "N/A"
+    Flag wins over value. Calculator never emits `true` for any of
+    these — defaults all flow through `fromCalculator.ts`,
+    `manualSeeds.ts`, `seedHelpers.clonePayinRegionPricing`,
+    `seedHelpers.clonePayoutPricing` as `false`. The user toggles
+    them in the wizard.
+  - **Wizard UI: `FeeFieldWithNa`** — new shared component in
+    `wizard/shared.tsx` pairs `NumberField` with a checkbox; the
+    field is `readOnly` while the flag is on. Used in PayinStep,
+    PayoutStep, OtherFeesStep. TermsStep uses plain checkboxes for
+    the per-region MIN. TRX FEE flags (because the underlying
+    threshold/fee values are shared in `overall` mode) and locks
+    the related `NumberField`s based on a small rule:
+      - Overall mode → shared inputs lock when both EU + WW flags
+        are on.
+      - By-region mode → each region's pair locks based on its own
+        flag.
+  - **Visual colour scheme** — added `:root --label-color: #2358EA`
+    and three `.tier-color-{1,2,3}` classes. Application:
+      - `--label-color` (`#2358EA`) → `th`, `.fee-card h3`,
+        `.terms-label`, `.meta-label` (all small uppercase headings).
+      - `.tier-color-1` `#2358EA` → first tier in tiered mode AND
+        the single-mode default for primary pricing values
+        (model name + trx fees) on both payin and payout.
+      - `.tier-color-2` `#3F38E3`, `.tier-color-3` `#7D2AEB` → 2nd
+        and 3rd tiers in tiered mode.
+      - `.value-na` (`var(--text-muted) #6B7280`) → any line that
+        renders "N/A". The MIN. TRX FEE secondary line "&gt;X: N/A"
+        is muted on its full width (the prefix and the literal
+        N/A both gray) so any line containing N/A reads
+        consistently.
+      - `.cell-subtitle` (`var(--text-light) #9CA3AF`) → secondary
+        line inside cells (APM brand list, "All Visa & Mastercard",
+        "Non-tiered, fixed", "Credit / Debit & APM").
+      - MDR percent stays in body default colour on every tier so
+        it reads as plain dark text.
+  - **Percent format** — `formatPercent` rewritten to always render
+    exactly two decimals (`5.00%`, `4.50%`, `0.30%`, `0.01%`). The
+    callers passing `0` for fractionDigits in `terms.ts` and
+    `fees.ts` were updated to use the default. Wizard input fields
+    still display via the calculator's frozen `NumberField`
+    (see deferred entry #2).
+  - **Region label rename** — `EU` to `EEA + UK` in the OFFER PDF
+    table region column and the wizard PayinStep label. Underlying
+    state key `eu` and calculator-side regionLabel typing are
+    unchanged (still `"EU" | "WW"` in the calculator) — only the
+    user-facing label changed.
+  - **Meta grid reorder + 5-cell layout** — header meta items
+    now order as `DOCUMENT NUMBER`, `DOCUMENT DATE`, `DOCUMENT
+    TYPE`, `COLLECTION MODEL`, `COLLECTION FREQUENCY`. The
+    container border was reduced to top + left only so the empty
+    6th-cell slot does not render a closed rectangle on the
+    right; items 1-5 keep their full borders.
+  - **Card Acquiring column widths** — `<th>` cells got per-column
+    classes; widths in CSS shifted weight to METHODS (~25%) and
+    MIN. TRANSACTION FEE (~22%) so MIN. TRANSACTION FEE fits one
+    line. `table-layout: fixed` (already in place) propagates the
+    widths to body cells.
+  - **Header / cell alignment** — `th` is `text-align: center` +
+    `vertical-align: top` (so wrapped multi-line headers align
+    with neighbouring single-line ones); `td` is `text-align:
+    left` with `padding-left: 14px` so values share a single
+    indent across rows.
+  - **Calculator mode hint removed** — FAILED TRX CHARGING card
+    no longer renders the "Calculator mode" subtitle. `ServiceCard`
+    and `FeeCardItem` `subtitle` field is now optional and the
+    `feesGrid` renderer skips the `<p class="fee-subtitle">` when
+    absent.
+  - **APM text hyphen** — methods cell strings switched from em-
+    dash to short dash:
+    `Credit / Debit - Visa, Mastercard`,
+    `APM - Apple Pay, Google Pay`. Section header
+    `Card Acquiring — Credit / Debit Cards, APM & E-wallet` keeps
+    the em-dash (no change requested there).
+- Alternatives considered:
+  - **Discriminated union for fee values** (`{ kind: "value" | "na" }`)
+    instead of paired boolean flags. Cleaner type-wise but every
+    consumer (calculator import, wizard renderer, tests, manual
+    seeds) would need updating. Boolean flag wins on minimal blast
+    radius given the calculator-frozen constraint.
+  - **`<table><thead>` repeating header** for per-page document
+    title. Deferred — production Puppeteer will inject
+    headers/footers via `displayHeaderFooter` so frontend doesn't
+    need to perfectly emulate the per-page heading.
+  - **Native browser headers/footers** instead of our own
+    disclaimer footer. Rejected — references include the full
+    legal disclaimer paragraph, which doesn't fit a `@page` margin
+    box.
+  - **In-place style writing for tier colour** (e.g.
+    `style="color: ${TIER_COLORS[i]}"`). Rejected — CSS classes
+    are easier to override and to verify in tests.
+- Consequences:
+  - 200/200 tests pass; new tests cover N/A rendering on both
+    payin/payout, per-tier colours, MDR-percent default colour,
+    APM cell-subtitle class, MIN. TRX FEE secondary line muting,
+    and the removed Calculator-mode subtitle.
+  - The OFFER PDF visual now matches the CEI / ZenCreator
+    references in spirit: per-page disclaimer footer, per-tier
+    coloured rows, gray N/A states, blue labels.
+  - The wizard exposes the full N/A surface so QA can flip any
+    fee independently and inspect the resulting PDF.
+  - `docs/calculator_deferred_changes.md` lists three pending
+    parity items for the calculator phase: region label
+    (`EU` to `EEA + UK`), 2-decimal percent display in calculator
+    inputs, and an optional sharing of the `FeeFieldWithNa`
+    pattern back into Zone 3.
+- Follow-up actions:
+  - When the calculator is unfrozen, walk the deferred-changes
+    log in order and apply the calculator-side parity.
+  - Add Puppeteer-side `displayHeaderFooter` template in Phase 8
+    so the production PDF gets per-page numbers/doc id without
+    relying on the `@page` margin box trick.

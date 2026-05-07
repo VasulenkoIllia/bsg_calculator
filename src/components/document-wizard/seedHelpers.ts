@@ -60,8 +60,10 @@ export function clonePayinRegionPricing(
 ): DocumentTemplatePayload["payinPricing"]["eu"] {
   return {
     ...pricing,
-    single: { ...pricing.single },
-    tiers: pricing.tiers.map(tier => ({ ...tier }))
+    // N/A toggles default off — the calculator only emits numeric
+    // values; the wizard exposes the toggles for the user to flip.
+    single: { ...pricing.single, trxCcNa: false, trxApmNa: false },
+    tiers: pricing.tiers.map(tier => ({ ...tier, trxCcNa: false, trxApmNa: false }))
   };
 }
 
@@ -70,7 +72,7 @@ export function clonePayoutPricing(
 ): DocumentTemplatePayload["payoutPricing"] {
   return {
     ...pricing,
-    single: { ...pricing.single },
-    tiers: pricing.tiers.map(tier => ({ ...tier }))
+    single: { ...pricing.single, trxFeeNa: false },
+    tiers: pricing.tiers.map(tier => ({ ...tier, trxFeeNa: false }))
   };
 }

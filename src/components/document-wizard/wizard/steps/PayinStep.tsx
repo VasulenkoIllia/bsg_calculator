@@ -1,6 +1,7 @@
 import { MiniToggle, NumberField } from "../../../calculator/index.js";
 import type { DocumentTemplatePayload, PayinRegionMode } from "../../types.js";
 import {
+  FeeFieldWithNa,
   PAYIN_REGION_LABELS,
   type PayinRegionKey,
   resolveEnabledPayinRegionMode,
@@ -115,29 +116,45 @@ function PayinRegionEditor({
               max={10}
               step={0.05}
             />
-            <NumberField
+            <FeeFieldWithNa
               label="TRX C/D (€)"
               value={pricing.single.trxCc}
-              onChange={value =>
+              na={pricing.single.trxCcNa}
+              onValueChange={value =>
                 updatePricing(current => ({
                   ...current,
                   single: { ...current.single, trxCc: value }
                 }))
               }
+              onNaChange={na =>
+                updatePricing(current => ({
+                  ...current,
+                  single: { ...current.single, trxCcNa: na }
+                }))
+              }
               min={0}
               step={0.01}
+              ariaPrefix={`payin-${region}-single-cc`}
             />
-            <NumberField
+            <FeeFieldWithNa
               label="TRX APM (€)"
               value={pricing.single.trxApm}
-              onChange={value =>
+              na={pricing.single.trxApmNa}
+              onValueChange={value =>
                 updatePricing(current => ({
                   ...current,
                   single: { ...current.single, trxApm: value }
                 }))
               }
+              onNaChange={na =>
+                updatePricing(current => ({
+                  ...current,
+                  single: { ...current.single, trxApmNa: na }
+                }))
+              }
               min={0}
               step={0.01}
+              ariaPrefix={`payin-${region}-single-apm`}
             />
           </div>
         ) : (
@@ -194,10 +211,11 @@ function PayinRegionEditor({
                       max={10}
                       step={0.05}
                     />
-                    <NumberField
+                    <FeeFieldWithNa
                       label="TRX C/D (€)"
                       value={tier.trxCc}
-                      onChange={value =>
+                      na={tier.trxCcNa}
+                      onValueChange={value =>
                         updatePricing(current => ({
                           ...current,
                           tiers: current.tiers.map((item, itemIndex) =>
@@ -205,13 +223,23 @@ function PayinRegionEditor({
                           ) as typeof current.tiers
                         }))
                       }
+                      onNaChange={na =>
+                        updatePricing(current => ({
+                          ...current,
+                          tiers: current.tiers.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, trxCcNa: na } : item
+                          ) as typeof current.tiers
+                        }))
+                      }
                       min={0}
                       step={0.01}
+                      ariaPrefix={`payin-${region}-tier-${index}-cc`}
                     />
-                    <NumberField
+                    <FeeFieldWithNa
                       label="TRX APM (€)"
                       value={tier.trxApm}
-                      onChange={value =>
+                      na={tier.trxApmNa}
+                      onValueChange={value =>
                         updatePricing(current => ({
                           ...current,
                           tiers: current.tiers.map((item, itemIndex) =>
@@ -219,8 +247,17 @@ function PayinRegionEditor({
                           ) as typeof current.tiers
                         }))
                       }
+                      onNaChange={na =>
+                        updatePricing(current => ({
+                          ...current,
+                          tiers: current.tiers.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, trxApmNa: na } : item
+                          ) as typeof current.tiers
+                        }))
+                      }
                       min={0}
                       step={0.01}
+                      ariaPrefix={`payin-${region}-tier-${index}-apm`}
                     />
                   </div>
                 </div>
