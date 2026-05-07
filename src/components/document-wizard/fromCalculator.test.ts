@@ -254,6 +254,9 @@ describe("buildOfferPdfHtml", () => {
     expect(html).toContain("MONTHLY VOLUME TIER");
     expect(html).toContain("● EEA + UK");
     expect(html).toContain("● Global");
+    // Optional fields with no value and no explicit mode hide the row.
+    // Mode = "value" / undefined + empty value → hide. The user picks
+    // N/A or TBD explicitly via the wizard if they want a literal label.
     expect(html).not.toContain("Rolling Reserve Cap");
     expect(html).not.toContain("Max. Payout Transaction Size");
   });
@@ -444,6 +447,116 @@ describe("buildOfferPdfHtml", () => {
       expect(html).toContain("All failed volume");
       // The hint subtitle was removed by request.
       expect(html).not.toContain("Calculator mode");
+    });
+
+    it("Rolling Reserve Cap renders N/A when valueModes.rollingReserveCap is 'na'", () => {
+      const data = buildBaseTemplateData();
+      data.contractSummary.rollingReserveCap = 5000;
+      data.valueModes = { ...(data.valueModes ?? {}), rollingReserveCap: "na" };
+
+      const html = buildOfferPdfHtml(data);
+      // Mode wins over the numeric value: cell shows "N/A" not "€5,000".
+      expect(html).toContain("Rolling Reserve Cap");
+      expect(html).toContain("N/A");
+      expect(html).not.toContain("€5,000");
+    });
+
+    it("Rolling Reserve Cap renders TBD when mode is 'tbd'", () => {
+      const data = buildBaseTemplateData();
+      data.contractSummary.rollingReserveCap = 5000;
+      data.valueModes = { ...(data.valueModes ?? {}), rollingReserveCap: "tbd" };
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).toContain("Rolling Reserve Cap");
+      expect(html).toContain("TBD");
+    });
+
+    it("Rolling Reserve Cap shows the numeric value when mode is 'value' (default)", () => {
+      const data = buildBaseTemplateData();
+      data.contractSummary.rollingReserveCap = 5000;
+      // No valueModes override → defaults to numeric path.
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).toContain("Rolling Reserve Cap");
+      expect(html).toContain("€5,000");
+    });
+
+    it("Max. Payout Transaction Size hides when Max is empty + mode is value/undefined", () => {
+      const data = buildBaseTemplateData();
+      data.contractSummary.payoutLimitMin = 60;
+      data.contractSummary.payoutLimitMax = null;
+      // No explicit valueMode → defaults to "value" → empty hides row.
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).toContain("Min. Payout Transaction Size");
+      expect(html).not.toContain("Max. Payout Transaction Size");
+    });
+
+    it("Max. Payout Transaction Size renders 'N/A' when mode is explicitly 'na'", () => {
+      const data = buildBaseTemplateData();
+      data.contractSummary.payoutLimitMin = 60;
+      data.contractSummary.payoutLimitMax = null;
+      data.valueModes = { ...(data.valueModes ?? {}), payoutLimitMax: "na" };
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).toContain("Max. Payout Transaction Size");
+      expect(html).toContain("N/A");
+    });
+
+    it("Min. Collection Transaction Size renders 'TBD' when mode is 'tbd'", () => {
+      const data = buildBaseTemplateData();
+      data.contractSummary.collectionLimitMin = 1;
+      data.valueModes = { ...(data.valueModes ?? {}), collectionLimitMin: "tbd" };
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).toContain("Min. Collection Transaction Size");
+      expect(html).toContain("TBD");
+      expect(html).not.toContain("€1 EUR");
+    });
+
+    it("Max. Payout Transaction Size renders TBD when valueModes mode is 'tbd'", () => {
+      const data = buildBaseTemplateData();
+      data.contractSummary.payoutLimitMin = 60;
+      data.contractSummary.payoutLimitMax = 5000;
+      data.valueModes = { ...(data.valueModes ?? {}), payoutLimitMax: "tbd" };
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).toContain("Max. Payout Transaction Size");
+      expect(html).toContain("TBD");
+      // Numeric value is overridden by mode.
+      expect(html).not.toContain("€5,000 EUR");
+    });
+
+    it("Max. Payout Transaction Size shows numeric value when set + mode is 'value'", () => {
+      const data = buildBaseTemplateData();
+      data.contractSummary.payoutLimitMin = 60;
+      data.contractSummary.payoutLimitMax = 10000;
+      // Default mode = "value" via undefined.
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).toContain("Max. Payout Transaction Size");
+      expect(html).toContain("€10,000 EUR");
+    });
+
+    it("Terms grid 'N/A' value is wrapped in muted .value-na class", () => {
+      const data = buildBaseTemplateData();
+      data.contractSummary.collectionLimitMax = 0;
+      data.valueModes = { ...(data.valueModes ?? {}), collectionLimitMax: "na" };
+
+      const html = buildOfferPdfHtml(data);
+      // Same gray rule as the pricing tables — N/A reads in muted gray.
+      expect(html).toContain('<span class="value-na">N/A</span>');
+    });
+
+    it("Fee card 'N/A' value is wrapped in muted .value-na class", () => {
+      const data = buildBaseTemplateData();
+      data.contractSummary.refundCost = 0;
+      data.valueModes = { ...(data.valueModes ?? {}), refundCost: "na" };
+
+      const html = buildOfferPdfHtml(data);
+      // Refund card now shows N/A in muted gray (not bold dark).
+      expect(html).toContain("REFUND");
+      expect(html).toContain('<span class="value-na">N/A</span>');
     });
   });
 });

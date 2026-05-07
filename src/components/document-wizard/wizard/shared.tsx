@@ -1,6 +1,11 @@
-import { NumberField } from "../../calculator/index.js";
+import { MiniToggle, NumberField } from "../../calculator/index.js";
 import type { DocumentScope } from "../legalDefaults.js";
-import type { DocumentTemplatePayload, PayinRegionMode, WizardStep } from "../types.js";
+import type {
+  DocumentTemplatePayload,
+  PayinRegionMode,
+  ValueMode,
+  WizardStep
+} from "../types.js";
 
 interface StepDef {
   value: WizardStep;
@@ -165,6 +170,89 @@ export function Stepper({
         Selected document type drives which steps are shown. The Parties &amp; Signatures step
         appears only when generating Offer + Terms of Agreement.
       </p>
+    </div>
+  );
+}
+
+// Numeric field paired with a Number / N/A / TBD picker. Used for
+// optional contract values whose underlying type is "number | null"
+// (e.g. transaction limits, rolling reserve cap). The picker drives
+// `valueModes[key]` so the PDF renderer prints either the numeric
+// value, "N/A" or "TBD" via resolveModeValue.
+//
+// Three render states the wizard payload can express:
+//   - mode = "value" + numeric > 0 → display value
+//   - mode = "value" + empty / 0   → row hides in PDF (no auto-default)
+//   - mode = "na" or "tbd"         → row prints the literal sentinel
+export function ModedNumericField({
+  label,
+  value,
+  mode,
+  onValueChange,
+  onModeChange,
+  min,
+  max,
+  step,
+  ariaPrefix
+}: {
+  label: string;
+  value: number | null;
+  mode: ValueMode;
+  onValueChange: (next: number | null) => void;
+  onModeChange: (next: ValueMode) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  ariaPrefix?: string;
+}) {
+  const prefix = ariaPrefix ?? label.replace(/\W+/g, "-").toLowerCase();
+  const locked = mode !== "value";
+  return (
+    <div>
+      <span className="field-label">{label}</span>
+      <div className="mb-2 flex flex-wrap gap-2">
+        <MiniToggle
+          label="Number"
+          selected={mode === "value"}
+          onSelect={() => onModeChange("value")}
+          ariaLabel={`${prefix} mode: number`}
+        />
+        <MiniToggle
+          label="N/A"
+          selected={mode === "na"}
+          onSelect={() => onModeChange("na")}
+          ariaLabel={`${prefix} mode: N/A`}
+        />
+        <MiniToggle
+          label="TBD"
+          selected={mode === "tbd"}
+          onSelect={() => onModeChange("tbd")}
+          ariaLabel={`${prefix} mode: TBD`}
+        />
+      </div>
+      <input
+        className={[
+          "field-input",
+          locked
+            ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-700 focus:border-slate-200 focus:ring-0"
+            : ""
+        ].join(" ")}
+        type="text"
+        inputMode="decimal"
+        value={value ?? ""}
+        onChange={event => onValueChange(parseNullableNumber(event.target.value))}
+        aria-label={label}
+        placeholder={
+          locked
+            ? `Locked — cell renders as ${mode === "na" ? "N/A" : "TBD"}`
+            : "leave empty to hide row"
+        }
+        readOnly={locked}
+        aria-readonly={locked}
+        min={min}
+        max={max}
+        step={step}
+      />
     </div>
   );
 }

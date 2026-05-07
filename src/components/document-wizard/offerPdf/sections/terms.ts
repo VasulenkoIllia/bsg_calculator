@@ -1,5 +1,9 @@
 import { renderSectionHeader, renderTermsGrid } from "../../pdf-kit/primitives.js";
-import type { DocumentTemplatePayload, DocumentWizardLayout } from "../../types.js";
+import type {
+  DocumentTemplatePayload,
+  DocumentWizardLayout,
+  DocumentWizardValueModes
+} from "../../types.js";
 import {
   formatEuroInteger,
   formatPercent,
@@ -33,25 +37,37 @@ function buildTermsItems(data: DocumentTemplatePayload, layout: DocumentWizardLa
     items.push({ label: "Restricted Jurisdictions", value: summary.restrictedJurisdictions });
   }
 
-  if (hasPositiveNumber(summary.collectionLimitMin)) {
-    items.push({ label: "Min. Collection Transaction Size", value: `${formatEuroInteger(summary.collectionLimitMin)} EUR` });
-  }
-  if (hasPositiveNumber(summary.collectionLimitMax)) {
-    items.push({ label: "Max. Collection Transaction Size", value: `${formatEuroInteger(summary.collectionLimitMax)} EUR` });
-  }
-  if (hasPositiveNumber(summary.payoutLimitMin)) {
-    items.push({ label: "Min. Payout Transaction Size", value: `${formatEuroInteger(summary.payoutLimitMin)} EUR` });
-  }
+  // Transaction Limits — each of the four cells uses the same logic:
+  //   - mode = "na" / "tbd" → render the literal "N/A" / "TBD"
+  //   - mode = "value" / undefined + numeric value > 0 → render value
+  //   - mode = "value" / undefined + empty / 0 → hide row
+  // No auto-defaults: the user picks N/A explicitly when they want it.
+  const limitItems: Array<{ label: string; value: string; rawValue: number | null }> = [
+    { label: "Min. Collection Transaction Size", value: "", rawValue: summary.collectionLimitMin },
+    { label: "Max. Collection Transaction Size", value: "", rawValue: summary.collectionLimitMax },
+    { label: "Min. Payout Transaction Size", value: "", rawValue: summary.payoutLimitMin },
+    { label: "Max. Payout Transaction Size", value: "", rawValue: summary.payoutLimitMax }
+  ];
 
-  const payoutLimitMaxLabel = resolveModeValue(
-    modes.payoutLimitMax,
-    summary.payoutLimitMax !== null && hasPositiveNumber(summary.payoutLimitMax)
-      ? `${formatEuroInteger(summary.payoutLimitMax)} EUR`
-      : ""
-  );
-  if (hasText(payoutLimitMaxLabel)) {
-    items.push({ label: "Max. Payout Transaction Size", value: payoutLimitMaxLabel });
-  }
+  const limitModes: Array<keyof DocumentWizardValueModes> = [
+    "collectionLimitMin",
+    "collectionLimitMax",
+    "payoutLimitMin",
+    "payoutLimitMax"
+  ];
+
+  limitItems.forEach((item, i) => {
+    const mode = modes[limitModes[i]];
+    const numeric = item.rawValue;
+    const valueLabel =
+      numeric !== null && hasPositiveNumber(numeric)
+        ? `${formatEuroInteger(numeric)} EUR`
+        : "";
+    const rendered = resolveModeValue(mode, valueLabel);
+    if (hasText(rendered)) {
+      items.push({ label: item.label, value: rendered });
+    }
+  });
 
   if (hasPositiveNumber(summary.rollingReservePercent) && hasPositiveNumber(summary.rollingReserveHoldDays)) {
     items.push({

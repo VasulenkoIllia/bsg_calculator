@@ -1,6 +1,11 @@
 import { MiniToggle, NumberField } from "../../../calculator/index.js";
-import type { DocumentTemplatePayload } from "../../types.js";
-import { parseNullableNumber, SETTLEMENT_PERIOD_OPTIONS, StepNavigation } from "../shared.js";
+import type { DocumentTemplatePayload, ValueMode } from "../../types.js";
+import {
+  ModedNumericField,
+  parseNullableNumber,
+  SETTLEMENT_PERIOD_OPTIONS,
+  StepNavigation
+} from "../shared.js";
 
 export function TermsStep({
   draft,
@@ -24,6 +29,32 @@ export function TermsStep({
       }
     });
   };
+
+  // Update one entry in the optional `valueModes` map. The map is the
+  // canonical place where Number / N/A / TBD / Waived choices live for
+  // fields whose underlying value type is "number | null". The PDF
+  // renderer (resolveModeValue) reads from here to decide whether to
+  // print the numeric label or one of the literal sentinels.
+  const updateValueMode = (
+    key: keyof NonNullable<DocumentTemplatePayload["valueModes"]>,
+    mode: ValueMode
+  ) => {
+    onDraftChange({
+      ...draft,
+      valueModes: {
+        ...(draft.valueModes ?? {}),
+        [key]: mode
+      }
+    });
+  };
+
+  const reserveCapMode: ValueMode = draft.valueModes?.rollingReserveCap ?? "value";
+  const collectionLimitMinMode: ValueMode =
+    draft.valueModes?.collectionLimitMin ?? "value";
+  const collectionLimitMaxMode: ValueMode =
+    draft.valueModes?.collectionLimitMax ?? "value";
+  const payoutLimitMinMode: ValueMode = draft.valueModes?.payoutLimitMin ?? "value";
+  const payoutLimitMaxMode: ValueMode = draft.valueModes?.payoutLimitMax ?? "value";
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -94,41 +125,52 @@ export function TermsStep({
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
           <p className="text-sm font-bold text-slate-800">Transaction Limits</p>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
-            <NumberField
+            <ModedNumericField
               label="Min. Collection Transaction Size (€)"
               value={draft.contractSummary.collectionLimitMin}
-              onChange={value => updateContractSummary({ collectionLimitMin: value })}
+              mode={collectionLimitMinMode}
+              onValueChange={value =>
+                updateContractSummary({ collectionLimitMin: value ?? 0 })
+              }
+              onModeChange={mode => updateValueMode("collectionLimitMin", mode)}
               min={0}
               step={1}
+              ariaPrefix="collection-limit-min"
             />
-            <NumberField
+            <ModedNumericField
               label="Max. Collection Transaction Size (€)"
               value={draft.contractSummary.collectionLimitMax}
-              onChange={value => updateContractSummary({ collectionLimitMax: value })}
+              mode={collectionLimitMaxMode}
+              onValueChange={value =>
+                updateContractSummary({ collectionLimitMax: value ?? 0 })
+              }
+              onModeChange={mode => updateValueMode("collectionLimitMax", mode)}
               min={0}
               step={1}
+              ariaPrefix="collection-limit-max"
             />
-            <NumberField
+            <ModedNumericField
               label="Min. Payout Transaction Size (€)"
               value={draft.contractSummary.payoutLimitMin}
-              onChange={value => updateContractSummary({ payoutLimitMin: value })}
+              mode={payoutLimitMinMode}
+              onValueChange={value =>
+                updateContractSummary({ payoutLimitMin: value ?? 0 })
+              }
+              onModeChange={mode => updateValueMode("payoutLimitMin", mode)}
               min={0}
               step={1}
+              ariaPrefix="payout-limit-min"
             />
-            <label>
-              <span className="field-label">Max. Payout Transaction Size (€) (optional)</span>
-              <input
-                className="field-input"
-                type="text"
-                inputMode="decimal"
-                value={draft.contractSummary.payoutLimitMax ?? ""}
-                onChange={event =>
-                  updateContractSummary({ payoutLimitMax: parseNullableNumber(event.target.value) })
-                }
-                aria-label="Max payout transaction size"
-                placeholder="leave empty to hide in calculator mode"
-              />
-            </label>
+            <ModedNumericField
+              label="Max. Payout Transaction Size (€)"
+              value={draft.contractSummary.payoutLimitMax}
+              mode={payoutLimitMaxMode}
+              onValueChange={value => updateContractSummary({ payoutLimitMax: value })}
+              onModeChange={mode => updateValueMode("payoutLimitMax", mode)}
+              min={0}
+              step={1}
+              ariaPrefix="payout-limit-max"
+            />
           </div>
         </div>
 
@@ -150,20 +192,16 @@ export function TermsStep({
               min={0}
               step={1}
             />
-            <label>
-              <span className="field-label">Reserve Cap (€) (optional)</span>
-              <input
-                className="field-input"
-                type="text"
-                inputMode="decimal"
-                value={draft.contractSummary.rollingReserveCap ?? ""}
-                onChange={event =>
-                  updateContractSummary({ rollingReserveCap: parseNullableNumber(event.target.value) })
-                }
-                aria-label="Rolling reserve cap"
-                placeholder="leave empty to hide in calculator mode"
-              />
-            </label>
+            <ModedNumericField
+              label="Reserve Cap (€)"
+              value={draft.contractSummary.rollingReserveCap}
+              mode={reserveCapMode}
+              onValueChange={value => updateContractSummary({ rollingReserveCap: value })}
+              onModeChange={mode => updateValueMode("rollingReserveCap", mode)}
+              min={0}
+              step={1}
+              ariaPrefix="rolling-reserve-cap"
+            />
           </div>
         </div>
 

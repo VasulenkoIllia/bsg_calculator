@@ -28,6 +28,14 @@ export interface DocumentWizardValueModes {
   settlementFee?: ValueMode;
   monthlyMinimumFee?: ValueMode;
   rollingReserveCap?: ValueMode;
+  // Transaction Limits — every limit can be rendered as a number,
+  // N/A or TBD via the wizard. The PDF chooses what to print using
+  // resolveModeValue. If mode is value/undefined and the underlying
+  // number is empty/0, the corresponding row hides — explicit user
+  // choice only, no auto-defaults.
+  collectionLimitMin?: ValueMode;
+  collectionLimitMax?: ValueMode;
+  payoutLimitMin?: ValueMode;
   payoutLimitMax?: ValueMode;
 }
 
