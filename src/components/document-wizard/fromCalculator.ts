@@ -134,7 +134,10 @@ export function buildDocumentTemplatePayloadFromCalculator({
       // N/A toggles default off — calculator only emits numeric values.
       // The user can flip them on in the wizard.
       payoutMinimumFeeEuNa: false,
-      payoutMinimumFeeWwNa: false
+      payoutMinimumFeeWwNa: false,
+      // User-added Terms & Limitations rows — none by default; the
+      // user adds them in the wizard.
+      customTermsItems: []
     },
     payinPricing: {
       eu: {

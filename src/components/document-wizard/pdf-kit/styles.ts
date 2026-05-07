@@ -394,6 +394,20 @@ tbody tr:nth-child(even) {
   line-height: 1.25;
 }
 
+/* Colour overrides for user-added Terms & Limitations rows. Built-in
+ * rows render in the default --text-primary; custom rows use one of
+ * these three explicit choices picked in the wizard. */
+.terms-value-blue { color: #2358EA; }
+.terms-value-black { color: var(--text-primary); }
+.terms-value-orange { color: #DB7712; }
+
+/* Custom term-value text wraps long strings onto the next line so the
+ * cell height grows naturally instead of overflowing the column. */
+.terms-value-custom {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .print-footer {
   /* Lives inside table.page-layout > tfoot so Chrome repeats it on every
    * printed page. No position: fixed — that approach overlapped content

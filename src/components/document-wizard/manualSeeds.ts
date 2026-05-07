@@ -56,7 +56,8 @@ export function buildDocumentTemplatePayloadManualDefaults(): DocumentTemplatePa
       ...DEFAULT_CONTRACT_SUMMARY_SETTINGS,
       ...DEFAULT_DOCUMENT_LEGAL_TERMS,
       payoutMinimumFeeEuNa: false,
-      payoutMinimumFeeWwNa: false
+      payoutMinimumFeeWwNa: false,
+      customTermsItems: []
     },
     payinPricing: {
       eu: clonePayinRegionPricing(DEFAULT_PAYIN_EU_PRICING_CONFIG),
@@ -126,6 +127,7 @@ export function buildDocumentTemplatePayloadManualBlank(): DocumentTemplatePaylo
       payoutMinimumFeeWwPerTransaction: 0,
       payoutMinimumFeeEuNa: false,
       payoutMinimumFeeWwNa: false,
+      customTermsItems: [],
       collectionLimitMin: 0,
       collectionLimitMax: 0,
       payoutLimitMin: 0,

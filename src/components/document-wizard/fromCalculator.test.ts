@@ -154,7 +154,8 @@ describe("buildOfferPdfHtml", () => {
         disputeCost: 0,
         settlementNote: "Does not apply on weekends and bank holidays",
         clientType: "STD",
-        restrictedJurisdictions: "OFAC, US"
+        restrictedJurisdictions: "OFAC, US",
+        customTermsItems: []
       },
       payinPricing: {
         eu: {
@@ -557,6 +558,79 @@ describe("buildOfferPdfHtml", () => {
       // Refund card now shows N/A in muted gray (not bold dark).
       expect(html).toContain("REFUND");
       expect(html).toContain('<span class="value-na">N/A</span>');
+    });
+  });
+
+  describe("custom Terms & Limitations blocks", () => {
+    it("appends a custom block to the terms grid with the chosen colour", () => {
+      const data = buildBaseTemplateData();
+      data.contractSummary.customTermsItems = [
+        {
+          id: "x1",
+          label: "** Decline fee removal",
+          value: "After 2 consecutive months of processing 1M/m",
+          color: "orange"
+        }
+      ];
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).toContain("** Decline fee removal");
+      expect(html).toContain("After 2 consecutive months of processing 1M/m");
+      expect(html).toContain("terms-value-orange");
+    });
+
+    it("renders multiple custom blocks each with its own colour class", () => {
+      const data = buildBaseTemplateData();
+      data.contractSummary.customTermsItems = [
+        { id: "a", label: "Block A", value: "Body A", color: "blue" },
+        { id: "b", label: "Block B", value: "Body B", color: "black" },
+        { id: "c", label: "Block C", value: "Body C", color: "orange" }
+      ];
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).toContain("Block A");
+      expect(html).toContain("Block B");
+      expect(html).toContain("Block C");
+      expect(html).toContain("terms-value-blue");
+      expect(html).toContain("terms-value-black");
+      expect(html).toContain("terms-value-orange");
+    });
+
+    it("skips fully empty custom blocks (no label and no body)", () => {
+      const data = buildBaseTemplateData();
+      data.contractSummary.customTermsItems = [
+        { id: "empty", label: "", value: "", color: "blue" },
+        { id: "real", label: "Heading", value: "Body", color: "blue" }
+      ];
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).toContain("Heading");
+      // Empty block doesn't produce a "Block" label in the rendered grid.
+      expect(html.match(/terms-label/g)?.length ?? 0).toBeGreaterThan(0);
+    });
+
+    it("default customTermsItems is an empty array — no custom rows in the PDF", () => {
+      const data = buildBaseTemplateData();
+      // Built fixture already has customTermsItems: [].
+
+      const html = buildOfferPdfHtml(data);
+      // The class definitions live in the inlined <style> block — what
+      // matters is that no terms-value span actually USES the colour
+      // classes in the body.
+      expect(html).not.toMatch(/class="[^"]*terms-value-blue[^"]*"/);
+      expect(html).not.toMatch(/class="[^"]*terms-value-orange[^"]*"/);
+      expect(html).not.toMatch(/class="[^"]*terms-value-black[^"]*"/);
+    });
+
+    it("built-in terms rows still render unchanged (no colour override)", () => {
+      const data = buildBaseTemplateData();
+      data.contractSummary.customTermsItems = [];
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).toContain("Settlement");
+      expect(html).toContain("Daily, T+2");
+      // Built-in row carries plain `terms-value` class only.
+      expect(html).toMatch(/<span class="terms-value">Daily, T\+2</);
     });
   });
 });

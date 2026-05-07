@@ -15,6 +15,7 @@ import {
 interface TermsItem {
   label: string;
   value: string;
+  valueColor?: "blue" | "black" | "orange";
 }
 
 function buildTermsItems(data: DocumentTemplatePayload, layout: DocumentWizardLayout): TermsItem[] {
@@ -85,6 +86,21 @@ function buildTermsItems(data: DocumentTemplatePayload, layout: DocumentWizardLa
   if (hasText(reserveCapLabel)) {
     items.push({ label: "Rolling Reserve Cap", value: reserveCapLabel });
   }
+
+  // User-added custom rows append after the built-in ones. Each row
+  // carries its own colour choice in `valueColor` so the renderer can
+  // emit the matching .terms-value-{blue|black|orange} class. Empty
+  // entries (no label and no value) are dropped — typical when the
+  // user added a slot but hasn't filled it in yet.
+  const customItems = summary.customTermsItems ?? [];
+  customItems.forEach(custom => {
+    if (!hasText(custom.label) && !hasText(custom.value)) return;
+    items.push({
+      label: custom.label,
+      value: custom.value,
+      valueColor: custom.color
+    });
+  });
 
   if (!strictHideMissing) {
     return items;

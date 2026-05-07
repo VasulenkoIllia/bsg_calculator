@@ -1096,3 +1096,96 @@ Use this file to record meaningful technical decisions for the project.
   - Add Puppeteer-side `displayHeaderFooter` template in Phase 8
     so the production PDF gets per-page numbers/doc id without
     relying on the `@page` margin box trick.
+
+### Decision: Custom Terms Blocks + TermsStep Decomposition + tierColor Dedupe
+- Date: 2026-05-07
+- Context:
+  - Two product-driven additions and one refactor pass, all
+    locked to the wizard payload + PDF renderer (calculator
+    remains frozen):
+    1. Number / N/A / TBD picker (`ModedNumericField`) extended
+       to all four Transaction Limits fields and Reserve Cap so
+       the wizard's mode handling is uniform across every
+       optional numeric value.
+    2. Auto-N/A pairing for Min/Max Payout was removed — the user
+       now picks N/A explicitly. Empty + value mode hides the row;
+       no implicit defaults anywhere in the system.
+    3. New "Custom Terms Blocks" feature: the user can append free
+       rows (heading + body + Blue/Black/Orange colour) to the
+       Terms & Limitations grid. Headings render in the standard
+       blue label colour; bodies use the user-picked colour.
+    4. Architectural audit revealed two problems worth fixing:
+       a. `tierColorClass(index)` was duplicated verbatim in both
+          `offerPdf/sections/payin.ts` and `payout.ts`.
+       b. `wizard/steps/TermsStep.tsx` had grown to 506 lines with
+          5 logically independent cards (legal terms, transaction
+          limits, rolling reserve, payin min fee, custom blocks)
+          all inlined.
+- Decision:
+  - **Custom blocks data model.** Added type-only entries:
+    `CustomTermsItemColor = "blue" | "black" | "orange"` and
+    `CustomTermsItem { id, label, value, color }`. Stored as
+    `contractSummary.customTermsItems: CustomTermsItem[]` (default
+    `[]`). The PDF renderer (`offerPdf/sections/terms.ts`) appends
+    each filled custom item after the built-in rows in the same
+    `terms-grid` so layout / page-break behaviour is identical.
+    Empty entries (no label and no body) are dropped.
+  - **CSS classes.** Added `.terms-value-blue` (#2358EA matches
+    `--label-color` and tier-color-1), `.terms-value-black`
+    (default `--text-primary`), `.terms-value-orange` (#DB7712).
+    `.terms-value-custom { white-space: pre-wrap; word-break:
+    break-word }` keeps long bodies inside the column. Built-in
+    rows stay unchanged (no `valueColor` set in the renderer).
+  - **Number / N/A / TBD picker generalised.** Added
+    `valueModes.{collectionLimitMin, collectionLimitMax,
+    payoutLimitMin}` so all five "number | null" fields share the
+    same `ModedNumericField` UI. The PDF reads each via
+    `resolveModeValue`. No more auto-defaults — explicit only.
+  - **N/A gray rule extended.** `renderTermsGrid` and
+    `renderFeesGrid` now wrap a literal "N/A" value in
+    `<span class="value-na">` (muted gray), matching the rule
+    already in place for the pricing tables. TBD stays in default
+    colour. Standard built-in rows that produce N/A through
+    `resolveModeValue` get the gray treatment automatically.
+  - **`tierColorClass` extracted to `offerPdf/tierColor.ts`** and
+    imported by both payin + payout. Both renderers now share the
+    single source of truth for tier colour mapping.
+  - **TermsStep decomposed** into `wizard/steps/terms/`:
+      - `TermsLegalSection.tsx` (Settlement Period dropdown +
+        Settlement Note + Client Type + Restricted Jurisdictions)
+      - `TransactionLimitsSection.tsx` (4 ModedNumericField rows)
+      - `RollingReserveSection.tsx` (% + days + cap)
+      - `PayinMinimumFeeSection.tsx` (overall/byRegion toggle +
+        threshold/fee inputs with region-aware lock + per-region
+        N/A checkboxes)
+      - `CustomTermsBlocksSection.tsx` (add / edit / remove +
+        colour picker)
+      - `terms/index.ts` barrel
+    `TermsStep.tsx` is now a 48-line orchestrator.
+- Alternatives considered:
+  - **Discriminated union for fee/limit values** instead of
+    `valueModes` map. Rejected previously and unchanged here —
+    the boolean / mode-flag approach keeps `number | null`
+    semantics intact for the calculator import path.
+  - **Decompose `wizard/shared.tsx` (357 lines) and
+    `pdf-kit/styles.ts` (679 lines)** during the same pass.
+    Deferred — `shared.tsx` would change import paths in many
+    files; `styles.ts` is a CSS-in-string blob where splitting
+    has small return on investment.
+- Consequences:
+  - 215/215 tests pass (+5 covering custom blocks rendering,
+    multiple colours, dropped empty entries, default empty
+    array, and that built-in rows stay uncoloured).
+  - `TermsStep.tsx` reads as a 48-line list of sub-sections.
+    Each section file is 60-150 lines and has a single concern.
+  - `tierColorClass` lives in one place; both payin and payout
+    import the helper.
+  - `docs/architecture.md` module map refreshed to mention the
+    new `terms/*`, `offerPdf/tierColor`, `printHtmlViaIframe`,
+    and `wizard/shared` primitives.
+- Follow-up actions:
+  - When the calculator is unfrozen, walk the deferred-changes
+    log (`docs/calculator_deferred_changes.md`) and apply the
+    calculator-side parity items.
+  - Revisit `wizard/shared.tsx` decomposition if it grows
+    further or new wizard-wide primitives land.

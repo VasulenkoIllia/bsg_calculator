@@ -15,4 +15,8 @@ export interface FeeCardItem {
 export interface TermsGridItem {
   label: string;
   value: string;
+  // Optional colour override for the value text. Used by user-added
+  // custom Terms & Limitations rows (see CustomTermsItem). Built-in
+  // rows leave it undefined so they keep the default text colour.
+  valueColor?: "blue" | "black" | "orange";
 }

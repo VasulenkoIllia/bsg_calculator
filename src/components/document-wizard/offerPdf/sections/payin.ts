@@ -8,6 +8,7 @@ import {
   formatTierRangeLabel,
   hasPositiveNumber
 } from "../formatters.js";
+import { tierColorClass } from "../tierColor.js";
 
 type PayinPricingRegion = DocumentTemplatePayload["payinPricing"]["eu"];
 type PayinRegionCode = "eu" | "ww";
@@ -88,15 +89,6 @@ function renderMinFeeCell(minFee: MinFeeRender | null): string {
   return `<span class="cell-line">${escapeHtml(minFee.primary)}</span><span class="cell-line value-na">${escapeHtml(
     minFee.secondary
   )}</span>`;
-}
-
-// Maps a 0-based tier index to its CSS colour class. Used by both the
-// payin and payout tiered renderers so all tier-coloured cells in a row
-// share the same shade.
-function tierColorClass(index: number): string {
-  if (index === 0) return "tier-color-1";
-  if (index === 1) return "tier-color-2";
-  return "tier-color-3";
 }
 
 // Render the TRANSACTION FEE cell content. Each fee (C/D and APM) is

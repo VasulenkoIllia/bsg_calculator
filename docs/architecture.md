@@ -128,11 +128,16 @@ The wizard always operates on the **same payload type** regardless of source. Th
 | Derived | `components/calculator/derived/useFeeImpacts` | Memoized fee impact calculations |
 | Derived | `components/calculator/derived/useUnifiedTreeExpansion` | UI expand/collapse state |
 | UI | `components/calculator/zones/Zone*` | Zone presentation layer |
-| Wizard | `components/document-wizard/types` | Canonical payload type |
-| Wizard | `components/document-wizard/fromCalculator` | Source adapters (3 entry modes) |
-| Wizard | `components/document-wizard/buildOfferPdfHtml` | Mode-driven OFFER renderer |
-| Wizard | `components/document-wizard/pdf-kit` | Visual tokens + primitives |
+| Wizard | `components/document-wizard/types` | Canonical payload type, `ValueMode`, `CustomTermsItem`, per-fee NA flags |
+| Wizard | `components/document-wizard/fromCalculator` | Source adapters (3 entry modes); seeds NA flags + custom items as defaults |
+| Wizard | `components/document-wizard/buildOfferPdfHtml` | Mode-driven OFFER renderer; wraps content in `<table class="page-layout">` so the disclaimer footer in `<tfoot>` repeats per-page |
+| Wizard | `components/document-wizard/offerPdf/sections/*` | One file per OFFER section (payin, payout, fees, terms) |
+| Wizard | `components/document-wizard/offerPdf/tierColor` | Shared `tierColorClass(index)` helper used by both payin + payout tiered renderers |
+| Wizard | `components/document-wizard/pdf-kit` | Visual tokens + primitives + per-component renderers (sectionHeader, metaItem, feesGrid, termsGrid, footer) |
 | Wizard | `components/document-wizard/wizard/steps` | One file per wizard step |
+| Wizard | `components/document-wizard/wizard/steps/terms/*` | TermsStep is composed from five focused sub-sections (Legal, Transaction Limits, Rolling Reserve, Payin Min Fee, Custom Blocks) |
+| Wizard | `components/document-wizard/wizard/shared` | Shared wizard primitives: `Stepper`, `StepNavigation`, `FeeFieldWithNa`, `ModedNumericField`, region-mode helpers |
+| Print | `lib/printHtmlViaIframe` | Hidden iframe + Blob URL print path; replaces popup-based print to avoid popup blockers and Safari `srcdoc` bugs |
 
 ## 7. Test layout
 

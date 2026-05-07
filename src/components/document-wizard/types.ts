@@ -3,6 +3,25 @@ import type { AgreementParties, DocumentScope } from "./legalDefaults.js";
 export type WizardStep = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 export type ValueMode = "value" | "waived" | "na" | "tbd";
+
+// Colour choice for user-added custom Terms & Limitations blocks. Maps
+// 1-to-1 to the `.terms-value-blue / -black / -orange` CSS classes in
+// the PDF. Standard built-in fields are unaffected — they keep the
+// default colour scheme.
+export type CustomTermsItemColor = "blue" | "black" | "orange";
+
+export interface CustomTermsItem {
+  // Stable identifier so React can key the wizard list and so removing
+  // / reordering items in the future stays predictable.
+  id: string;
+  // User-typed heading (e.g. "** Decline fee removal").
+  label: string;
+  // User-typed body text.
+  value: string;
+  // Body text colour — picked in the wizard. Heading keeps the default
+  // blue label colour for consistency with built-in rows.
+  color: CustomTermsItemColor;
+}
 export type PayinRegionMode = "both" | "euOnly" | "wwOnly" | "none";
 export type PayinTableMode = "byRegionTiered" | "byRegionFlat" | "flatTiered" | "flatSingle";
 export type PayoutRegionMode = "global" | "none";
@@ -91,6 +110,10 @@ export interface DocumentTemplatePayload {
     settlementNote: string;
     clientType: string;
     restrictedJurisdictions: string;
+    // User-defined extra rows appended to the Terms & Limitations grid.
+    // They follow the same 2-column layout and page-break behaviour as
+    // built-in rows. Empty array means no custom rows.
+    customTermsItems: CustomTermsItem[];
   };
   payinPricing: {
     eu: PayinRegionPricing;

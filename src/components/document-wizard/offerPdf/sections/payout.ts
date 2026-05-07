@@ -7,14 +7,7 @@ import {
   formatTierRangeLabel,
   hasPositiveNumber
 } from "../formatters.js";
-
-// Maps a 0-based tier index to its colour class (mirrors the helper in
-// payin.ts so both tiered tables share the same per-tier shading).
-function tierColorClass(index: number): string {
-  if (index === 0) return "tier-color-1";
-  if (index === 1) return "tier-color-2";
-  return "tier-color-3";
-}
+import { tierColorClass } from "../tierColor.js";
 
 // Pay-Out Trx Fee cell. Returns a fully-formed inline span: numeric
 // values use `valueColorClass` (default = first-tier blue for the
