@@ -1,5 +1,9 @@
 import type { DocumentTemplatePayload, ValueMode } from "../../../types.js";
-import { ModedNumericField } from "../../shared.js";
+import {
+  makeContractSummaryUpdater,
+  makeValueModeUpdater,
+  ModedNumericField
+} from "../../shared.js";
 
 // Step 5 → Transaction Limits card. Four ModedNumericField rows with
 // Number / N/A / TBD pickers. Each writes:
@@ -14,19 +18,8 @@ export function TransactionLimitsSection({
   draft: DocumentTemplatePayload;
   onDraftChange: (next: DocumentTemplatePayload) => void;
 }) {
-  const updateContract = (patch: Partial<DocumentTemplatePayload["contractSummary"]>) =>
-    onDraftChange({
-      ...draft,
-      contractSummary: { ...draft.contractSummary, ...patch }
-    });
-  const updateMode = (
-    key: keyof NonNullable<DocumentTemplatePayload["valueModes"]>,
-    mode: ValueMode
-  ) =>
-    onDraftChange({
-      ...draft,
-      valueModes: { ...(draft.valueModes ?? {}), [key]: mode }
-    });
+  const updateContract = makeContractSummaryUpdater(draft, onDraftChange);
+  const updateMode = makeValueModeUpdater(draft, onDraftChange);
 
   const collectionLimitMinMode: ValueMode =
     draft.valueModes?.collectionLimitMin ?? "value";

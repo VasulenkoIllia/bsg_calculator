@@ -1,6 +1,6 @@
 import { MiniToggle, NumberField } from "../../../calculator/index.js";
 import type { DocumentTemplatePayload } from "../../types.js";
-import { FeeFieldWithNa, StepNavigation } from "../shared.js";
+import { FeeFieldWithNa, StepNavigation, ToggleCheckbox } from "../shared.js";
 
 export function OtherFeesStep({
   draft,
@@ -45,17 +45,11 @@ export function OtherFeesStep({
       <div className="mt-4 grid gap-4">
         {draft.calculatorType.payout ? (
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
-              <input
-                className="h-4 w-4 accent-blue-600"
-                type="checkbox"
-                checked={draft.toggles.payoutMinimumFeeEnabled}
-                onChange={event =>
-                  updateToggles({ payoutMinimumFeeEnabled: event.target.checked })
-                }
-              />
-              Payout Minimum Fee (Per Transaction)
-            </label>
+            <ToggleCheckbox
+              checked={draft.toggles.payoutMinimumFeeEnabled}
+              onChange={enabled => updateToggles({ payoutMinimumFeeEnabled: enabled })}
+              label="Payout Minimum Fee (Per Transaction)"
+            />
             <div className="mt-3">
               <FeeFieldWithNa
                 label="Minimum Fee per Transaction (€)"
@@ -101,15 +95,11 @@ export function OtherFeesStep({
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
-            <input
-              className="h-4 w-4 accent-blue-600"
-              type="checkbox"
-              checked={draft.toggles.threeDsEnabled}
-              onChange={event => updateToggles({ threeDsEnabled: event.target.checked })}
-            />
-            3D Secure (3DS)
-          </label>
+          <ToggleCheckbox
+            checked={draft.toggles.threeDsEnabled}
+            onChange={enabled => updateToggles({ threeDsEnabled: enabled })}
+            label="3D Secure (3DS)"
+          />
           <div className="mt-3">
             <NumberField
               label="3DS Fee per successful transaction (€)"
@@ -126,26 +116,18 @@ export function OtherFeesStep({
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
-            <input
-              className="h-4 w-4 accent-blue-600"
-              type="checkbox"
-              checked={draft.toggles.settlementIncluded}
-              onChange={event => updateToggles({ settlementIncluded: event.target.checked })}
-            />
-            Settlement Included in Pricing
-          </label>
+          <ToggleCheckbox
+            checked={draft.toggles.settlementIncluded}
+            onChange={enabled => updateToggles({ settlementIncluded: enabled })}
+            label="Settlement Included in Pricing"
+          />
           <div className="mt-3 grid gap-3 md:grid-cols-2">
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
-              <input
-                className="h-4 w-4 accent-blue-600"
-                type="checkbox"
-                checked={draft.toggles.settlementFeeEnabled}
-                onChange={event => updateToggles({ settlementFeeEnabled: event.target.checked })}
-                disabled={draft.toggles.settlementIncluded}
-              />
-              Settlement Fee Enabled
-            </label>
+            <ToggleCheckbox
+              checked={draft.toggles.settlementFeeEnabled}
+              onChange={enabled => updateToggles({ settlementFeeEnabled: enabled })}
+              label="Settlement Fee Enabled"
+              disabled={draft.toggles.settlementIncluded}
+            />
             <NumberField
               label="Settlement Rate (%)"
               value={draft.toggles.settlementFeeRatePercent}
@@ -158,15 +140,11 @@ export function OtherFeesStep({
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
-            <input
-              className="h-4 w-4 accent-blue-600"
-              type="checkbox"
-              checked={draft.toggles.monthlyMinimumFeeEnabled}
-              onChange={event => updateToggles({ monthlyMinimumFeeEnabled: event.target.checked })}
-            />
-            Monthly Minimum Fee
-          </label>
+          <ToggleCheckbox
+            checked={draft.toggles.monthlyMinimumFeeEnabled}
+            onChange={enabled => updateToggles({ monthlyMinimumFeeEnabled: enabled })}
+            label="Monthly Minimum Fee"
+          />
           <div className="mt-3">
             <NumberField
               label="Minimum Monthly Revenue (€)"
@@ -179,15 +157,11 @@ export function OtherFeesStep({
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
-            <input
-              className="h-4 w-4 accent-blue-600"
-              type="checkbox"
-              checked={draft.toggles.failedTrxEnabled}
-              onChange={event => updateToggles({ failedTrxEnabled: event.target.checked })}
-            />
-            Failed TRX Charging
-          </label>
+          <ToggleCheckbox
+            checked={draft.toggles.failedTrxEnabled}
+            onChange={enabled => updateToggles({ failedTrxEnabled: enabled })}
+            label="Failed TRX Charging"
+          />
           <div className="mt-3 grid gap-3">
             <div>
               <span className="field-label">Charging Mode</span>

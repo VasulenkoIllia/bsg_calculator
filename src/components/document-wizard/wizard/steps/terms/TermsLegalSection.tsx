@@ -1,5 +1,5 @@
 import type { DocumentTemplatePayload } from "../../../types.js";
-import { SETTLEMENT_PERIOD_OPTIONS } from "../../shared.js";
+import { makeContractSummaryUpdater, SETTLEMENT_PERIOD_OPTIONS } from "../../shared.js";
 
 // Step 5 → "Settlement Period" + Legal Terms (note / client type /
 // restricted jurisdictions). Plain text inputs that map straight onto
@@ -12,11 +12,7 @@ export function TermsLegalSection({
   draft: DocumentTemplatePayload;
   onDraftChange: (next: DocumentTemplatePayload) => void;
 }) {
-  const update = (patch: Partial<DocumentTemplatePayload["contractSummary"]>) =>
-    onDraftChange({
-      ...draft,
-      contractSummary: { ...draft.contractSummary, ...patch }
-    });
+  const update = makeContractSummaryUpdater(draft, onDraftChange);
 
   return (
     <>

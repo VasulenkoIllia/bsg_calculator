@@ -1,7 +1,7 @@
 # PDF Rendering Logic Matrix
 
-Date: 2026-05-02 (refreshed)
-Status: Active. Derived from specification + 8 reference commercial offers + MSA docx.
+Date: 2026-05-07 (refreshed for 2026-05-07 visual pass + custom blocks + custom notes)
+Status: Active. Derived from specification + 8 reference commercial offers + MSA docx + 2026-05-07 product additions.
 
 ## 1. Sources used
 
@@ -36,10 +36,40 @@ The OFFER and AGREEMENT share the same Sections 1–4 layout. AGREEMENT adds the
 2. Header begins with `CONFIDENTIAL · PAYMENT INFRASTRUCTURE`.
 3. Title block: `Service / Agreement` (two lines, accent color on "Agreement").
 4. Subtitle: `Card Acquiring, Payout Infrastructure & Settlement Terms — structured for scale-up and enterprise merchants operating globally.`
-5. Meta grid with 3 fields: `DOCUMENT TYPE`, `COLLECTION MODEL` or `SETTLEMENT MODEL`, `COLLECTION FREQUENCY`.
+5. Meta grid with 5 cells in a 3-column layout: `DOCUMENT NUMBER`, `DOCUMENT DATE`, `DOCUMENT TYPE` (top row), then `COLLECTION MODEL`/`SETTLEMENT MODEL`, `COLLECTION FREQUENCY` (bottom row spanning 2 cells; 6th slot intentionally borderless). Container border is top + left only; item borders form the rest, so the empty 6th slot does not draw a closed rectangle.
 6. Followed by amber/blue note: `All fees are collected on a daily basis unless otherwise instructed in writing. Rates are subject to applicable interchange and scheme fees under the IC++ model unless otherwise instructed in writing.`
 7. Sections 1–4 with numeric badges and right-aligned variant tag.
-8. Footer with full confidentiality notice + meta line `CONFIDENTIAL · Page X of N · Document number`.
+8. **Per-page footer** (repeated on every printed page via `<table class="page-layout">` + `<tfoot>`): full confidentiality notice + meta line `CONFIDENTIAL · BSG-XXXXX`. Page counter (`Page N of M`) lives in the `@page { @bottom-right }` margin box because `counter(page)` inside `<tfoot>` evaluates to 0 in Chrome (Chromium issue 678485).
+
+### 3.1 Colour scheme (2026-05-07)
+
+| Element | Class | Colour |
+|---|---|---|
+| Small uppercase labels (REGION, METHODS, REFUND, DOCUMENT NUMBER, …) | `--label-color` | `#2358EA` |
+| Tier 1 row (model, label, trx fee) — also single-mode default | `tier-color-1` | `#2358EA` |
+| Tier 2 row | `tier-color-2` | `#3F38E3` |
+| Tier 3 row | `tier-color-3` | `#7D2AEB` |
+| MDR percent (every tier, single mode) | (default body colour) | `var(--text-primary)` `#0F172A` |
+| `N/A` text wherever it appears (fee tables, terms grid, fee cards) | `value-na` | `var(--text-muted)` `#6B7280` |
+| Cell subtitle (APM list, "All Visa & Mastercard", "Non-tiered, fixed", "Credit / Debit & APM") | `cell-subtitle` | `var(--text-light)` `#9CA3AF` |
+| Custom Terms blocks (user-picked) | `terms-value-{blue,black,orange}` | `#2358EA` / `var(--text-primary)` / `#DB7712` |
+| Section custom note (user free-form, under each pricing table) | `section-custom-note` | `var(--text-light)` `#9CA3AF` |
+
+Percent format: always exactly 2 decimals (`5.00%`, `4.50%`, `0.30%`, `0.01%`) — `formatPercent` in `offerPdf/formatters.ts`.
+
+### 3.2 Per-fee N/A toggles
+
+Every numeric fee value in the OFFER PDF is paired with a boolean `*Na` flag on the wizard payload. Three render states:
+
+1. flag false + value > 0 → display the formatted value
+2. flag false + value = 0/empty → row hides via the global hide-if-empty rule
+3. flag true → display the literal `N/A` (in `value-na` gray)
+
+Flag wins over the value; the user toggles flags via `FeeFieldWithNa` (boolean) or `ModedNumericField` (Number / N/A / TBD picker for `number | null` fields).
+
+### 3.3 Region label
+
+`payinPricing.eu` is data-key only — the user-facing label is `EEA + UK` (changed from `EU` on 2026-05-07). Lives in `wizard/shared.tsx:PAYIN_REGION_LABELS` and the OFFER renderer's `payinRegionContexts`.
 
 ## 4. Per-sample variation matrix
 
@@ -103,7 +133,13 @@ Identical across all samples: `≤2.5M: €1.00 / >2.5M: N/A`.
 | SoftGaming | none |
 | TodaPay | none |
 
-**Renderer gap**: free-form section footnote is not supported.
+**Closed (2026-05-07)**: free-form section note is now supported via
+`contractSummary.payinCustomNoteEnabled / payinCustomNoteText` for
+Section 1 and `payoutCustomNoteEnabled / payoutCustomNoteText` for
+Section 2. Renderer emits `<p class="section-custom-note">…</p>` (muted
+gray, pre-wrap) under the table when the toggle is on and the text is
+non-blank. Wizard exposes the `SectionCustomNoteCard` primitive at the
+bottom of Step 2 (Payin) and Step 3 (Payout).
 
 ### 4.7 Section 2 (Payout)
 
@@ -161,13 +197,23 @@ Observed extra annotation lines under values (rendered as small note below the p
 | Rolling Reserve Cap | `TBD` (all) |
 | Footnote line | Finera: `** Decline fee removal - After 3 months of processing 2M/m and having min 80% approved transactions` |
 
-**Renderer gaps**:
-- Settlement Note is hardcoded to `Does not apply on weekends and bank holidays`.
-- Client Type is hardcoded to `STD`.
-- Restricted Jurisdictions is hardcoded to `OFAC, US`.
-- `Max. Payout` defaults to `N/A` only when explicitly set by mode; calculator-source mode currently hides it if the value is null. Samples always show `N/A`.
-- `Rolling Reserve Cap` always shows `TBD` in samples; calculator-source mode hides if not set.
-- Free-form footnote line under Section 4 is not supported.
+**Renderer gap status (2026-05-07)**:
+- ✅ **Closed**: Settlement Note / Client Type / Restricted Jurisdictions
+  — editable per-contract in TermsStep (`TermsLegalSection`); renderer
+  reads from `contractSummary.{settlementNote, clientType,
+  restrictedJurisdictions}`.
+- ✅ **Closed**: `Max. Payout`, `Rolling Reserve Cap`, and the four
+  Transaction Limits use `ModedNumericField` (Number / N/A / TBD) in
+  TermsStep. The user picks N/A explicitly when they want it; the
+  renderer reads `valueModes.{collectionLimitMin/Max,
+  payoutLimitMin/Max, rollingReserveCap}` via `resolveModeValue`. No
+  more auto-defaults.
+- ✅ **Closed**: free-form footnote line under Section 4 is supported
+  via `contractSummary.customTermsItems: CustomTermsItem[]`. Each item
+  is `{ id, label, value, color: "blue"|"black"|"orange" }` and renders
+  in the same 2-column terms-grid below the built-in rows. Wizard
+  exposes the `CustomTermsBlocksSection` (add / edit / remove +
+  Blue/Black/Orange picker).
 
 ## 5. Rendering modes matrix (OFFER, single shared template)
 
@@ -213,14 +259,38 @@ A grouped list of discrepancies between the current OFFER renderer and the 8 sam
 
 OFFER renderer layout:
 - `src/components/document-wizard/buildOfferPdfHtml.ts` — orchestrator.
-- `src/components/document-wizard/offerPdf/formatters.ts` — money/percent/date helpers.
-- `src/components/document-wizard/offerPdf/layoutResolution.ts` — calculator-mode layout fallback.
-- `src/components/document-wizard/offerPdf/sections/{payin,payout,fees,terms}.ts` — per-section builders.
-- `src/components/document-wizard/pdf-kit/` — visual primitives + style tokens.
+  Wraps content in `<table class="page-layout">` with the disclaimer
+  footer in `<tfoot>` so Chrome repeats the footer on every printed
+  page (no overlap).
+- `src/components/document-wizard/offerPdf/formatters.ts` — money /
+  percent (`#.##%`) / date helpers + `resolveModeValue` for
+  Number / N/A / TBD / Waived sentinels.
+- `src/components/document-wizard/offerPdf/layoutResolution.ts` —
+  calculator-mode layout fallback.
+- `src/components/document-wizard/offerPdf/tierColor.ts` — shared
+  `tierColorClass(index)` used by both payin + payout tiered
+  renderers.
+- `src/components/document-wizard/offerPdf/sections/{payin,payout,fees,terms}.ts`
+  — per-section builders. Payin / Payout now also append per-section
+  custom notes; Terms appends the user's `customTermsItems` after the
+  built-in rows.
+- `src/components/document-wizard/pdf-kit/` — visual primitives + style
+  tokens. CSS in `pdf-kit/styles.ts` defines `--label-color`,
+  `tier-color-{1,2,3}`, `value-na`, `cell-subtitle`,
+  `terms-value-{blue,black,orange}`, `section-custom-note`,
+  `@page { @bottom-right }` page counter.
+- `src/lib/printHtmlViaIframe.ts` — hidden iframe + Blob URL print
+  path (replaces popup-based print to avoid popup blockers and
+  Safari `srcdoc` bugs).
 
-AGREEMENT renderer (planned):
-- `src/components/document-wizard/agreementPdf/` — MSA-section builder + signature block.
-- Wired into orchestrator behind a `documentScope` setting.
+AGREEMENT renderer:
+- `src/components/document-wizard/agreementPdf/` — `index.ts`
+  orchestrator, `sections.ts` (long-form MSA body), `parties.ts`
+  (counterparty preamble), `signatureBlock.ts` (3-party signature
+  panel), `highlightVar.ts` (variable substitution).
+- `agreementPdf` runs only when `documentScope === "offerAndAgreement"`;
+  the `.agreement-body` carries `page-break-before: always` in print so
+  the MSA always starts on a fresh page.
 
 ## 9. Scope boundary
 

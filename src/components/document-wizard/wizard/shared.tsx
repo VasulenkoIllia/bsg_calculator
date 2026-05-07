@@ -174,6 +174,98 @@ export function Stepper({
   );
 }
 
+// Tailwind utility chain applied to a `field-input` (input or textarea)
+// when the wizard wants it to look read-only: gray fill, not-allowed
+// cursor, suppressed focus ring. Centralised so every locked field
+// looks identical.
+export const LOCKED_INPUT_CLASSES =
+  "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-700 focus:border-slate-200 focus:ring-0";
+
+// Build a `field-input` className that includes the locked styling
+// when `locked === true`. Saves repeating the array-join boilerplate
+// in every wizard step.
+export function fieldInputClass(locked: boolean): string {
+  return locked ? `field-input ${LOCKED_INPUT_CLASSES}` : "field-input";
+}
+
+// Curried updater: returns a function that patches a single sub-key
+// of `DocumentTemplatePayload`. Used by wizard steps to avoid the
+// repeated `onDraftChange({ ...draft, [section]: { ...draft[section],
+// ...patch } })` boilerplate.
+export function makeSectionUpdater<K extends keyof DocumentTemplatePayload>(
+  draft: DocumentTemplatePayload,
+  onDraftChange: (next: DocumentTemplatePayload) => void,
+  section: K
+) {
+  return (patch: Partial<DocumentTemplatePayload[K]>) => {
+    onDraftChange({
+      ...draft,
+      [section]: {
+        ...(draft[section] as object),
+        ...(patch as object)
+      } as DocumentTemplatePayload[K]
+    });
+  };
+}
+
+// Convenience wrapper for the most common case — patch
+// `contractSummary`. Most wizard steps need exactly this updater.
+export function makeContractSummaryUpdater(
+  draft: DocumentTemplatePayload,
+  onDraftChange: (next: DocumentTemplatePayload) => void
+) {
+  return makeSectionUpdater(draft, onDraftChange, "contractSummary");
+}
+
+// Convenience wrapper for `valueModes`. The map is optional so the
+// updater spreads its current state (or empty object) before the
+// patch.
+export function makeValueModeUpdater(
+  draft: DocumentTemplatePayload,
+  onDraftChange: (next: DocumentTemplatePayload) => void
+) {
+  return (
+    key: keyof NonNullable<DocumentTemplatePayload["valueModes"]>,
+    mode: ValueMode
+  ) => {
+    onDraftChange({
+      ...draft,
+      valueModes: { ...(draft.valueModes ?? {}), [key]: mode }
+    });
+  };
+}
+
+// Lightweight checkbox-card primitive used by every wizard step that
+// shows an "Enable section" or "Add note" toggle. Centralises the
+// pill styling that was repeated 8+ times.
+export function ToggleCheckbox({
+  checked,
+  onChange,
+  label,
+  ariaLabel,
+  disabled
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+  ariaLabel?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+      <input
+        className="h-4 w-4 accent-blue-600"
+        type="checkbox"
+        checked={checked}
+        onChange={event => onChange(event.target.checked)}
+        aria-label={ariaLabel}
+        disabled={disabled}
+      />
+      {label}
+    </label>
+  );
+}
+
 // Custom "section note" card. A toggle + textarea pair used at the
 // bottom of the Payin and Payout wizard steps to let the user attach
 // a free-form note that renders under the corresponding pricing
@@ -217,9 +309,7 @@ export function SectionCustomNoteCard({
       <textarea
         className={[
           "field-input mt-3 min-h-[72px] resize-y",
-          !enabled
-            ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-700 focus:border-slate-200 focus:ring-0"
-            : ""
+          !enabled ? LOCKED_INPUT_CLASSES : ""
         ].join(" ")}
         value={text}
         onChange={event => onTextChange(event.target.value)}
@@ -293,12 +383,7 @@ export function ModedNumericField({
         />
       </div>
       <input
-        className={[
-          "field-input",
-          locked
-            ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-700 focus:border-slate-200 focus:ring-0"
-            : ""
-        ].join(" ")}
+        className={fieldInputClass(locked)}
         type="text"
         inputMode="decimal"
         value={value ?? ""}

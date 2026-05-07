@@ -7,7 +7,8 @@ import {
   resolveEnabledPayinRegionMode,
   resolvePayinTableMode,
   SectionCustomNoteCard,
-  StepNavigation
+  StepNavigation,
+  ToggleCheckbox
 } from "../shared.js";
 
 function PayinRegionEditor({
@@ -72,17 +73,13 @@ function PayinRegionEditor({
           </div>
         </div>
 
-        <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
-          <input
-            className="h-4 w-4 accent-blue-600"
-            type="checkbox"
-            checked={pricing.trxFeeEnabled}
-            onChange={event =>
-              updatePricing(current => ({ ...current, trxFeeEnabled: event.target.checked }))
-            }
-          />
-          TRX fee enabled
-        </label>
+        <ToggleCheckbox
+          checked={pricing.trxFeeEnabled}
+          onChange={enabled =>
+            updatePricing(current => ({ ...current, trxFeeEnabled: enabled }))
+          }
+          label="TRX fee enabled"
+        />
 
         <div>
           <span className="field-label">Rate Type</span>
@@ -337,15 +334,11 @@ export function PayinStep({
       </p>
 
       <div className="mt-4 grid gap-4">
-        <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
-          <input
-            className="h-4 w-4 accent-blue-600"
-            type="checkbox"
-            checked={payinEnabled}
-            onChange={event => setPayinEnabled(event.target.checked)}
-          />
-          Enable Payin Section
-        </label>
+        <ToggleCheckbox
+          checked={payinEnabled}
+          onChange={setPayinEnabled}
+          label="Enable Payin Section"
+        />
 
         {payinEnabled ? (
           <div>

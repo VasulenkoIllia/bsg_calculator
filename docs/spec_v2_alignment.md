@@ -1,7 +1,31 @@
 # Specification v2.0 Alignment
 
-Date: 2026-05-02
+Date: 2026-05-07 (refreshed for 2026-05-07 wizard + PDF additions)
 Status: Active reference. Reviewed when scope changes.
+
+### Notable 2026-05-07 additions (already implemented)
+
+- Per-fee N/A flags on the wizard payload (TRX C/D, TRX APM, TRX Fee,
+  MIN. TRX FEE per region, MIN. FEE on payout) → renderer prints
+  literal `N/A` in muted gray when toggled.
+- Number / N/A / TBD picker (`ModedNumericField`) for every
+  `number | null` field in TermsStep (Min/Max Collection / Payout
+  Transaction Size, Reserve Cap).
+- User-added Custom Terms blocks (`customTermsItems[]`) + per-section
+  custom notes (`payin/payoutCustomNoteEnabled / Text`). Rendered with
+  user-picked colour (Blue / Black / Orange) for terms blocks and
+  muted gray for section notes.
+- Per-page repeating disclaimer footer via `<table class="page-layout">`
+  + `<tfoot>`; page counter via `@page { @bottom-right }` margin box.
+- Hidden iframe + Blob URL print path (`src/lib/printHtmlViaIframe.ts`)
+  replaces popup-based print.
+- Region label `EU` → `EEA + UK` (display only; data key stays `eu`).
+- Percent format always `#.##%` (2 decimals).
+- PartiesStep Service Provider Co-entity card locks behind a local
+  "Edit" checkbox (UX safeguard, not persisted in payload).
+- TermsStep decomposed into `wizard/steps/terms/` (5 focused
+  sub-sections); `tierColorClass` extracted to
+  `offerPdf/tierColor.ts` (was duplicated between payin + payout).
 
 ## Purpose
 

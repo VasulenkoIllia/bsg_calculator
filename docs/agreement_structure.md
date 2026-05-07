@@ -115,27 +115,26 @@ The current renderer already supports this pattern for the parties block (Mercha
 src/components/document-wizard/
 ├── buildOfferPdfHtml.ts                # existing — orchestrator
 ├── offerPdf/                           # existing
-└── agreementPdf/
-    ├── index.ts                        # buildAgreementAppendixHtml(payload)
-    ├── parties.ts                      # parties block
-    ├── sections/                       # one file per MSA section (1..16)
-    │   ├── overview.ts
-    │   ├── account.ts
-    │   ├── underwriting.ts
-    │   ├── customerRelationship.ts
-    │   ├── customerDisclosures.ts
-    │   ├── payment.ts
-    │   ├── customerData.ts
-    │   ├── termAndTermination.ts
-    │   ├── ip.ts
-    │   ├── repsAndWarranties.ts
-    │   ├── indemnification.ts
-    │   ├── confidentiality.ts
-    │   ├── limitationOfLiability.ts
-    │   ├── disputeResolution.ts
-    │   └── other.ts
-    └── signatureBlock.ts
+└── agreementPdf/                       # actual layout (2026-05-07)
+    ├── index.ts                        # buildAgreementBodyHtml(payload) +
+    │                                   #   per-block render helpers
+    ├── parties.ts                      # parties preamble block
+    ├── sections.ts                     # all MSA sections in a single
+    │                                   #   `AGREEMENT_SECTIONS` array
+    │                                   #   (kept as one module — easier to
+    │                                   #   diff against the canonical
+    │                                   #   DRAFT TEXT.docx 1:1)
+    ├── signatureBlock.ts               # 3-party signature panel
+    └── highlightVar.ts                 # variable substitution / preview
+                                        #   highlight helpers
 ```
+
+Note: an earlier proposal split each MSA section into its own file
+(`sections/overview.ts`, `sections/account.ts`, …). Implementation
+collapsed them into a single `sections.ts` because the 1:1 source
+mapping to `DRAFT TEXT.docx` is easier to verify when all section
+text lives next to its neighbours. The split can be revisited later
+if the file becomes unwieldy.
 
 Wizard payload extension:
 

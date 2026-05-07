@@ -6,7 +6,7 @@ import {
 } from "../../legalDefaults.js";
 import type { AgreementParties } from "../../legalDefaults.js";
 import type { DocumentTemplatePayload } from "../../types.js";
-import { StepNavigation } from "../shared.js";
+import { fieldInputClass, StepNavigation } from "../shared.js";
 
 export function PartiesStep({
   draft,
@@ -30,13 +30,9 @@ export function PartiesStep({
   // them writable. The flag is local to this step (not persisted) so
   // the lock re-engages on every wizard re-entry.
   const [coEntityEditUnlocked, setCoEntityEditUnlocked] = useState(false);
-  // Tailwind utility chain applied to a `<input class="field-input">`
-  // when it must look read-only (gray fill + not-allowed cursor +
-  // suppressed focus ring). Centralised so the four co-entity fields
-  // stay in sync visually.
-  const lockedInputClass = coEntityEditUnlocked
-    ? "field-input"
-    : "field-input cursor-not-allowed border-slate-200 bg-slate-100 text-slate-700 focus:border-slate-200 focus:ring-0";
+  // The four co-entity fields stay visually in sync via the shared
+  // `fieldInputClass(locked)` helper from `wizard/shared.tsx`.
+  const lockedInputClass = fieldInputClass(!coEntityEditUnlocked);
 
   const update = <K extends keyof AgreementParties>(
     field: K,

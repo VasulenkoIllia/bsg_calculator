@@ -1273,3 +1273,78 @@ Use this file to record meaningful technical decisions for the project.
     calculator should also surface custom-note inputs to seed
     the wizard. For now they only live in the wizard / payload
     layer and default to `false`.
+
+### Decision: Wizard Audit + Reusable Primitives Pass
+- Date: 2026-05-07
+- Context:
+  - End-of-day audit of the wizard codebase after a high-volume
+    feature day. Goals: confirm calculator → wizard data flow,
+    surface duplication, identify decomposition candidates,
+    align documentation with the actual code.
+- Decision:
+  - **Calculator → wizard**: data flow is correct end-to-end.
+    Every field on `DocumentTemplatePayload.contractSummary`,
+    `payin`, `payinPricing`, `payoutPricing`, `toggles` is
+    populated by `fromCalculator.ts`. All `*Na` flags default to
+    `false`; `valueModes` is left undefined (user picks via the
+    wizard). Tier arrays are `.map`-copied (no shared
+    references). No bugs found.
+  - **Reusable primitives extracted** to `wizard/shared.tsx`:
+    1. `LOCKED_INPUT_CLASSES` constant + `fieldInputClass(locked)`
+       helper — replaces the 7-class Tailwind chain that was
+       repeated in 3 files (PartiesStep co-entity inputs,
+       SectionCustomNoteCard textarea, ModedNumericField).
+    2. `makeContractSummaryUpdater` / `makeValueModeUpdater` /
+       `makeSectionUpdater` factory helpers — collapse the
+       6-line update closure repeated in 6 wizard files.
+    3. `ToggleCheckbox` primitive — replaces the 8+ inline
+       `<label className="inline-flex …"><input type=checkbox …`
+       boilerplate snippets. Supports `disabled` for the
+       Settlement Fee toggle that is gated by the parent
+       Settlement-Included flag.
+  - **Decomposition deferred** with rationale:
+    - `wizard/shared.tsx` (~500 lines) — split into
+      `shared/{routing,components,helpers}.ts` would change
+      import paths in many files for moderate gain. Defer to
+      next refactor cycle.
+    - `PayinStep.tsx` (~410 lines) — `PayinRegionEditor` is
+      ~260 lines and self-contained; extract into
+      `steps/payin/PayinRegionEditor.tsx` next time.
+    - `pdf-kit/styles.ts` (~700 lines) — single CSS-in-string
+      blob with clear sectional comments; splitting adds
+      concat noise without DX win.
+  - **Documentation refresh**:
+    - `architecture.md` ASCII data-flow now reads
+      "hidden iframe (Blob URL)" instead of "popup window".
+    - `pdf_rendering_logic_matrix.md` re-dated 2026-05-07; new
+      §3.1 colour-scheme table, §3.2 N/A-toggle render rules,
+      §3.3 region-label note. Renderer-gap callouts in §4.6 +
+      §4.10 marked as **Closed** (custom notes + custom blocks
+      + per-fee N/A toggles + ModedNumericField). §8 module
+      mapping refreshed with `tierColor.ts`,
+      `printHtmlViaIframe.ts`, the `<table class="page-layout">`
+      wrapper, and the actual `agreementPdf/` file layout.
+    - `agreement_structure.md` — file-tree updated to reflect
+      the actual single-file `sections.ts` (the earlier
+      proposed `sections/<name>.ts` split was not adopted).
+    - `spec_v2_alignment.md` — re-dated 2026-05-07; new top-of-
+      file callout listing all 2026-05-07 wizard + PDF
+      additions.
+- Alternatives considered:
+  - Splitting `shared.tsx` immediately. Rejected for this pass —
+    high import churn, low immediate ROI.
+  - Extracting `PayinRegionEditor`. Same reasoning — defer.
+- Consequences:
+  - 220/220 tests still pass; behaviour-preserving refactor.
+  - `OtherFeesStep.tsx` shrunk from ~229 → 203 lines via
+    `ToggleCheckbox` adoption.
+  - `wizard/shared.tsx` grew from 419 → ~500 lines because the
+    new helpers live there; net codebase size dropped because
+    the call-sites collapsed.
+  - Documentation now matches the code. The "Renderer gap"
+    callouts in `pdf_rendering_logic_matrix.md` no longer lie.
+- Follow-up actions:
+  - Next refactor cycle: extract `PayinRegionEditor` and split
+    `wizard/shared.tsx` into focused modules behind a barrel.
+  - Address the build's 501 KB single-chunk size (just over the
+    Vite warning) when chunk-splitting becomes worthwhile.

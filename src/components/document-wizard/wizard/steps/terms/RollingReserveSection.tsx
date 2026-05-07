@@ -1,6 +1,10 @@
 import { NumberField } from "../../../../calculator/index.js";
 import type { DocumentTemplatePayload, ValueMode } from "../../../types.js";
-import { ModedNumericField } from "../../shared.js";
+import {
+  makeContractSummaryUpdater,
+  makeValueModeUpdater,
+  ModedNumericField
+} from "../../shared.js";
 
 // Step 5 → Rolling Reserve card. Plain percent + days inputs and a
 // ModedNumericField for the optional Reserve Cap (Number / N/A / TBD).
@@ -11,19 +15,8 @@ export function RollingReserveSection({
   draft: DocumentTemplatePayload;
   onDraftChange: (next: DocumentTemplatePayload) => void;
 }) {
-  const updateContract = (patch: Partial<DocumentTemplatePayload["contractSummary"]>) =>
-    onDraftChange({
-      ...draft,
-      contractSummary: { ...draft.contractSummary, ...patch }
-    });
-  const updateMode = (
-    key: keyof NonNullable<DocumentTemplatePayload["valueModes"]>,
-    mode: ValueMode
-  ) =>
-    onDraftChange({
-      ...draft,
-      valueModes: { ...(draft.valueModes ?? {}), [key]: mode }
-    });
+  const updateContract = makeContractSummaryUpdater(draft, onDraftChange);
+  const updateMode = makeValueModeUpdater(draft, onDraftChange);
 
   const reserveCapMode: ValueMode = draft.valueModes?.rollingReserveCap ?? "value";
 

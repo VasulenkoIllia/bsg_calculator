@@ -1,5 +1,6 @@
 import { MiniToggle, NumberField } from "../../../../calculator/index.js";
 import type { DocumentTemplatePayload } from "../../../types.js";
+import { makeContractSummaryUpdater } from "../../shared.js";
 
 // Step 5 → Payin Minimum Fee Contract Mode card. Picks Overall vs By
 // Region, exposes the threshold/fee inputs (with a region-aware lock
@@ -17,11 +18,7 @@ export function PayinMinimumFeeSection({
   draft: DocumentTemplatePayload;
   onDraftChange: (next: DocumentTemplatePayload) => void;
 }) {
-  const update = (patch: Partial<DocumentTemplatePayload["contractSummary"]>) =>
-    onDraftChange({
-      ...draft,
-      contractSummary: { ...draft.contractSummary, ...patch }
-    });
+  const update = makeContractSummaryUpdater(draft, onDraftChange);
 
   const euNa = draft.contractSummary.payoutMinimumFeeEuNa;
   const wwNa = draft.contractSummary.payoutMinimumFeeWwNa;

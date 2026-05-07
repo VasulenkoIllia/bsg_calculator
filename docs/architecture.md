@@ -108,7 +108,7 @@ buildOfferPdfHtml(data)
    │ resolves layout modes from data shape
    │ renders sections 1–4 + header/footer using pdf-kit primitives
    ▼
-HTML string  ──►  popup window  ──►  browser print → "Save as PDF"
+HTML string  ──►  hidden iframe (Blob URL)  ──►  iframe.contentWindow.print() → "Save as PDF"
 ```
 
 The wizard always operates on the **same payload type** regardless of source. The only thing source mode (`calculator|manual|clone`) changes is whether missing values render as blanks (calculator) or accept explicit `value/waived/na/tbd` modes (manual/clone — Stage 2B, deferred).
