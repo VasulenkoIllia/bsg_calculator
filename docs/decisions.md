@@ -1189,3 +1189,43 @@ Use this file to record meaningful technical decisions for the project.
     calculator-side parity items.
   - Revisit `wizard/shared.tsx` decomposition if it grows
     further or new wizard-wide primitives land.
+
+### Decision: PartiesStep — Service Provider Co-entity edit lock
+- Date: 2026-05-07
+- Context:
+  - The Service Provider Co-entity card on Step 7 (Parties &
+    Signatures) defaults to KASEF PAY INC and is overridden only
+    when a different acquiring/processing partner is used. Most
+    contracts ship with the defaults and a misclick into one of
+    those four inputs would corrupt them silently.
+- Decision:
+  - Wrap the four co-entity inputs (Legal Name, Short Label,
+    Jurisdiction, Registered Office) with a local "Edit" toggle.
+    The lock is `useState`-based and **not persisted** in
+    `DocumentTemplatePayload` — every re-entry into the step
+    starts locked, so the user has to opt in to edit each time.
+  - When locked, inputs render with `readOnly` + `aria-readonly`,
+    a gray fill, the not-allowed cursor and a suppressed focus
+    ring. Centralised in a `lockedInputClass` const so the four
+    fields stay visually in sync.
+  - The Black Stripe Group LTD card (static identity) and the
+    Merchant card (always editable, populated per-contract or
+    via HubSpot/DB later) are unchanged.
+- Alternatives considered:
+  - **Persist the lock flag in the payload.** Rejected — the
+    lock is a UX safeguard, not contract data; persisting would
+    make the wizard remember an "unlocked" state across sessions
+    and undermine the safeguard.
+  - **Per-input lock.** Overkill for a 4-field card that always
+    moves together for a given contract.
+- Consequences:
+  - Step 7 reads as "static defaults until you opt in to edit",
+    matching how the field group behaves at the contract level.
+  - 215/215 tests still pass; behaviour change is wizard-only.
+  - `architecture.md` module map already covers Step 7 via
+    `wizard/steps/PartiesStep.tsx`; no further doc table edits
+    needed.
+- Follow-up actions:
+  - If/when the wizard gains a "save draft" feature in Phase 8,
+    decide whether the lock state should be remembered on resume
+    (probably no — re-locking on resume keeps the safeguard).

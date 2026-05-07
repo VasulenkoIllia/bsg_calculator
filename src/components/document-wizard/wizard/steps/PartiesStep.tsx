@@ -1,4 +1,4 @@
-import type { ChangeEvent } from "react";
+import { useState, type ChangeEvent } from "react";
 import {
   AGREEMENT_PARTY_PLACEHOLDERS,
   BSG_ENTITY,
@@ -24,6 +24,19 @@ export function PartiesStep({
   nextLabel: string;
 }) {
   const parties = draft.agreementParties;
+  // Service Provider Co-entity defaults to KASEF PAY INC and is rarely
+  // overridden — the wizard locks the fields by default to prevent
+  // accidental edits. The user must flip the "Edit" checkbox to make
+  // them writable. The flag is local to this step (not persisted) so
+  // the lock re-engages on every wizard re-entry.
+  const [coEntityEditUnlocked, setCoEntityEditUnlocked] = useState(false);
+  // Tailwind utility chain applied to a `<input class="field-input">`
+  // when it must look read-only (gray fill + not-allowed cursor +
+  // suppressed focus ring). Centralised so the four co-entity fields
+  // stay in sync visually.
+  const lockedInputClass = coEntityEditUnlocked
+    ? "field-input"
+    : "field-input cursor-not-allowed border-slate-200 bg-slate-100 text-slate-700 focus:border-slate-200 focus:ring-0";
 
   const update = <K extends keyof AgreementParties>(
     field: K,
@@ -57,50 +70,72 @@ export function PartiesStep({
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <p className="text-sm font-bold text-slate-800">Service Provider Co-entity</p>
-          <p className="mt-1 text-xs text-slate-600">
-            Defaults to KASEF PAY INC. Override only if a different acquiring/processing
-            partner is used for this contract.
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-bold text-slate-800">Service Provider Co-entity</p>
+              <p className="mt-1 text-xs text-slate-600">
+                Defaults to KASEF PAY INC. Override only if a different acquiring/processing
+                partner is used for this contract.
+              </p>
+            </div>
+            <label className="inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">
+              <input
+                type="checkbox"
+                className="h-3.5 w-3.5 accent-blue-600"
+                checked={coEntityEditUnlocked}
+                onChange={event => setCoEntityEditUnlocked(event.target.checked)}
+                aria-label="Edit co-entity fields"
+              />
+              Edit
+            </label>
+          </div>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             <label>
               <span className="field-label">Legal Name</span>
               <input
-                className="field-input"
+                className={lockedInputClass}
                 value={parties.serviceProviderCoEntityName}
                 onChange={event => update("serviceProviderCoEntityName", event)}
                 placeholder={DEFAULT_AGREEMENT_PARTIES.serviceProviderCoEntityName}
                 aria-label="Co-entity legal name"
+                readOnly={!coEntityEditUnlocked}
+                aria-readonly={!coEntityEditUnlocked}
               />
             </label>
             <label>
               <span className="field-label">Short Label (in quotes)</span>
               <input
-                className="field-input"
+                className={lockedInputClass}
                 value={parties.serviceProviderCoEntityShortLabel}
                 onChange={event => update("serviceProviderCoEntityShortLabel", event)}
                 placeholder={DEFAULT_AGREEMENT_PARTIES.serviceProviderCoEntityShortLabel}
                 aria-label="Co-entity short label"
+                readOnly={!coEntityEditUnlocked}
+                aria-readonly={!coEntityEditUnlocked}
               />
             </label>
             <label>
               <span className="field-label">Jurisdiction</span>
               <input
-                className="field-input"
+                className={lockedInputClass}
                 value={parties.serviceProviderCoEntityJurisdiction}
                 onChange={event => update("serviceProviderCoEntityJurisdiction", event)}
                 placeholder={DEFAULT_AGREEMENT_PARTIES.serviceProviderCoEntityJurisdiction}
                 aria-label="Co-entity jurisdiction"
+                readOnly={!coEntityEditUnlocked}
+                aria-readonly={!coEntityEditUnlocked}
               />
             </label>
             <label>
               <span className="field-label">Registered Office</span>
               <input
-                className="field-input"
+                className={lockedInputClass}
                 value={parties.serviceProviderCoEntityAddress}
                 onChange={event => update("serviceProviderCoEntityAddress", event)}
                 placeholder={DEFAULT_AGREEMENT_PARTIES.serviceProviderCoEntityAddress}
                 aria-label="Co-entity registered office"
+                readOnly={!coEntityEditUnlocked}
+                aria-readonly={!coEntityEditUnlocked}
               />
             </label>
           </div>
