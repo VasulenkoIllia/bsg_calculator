@@ -1,6 +1,6 @@
 import { MiniToggle, NumberField } from "../../../calculator/index.js";
 import type { DocumentTemplatePayload } from "../../types.js";
-import { FeeFieldWithNa, StepNavigation } from "../shared.js";
+import { FeeFieldWithNa, SectionCustomNoteCard, StepNavigation } from "../shared.js";
 
 export function PayoutStep({
   draft,
@@ -210,6 +210,32 @@ export function PayoutStep({
             )}
           </>
         ) : null}
+
+        <SectionCustomNoteCard
+          title="Payout Section Note"
+          description="Free-form note rendered in muted gray under the Pay Out / Push to Card table in the OFFER PDF."
+          enabled={draft.contractSummary.payoutCustomNoteEnabled}
+          text={draft.contractSummary.payoutCustomNoteText}
+          onEnabledChange={enabled =>
+            onDraftChange({
+              ...draft,
+              contractSummary: {
+                ...draft.contractSummary,
+                payoutCustomNoteEnabled: enabled
+              }
+            })
+          }
+          onTextChange={text =>
+            onDraftChange({
+              ...draft,
+              contractSummary: {
+                ...draft.contractSummary,
+                payoutCustomNoteText: text
+              }
+            })
+          }
+          ariaPrefix="Payout section note"
+        />
       </div>
 
       <StepNavigation

@@ -99,6 +99,14 @@ export function buildPayoutSection(data: DocumentTemplatePayload, layout: Docume
   // "no data, no block" promise from the OFFER fidelity audit.
   const showMinimumFeeColumn = hasPayoutMinFeeContent(data);
 
+  // Optional free-form note rendered under the table. Hidden if the
+  // toggle is off or the text is empty.
+  const customNote =
+    data.contractSummary.payoutCustomNoteEnabled &&
+    data.contractSummary.payoutCustomNoteText.trim().length > 0
+      ? `<p class="section-custom-note">${escapeHtml(data.contractSummary.payoutCustomNoteText)}</p>`
+      : "";
+
   return `<section class="offer-section">
     ${renderSectionHeader(2, "Card Acquiring — Pay Out / Push to Card", showTierColumn ? "VOLUME TIERED" : "FIXED RATE")}
     <table>
@@ -113,5 +121,6 @@ export function buildPayoutSection(data: DocumentTemplatePayload, layout: Docume
       </thead>
       <tbody>${buildPayoutRows(data, layout, showMinimumFeeColumn)}</tbody>
     </table>
+    ${customNote}
   </section>`;
 }

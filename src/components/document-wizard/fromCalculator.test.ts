@@ -155,7 +155,11 @@ describe("buildOfferPdfHtml", () => {
         settlementNote: "Does not apply on weekends and bank holidays",
         clientType: "STD",
         restrictedJurisdictions: "OFAC, US",
-        customTermsItems: []
+        customTermsItems: [],
+        payinCustomNoteEnabled: false,
+        payinCustomNoteText: "",
+        payoutCustomNoteEnabled: false,
+        payoutCustomNoteText: ""
       },
       payinPricing: {
         eu: {
@@ -631,6 +635,65 @@ describe("buildOfferPdfHtml", () => {
       expect(html).toContain("Daily, T+2");
       // Built-in row carries plain `terms-value` class only.
       expect(html).toMatch(/<span class="terms-value">Daily, T\+2</);
+    });
+  });
+
+  describe("section custom notes", () => {
+    it("renders payin custom note under the Card Acquiring table when enabled", () => {
+      const data = buildBaseTemplateData();
+      data.contractSummary.payinCustomNoteEnabled = true;
+      data.contractSummary.payinCustomNoteText =
+        "*Min. Transaction fee applies to successful transaction fees only.";
+
+      const html = buildOfferPdfHtml(data);
+      // Match actual element usage, not the CSS class declaration in <style>.
+      expect(html).toMatch(/<p class="section-custom-note">/);
+      expect(html).toContain(
+        "*Min. Transaction fee applies to successful transaction fees only."
+      );
+    });
+
+    it("hides payin custom note when toggle is off even if text is set", () => {
+      const data = buildBaseTemplateData();
+      data.contractSummary.payinCustomNoteEnabled = false;
+      data.contractSummary.payinCustomNoteText = "Note that should be hidden";
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).not.toMatch(/<p class="section-custom-note">/);
+      expect(html).not.toContain("Note that should be hidden");
+    });
+
+    it("hides payin custom note when text is empty even if toggle is on", () => {
+      const data = buildBaseTemplateData();
+      data.contractSummary.payinCustomNoteEnabled = true;
+      data.contractSummary.payinCustomNoteText = "   ";
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).not.toMatch(/<p class="section-custom-note">/);
+    });
+
+    it("renders payout custom note under the Pay Out table when enabled", () => {
+      const data = buildBaseTemplateData();
+      data.contractSummary.payoutCustomNoteEnabled = true;
+      data.contractSummary.payoutCustomNoteText = "Payout-specific note text.";
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).toMatch(/<p class="section-custom-note">/);
+      expect(html).toContain("Payout-specific note text.");
+    });
+
+    it("payin and payout notes render independently with their own text", () => {
+      const data = buildBaseTemplateData();
+      data.contractSummary.payinCustomNoteEnabled = true;
+      data.contractSummary.payinCustomNoteText = "PAYIN-NOTE-XYZ";
+      data.contractSummary.payoutCustomNoteEnabled = true;
+      data.contractSummary.payoutCustomNoteText = "PAYOUT-NOTE-XYZ";
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).toContain("PAYIN-NOTE-XYZ");
+      expect(html).toContain("PAYOUT-NOTE-XYZ");
+      // Two separate <p class="section-custom-note"> elements (one per section).
+      expect((html.match(/<p class="section-custom-note">/g) ?? []).length).toBe(2);
     });
   });
 });

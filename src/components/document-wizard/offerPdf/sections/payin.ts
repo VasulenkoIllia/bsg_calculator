@@ -224,6 +224,14 @@ export function buildPayinSection(data: DocumentTemplatePayload, layout: Documen
 
   const payinRows = buildPayinRows(data, layout, showMinFeeColumn);
 
+  // Optional free-form note rendered under the table. Hidden if the
+  // toggle is off or the text is empty.
+  const customNote =
+    data.contractSummary.payinCustomNoteEnabled &&
+    data.contractSummary.payinCustomNoteText.trim().length > 0
+      ? `<p class="section-custom-note">${escapeHtml(data.contractSummary.payinCustomNoteText)}</p>`
+      : "";
+
   return `<section class="offer-section">
     ${renderSectionHeader(1, "Card Acquiring — Credit / Debit Cards, APM & E-wallet", showTierColumn ? "VOLUME TIERED" : "FIXED RATE")}
     <table>
@@ -240,5 +248,6 @@ export function buildPayinSection(data: DocumentTemplatePayload, layout: Documen
       </thead>
       <tbody>${payinRows}</tbody>
     </table>
+    ${customNote}
   </section>`;
 }

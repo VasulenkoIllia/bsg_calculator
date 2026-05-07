@@ -137,7 +137,14 @@ export function buildDocumentTemplatePayloadFromCalculator({
       payoutMinimumFeeWwNa: false,
       // User-added Terms & Limitations rows — none by default; the
       // user adds them in the wizard.
-      customTermsItems: []
+      customTermsItems: [],
+      // Per-section custom notes — disabled by default. The wizard
+      // exposes per-step toggles + textareas so the user can add a
+      // free-form note rendered under each pricing table.
+      payinCustomNoteEnabled: false,
+      payinCustomNoteText: "",
+      payoutCustomNoteEnabled: false,
+      payoutCustomNoteText: ""
     },
     payinPricing: {
       eu: {

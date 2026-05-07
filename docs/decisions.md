@@ -1229,3 +1229,47 @@ Use this file to record meaningful technical decisions for the project.
   - If/when the wizard gains a "save draft" feature in Phase 8,
     decide whether the lock state should be remembered on resume
     (probably no — re-locking on resume keeps the safeguard).
+
+### Decision: Section custom notes (Payin + Payout)
+- Date: 2026-05-07
+- Context:
+  - Some commercial offers carry an asterisked footnote under the
+    pricing table (e.g. *"Min. Transaction fee applies to
+    successful transaction fees only..."*). These vary per
+    contract and weren't expressible in the wizard payload —
+    historically a manual post-edit of the rendered PDF.
+- Decision:
+  - Schema. Added four fields to `contractSummary`:
+    `payinCustomNoteEnabled`, `payinCustomNoteText`,
+    `payoutCustomNoteEnabled`, `payoutCustomNoteText`. Defaults
+    flow through `fromCalculator.ts`, `manualSeeds.ts` and the
+    test fixture as `false` / `""`.
+  - Rendering. `offerPdf/sections/payin.ts` and `payout.ts` each
+    append `<p class="section-custom-note">…</p>` after the
+    table when both `enabled === true` and the text is non-blank.
+    The CSS class lives in `pdf-kit/styles.ts` and renders in
+    muted gray (`var(--text-light)` `#9CA3AF`), 8pt, line-
+    height 1.4, with `white-space: pre-wrap` so user line breaks
+    survive into the PDF. `page-break-inside: avoid` keeps the
+    note attached to its table.
+  - Wizard UI. New shared component `SectionCustomNoteCard`
+    (toggle + textarea, textarea locked while toggle is off).
+    PayinStep and PayoutStep both render an instance at the
+    bottom of their step. The component is reused so the two
+    steps stay visually identical.
+- Alternatives considered:
+  - Single shared note used by both sections. Rejected — the
+    references show different notes per pricing table.
+  - Auto-prepending an asterisk. Rejected — keep the user free
+    to write whatever marker they want (or none at all).
+- Consequences:
+  - 220/220 tests pass (+5 covering the new behaviour: render
+    when enabled, hide when toggle off, hide when text blank,
+    payout-only path, both notes independent).
+  - The wizard payload now expresses every footnote / disclaimer
+    that appears in the OFFER PDF; no more out-of-band edits.
+- Follow-up actions:
+  - When the calculator is unfrozen, decide whether the
+    calculator should also surface custom-note inputs to seed
+    the wizard. For now they only live in the wizard / payload
+    layer and default to `false`.

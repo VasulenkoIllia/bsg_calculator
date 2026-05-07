@@ -114,6 +114,15 @@ export interface DocumentTemplatePayload {
     // They follow the same 2-column layout and page-break behaviour as
     // built-in rows. Empty array means no custom rows.
     customTermsItems: CustomTermsItem[];
+    // Optional free-form note rendered under the payin (Card Acquiring)
+    // and payout (Pay Out) tables in the OFFER PDF. Toggled per section.
+    // When the toggle is off (default) or the text is empty, no note
+    // is rendered. Colour matches the muted --text-light gray used by
+    // other secondary text.
+    payinCustomNoteEnabled: boolean;
+    payinCustomNoteText: string;
+    payoutCustomNoteEnabled: boolean;
+    payoutCustomNoteText: string;
   };
   payinPricing: {
     eu: PayinRegionPricing;

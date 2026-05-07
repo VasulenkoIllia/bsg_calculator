@@ -408,6 +408,19 @@ tbody tr:nth-child(even) {
   word-break: break-word;
 }
 
+/* Free-form note rendered under the payin / payout pricing tables.
+ * Toggled per section in the wizard; renders in muted gray and
+ * preserves user line breaks via pre-wrap. */
+.section-custom-note {
+  margin: 8px 0 0;
+  color: var(--text-light);
+  font-size: 8pt;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
 .print-footer {
   /* Lives inside table.page-layout > tfoot so Chrome repeats it on every
    * printed page. No position: fixed — that approach overlapped content

@@ -6,6 +6,7 @@ import {
   type PayinRegionKey,
   resolveEnabledPayinRegionMode,
   resolvePayinTableMode,
+  SectionCustomNoteCard,
   StepNavigation
 } from "../shared.js";
 
@@ -378,6 +379,32 @@ export function PayinStep({
         {wwVisible ? (
           <PayinRegionEditor region="ww" draft={draft} onDraftChange={onDraftChange} />
         ) : null}
+
+        <SectionCustomNoteCard
+          title="Payin Section Note"
+          description="Free-form note rendered in muted gray under the Card Acquiring (Payin) table in the OFFER PDF."
+          enabled={draft.contractSummary.payinCustomNoteEnabled}
+          text={draft.contractSummary.payinCustomNoteText}
+          onEnabledChange={enabled =>
+            onDraftChange({
+              ...draft,
+              contractSummary: {
+                ...draft.contractSummary,
+                payinCustomNoteEnabled: enabled
+              }
+            })
+          }
+          onTextChange={text =>
+            onDraftChange({
+              ...draft,
+              contractSummary: {
+                ...draft.contractSummary,
+                payinCustomNoteText: text
+              }
+            })
+          }
+          ariaPrefix="Payin section note"
+        />
       </div>
 
       <StepNavigation
