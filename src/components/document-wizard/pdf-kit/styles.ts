@@ -175,6 +175,71 @@ table.page-layout > tfoot > tr > td.page-footer-cell {
   break-inside: avoid;
 }
 
+/* ────────────────────────────────────────────────────────────────
+ * Compact preset.
+ *
+ * Auto-applied at render time when a section's row count
+ * approaches its worst-case fill (so it would otherwise push the
+ * table onto a second page). The preset shrinks vertical space by
+ * ~20% via tighter padding, smaller fonts, slimmer line-heights —
+ * it does NOT remove or restructure content. Activation rules per
+ * section live in the renderers (payin/payout/terms.ts).
+ *
+ * Worst-case fills the preset is calibrated against:
+ *   - payin tiered + both regions = 6 data rows
+ *   - payout tiered = 3 data rows
+ *   - terms = ~10 built-in rows + N custom blocks
+ *
+ * Standard accent-text / tier-color / value-na / cell-subtitle
+ * colour rules are unaffected.
+ * ──────────────────────────────────────────────────────────────── */
+.offer-section.compact th,
+.offer-section.compact td {
+  padding: 3px 6px;
+  font-size: 8pt;
+  line-height: 1.2;
+}
+.offer-section.compact th {
+  font-size: 6.5pt;
+}
+.offer-section.compact .cell-line {
+  line-height: 1.18;
+}
+.offer-section.compact .section-header {
+  margin-bottom: 4px;
+}
+.offer-section.compact .section-header h2 {
+  font-size: 12pt;
+}
+.offer-section.compact .terms-item {
+  padding: 4px 7px;
+  min-height: 32px;
+}
+.offer-section.compact .terms-label {
+  font-size: 7pt;
+}
+.offer-section.compact .terms-value {
+  font-size: 8.5pt;
+}
+.offer-section.compact .fee-card {
+  padding: 6px 8px;
+  min-height: 56px;
+}
+.offer-section.compact .fee-value {
+  font-size: 12pt;
+}
+.offer-section.compact .fee-card h3 {
+  font-size: 6.5pt;
+}
+.offer-section.compact .fee-subtitle {
+  font-size: 6.5pt;
+}
+.offer-section.compact .section-custom-note {
+  font-size: 7pt;
+  line-height: 1.3;
+  margin-top: 6px;
+}
+
 .section-header {
   display: flex;
   align-items: center;

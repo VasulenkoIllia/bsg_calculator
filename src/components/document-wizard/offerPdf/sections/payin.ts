@@ -226,13 +226,24 @@ export function buildPayinSection(data: DocumentTemplatePayload, layout: Documen
 
   // Optional free-form note rendered under the table. Hidden if the
   // toggle is off or the text is empty.
-  const customNote =
+  const hasCustomNote =
     data.contractSummary.payinCustomNoteEnabled &&
-    data.contractSummary.payinCustomNoteText.trim().length > 0
-      ? `<p class="section-custom-note">${escapeHtml(data.contractSummary.payinCustomNoteText)}</p>`
-      : "";
+    data.contractSummary.payinCustomNoteText.trim().length > 0;
+  const customNote = hasCustomNote
+    ? `<p class="section-custom-note">${escapeHtml(data.contractSummary.payinCustomNoteText)}</p>`
+    : "";
 
-  return `<section class="offer-section">
+  // Auto-compact heuristic. Total row count drives whether the
+  // section gets the `.compact` class (smaller padding + font in
+  // CSS). Calibrated so the worst-case fill (6 rows: tiered + both
+  // regions) fits inside one A4 page alongside the document header
+  // and the page-repeating footer reservation.
+  const regions = resolvePayinRegionContexts(data, layout);
+  const totalRows = regions.length * (showTierColumn ? 3 : 1);
+  const isCompact = totalRows >= 4 || (totalRows >= 2 && hasCustomNote);
+  const sectionClass = `offer-section${isCompact ? " compact" : ""}`;
+
+  return `<section class="${sectionClass}">
     ${renderSectionHeader(1, "Card Acquiring — Credit / Debit Cards, APM & E-wallet", showTierColumn ? "VOLUME TIERED" : "FIXED RATE")}
     <table>
       <thead>

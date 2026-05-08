@@ -71,6 +71,29 @@ Flag wins over the value; the user toggles flags via `FeeFieldWithNa` (boolean) 
 
 `payinPricing.eu` is data-key only — the user-facing label is `EEA + UK` (changed from `EU` on 2026-05-07). Lives in `wizard/shared.tsx:PAYIN_REGION_LABELS` and the OFFER renderer's `payinRegionContexts`.
 
+### 3.4 Auto-compact mode (added 2026-05-08)
+
+Each `<section class="offer-section">` carries an optional `compact`
+modifier class. CSS in `pdf-kit/styles.ts` shrinks padding, font
+sizes (th/td 9pt → 8pt, h2 14pt → 12pt, etc.), and line-heights by
+~20% without removing content. Standard colour rules
+(accent-text / tier-color / value-na / cell-subtitle) are
+unaffected.
+
+Activation rules (data-driven, computed at render time):
+
+| Section | Compact when |
+|---|---|
+| Card Acquiring (payin) | `totalRows >= 4` (tiered + both regions = 6, tiered + one region = 3) OR (`totalRows >= 2` AND has custom note) |
+| Pay Out (payout) | `showTierColumn` (3 tiered rows) OR has custom note |
+| Terms & Limitations | `items.length >= 8` (built-ins + custom blocks) |
+| Other Services & Fees | never (cards layout already efficient at 3 per row) |
+
+The preset is calibrated against worst-case fills (payin 6 rows,
+payout 3 rows, terms ~10 built-ins + N custom blocks) so a busy
+offer fits page 1 (header + sections 1 + 2) without spilling onto
+page 2 just for vertical-spacing reasons.
+
 ## 4. Per-sample variation matrix
 
 ### 4.1 Header model label and value

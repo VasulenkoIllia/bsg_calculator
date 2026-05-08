@@ -1348,3 +1348,60 @@ Use this file to record meaningful technical decisions for the project.
     `wizard/shared.tsx` into focused modules behind a barrel.
   - Address the build's 501 KB single-chunk size (just over the
     Vite warning) when chunk-splitting becomes worthwhile.
+
+### Decision: Auto-compact mode for OFFER sections
+- Date: 2026-05-08
+- Context:
+  - With tiered + both-regions Card Acquiring (6 data rows), the
+    section was tall enough to push subsequent sections onto a
+    second page even when there was room overall. We needed a
+    way to compress tall sections without changing the content
+    or asking the user to opt in.
+  - Approach driven from the worst-case fill: design a single
+    "compact" preset calibrated to fit the maximum-data scenario
+    of each section, then auto-apply it whenever a section is
+    near worst case.
+- Decision:
+  - **Compact preset** lives in `pdf-kit/styles.ts` under
+    `.offer-section.compact`. It tightens padding, drops
+    th/td/cell-line/section-header/terms-item/fee-card font
+    sizes by 1-2 pt, and slims line-heights. ~20% vertical
+    saving with no content change. Standard colour rules
+    (`accent-text`, `tier-color-*`, `value-na`,
+    `cell-subtitle`) are unaffected.
+  - **Auto-detect** at render time per section:
+    - `offerPdf/sections/payin.ts`: compact when
+      `totalRows >= 4` (tiered + both regions = 6, tiered + one
+      region = 3) **or** `totalRows >= 2 && hasCustomNote`.
+    - `offerPdf/sections/payout.ts`: compact when
+      `showTierColumn` (3 tiered rows) **or** `hasCustomNote`.
+    - `offerPdf/sections/terms.ts`: compact when
+      `items.length >= 8` (worst case ~10 built-ins + custom
+      blocks).
+    - `offerPdf/sections/fees.ts`: never auto-compact (cards
+      are already efficient at 3 per row).
+  - **No user-facing toggle.** The decision is data-driven, the
+    user never has to think about it.
+- Alternatives considered:
+  - Manual "Compact tables" wizard checkbox. Rejected — adds
+    cognitive load and the user has to discover when to use it.
+  - JS-measure-then-class on iframe load. Rejected — async
+    behaviour, harder to test, harder to keep parity with
+    Puppeteer-prod.
+  - Always-compact in `@media print`. Rejected — would shrink
+    even small offers, hurting readability for the common case.
+- Consequences:
+  - 226/226 tests pass (+6 covering: tiered+both → compact,
+    single → no compact, tiered+one+note → compact, payout
+    tiered → compact, payout single → no compact, terms with
+    custom blocks → compact).
+  - The OFFER PDF now self-adjusts: small offers stay
+    spacious; busy offers compress just enough to keep section
+    1 + section 2 on the same page where possible.
+  - Behaviour is deterministic — same payload always produces
+    the same compact decision.
+- Follow-up actions:
+  - Watch real generated PDFs. If a configuration still spills
+    pages, adjust thresholds before reaching for any further
+    structural changes (custom-note pre-wrap line counts,
+    additional fee cards, MSA appendix start position).

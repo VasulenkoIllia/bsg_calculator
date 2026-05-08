@@ -115,7 +115,14 @@ export function buildTermsSection(data: DocumentTemplatePayload, layout: Documen
     return "";
   }
 
-  return `<section class="offer-section">
+  // Auto-compact when the terms grid is "tall" — typically once the
+  // user adds custom blocks on top of the built-in rows. Threshold
+  // calibrated so worst-case fill (~10 built-ins + several custom
+  // rows) still fits next to the other sections on one page.
+  const isCompact = items.length >= 8;
+  const sectionClass = `offer-section${isCompact ? " compact" : ""}`;
+
+  return `<section class="${sectionClass}">
     ${renderSectionHeader(4, "Terms & Limitations", "GLOBAL")}
     ${renderTermsGrid(items)}
   </section>`;

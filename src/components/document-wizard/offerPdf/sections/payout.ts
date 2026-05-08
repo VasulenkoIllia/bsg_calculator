@@ -101,13 +101,20 @@ export function buildPayoutSection(data: DocumentTemplatePayload, layout: Docume
 
   // Optional free-form note rendered under the table. Hidden if the
   // toggle is off or the text is empty.
-  const customNote =
+  const hasCustomNote =
     data.contractSummary.payoutCustomNoteEnabled &&
-    data.contractSummary.payoutCustomNoteText.trim().length > 0
-      ? `<p class="section-custom-note">${escapeHtml(data.contractSummary.payoutCustomNoteText)}</p>`
-      : "";
+    data.contractSummary.payoutCustomNoteText.trim().length > 0;
+  const customNote = hasCustomNote
+    ? `<p class="section-custom-note">${escapeHtml(data.contractSummary.payoutCustomNoteText)}</p>`
+    : "";
 
-  return `<section class="offer-section">
+  // Auto-compact when the table hits its worst case (3 tiered rows)
+  // or when the section already carries a custom note that adds
+  // vertical weight.
+  const isCompact = showTierColumn || hasCustomNote;
+  const sectionClass = `offer-section${isCompact ? " compact" : ""}`;
+
+  return `<section class="${sectionClass}">
     ${renderSectionHeader(2, "Card Acquiring — Pay Out / Push to Card", showTierColumn ? "VOLUME TIERED" : "FIXED RATE")}
     <table>
       <thead>

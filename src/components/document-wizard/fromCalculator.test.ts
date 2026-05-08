@@ -696,4 +696,78 @@ describe("buildOfferPdfHtml", () => {
       expect((html.match(/<p class="section-custom-note">/g) ?? []).length).toBe(2);
     });
   });
+
+  describe("auto-compact mode", () => {
+    it("payin tiered + both regions (6 rows) gets the compact class", () => {
+      const data = buildBaseTemplateData();
+      data.layout.payin.regionMode = "both";
+      data.layout.payin.tableMode = "byRegionTiered";
+      data.payinPricing.eu.rateMode = "tiered";
+      data.payinPricing.ww.rateMode = "tiered";
+
+      const html = buildOfferPdfHtml(data);
+      // Section 1 (Card Acquiring) wraps in offer-section compact
+      expect(html).toMatch(/<section class="offer-section compact">[\s\S]*Card Acquiring/);
+    });
+
+    it("payin single + one region (1 row) stays in normal mode", () => {
+      const data = buildBaseTemplateData();
+      data.layout.payin.regionMode = "euOnly";
+      data.layout.payin.tableMode = "byRegionFlat";
+      data.payinPricing.eu.rateMode = "single";
+
+      const html = buildOfferPdfHtml(data);
+      // No compact class on the Card Acquiring section
+      expect(html).toMatch(/<section class="offer-section">[\s\S]*Card Acquiring/);
+    });
+
+    it("payin tiered + one region + custom note triggers compact", () => {
+      const data = buildBaseTemplateData();
+      data.layout.payin.regionMode = "euOnly";
+      data.layout.payin.tableMode = "byRegionTiered";
+      data.payinPricing.eu.rateMode = "tiered";
+      data.contractSummary.payinCustomNoteEnabled = true;
+      data.contractSummary.payinCustomNoteText = "Note adds vertical weight.";
+
+      const html = buildOfferPdfHtml(data);
+      // 3 rows + custom note → compact threshold met
+      expect(html).toMatch(/<section class="offer-section compact">[\s\S]*Card Acquiring/);
+    });
+
+    it("payout tiered (3 rows) gets the compact class", () => {
+      const data = buildBaseTemplateData();
+      data.layout.payout.regionMode = "global";
+      data.layout.payout.tableMode = "globalTiered";
+      data.payoutPricing.rateMode = "tiered";
+
+      const html = buildOfferPdfHtml(data);
+      // Section 2 (Pay Out) compact
+      expect(html).toMatch(/<section class="offer-section compact">[\s\S]*Pay Out/);
+    });
+
+    it("payout single (1 row) stays in normal mode", () => {
+      const data = buildBaseTemplateData();
+      data.layout.payout.regionMode = "global";
+      data.layout.payout.tableMode = "globalFlat";
+      data.payoutPricing.rateMode = "single";
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).toMatch(/<section class="offer-section">[\s\S]*Pay Out/);
+    });
+
+    it("terms section becomes compact when total items >= 8", () => {
+      const data = buildBaseTemplateData();
+      // Built-in items: settlement, settlementNote, clientType,
+      // restrictedJurisdictions, collectionMin, collectionMax,
+      // payoutMin, rollingReserve = 8 items already with default data.
+      // Add a custom block to push past the threshold.
+      data.contractSummary.customTermsItems = [
+        { id: "x", label: "Custom 1", value: "Body 1", color: "blue" },
+        { id: "y", label: "Custom 2", value: "Body 2", color: "blue" }
+      ];
+
+      const html = buildOfferPdfHtml(data);
+      expect(html).toMatch(/<section class="offer-section compact">[\s\S]*Terms &amp; Limitations/);
+    });
+  });
 });
