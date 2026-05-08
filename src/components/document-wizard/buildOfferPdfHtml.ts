@@ -18,22 +18,33 @@ const OFFER_CONFIDENTIAL_TITLE = "CONFIDENTIAL · PAYMENT INFRASTRUCTURE";
 const OFFER_SUBTITLE =
   "Card Acquiring, Payout Infrastructure & Settlement Terms — structured for scale-up and enterprise merchants operating globally.";
 
-function buildOfferBody(data: DocumentTemplatePayload, layout: DocumentWizardLayout): string {
-  const sections: string[] = [];
+// Returns each top-level OFFER section (Card Acquiring / Pay Out /
+// Other Services & Fees / Terms & Limitations) as its own HTML
+// fragment. The orchestrator wraps each fragment in a separate
+// `<tr><td>` row inside `table.page-layout > tbody` so Chrome's
+// print engine has natural break points between rows — that is
+// what makes `<tfoot>` reliably repeat the disclaimer footer on
+// every page. With a single-row tbody Chrome was rendering the
+// footer only on the last page when content overflowed.
+function buildOfferBodyRows(
+  data: DocumentTemplatePayload,
+  layout: DocumentWizardLayout
+): string[] {
+  const rows: string[] = [];
 
   const payin = buildPayinSection(data, layout);
-  if (payin) sections.push(payin);
+  if (payin) rows.push(payin);
 
   const payout = buildPayoutSection(data, layout);
-  if (payout) sections.push(payout);
+  if (payout) rows.push(payout);
 
   const services = buildOtherServicesSection(data, layout);
-  if (services) sections.push(services);
+  if (services) rows.push(services);
 
   const terms = buildTermsSection(data, layout);
-  if (terms) sections.push(terms);
+  if (terms) rows.push(terms);
 
-  return sections.join("");
+  return rows;
 }
 
 // Pricing meta (Collection Model + Frequency) is shown for both scopes because
@@ -65,8 +76,14 @@ export function buildOfferPdfHtml(
   // for the bundle scope. There is no agreement-only output by product design.
   const includeAgreement = scope === "offerAndAgreement";
 
-  const offerBody = buildOfferBody(data, layout);
+  const offerSectionRows = buildOfferBodyRows(data, layout);
   const agreementBody = includeAgreement ? buildAgreementBodyHtml(data) : "";
+
+  // Wrap each top-level block in its own <tr><td>. Multiple TRs give
+  // Chrome's print engine the natural break points it needs to repeat
+  // the disclaimer footer (in <tfoot>) on every page.
+  const wrap = (innerHtml: string) =>
+    `<tr><td class="page-content-cell">${innerHtml}</td></tr>`;
 
   const showPricingMeta = shouldShowPricingMeta(scope);
   // Order: identification first (NUMBER, DATE, TYPE), then pricing meta
@@ -108,9 +125,7 @@ export function buildOfferPdfHtml(
       </tr>
     </tfoot>
     <tbody class="page-layout-body">
-      <tr>
-        <td class="page-content-cell">
-          <div class="sheet">
+      ${wrap(`<div class="sheet">
             <header class="offer-header">
               <div class="offer-top-line"></div>
               <p class="offer-eyebrow">${OFFER_CONFIDENTIAL_TITLE}</p>
@@ -119,12 +134,9 @@ export function buildOfferPdfHtml(
               <div class="meta-grid">${metaItems}</div>
               ${metaNote}
             </header>
-
-            ${offerBody}
-            ${agreementBody}
-          </div>
-        </td>
-      </tr>
+          </div>`)}
+      ${offerSectionRows.map(section => wrap(`<div class="sheet">${section}</div>`)).join("\n      ")}
+      ${agreementBody ? wrap(`<div class="sheet">${agreementBody}</div>`) : ""}
     </tbody>
   </table>
 </body>

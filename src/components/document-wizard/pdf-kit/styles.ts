@@ -75,6 +75,15 @@ table.page-layout > tfoot > tr > td.page-footer-cell {
   display: table-cell;
 }
 
+/* Explicit display roles for the page-layout table — these are the
+ * defaults but stating them here is defensive against vendor stylesheet
+ * regressions or future CSS resets that might change them. The single
+ * largest reason for a non-repeating tfoot in print is when one of
+ * these gets overridden somewhere up the cascade. */
+table.page-layout > thead { display: table-header-group; }
+table.page-layout > tbody { display: table-row-group; }
+table.page-layout > tfoot { display: table-footer-group; }
+
 .sheet {
   width: 100%;
   max-width: 100%;
