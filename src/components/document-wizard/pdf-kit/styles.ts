@@ -143,10 +143,11 @@ table.page-layout > tfoot { display: table-footer-group; }
 .meta-item {
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
-  /* Tightened ~20% on 2026-05-08 to free vertical space on page 1
-   * (paddings 8 -> 5, min-height 56 -> 44, value margin 4 -> 2). */
-  padding: 5px 9px;
-  min-height: 44px;
+  /* Tightened across two passes to free page-1 space for the
+   * section custom note. Min-height 56 -> 44 -> 38; vertical
+   * padding 8 -> 5 -> 4. */
+  padding: 4px 9px;
+  min-height: 38px;
   background: var(--paper);
 }
 
@@ -164,10 +165,11 @@ table.page-layout > tfoot { display: table-footer-group; }
 .meta-value {
   display: block;
   margin: 2px 0 0;
-  font-size: 11pt;
+  /* 11pt -> 10pt on 2026-05-08 to save ~6-8px across the meta grid. */
+  font-size: 10pt;
   font-weight: 700;
   color: var(--text-primary);
-  line-height: 1.25;
+  line-height: 1.2;
 }
 
 .meta-note {
@@ -208,15 +210,18 @@ table.page-layout > tfoot { display: table-footer-group; }
  * ──────────────────────────────────────────────────────────────── */
 .offer-section.compact th,
 .offer-section.compact td {
-  padding: 3px 6px;
+  /* Tightened on 2026-05-08 to ensure section 1 + section custom note
+   * always fit on page 1. Vertical padding 3 -> 2 saves ~12px across
+   * a 6-row tiered Card Acquiring; line-height 1.2 -> 1.15 adds ~6px. */
+  padding: 2px 6px;
   font-size: 8pt;
-  line-height: 1.2;
+  line-height: 1.15;
 }
 .offer-section.compact th {
   font-size: 6.5pt;
 }
 .offer-section.compact .cell-line {
-  line-height: 1.18;
+  line-height: 1.12;
 }
 .offer-section.compact .section-header {
   margin-bottom: 4px;
