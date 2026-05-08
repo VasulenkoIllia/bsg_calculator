@@ -91,12 +91,12 @@ table.page-layout > tfoot { display: table-footer-group; }
   padding-bottom: 2.8cm;
 }
 
-.offer-header { padding-bottom: 12px; }
+.offer-header { padding-bottom: 6px; }
 .offer-top-line {
-  height: 6px;
+  height: 4px;
   width: 100%;
   background: var(--accent);
-  margin-bottom: 14px;
+  margin-bottom: 8px;
 }
 
 .offer-eyebrow {
@@ -108,8 +108,10 @@ table.page-layout > tfoot { display: table-footer-group; }
 }
 
 .offer-title {
-  margin: 8px 0 0;
-  font-size: 36pt;
+  /* Title shrunk 36pt -> 30pt on 2026-05-08 to free ~16px on page 1
+   * for an extra 2 lines of section custom note. */
+  margin: 6px 0 0;
+  font-size: 30pt;
   line-height: 1;
   font-weight: 700;
   color: var(--text-primary);
@@ -118,14 +120,14 @@ table.page-layout > tfoot { display: table-footer-group; }
 .offer-title .accent { color: var(--accent); }
 
 .offer-subtitle {
-  margin: 10px 0 0;
+  margin: 6px 0 0;
   font-size: 10pt;
   line-height: 1.4;
   color: var(--text-muted);
 }
 
 .meta-grid {
-  margin: 10px 0 0;
+  margin: 8px 0 0;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0;
@@ -169,17 +171,17 @@ table.page-layout > tfoot { display: table-footer-group; }
 }
 
 .meta-note {
-  margin: 10px 0 0;
+  margin: 6px 0 0;
   background: #f5f6fb;
   border-left: 3px solid var(--accent);
   color: var(--text-muted);
-  padding: 6px 8px;
+  padding: 4px 8px;
   font-size: 8pt;
-  line-height: 1.4;
+  line-height: 1.35;
 }
 
 .offer-section {
-  margin-top: 20px;
+  margin-top: 14px;
   /* Keep each numbered pricing block intact across page breaks; push
    * whole sections to the next page rather than splitting them. */
   page-break-inside: avoid;
