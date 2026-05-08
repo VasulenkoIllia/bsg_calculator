@@ -116,7 +116,7 @@ table.page-layout > tfoot > tr > td.page-footer-cell {
 }
 
 .meta-grid {
-  margin: 14px 0 0;
+  margin: 10px 0 0;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0;
@@ -132,8 +132,10 @@ table.page-layout > tfoot > tr > td.page-footer-cell {
 .meta-item {
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
-  padding: 8px 10px;
-  min-height: 56px;
+  /* Tightened ~20% on 2026-05-08 to free vertical space on page 1
+   * (paddings 8 -> 5, min-height 56 -> 44, value margin 4 -> 2). */
+  padding: 5px 9px;
+  min-height: 44px;
   background: var(--paper);
 }
 
@@ -150,7 +152,7 @@ table.page-layout > tfoot > tr > td.page-footer-cell {
 
 .meta-value {
   display: block;
-  margin: 4px 0 0;
+  margin: 2px 0 0;
   font-size: 11pt;
   font-weight: 700;
   color: var(--text-primary);
