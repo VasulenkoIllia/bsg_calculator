@@ -9,8 +9,11 @@ import { OFFER_REFERENCE_TOKENS } from "./pdf-kit/tokens.js";
 import type { DocumentTemplatePayload, DocumentWizardLayout } from "./types.js";
 import { formatDisplayDate, resolveModelHeaderLabel } from "./offerPdf/formatters.js";
 import { resolveLayout } from "./offerPdf/layoutResolution.js";
-import { buildPayinSection } from "./offerPdf/sections/payin.js";
-import { buildPayoutSection } from "./offerPdf/sections/payout.js";
+import { buildPayinCustomNoteHtml, buildPayinSection } from "./offerPdf/sections/payin.js";
+import {
+  buildPayoutCustomNoteHtml,
+  buildPayoutSection
+} from "./offerPdf/sections/payout.js";
 import { buildOtherServicesSection } from "./offerPdf/sections/fees.js";
 import { buildTermsSection } from "./offerPdf/sections/terms.js";
 
@@ -34,9 +37,13 @@ function buildOfferBodyRows(
 
   const payin = buildPayinSection(data, layout);
   if (payin) rows.push(payin);
+  const payinNote = buildPayinCustomNoteHtml(data);
+  if (payinNote) rows.push(payinNote);
 
   const payout = buildPayoutSection(data, layout);
   if (payout) rows.push(payout);
+  const payoutNote = buildPayoutCustomNoteHtml(data);
+  if (payoutNote) rows.push(payoutNote);
 
   const services = buildOtherServicesSection(data, layout);
   if (services) rows.push(services);

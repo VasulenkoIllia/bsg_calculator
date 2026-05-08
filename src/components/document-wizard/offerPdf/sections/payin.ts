@@ -243,12 +243,13 @@ export function buildPayinSection(data: DocumentTemplatePayload, layout: Documen
   const isCompact = totalRows >= 4 || (totalRows >= 2 && hasCustomNote);
   const sectionClass = `offer-section${isCompact ? " compact" : ""}`;
 
-  // The custom note lives OUTSIDE the section so very long user input
-  // (e.g. a multi-paragraph footnote) can flow across pages without
-  // forcing the section's `page-break-inside: avoid` to be broken.
-  // Keeping the note inside the section was triggering a Chrome
-  // `<tfoot>` quirk where the per-page disclaimer footer disappeared
-  // on pages that contained a forced section break.
+  // The section returns ONLY the section element. The custom note (if
+  // any) is emitted by the orchestrator as a separate sibling so it
+  // can live in its own <tr> in the page-layout table — that lets
+  // Chrome break the (potentially long) note across pages without
+  // dragging the section's avoid-break rule down with it. See
+  // `buildPayinCustomNoteHtml` and `buildOfferBodyRows`.
+  void customNote;
   return `<section class="${sectionClass}">
     ${renderSectionHeader(1, "Card Acquiring — Credit / Debit Cards, APM & E-wallet", showTierColumn ? "VOLUME TIERED" : "FIXED RATE")}
     <table>
@@ -265,6 +266,16 @@ export function buildPayinSection(data: DocumentTemplatePayload, layout: Documen
       </thead>
       <tbody>${payinRows}</tbody>
     </table>
-  </section>
-  ${customNote}`;
+  </section>`;
+}
+
+// Returns the standalone <p class="section-custom-note"> for the
+// payin section, or an empty string when the toggle is off / text is
+// blank. The orchestrator wraps this in its own <tr> so the note's
+// flow does not interfere with the section's page-break behaviour.
+export function buildPayinCustomNoteHtml(data: DocumentTemplatePayload): string {
+  if (!data.contractSummary.payinCustomNoteEnabled) return "";
+  const text = data.contractSummary.payinCustomNoteText.trim();
+  if (text.length === 0) return "";
+  return `<p class="section-custom-note">${escapeHtml(data.contractSummary.payinCustomNoteText)}</p>`;
 }

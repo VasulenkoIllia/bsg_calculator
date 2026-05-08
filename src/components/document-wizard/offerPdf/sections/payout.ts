@@ -114,10 +114,11 @@ export function buildPayoutSection(data: DocumentTemplatePayload, layout: Docume
   const isCompact = showTierColumn || hasCustomNote;
   const sectionClass = `offer-section${isCompact ? " compact" : ""}`;
 
-  // Custom note rendered outside the section so long user text can
-  // wrap across pages without breaking the section's avoid rule and
-  // its per-page footer interaction (see payin.ts for the matching
-  // rationale).
+  // The section returns ONLY the section element. The custom note (if
+  // any) is emitted by the orchestrator as a separate sibling so it
+  // can live in its own <tr> (see payin.ts for the matching rationale
+  // and the per-page footer fix it enables).
+  void customNote;
   return `<section class="${sectionClass}">
     ${renderSectionHeader(2, "Card Acquiring — Pay Out / Push to Card", showTierColumn ? "VOLUME TIERED" : "FIXED RATE")}
     <table>
@@ -132,6 +133,15 @@ export function buildPayoutSection(data: DocumentTemplatePayload, layout: Docume
       </thead>
       <tbody>${buildPayoutRows(data, layout, showMinimumFeeColumn)}</tbody>
     </table>
-  </section>
-  ${customNote}`;
+  </section>`;
+}
+
+// Returns the standalone <p class="section-custom-note"> for the
+// payout section, or an empty string when the toggle is off / text is
+// blank.
+export function buildPayoutCustomNoteHtml(data: DocumentTemplatePayload): string {
+  if (!data.contractSummary.payoutCustomNoteEnabled) return "";
+  const text = data.contractSummary.payoutCustomNoteText.trim();
+  if (text.length === 0) return "";
+  return `<p class="section-custom-note">${escapeHtml(data.contractSummary.payoutCustomNoteText)}</p>`;
 }
