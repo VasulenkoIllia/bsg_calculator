@@ -114,6 +114,10 @@ export function buildPayoutSection(data: DocumentTemplatePayload, layout: Docume
   const isCompact = showTierColumn || hasCustomNote;
   const sectionClass = `offer-section${isCompact ? " compact" : ""}`;
 
+  // Custom note rendered outside the section so long user text can
+  // wrap across pages without breaking the section's avoid rule and
+  // its per-page footer interaction (see payin.ts for the matching
+  // rationale).
   return `<section class="${sectionClass}">
     ${renderSectionHeader(2, "Card Acquiring — Pay Out / Push to Card", showTierColumn ? "VOLUME TIERED" : "FIXED RATE")}
     <table>
@@ -128,6 +132,6 @@ export function buildPayoutSection(data: DocumentTemplatePayload, layout: Docume
       </thead>
       <tbody>${buildPayoutRows(data, layout, showMinimumFeeColumn)}</tbody>
     </table>
-    ${customNote}
-  </section>`;
+  </section>
+  ${customNote}`;
 }

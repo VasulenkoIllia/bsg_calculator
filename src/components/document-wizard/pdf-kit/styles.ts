@@ -476,16 +476,17 @@ tbody tr:nth-child(even) {
 }
 
 /* Free-form note rendered under the payin / payout pricing tables.
- * Toggled per section in the wizard; renders in muted gray and
- * preserves user line breaks via pre-wrap. */
+ * Lives OUTSIDE the corresponding section so a long note can flow
+ * across pages without invalidating the section's avoid-break rule.
+ * Renders in muted gray, preserves user line breaks via pre-wrap,
+ * and lets very long single-line text wrap on character boundaries. */
 .section-custom-note {
   margin: 8px 0 0;
   color: var(--text-light);
   font-size: 8pt;
   line-height: 1.4;
   white-space: pre-wrap;
-  page-break-inside: avoid;
-  break-inside: avoid;
+  word-break: break-word;
 }
 
 .print-footer {

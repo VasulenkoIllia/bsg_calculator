@@ -243,6 +243,12 @@ export function buildPayinSection(data: DocumentTemplatePayload, layout: Documen
   const isCompact = totalRows >= 4 || (totalRows >= 2 && hasCustomNote);
   const sectionClass = `offer-section${isCompact ? " compact" : ""}`;
 
+  // The custom note lives OUTSIDE the section so very long user input
+  // (e.g. a multi-paragraph footnote) can flow across pages without
+  // forcing the section's `page-break-inside: avoid` to be broken.
+  // Keeping the note inside the section was triggering a Chrome
+  // `<tfoot>` quirk where the per-page disclaimer footer disappeared
+  // on pages that contained a forced section break.
   return `<section class="${sectionClass}">
     ${renderSectionHeader(1, "Card Acquiring — Credit / Debit Cards, APM & E-wallet", showTierColumn ? "VOLUME TIERED" : "FIXED RATE")}
     <table>
@@ -259,6 +265,6 @@ export function buildPayinSection(data: DocumentTemplatePayload, layout: Documen
       </thead>
       <tbody>${payinRows}</tbody>
     </table>
-    ${customNote}
-  </section>`;
+  </section>
+  ${customNote}`;
 }
