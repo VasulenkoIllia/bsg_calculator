@@ -108,8 +108,7 @@ table.page-layout > tfoot { display: table-footer-group; }
 }
 
 .offer-title {
-  /* Title shrunk 36pt -> 30pt on 2026-05-08 to free ~16px on page 1
-   * for an extra 2 lines of section custom note. */
+  /* Calibrated to fit page 1 with header + first table + custom note + per-page footer. */
   margin: 6px 0 0;
   font-size: 30pt;
   line-height: 1;
@@ -143,9 +142,7 @@ table.page-layout > tfoot { display: table-footer-group; }
 .meta-item {
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
-  /* Tightened across two passes to free page-1 space for the
-   * section custom note. Min-height 56 -> 44 -> 38; vertical
-   * padding 8 -> 5 -> 4. */
+  /* Calibrated to fit page 1 with custom note + per-page footer. */
   padding: 4px 9px;
   min-height: 38px;
   background: var(--paper);
@@ -165,7 +162,6 @@ table.page-layout > tfoot { display: table-footer-group; }
 .meta-value {
   display: block;
   margin: 2px 0 0;
-  /* 11pt -> 10pt on 2026-05-08 to save ~6-8px across the meta grid. */
   font-size: 10pt;
   font-weight: 700;
   color: var(--text-primary);
@@ -210,9 +206,8 @@ table.page-layout > tfoot { display: table-footer-group; }
  * ──────────────────────────────────────────────────────────────── */
 .offer-section.compact th,
 .offer-section.compact td {
-  /* Tightened on 2026-05-08 to ensure section 1 + section custom note
-   * always fit on page 1. Vertical padding 3 -> 2 saves ~12px across
-   * a 6-row tiered Card Acquiring; line-height 1.2 -> 1.15 adds ~6px. */
+  /* Calibrated so a 6-row tiered Card Acquiring + a 5-line custom
+   * note fit on page 1 with the per-page disclaimer footer. */
   padding: 2px 6px;
   font-size: 8pt;
   line-height: 1.15;

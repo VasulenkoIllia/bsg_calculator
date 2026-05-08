@@ -1405,3 +1405,99 @@ Use this file to record meaningful technical decisions for the project.
     pages, adjust thresholds before reaching for any further
     structural changes (custom-note pre-wrap line counts,
     additional fee cards, MSA appendix start position).
+
+### Decision: Per-page footer via per-section <tr> + page-1 header trim
+- Date: 2026-05-08
+- Context:
+  - The per-page disclaimer footer (lives in the page-layout
+    table's <tfoot>) was disappearing on every page except the
+    last one, especially when a section custom note was very
+    long. Two findings drove the fix:
+    1. Chrome's <tfoot> repeat-per-page behaviour is reliable
+       only when the <tbody> contains multiple <tr> elements —
+       the engine uses <tr> boundaries as natural break points.
+       Wrapping the entire document in a single <tr><td> meant
+       Chrome rendered <tfoot> only at the end of the table.
+    2. Even with multiple TRs, a section that included its
+       custom note in the same row could overflow that single
+       row to a second page; the forced row break still
+       occasionally suppressed the per-page footer.
+  - Separately, page 1 needed extra vertical room so the
+    "header + first table + custom note + per-page footer"
+    requirement was always met. The 2026-05-08 trim was driven
+    by direct measurement against the worst-case full PDF.
+- Decision:
+  - **Multiple <tr> rows in <tbody>**. `buildOfferPdfHtml`
+    now wraps each top-level block (header, every OFFER section,
+    agreement body, each custom note) in its own
+    `<tr><td class="page-content-cell">…</td></tr>`. Chrome's
+    print engine sees natural break points and reliably repeats
+    `<tfoot>` on every page. Implemented via `wrap()` helper +
+    `buildOfferBodyRows()` returning `string[]` instead of one
+    concatenated string.
+  - **Custom notes are siblings, not descendants of sections**.
+    `buildPayinSection` / `buildPayoutSection` no longer emit
+    the custom note. Two new exports —
+    `buildPayinCustomNoteHtml(data)` and
+    `buildPayoutCustomNoteHtml(data)` — return the standalone
+    `<p class="section-custom-note">…</p>`. The orchestrator
+    pushes them as separate rows. Even a 200-line note can flow
+    across pages without dragging the section's avoid-break
+    rule.
+  - **`hasPayinCustomNote(data)` / `hasPayoutCustomNote(data)`
+    helpers** — the boolean drives both the auto-compact
+    heuristic in the section builder and the renderer in the
+    note-html builder, so the predicate has a single source of
+    truth.
+  - **Defensive explicit display rules** on the page-layout
+    table parts (`thead → table-header-group`, `tbody →
+    table-row-group`, `tfoot → table-footer-group`). These are
+    the defaults but stating them protects against future CSS
+    cascades that could clobber them.
+  - **Page-1 header / table trim**. Calibrated against worst-
+    case payload (tiered + both regions + custom note) so the
+    page-1 budget always covers header + section 1 + 5+ lines
+    of note + per-page footer. Specific changes:
+    - `offer-title` 36pt → 30pt; margin-top 8 → 6
+    - `offer-top-line` height 6 → 4; margin-bottom 14 → 8
+    - `offer-header` padding-bottom 12 → 6
+    - `offer-subtitle` margin-top 10 → 6
+    - `meta-item` padding 5 → 4 (vertical); min-height 56 → 44 → 38
+    - `meta-value` 11pt → 10pt; line-height 1.25 → 1.2
+    - `meta-grid` margin-top 14 → 8
+    - `meta-note` margin-top 10 → 6; padding 6 → 4; line-height 1.4 → 1.35
+    - `offer-section` margin-top 20 → 14
+    - `compact th/td` padding 3 → 2 (vertical); line-height 1.2 → 1.15
+    - `compact .cell-line` line-height 1.18 → 1.12
+- Alternatives considered:
+  - **`position: fixed; bottom: 0`** for the footer plus a
+    large `@page { margin-bottom }`. Rejected — earlier
+    iteration showed Chrome lets fixed elements overlap content
+    even when @page margin reserves space.
+  - **CSS `position: running()`** with `@bottom-center` margin
+    box. Rejected — Chrome support is partial; Firefox-only
+    feature for the multi-line disclaimer.
+  - **Manual "compact tables" toggle in the wizard**. Rejected
+    — adds cognitive load. The data-driven heuristic is
+    deterministic and predictable.
+- Consequences:
+  - 226/226 tests pass. The structural change is internal HTML
+    wrapping; existing assertions check class / text presence
+    and were unaffected.
+  - The OFFER PDF now reliably renders the per-page disclaimer
+    footer on every page in Chrome (and Puppeteer in Phase 8).
+  - Even a multi-page-tall custom note no longer hides the
+    footer on intermediate pages.
+  - Page-1 budget now fits 5+ lines of section custom note
+    alongside a worst-case Card Acquiring (6 tiered rows + both
+    regions) — verified against the 2026-05-08 stress-test PDF
+    set ("test test test…").
+- Follow-up actions:
+  - In the Phase 8 Puppeteer pipeline, prefer
+    `displayHeaderFooter: true` with `headerTemplate` /
+    `footerTemplate`. The HTML <tfoot> structure stays as a
+    fallback for the frontend preview path.
+  - If users start typing genuinely huge custom notes (10+
+    lines), revisit page-1 strategy — at some point the note
+    must overflow, and we may want a wizard hint about line
+    count budget.

@@ -99,26 +99,16 @@ export function buildPayoutSection(data: DocumentTemplatePayload, layout: Docume
   // "no data, no block" promise from the OFFER fidelity audit.
   const showMinimumFeeColumn = hasPayoutMinFeeContent(data);
 
-  // Optional free-form note rendered under the table. Hidden if the
-  // toggle is off or the text is empty.
-  const hasCustomNote =
-    data.contractSummary.payoutCustomNoteEnabled &&
-    data.contractSummary.payoutCustomNoteText.trim().length > 0;
-  const customNote = hasCustomNote
-    ? `<p class="section-custom-note">${escapeHtml(data.contractSummary.payoutCustomNoteText)}</p>`
-    : "";
-
   // Auto-compact when the table hits its worst case (3 tiered rows)
   // or when the section already carries a custom note that adds
-  // vertical weight.
-  const isCompact = showTierColumn || hasCustomNote;
+  // vertical weight to the same page.
+  const isCompact = showTierColumn || hasPayoutCustomNote(data);
   const sectionClass = `offer-section${isCompact ? " compact" : ""}`;
 
   // The section returns ONLY the section element. The custom note (if
   // any) is emitted by the orchestrator as a separate sibling so it
   // can live in its own <tr> (see payin.ts for the matching rationale
   // and the per-page footer fix it enables).
-  void customNote;
   return `<section class="${sectionClass}">
     ${renderSectionHeader(2, "Card Acquiring — Pay Out / Push to Card", showTierColumn ? "VOLUME TIERED" : "FIXED RATE")}
     <table>
@@ -136,12 +126,20 @@ export function buildPayoutSection(data: DocumentTemplatePayload, layout: Docume
   </section>`;
 }
 
+// Single source of truth for "is the payout section custom note
+// active?". Used by the auto-compact heuristic in buildPayoutSection
+// and by the renderer below.
+export function hasPayoutCustomNote(data: DocumentTemplatePayload): boolean {
+  return (
+    data.contractSummary.payoutCustomNoteEnabled &&
+    data.contractSummary.payoutCustomNoteText.trim().length > 0
+  );
+}
+
 // Returns the standalone <p class="section-custom-note"> for the
 // payout section, or an empty string when the toggle is off / text is
 // blank.
 export function buildPayoutCustomNoteHtml(data: DocumentTemplatePayload): string {
-  if (!data.contractSummary.payoutCustomNoteEnabled) return "";
-  const text = data.contractSummary.payoutCustomNoteText.trim();
-  if (text.length === 0) return "";
+  if (!hasPayoutCustomNote(data)) return "";
   return `<p class="section-custom-note">${escapeHtml(data.contractSummary.payoutCustomNoteText)}</p>`;
 }

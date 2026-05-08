@@ -40,6 +40,8 @@ The OFFER and AGREEMENT share the same Sections 1–4 layout. AGREEMENT adds the
 6. Followed by amber/blue note: `All fees are collected on a daily basis unless otherwise instructed in writing. Rates are subject to applicable interchange and scheme fees under the IC++ model unless otherwise instructed in writing.`
 7. Sections 1–4 with numeric badges and right-aligned variant tag.
 8. **Per-page footer** (repeated on every printed page via `<table class="page-layout">` + `<tfoot>`): full confidentiality notice + meta line `CONFIDENTIAL · BSG-XXXXX`. Page counter (`Page N of M`) lives in the `@page { @bottom-right }` margin box because `counter(page)` inside `<tfoot>` evaluates to 0 in Chrome (Chromium issue 678485).
+   - Each top-level OFFER block (header / sections 1–4 / agreement / per-section custom note) is wrapped in **its own `<tr><td>` row** inside `<tbody>` so Chrome's print engine has reliable break points. A single-row `<tbody>` made the per-page footer disappear when content overflowed across pages.
+   - Custom notes are emitted as **siblings of the corresponding section**, not children. Each note lives in its own `<tr>` so a long note can flow across pages without dragging the section's `page-break-inside: avoid` rule down with it.
 
 ### 3.1 Colour scheme (2026-05-07)
 
@@ -283,8 +285,11 @@ A grouped list of discrepancies between the current OFFER renderer and the 8 sam
 OFFER renderer layout:
 - `src/components/document-wizard/buildOfferPdfHtml.ts` — orchestrator.
   Wraps content in `<table class="page-layout">` with the disclaimer
-  footer in `<tfoot>` so Chrome repeats the footer on every printed
-  page (no overlap).
+  footer in `<tfoot>`. Each top-level block (header / OFFER section /
+  agreement body / per-section custom note) lives in its own
+  `<tr><td>` row inside `<tbody>` via the `wrap()` helper +
+  `buildOfferBodyRows()` — that layout is what makes Chrome reliably
+  repeat the footer on every printed page.
 - `src/components/document-wizard/offerPdf/formatters.ts` — money /
   percent (`#.##%`) / date helpers + `resolveModeValue` for
   Number / N/A / TBD / Waived sentinels.
@@ -294,9 +299,11 @@ OFFER renderer layout:
   `tierColorClass(index)` used by both payin + payout tiered
   renderers.
 - `src/components/document-wizard/offerPdf/sections/{payin,payout,fees,terms}.ts`
-  — per-section builders. Payin / Payout now also append per-section
-  custom notes; Terms appends the user's `customTermsItems` after the
-  built-in rows.
+  — per-section builders. `payin.ts` / `payout.ts` also expose
+  `hasPayin/PayoutCustomNote(data)` predicates and
+  `buildPayin/PayoutCustomNoteHtml(data)` renderers so the orchestrator
+  can place each note in its own `<tr>`. `terms.ts` appends the user's
+  `customTermsItems` after the built-in rows in the same terms grid.
 - `src/components/document-wizard/pdf-kit/` — visual primitives + style
   tokens. CSS in `pdf-kit/styles.ts` defines `--label-color`,
   `tier-color-{1,2,3}`, `value-na`, `cell-subtitle`,

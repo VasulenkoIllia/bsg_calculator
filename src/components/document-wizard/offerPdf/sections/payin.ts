@@ -224,15 +224,6 @@ export function buildPayinSection(data: DocumentTemplatePayload, layout: Documen
 
   const payinRows = buildPayinRows(data, layout, showMinFeeColumn);
 
-  // Optional free-form note rendered under the table. Hidden if the
-  // toggle is off or the text is empty.
-  const hasCustomNote =
-    data.contractSummary.payinCustomNoteEnabled &&
-    data.contractSummary.payinCustomNoteText.trim().length > 0;
-  const customNote = hasCustomNote
-    ? `<p class="section-custom-note">${escapeHtml(data.contractSummary.payinCustomNoteText)}</p>`
-    : "";
-
   // Auto-compact heuristic. Total row count drives whether the
   // section gets the `.compact` class (smaller padding + font in
   // CSS). Calibrated so the worst-case fill (6 rows: tiered + both
@@ -240,7 +231,7 @@ export function buildPayinSection(data: DocumentTemplatePayload, layout: Documen
   // and the page-repeating footer reservation.
   const regions = resolvePayinRegionContexts(data, layout);
   const totalRows = regions.length * (showTierColumn ? 3 : 1);
-  const isCompact = totalRows >= 4 || (totalRows >= 2 && hasCustomNote);
+  const isCompact = totalRows >= 4 || (totalRows >= 2 && hasPayinCustomNote(data));
   const sectionClass = `offer-section${isCompact ? " compact" : ""}`;
 
   // The section returns ONLY the section element. The custom note (if
@@ -248,8 +239,7 @@ export function buildPayinSection(data: DocumentTemplatePayload, layout: Documen
   // can live in its own <tr> in the page-layout table — that lets
   // Chrome break the (potentially long) note across pages without
   // dragging the section's avoid-break rule down with it. See
-  // `buildPayinCustomNoteHtml` and `buildOfferBodyRows`.
-  void customNote;
+  // buildPayinCustomNoteHtml and buildOfferBodyRows.
   return `<section class="${sectionClass}">
     ${renderSectionHeader(1, "Card Acquiring — Credit / Debit Cards, APM & E-wallet", showTierColumn ? "VOLUME TIERED" : "FIXED RATE")}
     <table>
@@ -269,13 +259,21 @@ export function buildPayinSection(data: DocumentTemplatePayload, layout: Documen
   </section>`;
 }
 
+// Single source of truth for "is the payin section custom note
+// active?". Used by the auto-compact heuristic in buildPayinSection
+// and by the renderer below.
+export function hasPayinCustomNote(data: DocumentTemplatePayload): boolean {
+  return (
+    data.contractSummary.payinCustomNoteEnabled &&
+    data.contractSummary.payinCustomNoteText.trim().length > 0
+  );
+}
+
 // Returns the standalone <p class="section-custom-note"> for the
 // payin section, or an empty string when the toggle is off / text is
 // blank. The orchestrator wraps this in its own <tr> so the note's
 // flow does not interfere with the section's page-break behaviour.
 export function buildPayinCustomNoteHtml(data: DocumentTemplatePayload): string {
-  if (!data.contractSummary.payinCustomNoteEnabled) return "";
-  const text = data.contractSummary.payinCustomNoteText.trim();
-  if (text.length === 0) return "";
+  if (!hasPayinCustomNote(data)) return "";
   return `<p class="section-custom-note">${escapeHtml(data.contractSummary.payinCustomNoteText)}</p>`;
 }
