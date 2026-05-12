@@ -239,10 +239,10 @@ export function Zone4RevenueAffectingFees({
                 <span className="field-label">Charging Mode</span>
                 <div className="flex flex-wrap gap-2">
                   <MiniToggle
-                    label="Over Limit Only"
+                    label="Under Limit Only"
                     selected={failedTrxMode === "overLimitOnly"}
                     onSelect={() => setFailedTrxMode("overLimitOnly")}
-                    ariaLabel="Failed TRX over limit only"
+                    ariaLabel="Failed TRX under limit only"
                   />
                   <MiniToggle
                     label="All Failed Volume"
@@ -254,7 +254,7 @@ export function Zone4RevenueAffectingFees({
               </div>
               {failedTrxMode === "overLimitOnly" ? (
                 <NumberField
-                  label="Over Limit Threshold (%)"
+                  label="Under Limit Threshold (%)"
                   value={failedTrxOverLimitThresholdPercent}
                   onChange={value =>
                     setFailedTrxOverLimitThresholdPercent(
@@ -418,7 +418,7 @@ export function Zone4RevenueAffectingFees({
         ) : null}
         {calculatorType.payin && failedTrxMode === "overLimitOnly" && failedTrxEnabled ? (
           <p className="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-            Over Limit Only is informational and does not affect profitability totals.
+            Under Limit Only is informational and does not affect profitability totals.
           </p>
         ) : null}
         </div>

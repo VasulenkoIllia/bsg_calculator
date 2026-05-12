@@ -89,7 +89,7 @@ function buildOtherServicesCards(data: DocumentTemplatePayload, layout: Document
       value:
         data.toggles.failedTrxMode === "allFailedVolume"
           ? "All failed volume"
-          : `Over limit only (${formatPercent(data.toggles.failedTrxOverLimitThresholdPercent)})`
+          : `Under limit only (${formatPercent(data.toggles.failedTrxOverLimitThresholdPercent)})`
       // No subtitle — the "Calculator mode" hint was removed by request
       // because the card already conveys the mode through its value.
     });

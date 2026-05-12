@@ -167,7 +167,7 @@ export function OtherFeesStep({
               <span className="field-label">Charging Mode</span>
               <div className="flex flex-wrap gap-2">
                 <MiniToggle
-                  label="Over limit only"
+                  label="Under limit only"
                   selected={draft.toggles.failedTrxMode === "overLimitOnly"}
                   onSelect={() => updateToggles({ failedTrxMode: "overLimitOnly" })}
                   ariaLabel="Failed trx mode over limit only"
@@ -181,7 +181,7 @@ export function OtherFeesStep({
               </div>
             </div>
             <NumberField
-              label="Over Limit Threshold (%)"
+              label="Under Limit Threshold (%)"
               value={draft.toggles.failedTrxOverLimitThresholdPercent}
               onChange={value => updateToggles({ failedTrxOverLimitThresholdPercent: value })}
               min={0}

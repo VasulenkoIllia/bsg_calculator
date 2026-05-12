@@ -274,7 +274,7 @@ describe("buildOfferPdfHtml", () => {
 
     const html = buildOfferPdfHtml(data);
     expect(html).toContain("FAILED TRX CHARGING");
-    expect(html).toContain("Over limit only (70.00%)");
+    expect(html).toContain("Under limit only (70.00%)");
   });
 
   it("renders payout minimum fee in section 2 when enabled", () => {

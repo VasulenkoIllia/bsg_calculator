@@ -249,7 +249,7 @@ function buildAdditionalFeesLines(input: OfferSummaryInput): string[] {
       lines.push("Failed TRX: All failed volume charged");
     } else {
       lines.push(
-        `Failed TRX: Over limit only (threshold ${formatPercent(
+        `Failed TRX: Under limit only (threshold ${formatPercent(
           input.failedTrxOverLimitThresholdPercent,
           0
         )})`
