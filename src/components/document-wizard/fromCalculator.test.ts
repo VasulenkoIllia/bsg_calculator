@@ -132,7 +132,7 @@ describe("buildOfferPdfHtml", () => {
         apmPercent: 10
       },
       contractSummary: {
-        settlementPeriod: "T+2",
+        settlementPeriod: "T+3",
         collectionLimitMin: 1,
         collectionLimitMax: 2500,
         payoutLimitMin: 60,
@@ -632,9 +632,9 @@ describe("buildOfferPdfHtml", () => {
 
       const html = buildOfferPdfHtml(data);
       expect(html).toContain("Settlement");
-      expect(html).toContain("Daily, T+2");
+      expect(html).toContain("Daily, T+3");
       // Built-in row carries plain `terms-value` class only.
-      expect(html).toMatch(/<span class="terms-value">Daily, T\+2</);
+      expect(html).toMatch(/<span class="terms-value">Daily, T\+3</);
     });
   });
 

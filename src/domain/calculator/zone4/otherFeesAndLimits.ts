@@ -161,7 +161,7 @@ export const DEFAULT_CONTRACT_SUMMARY_SETTINGS: ContractSummarySettings = {
   accountSetupFee: 0,
   refundCost: 15,
   disputeCost: 75,
-  settlementPeriod: "T+2",
+  settlementPeriod: "T+3",
   payoutMinimumFeeMode: "overall",
   payoutMinimumFeeThresholdMillion: 2.5,
   payoutMinimumFeePerTransaction: 1,
