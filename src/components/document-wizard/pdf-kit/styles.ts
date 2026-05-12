@@ -84,6 +84,18 @@ table.page-layout > thead { display: table-header-group; }
 table.page-layout > tbody { display: table-row-group; }
 table.page-layout > tfoot { display: table-footer-group; }
 
+/* Forces the matching <tr> to start on a new printed page. Applied
+ * to section-2 (Pay Out) when section-1 (Card Acquiring) is heavy
+ * (tiered + both regions = 6 rows), so layout reads as:
+ *   page 1 → header + section 1 + payin custom note
+ *   page 2 → section 2 + payout custom note + section 3 + section 4
+ * When section 1 is light (non-tiered) the orchestrator does not add
+ * this class and sections 1 + 2 share page 1 naturally. */
+table.page-layout > tbody > tr.force-page-break-before {
+  page-break-before: always;
+  break-before: page;
+}
+
 .sheet {
   width: 100%;
   max-width: 100%;
@@ -108,9 +120,10 @@ table.page-layout > tfoot { display: table-footer-group; }
 }
 
 .offer-title {
-  /* Calibrated to fit page 1 with header + first table + custom note + per-page footer. */
+  /* Slightly trimmed vs. design-original 36pt to keep page-1 budget
+   * comfortable for tiered offers; still the dominant element. */
   margin: 6px 0 0;
-  font-size: 30pt;
+  font-size: 32pt;
   line-height: 1;
   font-weight: 700;
   color: var(--text-primary);
@@ -142,9 +155,8 @@ table.page-layout > tfoot { display: table-footer-group; }
 .meta-item {
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
-  /* Calibrated to fit page 1 with custom note + per-page footer. */
-  padding: 4px 9px;
-  min-height: 38px;
+  padding: 5px 9px;
+  min-height: 42px;
   background: var(--paper);
 }
 
@@ -169,17 +181,17 @@ table.page-layout > tfoot { display: table-footer-group; }
 }
 
 .meta-note {
-  margin: 6px 0 0;
+  margin: 8px 0 0;
   background: #f5f6fb;
   border-left: 3px solid var(--accent);
   color: var(--text-muted);
-  padding: 4px 8px;
+  padding: 5px 8px;
   font-size: 8pt;
-  line-height: 1.35;
+  line-height: 1.4;
 }
 
 .offer-section {
-  margin-top: 14px;
+  margin-top: 16px;
   /* Keep each numbered pricing block intact across page breaks; push
    * whole sections to the next page rather than splitting them. */
   page-break-inside: avoid;
@@ -206,17 +218,20 @@ table.page-layout > tfoot { display: table-footer-group; }
  * ──────────────────────────────────────────────────────────────── */
 .offer-section.compact th,
 .offer-section.compact td {
-  /* Calibrated so a 6-row tiered Card Acquiring + a 5-line custom
-   * note fit on page 1 with the per-page disclaimer footer. */
-  padding: 2px 6px;
-  font-size: 8pt;
-  line-height: 1.15;
+  /* Compact preset for tall sections (e.g. 6-row tiered Card
+   * Acquiring). Calibrated for visual comfort — readable but ~15%
+   * tighter than the default. Section 2 onwards naturally flows to
+   * the next page; we do not over-compress to squeeze everything
+   * onto page 1. */
+  padding: 3px 7px;
+  font-size: 8.5pt;
+  line-height: 1.22;
 }
 .offer-section.compact th {
-  font-size: 6.5pt;
+  font-size: 7pt;
 }
 .offer-section.compact .cell-line {
-  line-height: 1.12;
+  line-height: 1.2;
 }
 .offer-section.compact .section-header {
   margin-bottom: 4px;

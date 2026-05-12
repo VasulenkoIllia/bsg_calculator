@@ -1501,3 +1501,59 @@ Use this file to record meaningful technical decisions for the project.
     lines), revisit page-1 strategy — at some point the note
     must overflow, and we may want a wizard hint about line
     count budget.
+
+### Decision: Relax compact preset + heavy-section page-break rule
+- Date: 2026-05-08 (second pass)
+- Context:
+  - The compact preset and page-1 trim from the first 2026-05-08
+    pass got the per-page footer working and made everything fit,
+    but the result felt over-compressed — rows looked cramped and
+    the meta-grid lost too much breathing room. Product wants:
+    - Tiered payin (6 rows, both regions): page 1 holds *only*
+      the header + section 1 + payin custom note; section 2 lands
+      on page 2.
+    - Non-tiered payin (compact natural section): page 1 holds
+      sections 1 + 2 (+ their notes); sections 3 + 4 land on page 2.
+- Decision:
+  - **Compact preset relaxed**:
+    - `.compact th/td` padding 2x6 → 3x7; font 8pt → 8.5pt;
+      line-height 1.15 → 1.22
+    - `.compact th` font 6.5pt → 7pt
+    - `.compact .cell-line` line-height 1.12 → 1.2
+  - **Header / meta relaxed**:
+    - `.offer-title` 30pt → 32pt
+    - `.meta-item` padding 4x9 → 5x9; min-height 38 → 42
+    - `.meta-note` margin-top 6 → 8; padding 4 → 5; line-height
+      1.35 → 1.4
+    - `.offer-section` margin-top 14 → 16
+  - **Forced page break for heavy payin**: orchestrator emits
+    the `force-page-break-before` class on the `<tr>` that holds
+    the Pay Out section when
+    `layout.payin.tableMode === "byRegionTiered"` (the only "6
+    rows" case). Light payin → no extra break, sections 1 + 2
+    share page 1 naturally.
+  - `buildOfferBodyRows` return type changed from `string[]` to
+    `OfferBodyRow[]` (`{ html, breakBefore? }`) so the
+    orchestrator can mark individual rows for forced breaks
+    without leaking the rule into per-section builders.
+- Alternatives considered:
+  - Force the break on the payin **custom note** TR instead of
+    the payout TR. Rejected — break-after on the last "page 1"
+    element is less reliable than break-before on the first
+    "page 2" element across browsers.
+  - Detect payin heaviness inside the section builder and emit
+    the break-before from there. Rejected — that couples a
+    layout (multi-row inter-section) concern into the per-
+    section renderer.
+- Consequences:
+  - Compact tables still ~15% tighter than default but no longer
+    feel airless. Meta grid breathes again.
+  - 228/228 tests pass (+2 covering both heavy-payin and
+    light-payin paths).
+  - Tiered offer reads cleanly: page 1 ends with section 1 +
+    note; page 2 starts with section 2.
+  - Non-tiered offer keeps sections 1 + 2 on page 1 as before.
+- Follow-up actions:
+  - If product adds a 5th section in the future, consider
+    promoting the page-break rule into a small policy module so
+    new sections can opt in.

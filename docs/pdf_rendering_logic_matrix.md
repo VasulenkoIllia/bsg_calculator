@@ -73,7 +73,21 @@ Flag wins over the value; the user toggles flags via `FeeFieldWithNa` (boolean) 
 
 `payinPricing.eu` is data-key only — the user-facing label is `EEA + UK` (changed from `EU` on 2026-05-07). Lives in `wizard/shared.tsx:PAYIN_REGION_LABELS` and the OFFER renderer's `payinRegionContexts`.
 
-### 3.4 Auto-compact mode (added 2026-05-08)
+### 3.4 Page-budget strategy
+
+Page 1 is laid out around the payin section's "weight":
+
+| `layout.payin.tableMode` | Effective rows | Page-1 content | Page break |
+|---|---|---|---|
+| `byRegionTiered` | 6 (tiered, both regions) | header + section 1 + payin custom note | **forced** before Pay Out (`<tr class="force-page-break-before">`) |
+| `byRegionFlat` | 2 | header + section 1 + (optional note) + section 2 + (optional note) | natural |
+| `flatTiered` | 3 (tiered, one region) | header + section 1 + (optional note) + section 2 | natural |
+| `flatSingle` | 1 | header + sections 1 + 2 (+ notes) | natural |
+
+The forced break for heavy payin keeps the compact preset honest:
+section 1 fills page 1 comfortably, section 2 starts fresh on page 2.
+
+### 3.5 Auto-compact mode (added 2026-05-08)
 
 Each `<section class="offer-section">` carries an optional `compact`
 modifier class. CSS in `pdf-kit/styles.ts` shrinks padding, font

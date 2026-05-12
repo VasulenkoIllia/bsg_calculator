@@ -21,35 +21,50 @@ const OFFER_CONFIDENTIAL_TITLE = "CONFIDENTIAL · PAYMENT INFRASTRUCTURE";
 const OFFER_SUBTITLE =
   "Card Acquiring, Payout Infrastructure & Settlement Terms — structured for scale-up and enterprise merchants operating globally.";
 
+// One body row to be wrapped by the orchestrator. `breakBefore: true`
+// makes the row start on a new printed page (force-page-break-before
+// CSS class). Used to push the Pay Out section onto page 2 when the
+// Card Acquiring section is heavy (tiered + both regions).
+interface OfferBodyRow {
+  html: string;
+  breakBefore?: boolean;
+}
+
 // Returns each top-level OFFER section (Card Acquiring / Pay Out /
-// Other Services & Fees / Terms & Limitations) as its own HTML
-// fragment. The orchestrator wraps each fragment in a separate
-// `<tr><td>` row inside `table.page-layout > tbody` so Chrome's
-// print engine has natural break points between rows — that is
-// what makes `<tfoot>` reliably repeat the disclaimer footer on
-// every page. With a single-row tbody Chrome was rendering the
-// footer only on the last page when content overflowed.
+// Other Services & Fees / Terms & Limitations) as its own row. The
+// orchestrator wraps each row in a separate `<tr><td>` inside
+// `table.page-layout > tbody` so Chrome's print engine has natural
+// break points between rows — that is what makes `<tfoot>` reliably
+// repeat the disclaimer footer on every page.
+//
+// Page-budget rule (2026-05-08): when the Card Acquiring section is
+// heavy (`tableMode === "byRegionTiered"` → 6 rows), section 2 (Pay
+// Out) is forced onto page 2 so page 1 keeps a comfortable
+// "header + section 1 + payin custom note + per-page footer" layout.
+// When section 1 is light, no force-break: sections 1 + 2 share page
+// 1 naturally.
 function buildOfferBodyRows(
   data: DocumentTemplatePayload,
   layout: DocumentWizardLayout
-): string[] {
-  const rows: string[] = [];
+): OfferBodyRow[] {
+  const rows: OfferBodyRow[] = [];
+  const payinIsHeavy = layout.payin.tableMode === "byRegionTiered";
 
   const payin = buildPayinSection(data, layout);
-  if (payin) rows.push(payin);
+  if (payin) rows.push({ html: payin });
   const payinNote = buildPayinCustomNoteHtml(data);
-  if (payinNote) rows.push(payinNote);
+  if (payinNote) rows.push({ html: payinNote });
 
   const payout = buildPayoutSection(data, layout);
-  if (payout) rows.push(payout);
+  if (payout) rows.push({ html: payout, breakBefore: payinIsHeavy });
   const payoutNote = buildPayoutCustomNoteHtml(data);
-  if (payoutNote) rows.push(payoutNote);
+  if (payoutNote) rows.push({ html: payoutNote });
 
   const services = buildOtherServicesSection(data, layout);
-  if (services) rows.push(services);
+  if (services) rows.push({ html: services });
 
   const terms = buildTermsSection(data, layout);
-  if (terms) rows.push(terms);
+  if (terms) rows.push({ html: terms });
 
   return rows;
 }
@@ -88,9 +103,13 @@ export function buildOfferPdfHtml(
 
   // Wrap each top-level block in its own <tr><td>. Multiple TRs give
   // Chrome's print engine the natural break points it needs to repeat
-  // the disclaimer footer (in <tfoot>) on every page.
-  const wrap = (innerHtml: string) =>
-    `<tr><td class="page-content-cell">${innerHtml}</td></tr>`;
+  // the disclaimer footer (in <tfoot>) on every page. When the row
+  // has `breakBefore`, the TR carries the `force-page-break-before`
+  // class so it starts on a fresh page.
+  const wrap = (innerHtml: string, opts: { breakBefore?: boolean } = {}) => {
+    const trClass = opts.breakBefore ? ' class="force-page-break-before"' : "";
+    return `<tr${trClass}><td class="page-content-cell">${innerHtml}</td></tr>`;
+  };
 
   const showPricingMeta = shouldShowPricingMeta(scope);
   // Order: identification first (NUMBER, DATE, TYPE), then pricing meta
@@ -142,7 +161,9 @@ export function buildOfferPdfHtml(
               ${metaNote}
             </header>
           </div>`)}
-      ${offerSectionRows.map(section => wrap(`<div class="sheet">${section}</div>`)).join("\n      ")}
+      ${offerSectionRows
+        .map(row => wrap(`<div class="sheet">${row.html}</div>`, { breakBefore: row.breakBefore }))
+        .join("\n      ")}
       ${agreementBody ? wrap(`<div class="sheet">${agreementBody}</div>`) : ""}
     </tbody>
   </table>

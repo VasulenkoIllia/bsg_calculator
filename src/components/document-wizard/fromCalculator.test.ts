@@ -755,6 +755,39 @@ describe("buildOfferPdfHtml", () => {
       expect(html).toMatch(/<section class="offer-section">[\s\S]*Pay Out/);
     });
 
+    it("Pay Out row carries force-page-break-before when payin is heavy (tiered + both regions)", () => {
+      const data = buildBaseTemplateData();
+      data.layout.payin.regionMode = "both";
+      data.layout.payin.tableMode = "byRegionTiered";
+      data.payinPricing.eu.rateMode = "tiered";
+      data.payinPricing.ww.rateMode = "tiered";
+      data.layout.payout.regionMode = "global";
+      data.layout.payout.tableMode = "globalFlat";
+
+      const html = buildOfferPdfHtml(data);
+      // The TR that contains the Pay Out section carries the
+      // force-page-break-before class so section 2 starts on page 2.
+      expect(html).toMatch(
+        /<tr class="force-page-break-before"><td class="page-content-cell">[\s\S]*Pay Out/
+      );
+    });
+
+    it("Pay Out row stays in normal flow when payin is light (non-tiered or one region)", () => {
+      const data = buildBaseTemplateData();
+      data.layout.payin.regionMode = "euOnly";
+      data.layout.payin.tableMode = "byRegionFlat";
+      data.payinPricing.eu.rateMode = "single";
+      data.layout.payout.regionMode = "global";
+      data.layout.payout.tableMode = "globalFlat";
+
+      const html = buildOfferPdfHtml(data);
+      // No force-page-break class on the Pay Out row when payin is
+      // single-region / non-tiered.
+      expect(html).not.toMatch(
+        /<tr class="force-page-break-before"><td class="page-content-cell">[\s\S]*Pay Out/
+      );
+    });
+
     it("terms section becomes compact when total items >= 8", () => {
       const data = buildBaseTemplateData();
       // Built-in items: settlement, settlementNote, clientType,
