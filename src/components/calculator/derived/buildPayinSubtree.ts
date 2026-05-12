@@ -1,10 +1,12 @@
 import {
   DEFAULT_3DS_FEE_CONFIG,
+  DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT,
   DEFAULT_PROVIDER_PAYIN_TRX_APM_COST,
   DEFAULT_PROVIDER_PAYIN_TRX_CC_COST,
   formatAmount2,
   formatAmountInteger,
   formatVariableAmount,
+  resolveDedicatedCountriesShare,
   type CalculatorTypeSelection,
   type PayinRegionPricingConfig,
   type PayinRegionPricingPreview,
@@ -83,13 +85,37 @@ function buildPayinCostChildren(
 
   if (!isBlended) return children;
 
+  // Scheme fees formula display. When Dedicated Countries is OFF (or
+  // the combined UK+CH share is 0), the formula is the original
+  // `volume × schemeFeesPercent%`. When ON with a non-zero share, the
+  // EU volume is split — show both parts so the displayed math matches
+  // the actually-computed cost in `regionProfitability.costs.schemeFees`.
+  // The share resolution uses the same helper as the math layer
+  // (`resolveDedicatedCountriesShare` from zone3) so display and value
+  // can never drift apart.
+  const dedicatedShare = resolveDedicatedCountriesShare(pricing.dedicatedCountries);
+  const schemeFeesFormula =
+    dedicatedShare > 0
+      ? (() => {
+          const standardVolume = volume * (1 - dedicatedShare);
+          const dedicatedVolume = volume * dedicatedShare;
+          return (
+            `Standard ${formatAmountInteger(standardVolume)} × ` +
+            `${formatInputNumber(pricing.schemeFeesPercent)}% + ` +
+            `Dedicated UK+CH ${formatAmountInteger(dedicatedVolume)} × ` +
+            `${formatInputNumber(DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT)}% = ` +
+            `${formatAmount2(regionProfitability.costs.schemeFees)}`
+          );
+        })()
+      : `${formatAmountInteger(volume)} × ${formatInputNumber(
+          pricing.schemeFeesPercent
+        )}% = ${formatAmount2(regionProfitability.costs.schemeFees)}`;
+
   children.push({
     id: `unified-payin-${regionKey}-scheme-fees`,
     label: `Scheme Fees (${regionLabel}, Blended)`,
     value: -regionProfitability.costs.schemeFees,
-    formula: `${formatAmountInteger(volume)} × ${formatInputNumber(
-      pricing.schemeFeesPercent
-    )}% = ${formatAmount2(regionProfitability.costs.schemeFees)}`
+    formula: schemeFeesFormula
   });
 
   return children;
