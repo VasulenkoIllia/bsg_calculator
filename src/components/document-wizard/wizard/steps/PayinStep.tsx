@@ -133,6 +133,13 @@ function PayinRegionEditor({
               CH share. The dedicated portion is charged at a fixed 1.30%.
             </p>
             {pricing.dedicatedCountries?.enabled ? (
+              // Precondition: `dedicatedCountries` is non-null on `current`
+              // here, because this branch only renders when the outer
+              // `pricing.dedicatedCountries?.enabled` is true and the
+              // checkbox handler always seeds the block before flipping
+              // `enabled` to true. The non-null assertions below encode
+              // that precondition for TS without introducing a misleading
+              // synthetic fallback object.
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 <NumberField
                   label="UK %"
@@ -141,12 +148,7 @@ function PayinRegionEditor({
                     updatePricing(current => ({
                       ...current,
                       dedicatedCountries: {
-                        // Spread is safe because `enabled` is true → block exists.
-                        ...(current.dedicatedCountries ?? {
-                          enabled: true,
-                          ukPercent: 0,
-                          chPercent: 0
-                        }),
+                        ...current.dedicatedCountries!,
                         ukPercent: Math.max(0, Math.min(100, value))
                       }
                     }))
@@ -162,11 +164,7 @@ function PayinRegionEditor({
                     updatePricing(current => ({
                       ...current,
                       dedicatedCountries: {
-                        ...(current.dedicatedCountries ?? {
-                          enabled: true,
-                          ukPercent: 0,
-                          chPercent: 0
-                        }),
+                        ...current.dedicatedCountries!,
                         chPercent: Math.max(0, Math.min(100, value))
                       }
                     }))

@@ -376,7 +376,8 @@ Important App wiring:
 
 Contract summary settlement period:
 - Allowed values are `T+1`, `T+2`, `T+3`, `T+4`, `T+5`.
-- Default is `T+2`.
+- Default is `T+3` (was `T+2` before the 2026-05-12 product update —
+  see `docs/decisions.md` Commit A entry).
 
 ### 7.4 Monthly minimum fee impact
 

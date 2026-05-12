@@ -1,4 +1,7 @@
-import { DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT } from "../zone3/pricingConfiguration.js";
+import {
+  DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT,
+  resolveDedicatedCountriesShare
+} from "../zone3/pricingConfiguration.js";
 import {
   DEFAULT_PROVIDER_PAYIN_MDR_TIERS,
   DEFAULT_PROVIDER_PAYIN_TRX_APM_COST,
@@ -49,14 +52,10 @@ export function calculatePayinRegionProfitability(
   //     × DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT (fixed constant)
   // When the field is absent or `enabled === false`, dedicatedShare is 0,
   // so the formula collapses to the original `volume × schemeFeesPercent`.
-  const dedicated = input.dedicatedCountries;
-  const dedicatedShare =
-    dedicated && dedicated.enabled
-      ? Math.min(
-          1,
-          (Math.max(0, dedicated.ukPercent) + Math.max(0, dedicated.chPercent)) / 100
-        )
-      : 0;
+  // Share resolution is delegated to the zone3 helper so the preview and
+  // the profitability path can't drift apart on edge cases (NaN /
+  // Infinity / >100% combined share).
+  const dedicatedShare = resolveDedicatedCountriesShare(input.dedicatedCountries);
   const standardShare = 1 - dedicatedShare;
   const schemeFees =
     input.pricingModel === "blended"

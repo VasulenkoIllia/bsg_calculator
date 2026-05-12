@@ -332,23 +332,27 @@ export function collectPayoutPricingWarnings(config: PayoutPricingConfig): strin
 
 // Resolves the effective dedicated share for the Dedicated Countries
 // feature. Centralised so both preview and the profitability calculation
-// use identical clamping / fallback rules. When the feature is disabled
-// (or absent), returns `share = 0` which makes the standard math
-// unchanged (see callers). The coefficient is a fixed constant — see
-// DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT.
-function resolveDedicatedSplit(config: PayinRegionPricingConfig): {
-  dedicatedShare: number;
-} {
-  const dedicated = config.dedicatedCountries;
+// use identical clamping / fallback rules — see callers in this file and
+// in `zone5/payin.ts`. When the feature is disabled (or absent), returns
+// `share = 0` which makes the standard math unchanged. The coefficient
+// is a fixed constant — see DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT.
+//
+// Accepts the smaller "input shape" rather than the full config so the
+// zone5 callsite (which only carries `dedicatedCountries`) can use the
+// exact same helper.
+export function resolveDedicatedCountriesShare(
+  dedicated: DedicatedCountriesConfig | undefined
+): number {
   if (!dedicated || !dedicated.enabled) {
-    return { dedicatedShare: 0 };
+    return 0;
   }
-  const uk = Math.max(0, safeNonNegative(dedicated.ukPercent));
-  const ch = Math.max(0, safeNonNegative(dedicated.chPercent));
+  const uk = safeNonNegative(dedicated.ukPercent);
+  const ch = safeNonNegative(dedicated.chPercent);
   // Clamp combined share to <= 100%. If both fields are 0 the split
-  // collapses back to standard scheme fees.
+  // collapses back to standard scheme fees. NaN / negative / Infinity
+  // are all neutralised by `safeNonNegative`.
   const rawShare = (uk + ch) / 100;
-  return { dedicatedShare: Math.min(1, rawShare) };
+  return Math.min(1, rawShare);
 }
 
 export function calculatePayinRegionPricingPreview(
@@ -361,7 +365,7 @@ export function calculatePayinRegionPricingPreview(
   const methodVolumeCc = safeNonNegative(input.methodVolume.cc);
   const methodVolumeApm = safeNonNegative(input.methodVolume.apm);
   const warnings = collectPayinPricingWarnings(input.config);
-  const { dedicatedShare } = resolveDedicatedSplit(input.config);
+  const dedicatedShare = resolveDedicatedCountriesShare(input.config.dedicatedCountries);
   const standardShare = 1 - dedicatedShare;
   // Scheme cost impact for Blended only. When Dedicated Countries is
   // enabled, the EU volume is split into standard + dedicated portions.

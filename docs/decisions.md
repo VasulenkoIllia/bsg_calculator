@@ -1650,21 +1650,26 @@ Use this file to record meaningful technical decisions for the project.
       cap — this is documented in `calculator_deferred_changes.md`.
     - Revert: swap strings back; logic untouched.
 
-  **Commit D — Dedicated Countries (EU Blended)** (this commit).
+  **Commit D — Dedicated Countries (EU Blended)** (commit `c6e71e4`).
     - New optional `dedicatedCountries` block on
       `PayinRegionPricingConfig` (and a mirror on the wizard
       payload). When enabled, EU scheme fees are split between
       the standard portion and a UK+CH portion charged at a
-      separate coefficient (default `1.30%`, editable).
+      fixed coefficient (`1.30%`).
     - When the field is absent or `enabled === false`, the math
       collapses to the original `volume × schemeFeesPercent`, so
       pre-existing payloads keep working. Verified with new
       regression tests in `zone3/pricingConfiguration.test.ts`
       and `zone5/profitability.test.ts`.
-    - The default `1.30%` is exported as
-      `DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT` so future
-      product changes can update the constant in one place. The
-      UI still lets ops override it per deal.
+    - The `1.30%` value is exported as
+      `DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT` so any
+      future product change is a single-line edit.
+    - **Superseded same-day:** the original Commit D shipped this
+      coefficient as a user-editable `coefficientPercent` field.
+      Product asked to lock it to a constant a few hours later —
+      see the "Lock Dedicated Countries coefficient to a constant"
+      entry directly below this one. The description above
+      reflects the *post-lock* state, which is what's on `main`.
     - Revert: remove `dedicatedCountries` from the config / input
       types, restore the original two-line `schemeFees` formula
       in `zone5/payin.ts` and the preview block in
@@ -1675,9 +1680,10 @@ Use this file to record meaningful technical decisions for the project.
 - Alternatives considered:
   - Bundling all four into one commit. Rejected — the user asked
     for per-change documentation and reversibility.
-  - Making Commit D's coefficient a hardcoded constant. Rejected
-    — product said it should be editable; the constant is still
-    documented as the default seed value.
+  - Making the dedicated coefficient a hardcoded constant from the
+    start. Initially rejected (product wanted it editable), then
+    accepted same-day after product reviewed the UI — see the
+    follow-up decision entry below.
 - Consequences:
   - 238/238 tests pass (+8 covering dedicated-countries
     backward-compat + new behaviour).
