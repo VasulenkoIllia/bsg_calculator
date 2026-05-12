@@ -1888,3 +1888,65 @@ Use this file to record meaningful technical decisions for the project.
     commit `e8007d8` has the post-coefficient-lock version.
 - Follow-up actions:
   - None — feature now lives where product asked.
+
+### Decision: Compact-preset table cells reverted to tight (pass-2 fix)
+- Date: 2026-05-12 (same evening, after the wizard cleanup)
+- Context:
+  - Pass-1 of the compact preset recalibration (earlier today, see
+    "Centralised PDF spacing scale + relaxed compact preset") moved
+    every compact value ~10-15% closer to default to fix the
+    "squished" look in sections 3 (fee cards) and 4 (terms grid).
+  - Product tested with the worst-case payin layout (6 tiered rows
+    × both regions = 7 row cells) plus a 3-line custom note. The
+    note overflowed onto page 2 and the orchestrator's
+    `force-page-break-before` on Pay Out then pushed everything
+    else to page 3 — producing a 3-page document with the note
+    alone on page 2 and ~85% of page 2 unused.
+- Decision:
+  - Revert ONLY the table-cell relaxations in the compact preset.
+    Tables dominate the page-1 footprint at the worst case
+    (7 rows × per-row height); cards and terms are smaller and
+    did not contribute to the overflow. Keep cards / terms /
+    custom-note in their pass-1 relaxed form.
+  - Specifically:
+    - `.offer-section.compact th/td` padding `4px 8px → 3px 7px`,
+      font `9pt → 8.5pt`, line-height `1.25 → 1.22`.
+    - `.offer-section.compact th` font `7.25pt → 7pt`.
+    - `.offer-section.compact .cell-line` line-height `1.22 → 1.2`.
+    - `.offer-section.compact .section-header` margin-bottom
+      `7px → 5px` (mid-point between original tight 4px and
+      pass-1 relaxed 7px).
+    - `.offer-section.compact .section-header h2` `13pt → 12pt`.
+  - Add a small new override:
+    - `.offer-section.compact { margin-top: 14px }` (default is
+      22px from the spacing scale). Saves ~8px of inter-section
+      gap when compact is active — invisible to the eye but
+      meaningful for the page-1 budget.
+  - Pass-1 relaxations preserved for: `.terms-item`,
+    `.terms-label`, `.terms-value`, `.fee-card`, `.fee-value`,
+    `.fee-card h3`, `.fee-subtitle`, `.section-custom-note`. The
+    "squished" complaint these solved was in sections 3 and 4,
+    which sit on page 2 in the heavy-payin layout (force-break)
+    and don't share page-1 budget.
+- Alternatives considered:
+  - Universal relaxation (pass-1 only). Rejected — pushes the
+    note off page 1 for the worst-case layout.
+  - Lower compact-activation threshold so the 6-row case gets an
+    even tighter preset. Rejected — adds preset variants and
+    complicates `payin.ts` / `payout.ts` / `terms.ts` activation
+    heuristics.
+  - Tighter custom-note typography. Rejected — note text needs to
+    remain readable; the savings would be marginal.
+- Consequences:
+  - 6 tiered rows + 3-line custom note fits on page 1 again.
+  - Sections 3 and 4 (and the section headers in compact mode)
+    still have the breathing room from pass-1; nothing about
+    those layouts changes.
+  - 238/238 tests pass (no test asserts on specific compact
+    padding/font values).
+- Follow-up actions:
+  - If product later raises the note target back toward 5-6 lines
+    in compact, the cleanest path is to compress the header
+    (title + meta-grid + meta-note) rather than further squeeze
+    the table cells, which are already at their original tight
+    calibration.

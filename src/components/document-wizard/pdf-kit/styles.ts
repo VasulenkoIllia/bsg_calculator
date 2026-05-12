@@ -243,36 +243,56 @@ table.page-layout > tbody > tr.force-page-break-before {
  *   - payout tiered = 3 data rows
  *   - terms = ~10 built-in rows + N custom blocks
  *
- * Recalibration 2026-05-12:
- *   Previously calibrated to leave room for a 6-line custom note
- *   underneath the heaviest payin layout. Product asked to target
- *   a 3-4 line note instead, which gives the compact preset more
- *   vertical budget to spend on breathing room. Each value below
- *   moved ~10-15% closer to the default preset — still tighter
- *   than default, but no longer pinched.
+ * Calibration 2026-05-12 (two-pass):
+ *   Pass 1 — relaxed everything ~10-15% closer to default to fix
+ *     "squished" cards in sections 3 (fees) and 4 (terms) and the
+ *     section-header. Target: 3-4 line custom note instead of 6.
+ *   Pass 2 — reverted the TABLE-CELL relaxations only, because the
+ *     6-tiered-rows + 3-line note layout pushed the note to page 2.
+ *     Tables dominate the page-1 vertical footprint at the worst
+ *     case (7 rows × the per-row height); cards and terms are
+ *     smaller and didn't contribute to the overflow. So the table
+ *     cells now use the original tight padding/fonts/line-heights,
+ *     while cards / terms / section-header keep their breathing
+ *     room from Pass 1.
  *
  * Standard accent-text / tier-color / value-na / cell-subtitle
  * colour rules are unaffected.
  * ──────────────────────────────────────────────────────────────── */
+.offer-section.compact {
+  /* Section-level top gap tightened in compact too — saves ~6px of
+   * page-1 budget vs the default 22px without visibly cramming. */
+  margin-top: 14px;
+}
 .offer-section.compact th,
 .offer-section.compact td {
-  padding: 4px 8px;
-  font-size: 9pt;
-  line-height: 1.25;
-}
-.offer-section.compact th {
-  font-size: 7.25pt;
-}
-.offer-section.compact .cell-line {
+  /* TABLE CELLS — kept tight (pass 2 revert). Each ~1px saved per
+   * cell × 7 rows × 2 (top + bottom) = ~14px page-1 budget back. */
+  padding: 3px 7px;
+  font-size: 8.5pt;
   line-height: 1.22;
 }
+.offer-section.compact th {
+  font-size: 7pt;
+}
+.offer-section.compact .cell-line {
+  line-height: 1.2;
+}
 .offer-section.compact .section-header {
-  margin-bottom: 7px;
+  /* Mid-point between the original tight (4px) and pass-1 relaxed
+   * (7px). Saves ~2px vs pass 1 while keeping breathing room. */
+  margin-bottom: 5px;
 }
 .offer-section.compact .section-header h2 {
-  font-size: 13pt;
+  /* Reverted to the original tight 12pt — at 13pt the heading was
+   * costing another ~2-3mm that the heavy-payin layout could not
+   * spare without pushing the note off-page. */
+  font-size: 12pt;
 }
 .offer-section.compact .terms-item {
+  /* Relaxed (pass 1) — kept. Section 4 is the original "squished"
+   * complaint; it doesn't share page-1 budget with section 1's
+   * table when payin is heavy (force-page-break-before kicks in). */
   padding: 6px 9px;
   min-height: 36px;
 }
@@ -283,6 +303,8 @@ table.page-layout > tbody > tr.force-page-break-before {
   font-size: 9pt;
 }
 .offer-section.compact .fee-card {
+  /* Relaxed (pass 1) — kept. Same reasoning as .terms-item: section
+   * 3 sits on page 2 in the heavy-payin layout. */
   padding: 8px 10px;
   min-height: 60px;
 }
