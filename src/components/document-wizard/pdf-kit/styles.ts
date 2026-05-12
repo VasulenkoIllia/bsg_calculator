@@ -37,6 +37,35 @@ export function buildPdfUiKitStyles(tokens: PdfUiKitTokens): string {
    * tier-color-1 (#2358EA) so headings and the first tier read in
    * the same blue shade. */
   --label-color: #2358EA;
+
+  /* ──────────────────────────────────────────────────────────────
+   * Spacing scale (2026-05-12).
+   *
+   * Centralised so the OFFER PDF reads as one coherent layout —
+   * every section, grid and cell pulls its padding/gap from these
+   * five variables. Calibrated against an A4 page assuming the
+   * 2cm @page margin defined above. Compact preset overrides a
+   * subset of these to ~80% to fit 3-4 line custom notes alongside
+   * tall content (was 6-line target before; relaxed per product on
+   * 2026-05-12 — see docs/decisions.md).
+   *
+   *   --space-section-gap: gap between numbered sections (1 → 3 → 4)
+   *   --space-header-gap:  section title → its grid/table
+   *                        also used for the per-section custom note
+   *   --space-grid-gap:    gap between cards inside .fees-grid /
+   *                        between rows in .meta-grid
+   *   --space-cell-y/x:    padding inside small label+value cells
+   *                        (.meta-item, .terms-item)
+   *   --space-card-y/x:    padding inside big-value fee cards
+   *                        (.fee-card)
+   * ──────────────────────────────────────────────────────────── */
+  --space-section-gap: 22px;
+  --space-header-gap: 10px;
+  --space-grid-gap: 12px;
+  --space-cell-y: 8px;
+  --space-cell-x: 11px;
+  --space-card-y: 10px;
+  --space-card-x: 12px;
 }
 
 * { box-sizing: border-box; }
@@ -155,8 +184,9 @@ table.page-layout > tbody > tr.force-page-break-before {
 .meta-item {
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
-  padding: 5px 9px;
-  min-height: 42px;
+  /* Standard small-cell padding — shared with .terms-item below. */
+  padding: var(--space-cell-y) var(--space-cell-x);
+  min-height: 44px;
   background: var(--paper);
 }
 
@@ -191,7 +221,7 @@ table.page-layout > tbody > tr.force-page-break-before {
 }
 
 .offer-section {
-  margin-top: 16px;
+  margin-top: var(--space-section-gap);
   /* Keep each numbered pricing block intact across page breaks; push
    * whole sections to the next page rather than splitting them. */
   page-break-inside: avoid;
@@ -203,9 +233,9 @@ table.page-layout > tbody > tr.force-page-break-before {
  *
  * Auto-applied at render time when a section's row count
  * approaches its worst-case fill (so it would otherwise push the
- * table onto a second page). The preset shrinks vertical space by
- * ~20% via tighter padding, smaller fonts, slimmer line-heights —
- * it does NOT remove or restructure content. Activation rules per
+ * table onto a second page). The preset shrinks vertical space
+ * via tighter padding, smaller fonts, slimmer line-heights — it
+ * does NOT remove or restructure content. Activation rules per
  * section live in the renderers (payin/payout/terms.ts).
  *
  * Worst-case fills the preset is calibrated against:
@@ -213,59 +243,62 @@ table.page-layout > tbody > tr.force-page-break-before {
  *   - payout tiered = 3 data rows
  *   - terms = ~10 built-in rows + N custom blocks
  *
+ * Recalibration 2026-05-12:
+ *   Previously calibrated to leave room for a 6-line custom note
+ *   underneath the heaviest payin layout. Product asked to target
+ *   a 3-4 line note instead, which gives the compact preset more
+ *   vertical budget to spend on breathing room. Each value below
+ *   moved ~10-15% closer to the default preset — still tighter
+ *   than default, but no longer pinched.
+ *
  * Standard accent-text / tier-color / value-na / cell-subtitle
  * colour rules are unaffected.
  * ──────────────────────────────────────────────────────────────── */
 .offer-section.compact th,
 .offer-section.compact td {
-  /* Compact preset for tall sections (e.g. 6-row tiered Card
-   * Acquiring). Calibrated for visual comfort — readable but ~15%
-   * tighter than the default. Section 2 onwards naturally flows to
-   * the next page; we do not over-compress to squeeze everything
-   * onto page 1. */
-  padding: 3px 7px;
-  font-size: 8.5pt;
-  line-height: 1.22;
+  padding: 4px 8px;
+  font-size: 9pt;
+  line-height: 1.25;
 }
 .offer-section.compact th {
-  font-size: 7pt;
+  font-size: 7.25pt;
 }
 .offer-section.compact .cell-line {
-  line-height: 1.2;
+  line-height: 1.22;
 }
 .offer-section.compact .section-header {
-  margin-bottom: 4px;
+  margin-bottom: 7px;
 }
 .offer-section.compact .section-header h2 {
-  font-size: 12pt;
+  font-size: 13pt;
 }
 .offer-section.compact .terms-item {
-  padding: 4px 7px;
-  min-height: 32px;
+  padding: 6px 9px;
+  min-height: 36px;
 }
 .offer-section.compact .terms-label {
-  font-size: 7pt;
+  font-size: 7.25pt;
 }
 .offer-section.compact .terms-value {
-  font-size: 8.5pt;
+  font-size: 9pt;
 }
 .offer-section.compact .fee-card {
-  padding: 6px 8px;
-  min-height: 56px;
+  padding: 8px 10px;
+  min-height: 60px;
 }
 .offer-section.compact .fee-value {
-  font-size: 12pt;
+  font-size: 13pt;
 }
 .offer-section.compact .fee-card h3 {
-  font-size: 6.5pt;
+  font-size: 7pt;
 }
 .offer-section.compact .fee-subtitle {
-  font-size: 6.5pt;
+  font-size: 7pt;
 }
 .offer-section.compact .section-custom-note {
-  font-size: 7pt;
-  line-height: 1.3;
-  margin-top: 6px;
+  font-size: 7.5pt;
+  line-height: 1.35;
+  margin-top: 8px;
 }
 
 .section-header {
@@ -273,7 +306,7 @@ table.page-layout > tbody > tr.force-page-break-before {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 6px;
+  margin-bottom: var(--space-header-gap);
   page-break-after: avoid;
   break-after: avoid;
 }
@@ -415,13 +448,16 @@ tbody tr:nth-child(even) {
 .fees-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: var(--space-grid-gap);
 }
 
 .fee-card {
   border: 1px solid var(--border);
-  padding: 8px 10px;
-  min-height: 64px;
+  /* Big-value card padding — fee-card holds three lines (label,
+   * big numeric value, subtitle) so it gets a slightly larger
+   * pad than .meta-item / .terms-item. */
+  padding: var(--space-card-y) var(--space-card-x);
+  min-height: 68px;
   background: var(--paper);
   page-break-inside: avoid;
   break-inside: avoid;
@@ -462,10 +498,13 @@ tbody tr:nth-child(even) {
 }
 
 .terms-item {
-  padding: 6px 9px;
+  /* Shares small-cell padding with .meta-item — both render a
+   * single label + single-line value, so they read identically
+   * across the document. */
+  padding: var(--space-cell-y) var(--space-cell-x);
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
-  min-height: 38px;
+  min-height: 42px;
   background: var(--paper);
   page-break-inside: avoid;
   break-inside: avoid;
@@ -507,7 +546,7 @@ tbody tr:nth-child(even) {
  * Renders in muted gray, preserves user line breaks via pre-wrap,
  * and lets very long single-line text wrap on character boundaries. */
 .section-custom-note {
-  margin: 8px 0 0;
+  margin: var(--space-header-gap) 0 0;
   color: var(--text-light);
   font-size: 8pt;
   line-height: 1.4;

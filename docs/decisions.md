@@ -1749,3 +1749,71 @@ Use this file to record meaningful technical decisions for the project.
     `input.dedicatedCountries.coefficientPercent`).
 - Follow-up actions:
   - None — the feature now matches product's "always 1.30%" spec.
+
+### Decision: Centralised PDF spacing scale + relaxed compact preset
+- Date: 2026-05-12 (same evening as Commit D / coefficient lock)
+- Context:
+  - Product printed a sample PDF and noted that the OFFER layout
+    felt "squished" — gaps between numbered sections were too
+    small, and the cards/items inside sections 3 (Other Services &
+    Fees) and 4 (Terms & Limitations) had inconsistent paddings
+    versus the document header meta-grid. Several near-identical
+    padding values were hand-typed in different places, which made
+    drift inevitable.
+  - The compact preset (auto-applied to tall payin/payout/terms
+    sections) was originally calibrated to keep room for a 6-line
+    custom note alongside the heaviest layout. Product asked to
+    target 3-4 lines instead, which gives the preset more vertical
+    budget to spend on breathing room.
+- Decision:
+  - Introduce a small spacing scale at `:root` in
+    `src/components/document-wizard/pdf-kit/styles.ts`:
+    ```
+    --space-section-gap: 22px;  /* gap between numbered sections   */
+    --space-header-gap:  10px;  /* title → grid + custom-note top  */
+    --space-grid-gap:    12px;  /* gap between cards in .fees-grid */
+    --space-cell-y/x:    8/11;  /* .meta-item, .terms-item padding */
+    --space-card-y/x:   10/12;  /* .fee-card padding               */
+    ```
+  - Rewire `.offer-section`, `.section-header`, `.fees-grid`,
+    `.fee-card`, `.terms-item`, `.meta-item` and
+    `.section-custom-note` to read from these variables. Each rule
+    that previously had a magic-number padding now references the
+    scale by name. `.meta-item` and `.terms-item` share the
+    "small cell" pad (`8px 11px`) because both render a label +
+    single-line value; `.fee-card` keeps the slightly larger
+    "big-value card" pad (`10px 12px`) for its three-line content.
+  - Recalibrate the compact preset:
+    - `th/td` padding `3px 7px → 4px 8px`, font `8.5pt → 9pt`,
+      line-height `1.22 → 1.25`.
+    - `section-header h2` `12pt → 13pt`,
+      `section-header margin-bottom` `4px → 7px`.
+    - `terms-item` `4px 7px / 32px → 6px 9px / 36px`,
+      `terms-value` `8.5pt → 9pt`.
+    - `fee-card` `6px 8px / 56px → 8px 10px / 60px`,
+      `fee-value` `12pt → 13pt`.
+    - `section-custom-note` `7pt / 1.3 / margin-top 6px →
+      7.5pt / 1.35 / 8px`.
+- Alternatives considered:
+  - Moving the spacing scale to the typed `PdfUiKitTokens` object
+    in `pdf-kit/tokens.ts`. Rejected — it would force every call
+    site that constructs tokens to know about the spacing keys,
+    and the CSS-only approach keeps the scale visible in one
+    place alongside the rules that use it.
+  - Inlining the new values without naming them. Rejected — the
+    whole point of this pass was to make matching paddings match.
+- Consequences:
+  - 238/238 tests pass — no behavioural change. The compact-mode
+    HTML still carries the `<section class="offer-section compact">`
+    wrapper and all activation heuristics in payin.ts / payout.ts
+    / terms.ts are untouched.
+  - The default OFFER PDF now reads with measurably more breathing
+    room between sections, and matching cell types align visually.
+  - Compact layouts (heavy payin / heavy terms) accept a 3-4 line
+    custom note without truncation or page overflow; 6-line notes
+    in compact mode are no longer supported as the default budget.
+- Follow-up actions:
+  - If product later asks to compress further (e.g. 5-line note in
+    compact), the simplest revert is to lower the four `--space-*`
+    values and tighten the compact overrides back toward the
+    pre-2026-05-12 numbers preserved in git history.
