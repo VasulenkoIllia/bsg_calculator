@@ -1599,3 +1599,98 @@ Use this file to record meaningful technical decisions for the project.
 - Follow-up actions:
   - Verify against real reference PDFs (CEI, ZenCreator) that
     the page break locations match the expected layouts.
+
+### Decision: 2026-05-12 product update batch (A/B/C/D)
+- Date: 2026-05-12
+- Context:
+  - Product circulated a 4-item update list ("Обновление.docx")
+    covering label renames, a default change, and one new
+    feature for EU Blended pricing. The user asked for each
+    change to be self-contained and clearly documented so any
+    of them can be reverted independently.
+  - Calculator math is normally frozen (see AGENTS.md rule #1
+    and `~/.claude/.../feedback_calculator_frozen.md`); the
+    user explicitly approved Commit D's math change for this
+    batch only.
+- Decision: implement as four separate commits, each with a
+  small revert path.
+
+  **Commit A — Settlement default T+3** (`4ad02c3`).
+    - Files: `src/domain/calculator/zone4/otherFeesAndLimits.ts`
+      (`DEFAULT_CONTRACT_SUMMARY_SETTINGS.settlementPeriod`),
+      `src/components/document-wizard/fromCalculator.test.ts`
+      (fixture + 2 assertions).
+    - Revert: switch the constant back to `"T+2"` and reset the
+      three test-fixture lines that were bumped to `T+3`.
+
+  **Commit B — "Client Type" → "Traffic Type" rename** (`bc7bb61`).
+    - Label-only rename in the wizard step
+      (`TermsLegalSection.tsx`), the offer PDF
+      (`offerPdf/sections/terms.ts`), and the UI-kit preview
+      (`buildPdfUiKitHtml.ts`).
+    - Data key `clientType` is intentionally preserved on the
+      payload so saved drafts stay compatible. Default value
+      `"STD"` is unchanged.
+    - Revert: swap the strings back to "Client Type" in those
+      three files; no schema migration needed.
+
+  **Commit C — "Over limit only" → "Under limit only" rename** (`21c9a31`).
+    - Label-only rename in calculator Zone 4
+      (`Zone4RevenueAffectingFees.tsx`), wizard
+      (`OtherFeesStep.tsx`), PDF (`offerPdf/sections/fees.ts`,
+      `domain/calculator/zone6/offerSummary.ts`), and one wizard
+      test assertion.
+    - The data key (`failedTrxMode: "overLimitOnly"`) and the
+      underlying threshold semantics are unchanged. If product
+      later wants the calculation to actually flip (charge only
+      below the threshold instead of only above), the data key
+      should be renamed at the same time so the label and the
+      math stay consistent. Currently the label reads "Under" but
+      the calculation still treats the threshold as the *upper*
+      cap — this is documented in `calculator_deferred_changes.md`.
+    - Revert: swap strings back; logic untouched.
+
+  **Commit D — Dedicated Countries (EU Blended)** (this commit).
+    - New optional `dedicatedCountries` block on
+      `PayinRegionPricingConfig` (and a mirror on the wizard
+      payload). When enabled, EU scheme fees are split between
+      the standard portion and a UK+CH portion charged at a
+      separate coefficient (default `1.30%`, editable).
+    - When the field is absent or `enabled === false`, the math
+      collapses to the original `volume × schemeFeesPercent`, so
+      pre-existing payloads keep working. Verified with new
+      regression tests in `zone3/pricingConfiguration.test.ts`
+      and `zone5/profitability.test.ts`.
+    - The default `1.30%` is exported as
+      `DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT` so future
+      product changes can update the constant in one place. The
+      UI still lets ops override it per deal.
+    - Revert: remove `dedicatedCountries` from the config / input
+      types, restore the original two-line `schemeFees` formula
+      in `zone5/payin.ts` and the preview block in
+      `zone3/pricingConfiguration.ts`, drop the UI block from
+      `PayinRegionPricingPanel.tsx` and `PayinStep.tsx`, drop the
+      setter from `useCalculatorState.ts`, and delete the
+      `dedicatedCountries` cases in the test files.
+- Alternatives considered:
+  - Bundling all four into one commit. Rejected — the user asked
+    for per-change documentation and reversibility.
+  - Making Commit D's coefficient a hardcoded constant. Rejected
+    — product said it should be editable; the constant is still
+    documented as the default seed value.
+- Consequences:
+  - 238/238 tests pass (+8 covering dedicated-countries
+    backward-compat + new behaviour).
+  - Pre-2026-05-12 saved wizard drafts and serialized calculator
+    states continue to load and compute identical numbers — the
+    Dedicated Countries field is optional everywhere it appears.
+  - The "Under limit only" label currently disagrees with the
+    underlying logic; tracked as a follow-up.
+- Follow-up actions:
+  - Confirm with product whether Commit C's logic should flip
+    (`Under limit only` should charge **below** the threshold).
+    If yes, rename `failedTrxMode` to `underLimitOnly` and
+    invert the comparison in the failed-trx revenue derivation
+    in a separate commit.
+  - Consider whether the WW panel ever needs the Dedicated
+    Countries control. Today it's intentionally EU-only.

@@ -256,6 +256,27 @@ Scheme cost impact preview:
 - For `icpp`, `schemeCostImpact = 0`.
 - Current Scheme defaults: EU `0.75%`, WW `2%`.
 
+Dedicated Countries split (EU Blended only, added 2026-05-12):
+- Optional `dedicatedCountries` block on `PayinRegionPricingConfig`:
+  - `enabled` — checkbox in Zone 3 EU panel + the wizard's Payin step.
+  - `ukPercent`, `chPercent` — share of EU volume coming from the UK
+    and Switzerland (each clamped 0–100; combined share clamped to
+    ≤ 100% before applying).
+  - `coefficientPercent` — editable scheme-fee coefficient applied to
+    the dedicated share. Defaults to
+    `DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT = 1.30%`.
+- When enabled, the EU Blended scheme cost becomes:
+  - `dedicatedShare = min(1, (ukPercent + chPercent) / 100)`
+  - `standardShare = 1 - dedicatedShare`
+  - `schemeCostImpact = volume * standardShare * schemeFeesPercent / 100`
+    `             + volume * dedicatedShare * coefficientPercent / 100`
+- When disabled (or the field is absent — back-compat with payloads
+  saved before 2026-05-12), the formula collapses to the original
+  `volume * schemeFeesPercent / 100`.
+- IC++ ignores the dedicated block entirely (no scheme fees at all).
+- WW panel does not surface the controls in the UI today, but the
+  field shape is symmetric on both regions in case it ever does.
+
 Output:
 - `totalRevenue = mdrRevenue + trxRevenue`
 - `revenueAfterSchemePreview = totalRevenue - schemeCostImpact`
@@ -427,7 +448,15 @@ Per region (EU/WW):
 - Costs:
   - `providerMdr = progressive tier cost on TOTAL payin volume (EU+WW), then allocated back to EU/WW by region volume share`
   - `providerTrx = attemptsCc * ccCost + attemptsApm * apmCost`
-  - `schemeFees = volume * schemeFees%` only for `blended`, else `0`
+  - `schemeFees = volume * schemeFees%` only for `blended`, else `0`.
+    When the EU Blended "Dedicated Countries" feature is enabled
+    (2026-05-12 update; see section 6.3 above), this becomes the
+    standard + dedicated split:
+    - `schemeFees = volume * (1 - dedicatedShare) * schemeFeesPercent / 100`
+      `         + volume * dedicatedShare * coefficientPercent / 100`
+    where `dedicatedShare = min(1, (ukPercent + chPercent) / 100)`.
+    With the feature disabled or absent, this collapses back to the
+    original `volume * schemeFees%`.
   - `interchange = 0` (not used in payin cost formulas)
   - `costs.total = providerMdr + providerTrx + schemeFees`
 - Net:

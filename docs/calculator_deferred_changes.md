@@ -162,6 +162,88 @@ the PDF + Wizard wording.
 
 ---
 
+## 4. 2026-05-12 product update batch (resolved — applied across calc + wizard + PDF)
+
+The 2026-05-12 batch (Commits A/B/C/D — see `docs/decisions.md`)
+intentionally moved synchronously across calculator + wizard + PDF.
+Logged here for completeness in case any item needs to be reverted.
+
+### 4.1 Settlement default `T+2` → `T+3` (Commit A)
+
+- **Date:** 2026-05-12
+- **User request:** change the default settlement period everywhere.
+- **Applied in:**
+  - `src/domain/calculator/zone4/otherFeesAndLimits.ts` —
+    `DEFAULT_CONTRACT_SUMMARY_SETTINGS.settlementPeriod = "T+3"`.
+  - `src/components/document-wizard/fromCalculator.test.ts` — fixture
+    `settlementPeriod` and two `expect(html).toContain("Daily, T+3")`
+    assertions updated.
+- **Revert:** flip `"T+3"` back to `"T+2"` in those three lines.
+
+### 4.2 Label rename: `Client Type` → `Traffic Type` (Commit B)
+
+- **Date:** 2026-05-12
+- **User request:** rename label only; data key stays.
+- **Applied in (label-only — no schema change):**
+  - `src/components/document-wizard/wizard/steps/terms/TermsLegalSection.tsx`
+    (Step 5 — line ~53/59).
+  - `src/components/document-wizard/offerPdf/sections/terms.ts`
+    (Contract Summary item label).
+  - `src/components/document-wizard/buildPdfUiKitHtml.ts` (UI-kit ref).
+- **Data key untouched:** `contractSummary.clientType` and the default
+  `"STD"` are preserved on the payload — saved drafts still work.
+- **Revert:** swap the three label strings back to `"Client Type"`.
+
+### 4.3 Label rename: `Over limit only` → `Under limit only` (Commit C)
+
+- **Date:** 2026-05-12
+- **User request:** rename label only; logic stays.
+- **Applied in (label-only — no logic change):**
+  - `src/components/calculator/zones/zone4/Zone4RevenueAffectingFees.tsx`
+    (Zone 4 charging mode mini-toggle + threshold field + helper text).
+  - `src/components/document-wizard/wizard/steps/OtherFeesStep.tsx`
+    (Step 4 charging mode + threshold).
+  - `src/components/document-wizard/offerPdf/sections/fees.ts`
+    (PDF card value for FAILED TRX CHARGING).
+  - `src/domain/calculator/zone6/offerSummary.ts` (Offer Summary line).
+- **Data key untouched:** `failedTrxMode: "overLimitOnly"` and the
+  underlying threshold semantics are unchanged.
+- **Known mismatch (intentional for now):** the label now reads "Under
+  limit only" but the calculation still treats the threshold as the
+  *upper* cap. Product asked to defer the logic flip; tracked as a
+  follow-up in `docs/decisions.md` (2026-05-12 entry).
+- **Revert:** swap the strings back to `"Over Limit Only"` /
+  `"Over Limit Threshold"` in those five locations.
+
+### 4.4 New feature: Dedicated Countries (UK + CH) split (Commit D)
+
+- **Date:** 2026-05-12
+- **User request:** new opt-in checkbox on EU Blended that splits the
+  EU scheme cost between the standard portion and a UK + Switzerland
+  portion charged at a separate coefficient (default `1.30%`, editable).
+- **Applied across calc + wizard + PDF:**
+  - Domain types (`src/domain/calculator/zone3/pricingConfiguration.ts`,
+    `src/domain/calculator/zone5/types.ts`) gained an optional
+    `dedicatedCountries` block and the
+    `DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT = 1.30` constant.
+  - Math updated in `zone5/payin.ts` and the preview in
+    `zone3/pricingConfiguration.ts` — when disabled/absent, formulas
+    collapse to the pre-feature `volume × schemeFeesPercent`.
+  - Calculator state (`useCalculatorState.ts`) gained
+    `setPayinRegionDedicatedCountriesField`; UI block in
+    `PayinRegionPricingPanel.tsx` (EU only). Wired through
+    `Zone3PricingConfiguration.tsx` and `pages/CalculatorPage.tsx`.
+  - Wizard payload type `PayinRegionPricing` mirrors the same block;
+    UI block in `PayinStep.tsx` (EU only). `fromCalculator.ts` and
+    `seedHelpers.ts` propagate the field with a defensive clone.
+  - Tests: 8 new cases (`zone3/pricingConfiguration.test.ts` +
+    `zone5/profitability.test.ts`) cover backward-compat (field
+    absent / `enabled: false`) and new-behaviour splits.
+- **Revert:** see the full revert plan in the 2026-05-12 entry of
+  `docs/decisions.md` (delete the new type fields, restore the
+  original two-line `schemeFees` formula, drop the UI blocks, drop
+  the setter, delete the new test cases).
+
 <!-- Append further deferred changes below using the same template:
 
 ## N. Short title

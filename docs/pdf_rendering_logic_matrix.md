@@ -229,7 +229,7 @@ Observed extra annotation lines under values (rendered as small note below the p
 |---|---|
 | Settlement | `Daily, T+3` (4 samples), `Daily, T+4` (3 samples), `Daily, T+3` (CEI) |
 | Settlement Note | `Does not apply on weekends` / `…and bank holidays` / `…and banking holidays` (3 spellings) |
-| Client Type | `STD` (7 samples), `New + Returning` (ZenCreator only) |
+| Traffic Type | `STD` (7 samples), `New + Returning` (ZenCreator only). Renamed from "Client Type" on 2026-05-12 — label only; payload key `clientType` and the default `"STD"` stay. See `docs/decisions.md`. |
 | Restricted Jurisdictions | `OFAC, US` (most), `OFAC, Sanctioned` (ZenCreator only) |
 | Min. Collection | `€1 EUR` (all) |
 | Max. Collection | `€2,500 EUR` (all) |
@@ -240,10 +240,12 @@ Observed extra annotation lines under values (rendered as small note below the p
 | Footnote line | Finera: `** Decline fee removal - After 3 months of processing 2M/m and having min 80% approved transactions` |
 
 **Renderer gap status (2026-05-07)**:
-- ✅ **Closed**: Settlement Note / Client Type / Restricted Jurisdictions
-  — editable per-contract in TermsStep (`TermsLegalSection`); renderer
-  reads from `contractSummary.{settlementNote, clientType,
-  restrictedJurisdictions}`.
+- ✅ **Closed**: Settlement Note / Traffic Type (renamed 2026-05-12,
+  was "Client Type") / Restricted Jurisdictions — editable
+  per-contract in TermsStep (`TermsLegalSection`); renderer reads from
+  `contractSummary.{settlementNote, clientType, restrictedJurisdictions}`.
+  Note: the payload key is still `clientType`; only the visible label
+  changed.
 - ✅ **Closed**: `Max. Payout`, `Rolling Reserve Cap`, and the four
   Transaction Limits use `ModedNumericField` (Number / N/A / TBD) in
   TermsStep. The user picks N/A explicitly when they want it; the
