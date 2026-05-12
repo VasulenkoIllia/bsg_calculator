@@ -23,6 +23,15 @@ export interface PayinRegionPricingPanelProps {
   setSingleField: (field: "mdrPercent" | "trxCc" | "trxApm", value: number) => void;
   setTierField: (tierIndex: 0 | 1 | 2, field: "mdrPercent" | "trxCc" | "trxApm", value: number) => void;
   setTierBoundary: (boundary: "tier1UpToMillion" | "tier2UpToMillion", value: number) => void;
+  // Optional — only the EU panel wires this in today (Dedicated Countries
+  // feature, added 2026-05-12). When absent, the controls aren't rendered
+  // so the WW panel stays identical to its pre-feature form.
+  setDedicatedCountriesField?: <
+    K extends "enabled" | "ukPercent" | "chPercent" | "coefficientPercent"
+  >(
+    field: K,
+    value: K extends "enabled" ? boolean : number
+  ) => void;
 }
 
 export function PayinRegionPricingPanel({
@@ -38,8 +47,18 @@ export function PayinRegionPricingPanel({
   setSingleField,
   setTierField,
   setTierBoundary,
+  setDedicatedCountriesField,
 }: PayinRegionPricingPanelProps) {
   const volume = region === "eu" ? payin.volume.eu : payin.volume.ww;
+  // Dedicated Countries section visible only for EU Blended, when the
+  // parent supplies the setter (today: EU only). See decisions.md.
+  const showDedicatedCountries =
+    region === "eu" && pricing.model === "blended" && setDedicatedCountriesField !== undefined;
+  const dedicated = pricing.dedicatedCountries;
+  const dedicatedEnabled = Boolean(dedicated?.enabled);
+  const ukPercent = dedicated?.ukPercent ?? 0;
+  const chPercent = dedicated?.chPercent ?? 0;
+  const coefficientPercent = dedicated?.coefficientPercent ?? 0;
   const successfulCc = region === "eu" ? payin.successful.byRegionMethod.euCc : payin.successful.byRegionMethod.wwCc;
   const successfulApm = region === "eu" ? payin.successful.byRegionMethod.euApm : payin.successful.byRegionMethod.wwApm;
 
@@ -192,6 +211,64 @@ export function PayinRegionPricingPanel({
             ))}
           </div>
         )}
+        {showDedicatedCountries ? (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            {/*
+              Dedicated Countries (EU Blended only) — added 2026-05-12.
+              When enabled, the EU scheme-fee cost is split:
+                standard portion × schemeFeesPercent
+                + (UK%+CH%) portion × coefficientPercent.
+              Field is documented in docs/calculator_logic_and_formulas.md
+              and docs/decisions.md; coefficient default lives in
+              DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT.
+            */}
+            <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
+              <input
+                className="h-4 w-4 accent-blue-600"
+                type="checkbox"
+                checked={dedicatedEnabled}
+                onChange={event =>
+                  setDedicatedCountriesField?.("enabled", event.target.checked)
+                }
+                aria-label="Enable dedicated countries split for EU Blended"
+              />
+              Dedicated Countries (UK + Switzerland)
+            </label>
+            <p className="mt-1 text-xs text-slate-500">
+              Splits EU volume between standard scheme fees and the dedicated UK +
+              CH share, which is charged at a separate coefficient.
+            </p>
+            {dedicatedEnabled ? (
+              <div className="mt-3 grid gap-3 md:grid-cols-3">
+                <NumberField
+                  label="UK %"
+                  value={ukPercent}
+                  onChange={value => setDedicatedCountriesField?.("ukPercent", value)}
+                  min={0}
+                  max={100}
+                  step={1}
+                />
+                <NumberField
+                  label="Switzerland %"
+                  value={chPercent}
+                  onChange={value => setDedicatedCountriesField?.("chPercent", value)}
+                  min={0}
+                  max={100}
+                  step={1}
+                />
+                <NumberField
+                  label="Dedicated coefficient (%)"
+                  value={coefficientPercent}
+                  onChange={value =>
+                    setDedicatedCountriesField?.("coefficientPercent", value)
+                  }
+                  min={0}
+                  step={0.05}
+                />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {preview.warnings.length > 0 ? (
           <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
             {preview.warnings.map(warning => (

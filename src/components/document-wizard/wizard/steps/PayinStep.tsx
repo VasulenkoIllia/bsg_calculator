@@ -99,6 +99,110 @@ function PayinRegionEditor({
           </div>
         </div>
 
+        {region === "eu" && pricing.model === "blended" ? (
+          /*
+            Dedicated Countries (EU Blended only — mirrors the calculator's
+            Zone 3 control. The wizard exposes this so ops can override the
+            split for the contract being generated without bouncing back to
+            the calculator. Math and persistence shape are documented in
+            docs/calculator_logic_and_formulas.md.
+          */
+          <div className="rounded-lg border border-slate-200 bg-white p-3">
+            <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
+              <input
+                className="h-4 w-4 accent-blue-600"
+                type="checkbox"
+                checked={Boolean(pricing.dedicatedCountries?.enabled)}
+                onChange={event =>
+                  updatePricing(current => ({
+                    ...current,
+                    dedicatedCountries: {
+                      enabled: event.target.checked,
+                      ukPercent: current.dedicatedCountries?.ukPercent ?? 0,
+                      chPercent: current.dedicatedCountries?.chPercent ?? 0,
+                      coefficientPercent:
+                        current.dedicatedCountries?.coefficientPercent ?? 1.3
+                    }
+                  }))
+                }
+                aria-label="Enable dedicated countries split for EU Blended (wizard)"
+              />
+              Dedicated Countries (UK + Switzerland)
+            </label>
+            <p className="mt-1 text-xs text-slate-500">
+              Splits EU volume between standard scheme fees and the dedicated UK +
+              CH share, which is charged at a separate coefficient.
+            </p>
+            {pricing.dedicatedCountries?.enabled ? (
+              <div className="mt-3 grid gap-3 md:grid-cols-3">
+                <NumberField
+                  label="UK %"
+                  value={pricing.dedicatedCountries.ukPercent}
+                  onChange={value =>
+                    updatePricing(current => ({
+                      ...current,
+                      dedicatedCountries: {
+                        // Spread is safe because `enabled` is true → block exists.
+                        ...(current.dedicatedCountries ?? {
+                          enabled: true,
+                          ukPercent: 0,
+                          chPercent: 0,
+                          coefficientPercent: 1.3
+                        }),
+                        ukPercent: Math.max(0, Math.min(100, value))
+                      }
+                    }))
+                  }
+                  min={0}
+                  max={100}
+                  step={1}
+                />
+                <NumberField
+                  label="Switzerland %"
+                  value={pricing.dedicatedCountries.chPercent}
+                  onChange={value =>
+                    updatePricing(current => ({
+                      ...current,
+                      dedicatedCountries: {
+                        ...(current.dedicatedCountries ?? {
+                          enabled: true,
+                          ukPercent: 0,
+                          chPercent: 0,
+                          coefficientPercent: 1.3
+                        }),
+                        chPercent: Math.max(0, Math.min(100, value))
+                      }
+                    }))
+                  }
+                  min={0}
+                  max={100}
+                  step={1}
+                />
+                <NumberField
+                  label="Dedicated coefficient (%)"
+                  value={pricing.dedicatedCountries.coefficientPercent}
+                  onChange={value =>
+                    updatePricing(current => ({
+                      ...current,
+                      dedicatedCountries: {
+                        ...(current.dedicatedCountries ?? {
+                          enabled: true,
+                          ukPercent: 0,
+                          chPercent: 0,
+                          coefficientPercent: 1.3
+                        }),
+                        coefficientPercent: Math.max(0, value)
+                      }
+                    }))
+                  }
+                  min={0}
+                  step={0.05}
+                />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         {pricing.rateMode === "single" ? (
           <div className="grid gap-3 md:grid-cols-3">
             <NumberField

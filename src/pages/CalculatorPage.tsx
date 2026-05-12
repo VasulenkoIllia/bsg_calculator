@@ -239,6 +239,7 @@ export function CalculatorPage() {
         setPayinRegionSingleField={calc.setPayinRegionSingleField}
         setPayinRegionTierField={calc.setPayinRegionTierField}
         setPayinRegionTierBoundary={calc.setPayinRegionTierBoundary}
+        setPayinRegionDedicatedCountriesField={calc.setPayinRegionDedicatedCountriesField}
         setPayoutRateMode={calc.setPayoutRateMode}
         setPayoutSingleField={calc.setPayoutSingleField}
         setPayoutTierField={calc.setPayoutTierField}

@@ -41,9 +41,27 @@ export function calculatePayinRegionProfitability(
   const providerTrx = providerTrxCcTotal + providerTrxApmTotal;
 
   // Scheme fees are applied only for Blended.
+  // 2026-05-12: when "Dedicated Countries" (EU Blended only) is enabled,
+  // the EU volume is split into:
+  //   - standard portion (1 - (UK% + CH%)/100) × schemeFeesPercent
+  //   - dedicated portion ((UK% + CH%)/100) × coefficientPercent
+  // When the field is absent or `enabled === false`, dedicatedShare is 0,
+  // so the formula collapses to the original `volume × schemeFeesPercent`.
+  const dedicated = input.dedicatedCountries;
+  const dedicatedShare =
+    dedicated && dedicated.enabled
+      ? Math.min(
+          1,
+          (Math.max(0, dedicated.ukPercent) + Math.max(0, dedicated.chPercent)) / 100
+        )
+      : 0;
+  const standardShare = 1 - dedicatedShare;
+  const dedicatedCoefficientPercent =
+    dedicated && dedicated.enabled ? Math.max(0, dedicated.coefficientPercent) : 0;
   const schemeFees =
     input.pricingModel === "blended"
-      ? volume * (normalizePercent(input.schemeFeesPercent) / 100)
+      ? volume * standardShare * (normalizePercent(input.schemeFeesPercent) / 100) +
+        volume * dedicatedShare * (dedicatedCoefficientPercent / 100)
       : 0;
   // Product correction (2026-04-29): interchange is not a payin cost component.
   // Keep the field for compatibility in API shape, but exclude it from calculations.

@@ -63,7 +63,13 @@ export function clonePayinRegionPricing(
     // N/A toggles default off — the calculator only emits numeric
     // values; the wizard exposes the toggles for the user to flip.
     single: { ...pricing.single, trxCcNa: false, trxApmNa: false },
-    tiers: pricing.tiers.map(tier => ({ ...tier, trxCcNa: false, trxApmNa: false }))
+    tiers: pricing.tiers.map(tier => ({ ...tier, trxCcNa: false, trxApmNa: false })),
+    // Dedicated Countries — preserved verbatim from the calculator config.
+    // Cloned so wizard edits don't leak back into the live calculator
+    // state. Stays undefined when the calculator config didn't seed it.
+    dedicatedCountries: pricing.dedicatedCountries
+      ? { ...pricing.dedicatedCountries }
+      : undefined
   };
 }
 

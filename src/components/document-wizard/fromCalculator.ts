@@ -154,7 +154,14 @@ export function buildDocumentTemplatePayloadFromCalculator({
         tier1UpToMillion: payinEuPricing.tier1UpToMillion,
         tier2UpToMillion: payinEuPricing.tier2UpToMillion,
         single: { ...payinEuPricing.single, trxCcNa: false, trxApmNa: false },
-        tiers: payinEuPricing.tiers.map(tier => ({ ...tier, trxCcNa: false, trxApmNa: false }))
+        tiers: payinEuPricing.tiers.map(tier => ({ ...tier, trxCcNa: false, trxApmNa: false })),
+        // Dedicated Countries — propagate the calculator config so the
+        // wizard step shows the same UK%/CH%/coefficient values. Cloned
+        // to prevent shared-reference edits. Optional: stays undefined
+        // when the calculator state didn't seed it (back-compat).
+        dedicatedCountries: payinEuPricing.dedicatedCountries
+          ? { ...payinEuPricing.dedicatedCountries }
+          : undefined
       },
       ww: {
         model: payinWwPricing.model,
@@ -163,7 +170,12 @@ export function buildDocumentTemplatePayloadFromCalculator({
         tier1UpToMillion: payinWwPricing.tier1UpToMillion,
         tier2UpToMillion: payinWwPricing.tier2UpToMillion,
         single: { ...payinWwPricing.single, trxCcNa: false, trxApmNa: false },
-        tiers: payinWwPricing.tiers.map(tier => ({ ...tier, trxCcNa: false, trxApmNa: false }))
+        tiers: payinWwPricing.tiers.map(tier => ({ ...tier, trxCcNa: false, trxApmNa: false })),
+        // WW does not surface Dedicated Countries today; we still mirror
+        // whatever the calculator emits to keep the shape symmetric.
+        dedicatedCountries: payinWwPricing.dedicatedCountries
+          ? { ...payinWwPricing.dedicatedCountries }
+          : undefined
       }
     },
     payoutPricing: {

@@ -231,6 +231,125 @@ describe("zone3/pricingConfiguration", () => {
     expect(tierRows[0].appliedTrxFee).toBe(0.2);
   });
 
+  describe("dedicated countries (EU blended split)", () => {
+    // These tests guard the 2026-05-12 "Dedicated Countries" feature.
+    // If the feature is ever rolled back, delete this block and confirm
+    // the rest of the suite still passes — math elsewhere is unchanged
+    // when the field is absent or disabled.
+    it("matches the original formula when disabled or absent", () => {
+      const baseInput = {
+        volume: 1_000_000,
+        averageTransaction: 100,
+        successful: { cc: 0, apm: 0 },
+        methodVolume: { cc: 0, apm: 0 }
+      } as const;
+
+      const noField = calculatePayinRegionPricingPreview({
+        ...baseInput,
+        config: {
+          ...DEFAULT_PAYIN_EU_PRICING_CONFIG,
+          model: "blended",
+          rateMode: "single",
+          schemeFeesPercent: 0.75,
+          dedicatedCountries: undefined
+        }
+      });
+      const disabled = calculatePayinRegionPricingPreview({
+        ...baseInput,
+        config: {
+          ...DEFAULT_PAYIN_EU_PRICING_CONFIG,
+          model: "blended",
+          rateMode: "single",
+          schemeFeesPercent: 0.75,
+          dedicatedCountries: {
+            enabled: false,
+            ukPercent: 50,
+            chPercent: 25,
+            coefficientPercent: 5
+          }
+        }
+      });
+
+      // Both must equal volume × 0.75% = 7,500 — the pre-feature math.
+      expect(noField.schemeCostImpact).toBeCloseTo(7_500, 6);
+      expect(disabled.schemeCostImpact).toBeCloseTo(7_500, 6);
+    });
+
+    it("splits scheme fees by UK+CH share when enabled", () => {
+      // 1,000,000 × (1 - 0.45) × 0.75% + 1,000,000 × 0.45 × 1.30%
+      //   = 1,000,000 × 0.55 × 0.0075 + 1,000,000 × 0.45 × 0.013
+      //   = 4_125 + 5_850 = 9_975
+      const result = calculatePayinRegionPricingPreview({
+        volume: 1_000_000,
+        averageTransaction: 100,
+        successful: { cc: 0, apm: 0 },
+        methodVolume: { cc: 0, apm: 0 },
+        config: {
+          ...DEFAULT_PAYIN_EU_PRICING_CONFIG,
+          model: "blended",
+          rateMode: "single",
+          schemeFeesPercent: 0.75,
+          dedicatedCountries: {
+            enabled: true,
+            ukPercent: 10,
+            chPercent: 35,
+            coefficientPercent: 1.3
+          }
+        }
+      });
+
+      expect(result.schemeCostImpact).toBeCloseTo(9_975, 6);
+    });
+
+    it("clamps a combined share above 100% to 100% dedicated", () => {
+      // (60 + 60) clamps to 100% → all volume uses the dedicated coefficient.
+      const result = calculatePayinRegionPricingPreview({
+        volume: 1_000_000,
+        averageTransaction: 100,
+        successful: { cc: 0, apm: 0 },
+        methodVolume: { cc: 0, apm: 0 },
+        config: {
+          ...DEFAULT_PAYIN_EU_PRICING_CONFIG,
+          model: "blended",
+          rateMode: "single",
+          schemeFeesPercent: 0.75,
+          dedicatedCountries: {
+            enabled: true,
+            ukPercent: 60,
+            chPercent: 60,
+            coefficientPercent: 1.3
+          }
+        }
+      });
+
+      expect(result.schemeCostImpact).toBeCloseTo(13_000, 6);
+    });
+
+    it("does not apply dedicated split for IC++ even if enabled", () => {
+      // The model gate is unchanged — IC++ has no scheme fees at all.
+      const result = calculatePayinRegionPricingPreview({
+        volume: 1_000_000,
+        averageTransaction: 100,
+        successful: { cc: 0, apm: 0 },
+        methodVolume: { cc: 0, apm: 0 },
+        config: {
+          ...DEFAULT_PAYIN_EU_PRICING_CONFIG,
+          model: "icpp",
+          rateMode: "single",
+          schemeFeesPercent: 0.75,
+          dedicatedCountries: {
+            enabled: true,
+            ukPercent: 30,
+            chPercent: 20,
+            coefficientPercent: 1.3
+          }
+        }
+      });
+
+      expect(result.schemeCostImpact).toBe(0);
+    });
+  });
+
   it("returns expected warnings for low rates", () => {
     const payinWarnings = collectPayinPricingWarnings({
       ...DEFAULT_PAYIN_EU_PRICING_CONFIG,

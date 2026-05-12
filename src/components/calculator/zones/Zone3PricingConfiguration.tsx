@@ -54,6 +54,16 @@ export interface Zone3PricingConfigurationProps {
     boundary: "tier1UpToMillion" | "tier2UpToMillion",
     value: number
   ) => void;
+  // Dedicated Countries (EU Blended only — see decisions.md). The setter
+  // signature uses a discriminated K so booleans only flow through the
+  // `enabled` field. The panel only renders these controls for region=eu.
+  setPayinRegionDedicatedCountriesField: <
+    K extends "enabled" | "ukPercent" | "chPercent" | "coefficientPercent"
+  >(
+    region: "eu" | "ww",
+    field: K,
+    value: K extends "enabled" ? boolean : number
+  ) => void;
   setPayoutRateMode: (rateMode: PricingRateMode) => void;
   setPayoutSingleField: (field: "mdrPercent" | "trxFee", value: number) => void;
   setPayoutTierField: (
@@ -91,6 +101,7 @@ export function Zone3PricingConfiguration({
   setPayinRegionSingleField,
   setPayinRegionTierField,
   setPayinRegionTierBoundary,
+  setPayinRegionDedicatedCountriesField,
   setPayoutRateMode,
   setPayoutSingleField,
   setPayoutTierField,
@@ -141,6 +152,17 @@ export function Zone3PricingConfiguration({
                   setSingleField={(field, value) => setPayinRegionSingleField("eu", field, value)}
                   setTierField={(tierIndex, field, value) => setPayinRegionTierField("eu", tierIndex, field, value)}
                   setTierBoundary={(boundary, value) => setPayinRegionTierBoundary("eu", boundary, value)}
+                  setDedicatedCountriesField={(field, value) =>
+                    setPayinRegionDedicatedCountriesField(
+                      "eu",
+                      field,
+                      // The conditional return type of the parent setter
+                      // is narrowed at the panel boundary; the unconditional
+                      // cast here is safe because the panel guarantees the
+                      // value matches the field discriminator (see panel).
+                      value as never
+                    )
+                  }
                 />
                 <PayinRegionPricingPanel
                   region="ww"

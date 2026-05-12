@@ -207,7 +207,12 @@ export function useCalculatorDerivedData({
           schemeFeesPercent: payinEuPricing.schemeFeesPercent,
           interchangePercent: payinEuPricing.interchangePercent,
           providerTrxCcCost: DEFAULT_PROVIDER_PAYIN_TRX_CC_COST,
-          providerTrxApmCost: DEFAULT_PROVIDER_PAYIN_TRX_APM_COST
+          providerTrxApmCost: DEFAULT_PROVIDER_PAYIN_TRX_APM_COST,
+          // Pass Dedicated Countries config so the EU profitability math
+          // can split scheme fees between standard and UK+CH portions.
+          // Optional — see PayinRegionProfitabilityInput; when undefined
+          // or disabled the math is identical to the pre-2026-05-12 form.
+          dedicatedCountries: payinEuPricing.dedicatedCountries
         },
         ww: {
           volume: calculatorType.payin ? payin.volume.ww : 0,
@@ -238,6 +243,10 @@ export function useCalculatorDerivedData({
       payinEuPricing.interchangePercent,
       payinEuPricing.model,
       payinEuPricing.schemeFeesPercent,
+      payinEuPricing.dedicatedCountries?.enabled,
+      payinEuPricing.dedicatedCountries?.ukPercent,
+      payinEuPricing.dedicatedCountries?.chPercent,
+      payinEuPricing.dedicatedCountries?.coefficientPercent,
       payinWwPreview.mdrRevenue,
       payinWwPreview.trxRevenue,
       payinWwPricing.interchangePercent,

@@ -174,6 +174,15 @@ export interface PayinRegionPricing {
   tier2UpToMillion: number;
   single: PayinFeeBlock;
   tiers: PayinFeeBlock[];
+  // Dedicated Countries — mirrors PayinRegionPricingConfig.dedicatedCountries
+  // from the calculator domain. Optional for back-compat with payloads
+  // saved before 2026-05-12. Only the EU block uses this today.
+  dedicatedCountries?: {
+    enabled: boolean;
+    ukPercent: number;
+    chPercent: number;
+    coefficientPercent: number;
+  };
 }
 
 // Payout pricing block — single trx fee per row plus its N/A toggle.

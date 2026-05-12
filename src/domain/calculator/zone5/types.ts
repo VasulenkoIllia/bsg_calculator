@@ -36,6 +36,16 @@ export interface PayinRegionProfitabilityInput {
   interchangePercent: number;
   providerTrxCcCost?: number;
   providerTrxApmCost?: number;
+  // Optional "Dedicated Countries" inputs (added 2026-05-12 for the EU
+  // Blended split). When omitted or when `enabled === false` the math is
+  // unchanged from before — see calculatePayinRegionProfitability for the
+  // explicit fallback path.
+  dedicatedCountries?: {
+    enabled: boolean;
+    ukPercent: number;
+    chPercent: number;
+    coefficientPercent: number;
+  };
 }
 
 export interface PayinRegionProfitability {

@@ -225,6 +225,48 @@ export function useCalculatorState() {
     setRevSharePercent(clampNumber(value, 0, 50));
   };
 
+  // Dedicated Countries (EU Blended only — see decisions.md / Commit D).
+  // Single setter handles every sub-field: checkbox + UK%/CH%/coefficient.
+  // Only meaningful for region === "eu" today; we still accept the region
+  // arg so the public API matches sibling setters in case we later extend
+  // the feature to WW.
+  const setPayinRegionDedicatedCountriesField = <
+    K extends "enabled" | "ukPercent" | "chPercent" | "coefficientPercent"
+  >(
+    region: "eu" | "ww",
+    field: K,
+    value: K extends "enabled" ? boolean : number
+  ) => {
+    const update = (current: PayinRegionPricingConfig): PayinRegionPricingConfig => {
+      const dedicated = current.dedicatedCountries ?? {
+        enabled: false,
+        ukPercent: 0,
+        chPercent: 0,
+        coefficientPercent: 1.3
+      };
+      // Clamp numeric fields to non-negative. Percent fields are also
+      // capped at 100 to avoid UI flips; the calculation re-clamps the
+      // combined share. Coefficient is uncapped on purpose so ops can
+      // model unusual deals.
+      let nextValue: boolean | number = value as boolean | number;
+      if (field === "ukPercent" || field === "chPercent") {
+        nextValue = clampNumber(Math.max(0, Number(value)), 0, 100);
+      } else if (field === "coefficientPercent") {
+        nextValue = Math.max(0, Number(value));
+      }
+      return {
+        ...current,
+        dedicatedCountries: { ...dedicated, [field]: nextValue }
+      };
+    };
+
+    if (region === "eu") {
+      setPayinEuPricing(update);
+      return;
+    }
+    setPayinWwPricing(update);
+  };
+
   const setPayinRegionModel = (region: "eu" | "ww", model: PricingModelType) => {
     if (region === "eu") {
       setPayinEuPricing(current => ({ ...current, model }));
@@ -514,6 +556,7 @@ export function useCalculatorState() {
     setPayinRegionSingleField,
     setPayinRegionTierField,
     setPayinRegionTierBoundary,
+    setPayinRegionDedicatedCountriesField,
     setPayoutRateMode,
     setPayoutSingleField,
     setPayoutTierField,

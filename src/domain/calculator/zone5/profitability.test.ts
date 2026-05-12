@@ -138,6 +138,90 @@ describe("zone5/profitability", () => {
     expect(result.costs.interchange).toBe(0);
   });
 
+  describe("dedicated countries split (EU blended)", () => {
+    // Backward-compat + new-behaviour coverage for the 2026-05-12 feature
+    // added in Commit D. Mirror tests live in zone3 for the preview.
+    it("keeps original scheme cost when dedicated config is absent", () => {
+      const result = calculatePayinRegionProfitability({
+        volume: 1_000_000,
+        mdrRevenue: 0,
+        trxRevenue: 0,
+        failedTrxRevenue: 0,
+        attemptsCcTransactions: 0,
+        attemptsApmTransactions: 0,
+        pricingModel: "blended",
+        schemeFeesPercent: 0.75,
+        interchangePercent: 0.75
+      });
+      // 1,000,000 × 0.75% = 7,500
+      expect(result.costs.schemeFees).toBeCloseTo(7_500, 6);
+    });
+
+    it("keeps original scheme cost when dedicated config is disabled", () => {
+      const result = calculatePayinRegionProfitability({
+        volume: 1_000_000,
+        mdrRevenue: 0,
+        trxRevenue: 0,
+        failedTrxRevenue: 0,
+        attemptsCcTransactions: 0,
+        attemptsApmTransactions: 0,
+        pricingModel: "blended",
+        schemeFeesPercent: 0.75,
+        interchangePercent: 0.75,
+        dedicatedCountries: {
+          enabled: false,
+          ukPercent: 50,
+          chPercent: 25,
+          coefficientPercent: 5
+        }
+      });
+      expect(result.costs.schemeFees).toBeCloseTo(7_500, 6);
+    });
+
+    it("splits EU scheme cost between standard and UK+CH portions", () => {
+      // 1,000,000 × 0.55 × 0.75% + 1,000,000 × 0.45 × 1.30% = 9,975
+      const result = calculatePayinRegionProfitability({
+        volume: 1_000_000,
+        mdrRevenue: 0,
+        trxRevenue: 0,
+        failedTrxRevenue: 0,
+        attemptsCcTransactions: 0,
+        attemptsApmTransactions: 0,
+        pricingModel: "blended",
+        schemeFeesPercent: 0.75,
+        interchangePercent: 0.75,
+        dedicatedCountries: {
+          enabled: true,
+          ukPercent: 10,
+          chPercent: 35,
+          coefficientPercent: 1.3
+        }
+      });
+      expect(result.costs.schemeFees).toBeCloseTo(9_975, 6);
+    });
+
+    it("does not touch IC++ scheme cost even when dedicated is on", () => {
+      const result = calculatePayinRegionProfitability({
+        volume: 1_000_000,
+        mdrRevenue: 0,
+        trxRevenue: 0,
+        failedTrxRevenue: 0,
+        attemptsCcTransactions: 0,
+        attemptsApmTransactions: 0,
+        pricingModel: "icpp",
+        schemeFeesPercent: 0.75,
+        interchangePercent: 0.75,
+        dedicatedCountries: {
+          enabled: true,
+          ukPercent: 30,
+          chPercent: 20,
+          coefficientPercent: 1.3
+        }
+      });
+      expect(result.costs.schemeFees).toBe(0);
+    });
+  });
+
   it("calculates payout profitability with provider tier costs", () => {
     const result = calculatePayoutProfitability({
       volume: 500_000,
