@@ -217,10 +217,13 @@ Logged here for completeness in case any item needs to be reverted.
 
 ### 4.4 New feature: Dedicated Countries (UK + CH) split (Commit D)
 
-- **Date:** 2026-05-12
+- **Date:** 2026-05-12 (coefficient locked to constant later same day)
 - **User request:** new opt-in checkbox on EU Blended that splits the
   EU scheme cost between the standard portion and a UK + Switzerland
-  portion charged at a separate coefficient (default `1.30%`, editable).
+  portion charged at the fixed `DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT`
+  constant (`1.30%`). An earlier version of this commit exposed the
+  coefficient as a user-editable input; product asked to lock it to a
+  constant the same day, so the editable field was removed.
 - **Applied across calc + wizard + PDF:**
   - Domain types (`src/domain/calculator/zone3/pricingConfiguration.ts`,
     `src/domain/calculator/zone5/types.ts`) gained an optional

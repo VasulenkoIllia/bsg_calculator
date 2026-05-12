@@ -16,12 +16,19 @@ export interface PayoutRateSet {
 // (added 2026-05-12, see docs/decisions.md). When enabled, the EU volume
 // is split into:
 //   - a standard portion that pays the regular `schemeFeesPercent`
-//   - a dedicated portion (UK + Switzerland share) that pays the higher
-//     `coefficientPercent` (default 1.30%, editable)
+//   - a dedicated portion (UK + Switzerland share) that pays the fixed
+//     coefficient `DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT`
 // The feature only applies to Payin EU Blended in the current product
 // requirement, but the shape is generic so it could be extended later.
 // When the field is absent or `enabled === false`, the math is identical
 // to the pre-2026-05-12 behaviour — see calculatePayinRegionProfitability.
+//
+// 2026-05-12 follow-up: the dedicated coefficient was originally a
+// user-editable field. Product asked to lock it to a constant, so the
+// shape only carries enabled + UK% + CH% now. If we ever need to make
+// it editable again, restore the `coefficientPercent` field here and in
+// PayinRegionProfitabilityInput.dedicatedCountries, then plumb it back
+// through the UI panels — see docs/decisions.md for the revert path.
 export interface DedicatedCountriesConfig {
   enabled: boolean;
   // Percentage of EU volume coming from the UK (0–100). UK% + CH% should
@@ -29,15 +36,12 @@ export interface DedicatedCountriesConfig {
   ukPercent: number;
   // Percentage of EU volume coming from Switzerland (0–100).
   chPercent: number;
-  // Editable scheme-fee coefficient applied to the dedicated share.
-  // Defaults to DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT but the
-  // user can override it from the UI.
-  coefficientPercent: number;
 }
 
-// Documented default coefficient for the dedicated UK + CH portion. This
-// is the "constant" the user wanted documented; the UI lets ops override
-// it per-deal, but the seed value is captured here so we can revert.
+// Fixed coefficient applied to the dedicated UK + CH portion of EU
+// Blended scheme fees. Exported so callers and tests share one source of
+// truth; revert to the editable shape by re-adding `coefficientPercent`
+// to DedicatedCountriesConfig (see comment above).
 export const DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT = 1.3;
 
 export interface PayinRegionPricingConfig {
@@ -167,11 +171,12 @@ export const DEFAULT_PAYIN_EU_PRICING_CONFIG: PayinRegionPricingConfig = {
   // Dedicated Countries seeded as disabled — the checkbox in Zone 3 turns
   // it on. UK%/CH% start at 0 so even if a stale state somehow has
   // enabled=true the math still reduces to the standard EU calculation.
+  // The dedicated coefficient is no longer stored here; the math reads
+  // DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT directly.
   dedicatedCountries: {
     enabled: false,
     ukPercent: 0,
-    chPercent: 0,
-    coefficientPercent: DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT
+    chPercent: 0
   }
 };
 
@@ -325,29 +330,25 @@ export function collectPayoutPricingWarnings(config: PayoutPricingConfig): strin
   return warnings;
 }
 
-// Resolves the effective dedicated-share / coefficient inputs for the
-// Dedicated Countries feature. Centralised so both preview and the
-// profitability calculation use identical clamping / fallback rules.
-// When the feature is disabled (or absent), returns `share = 0` which
-// makes the standard math unchanged (see callers).
+// Resolves the effective dedicated share for the Dedicated Countries
+// feature. Centralised so both preview and the profitability calculation
+// use identical clamping / fallback rules. When the feature is disabled
+// (or absent), returns `share = 0` which makes the standard math
+// unchanged (see callers). The coefficient is a fixed constant — see
+// DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT.
 function resolveDedicatedSplit(config: PayinRegionPricingConfig): {
   dedicatedShare: number;
-  dedicatedCoefficientPercent: number;
 } {
   const dedicated = config.dedicatedCountries;
   if (!dedicated || !dedicated.enabled) {
-    return { dedicatedShare: 0, dedicatedCoefficientPercent: 0 };
+    return { dedicatedShare: 0 };
   }
   const uk = Math.max(0, safeNonNegative(dedicated.ukPercent));
   const ch = Math.max(0, safeNonNegative(dedicated.chPercent));
   // Clamp combined share to <= 100%. If both fields are 0 the split
   // collapses back to standard scheme fees.
   const rawShare = (uk + ch) / 100;
-  const dedicatedShare = Math.min(1, rawShare);
-  return {
-    dedicatedShare,
-    dedicatedCoefficientPercent: safeNonNegative(dedicated.coefficientPercent)
-  };
+  return { dedicatedShare: Math.min(1, rawShare) };
 }
 
 export function calculatePayinRegionPricingPreview(
@@ -360,16 +361,20 @@ export function calculatePayinRegionPricingPreview(
   const methodVolumeCc = safeNonNegative(input.methodVolume.cc);
   const methodVolumeApm = safeNonNegative(input.methodVolume.apm);
   const warnings = collectPayinPricingWarnings(input.config);
-  const { dedicatedShare, dedicatedCoefficientPercent } = resolveDedicatedSplit(input.config);
+  const { dedicatedShare } = resolveDedicatedSplit(input.config);
   const standardShare = 1 - dedicatedShare;
   // Scheme cost impact for Blended only. When Dedicated Countries is
-  // enabled, the EU volume is split into standard + dedicated portions
-  // each with its own coefficient. When disabled (dedicatedShare = 0)
-  // this reduces to the original formula: volume × schemeFeesPercent.
+  // enabled, the EU volume is split into standard + dedicated portions.
+  // The dedicated coefficient is fixed (see
+  // DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT). When disabled
+  // (dedicatedShare = 0) this reduces to the original formula:
+  // volume × schemeFeesPercent.
   const schemeCostImpact =
     input.config.model === "blended"
       ? volume * standardShare * (safeNonNegative(input.config.schemeFeesPercent) / 100) +
-        volume * dedicatedShare * (dedicatedCoefficientPercent / 100)
+        volume *
+          dedicatedShare *
+          (DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT / 100)
       : 0;
 
   if (input.config.rateMode === "single") {

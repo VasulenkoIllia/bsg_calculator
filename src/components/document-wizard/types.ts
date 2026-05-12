@@ -176,12 +176,14 @@ export interface PayinRegionPricing {
   tiers: PayinFeeBlock[];
   // Dedicated Countries — mirrors PayinRegionPricingConfig.dedicatedCountries
   // from the calculator domain. Optional for back-compat with payloads
-  // saved before 2026-05-12. Only the EU block uses this today.
+  // saved before 2026-05-12. Only the EU block uses this today. The
+  // dedicated coefficient is intentionally not in the payload — it's a
+  // fixed constant in the math layer (see
+  // DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT).
   dedicatedCountries?: {
     enabled: boolean;
     ukPercent: number;
     chPercent: number;
-    coefficientPercent: number;
   };
 }
 

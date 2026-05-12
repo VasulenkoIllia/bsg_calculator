@@ -56,9 +56,12 @@ export interface Zone3PricingConfigurationProps {
   ) => void;
   // Dedicated Countries (EU Blended only — see decisions.md). The setter
   // signature uses a discriminated K so booleans only flow through the
-  // `enabled` field. The panel only renders these controls for region=eu.
+  // `enabled` field. The dedicated coefficient is locked to
+  // DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT, so it's not part of
+  // the editable surface anymore. The panel only renders these controls
+  // for region=eu.
   setPayinRegionDedicatedCountriesField: <
-    K extends "enabled" | "ukPercent" | "chPercent" | "coefficientPercent"
+    K extends "enabled" | "ukPercent" | "chPercent"
   >(
     region: "eu" | "ww",
     field: K,

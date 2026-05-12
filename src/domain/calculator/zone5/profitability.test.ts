@@ -171,8 +171,7 @@ describe("zone5/profitability", () => {
         dedicatedCountries: {
           enabled: false,
           ukPercent: 50,
-          chPercent: 25,
-          coefficientPercent: 5
+          chPercent: 25
         }
       });
       expect(result.costs.schemeFees).toBeCloseTo(7_500, 6);
@@ -193,8 +192,7 @@ describe("zone5/profitability", () => {
         dedicatedCountries: {
           enabled: true,
           ukPercent: 10,
-          chPercent: 35,
-          coefficientPercent: 1.3
+          chPercent: 35
         }
       });
       expect(result.costs.schemeFees).toBeCloseTo(9_975, 6);
@@ -214,8 +212,7 @@ describe("zone5/profitability", () => {
         dedicatedCountries: {
           enabled: true,
           ukPercent: 30,
-          chPercent: 20,
-          coefficientPercent: 1.3
+          chPercent: 20
         }
       });
       expect(result.costs.schemeFees).toBe(0);

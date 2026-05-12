@@ -25,9 +25,10 @@ export interface PayinRegionPricingPanelProps {
   setTierBoundary: (boundary: "tier1UpToMillion" | "tier2UpToMillion", value: number) => void;
   // Optional — only the EU panel wires this in today (Dedicated Countries
   // feature, added 2026-05-12). When absent, the controls aren't rendered
-  // so the WW panel stays identical to its pre-feature form.
+  // so the WW panel stays identical to its pre-feature form. Coefficient
+  // is no longer editable (see DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT).
   setDedicatedCountriesField?: <
-    K extends "enabled" | "ukPercent" | "chPercent" | "coefficientPercent"
+    K extends "enabled" | "ukPercent" | "chPercent"
   >(
     field: K,
     value: K extends "enabled" ? boolean : number
@@ -58,7 +59,6 @@ export function PayinRegionPricingPanel({
   const dedicatedEnabled = Boolean(dedicated?.enabled);
   const ukPercent = dedicated?.ukPercent ?? 0;
   const chPercent = dedicated?.chPercent ?? 0;
-  const coefficientPercent = dedicated?.coefficientPercent ?? 0;
   const successfulCc = region === "eu" ? payin.successful.byRegionMethod.euCc : payin.successful.byRegionMethod.wwCc;
   const successfulApm = region === "eu" ? payin.successful.byRegionMethod.euApm : payin.successful.byRegionMethod.wwApm;
 
@@ -217,10 +217,10 @@ export function PayinRegionPricingPanel({
               Dedicated Countries (EU Blended only) — added 2026-05-12.
               When enabled, the EU scheme-fee cost is split:
                 standard portion × schemeFeesPercent
-                + (UK%+CH%) portion × coefficientPercent.
+                + (UK%+CH%) portion × DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT
+              (fixed 1.30% constant — locked per 2026-05-12 follow-up).
               Field is documented in docs/calculator_logic_and_formulas.md
-              and docs/decisions.md; coefficient default lives in
-              DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT.
+              and docs/decisions.md.
             */}
             <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
               <input
@@ -236,10 +236,10 @@ export function PayinRegionPricingPanel({
             </label>
             <p className="mt-1 text-xs text-slate-500">
               Splits EU volume between standard scheme fees and the dedicated UK +
-              CH share, which is charged at a separate coefficient.
+              CH share. The dedicated portion is charged at a fixed 1.30%.
             </p>
             {dedicatedEnabled ? (
-              <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
                 <NumberField
                   label="UK %"
                   value={ukPercent}
@@ -255,15 +255,6 @@ export function PayinRegionPricingPanel({
                   min={0}
                   max={100}
                   step={1}
-                />
-                <NumberField
-                  label="Dedicated coefficient (%)"
-                  value={coefficientPercent}
-                  onChange={value =>
-                    setDedicatedCountriesField?.("coefficientPercent", value)
-                  }
-                  min={0}
-                  step={0.05}
                 />
               </div>
             ) : null}

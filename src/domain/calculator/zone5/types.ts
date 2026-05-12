@@ -39,12 +39,13 @@ export interface PayinRegionProfitabilityInput {
   // Optional "Dedicated Countries" inputs (added 2026-05-12 for the EU
   // Blended split). When omitted or when `enabled === false` the math is
   // unchanged from before — see calculatePayinRegionProfitability for the
-  // explicit fallback path.
+  // explicit fallback path. The dedicated coefficient is intentionally
+  // not part of the shape: it's a fixed constant on the domain side
+  // (DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT).
   dedicatedCountries?: {
     enabled: boolean;
     ukPercent: number;
     chPercent: number;
-    coefficientPercent: number;
   };
 }
 

@@ -1694,3 +1694,52 @@ Use this file to record meaningful technical decisions for the project.
     in a separate commit.
   - Consider whether the WW panel ever needs the Dedicated
     Countries control. Today it's intentionally EU-only.
+
+### Decision: Lock Dedicated Countries coefficient to a constant
+- Date: 2026-05-12 (same day as Commit D)
+- Context:
+  - Commit D shipped the Dedicated Countries feature with the
+    coefficient (default 1.30%) exposed as an editable
+    `coefficientPercent` field in both the calculator panel and
+    the wizard's PayinStep. Product reviewed the UI and asked to
+    remove the input — the coefficient should always be 1.30% and
+    live as a constant in the codebase.
+- Decision:
+  - Remove `coefficientPercent` from `DedicatedCountriesConfig`
+    (`zone3/pricingConfiguration.ts`) and from the matching
+    `PayinRegionProfitabilityInput.dedicatedCountries` shape
+    (`zone5/types.ts`), the wizard payload (`document-wizard/types.ts`),
+    and all related UI / setter signatures.
+  - Math now reads
+    `DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT` directly in
+    both the preview (`calculatePayinRegionPricingPreview`) and the
+    profitability (`calculatePayinRegionProfitability`). The
+    constant remains exported so any future change is a one-line
+    update.
+  - UI grid collapses from three columns (UK / CH / Coefficient)
+    to two columns (UK / CH). The helper copy was updated to
+    state explicitly that the dedicated portion is charged at a
+    fixed 1.30%.
+  - Tests updated to drop `coefficientPercent` from the fixtures.
+    Asserted values are unchanged because the previous fixtures
+    used 1.30 — i.e. the same value the constant carries.
+- Alternatives considered:
+  - Keep the editable field but hide the input. Rejected — leaves
+    dead state in the payload, confusing for future readers and
+    for serialized drafts.
+  - Make the constant a hidden global override (env / config).
+    Rejected — premature; ops asked for a hard-coded constant.
+- Consequences:
+  - 238/238 tests pass (no test count delta).
+  - Pre-existing saved drafts that include `coefficientPercent`
+    still deserialize: TS structural typing silently drops the
+    extra field on assignment; the math uses the constant
+    regardless of what value was saved.
+  - One-place revert: re-add `coefficientPercent` to
+    `DedicatedCountriesConfig` + `PayinRegionProfitabilityInput.dedicatedCountries`
+    + the wizard payload type, restore the `NumberField` block in
+    `PayinRegionPricingPanel.tsx` and `PayinStep.tsx`, and route
+    it back through the math (replace the constant with
+    `input.dedicatedCountries.coefficientPercent`).
+- Follow-up actions:
+  - None — the feature now matches product's "always 1.30%" spec.

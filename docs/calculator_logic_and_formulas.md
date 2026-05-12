@@ -262,14 +262,17 @@ Dedicated Countries split (EU Blended only, added 2026-05-12):
   - `ukPercent`, `chPercent` — share of EU volume coming from the UK
     and Switzerland (each clamped 0–100; combined share clamped to
     ≤ 100% before applying).
-  - `coefficientPercent` — editable scheme-fee coefficient applied to
-    the dedicated share. Defaults to
-    `DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT = 1.30%`.
+- The dedicated coefficient is a fixed constant
+  (`DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT = 1.30%`) — it is
+  not editable from the UI and is not part of the persisted shape. To
+  change it, edit the constant in
+  `src/domain/calculator/zone3/pricingConfiguration.ts`.
 - When enabled, the EU Blended scheme cost becomes:
   - `dedicatedShare = min(1, (ukPercent + chPercent) / 100)`
   - `standardShare = 1 - dedicatedShare`
   - `schemeCostImpact = volume * standardShare * schemeFeesPercent / 100`
-    `             + volume * dedicatedShare * coefficientPercent / 100`
+    `             + volume * dedicatedShare *`
+    `               DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT / 100`
 - When disabled (or the field is absent — back-compat with payloads
   saved before 2026-05-12), the formula collapses to the original
   `volume * schemeFeesPercent / 100`.
@@ -453,8 +456,10 @@ Per region (EU/WW):
     (2026-05-12 update; see section 6.3 above), this becomes the
     standard + dedicated split:
     - `schemeFees = volume * (1 - dedicatedShare) * schemeFeesPercent / 100`
-      `         + volume * dedicatedShare * coefficientPercent / 100`
-    where `dedicatedShare = min(1, (ukPercent + chPercent) / 100)`.
+      `         + volume * dedicatedShare *`
+      `           DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT / 100`
+    where `dedicatedShare = min(1, (ukPercent + chPercent) / 100)` and
+    the dedicated coefficient is a fixed constant (1.30%).
     With the feature disabled or absent, this collapses back to the
     original `volume * schemeFees%`.
   - `interchange = 0` (not used in payin cost formulas)

@@ -1,3 +1,4 @@
+import { DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT } from "../zone3/pricingConfiguration.js";
 import {
   DEFAULT_PROVIDER_PAYIN_MDR_TIERS,
   DEFAULT_PROVIDER_PAYIN_TRX_APM_COST,
@@ -44,7 +45,8 @@ export function calculatePayinRegionProfitability(
   // 2026-05-12: when "Dedicated Countries" (EU Blended only) is enabled,
   // the EU volume is split into:
   //   - standard portion (1 - (UK% + CH%)/100) × schemeFeesPercent
-  //   - dedicated portion ((UK% + CH%)/100) × coefficientPercent
+  //   - dedicated portion ((UK% + CH%)/100)
+  //     × DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT (fixed constant)
   // When the field is absent or `enabled === false`, dedicatedShare is 0,
   // so the formula collapses to the original `volume × schemeFeesPercent`.
   const dedicated = input.dedicatedCountries;
@@ -56,12 +58,12 @@ export function calculatePayinRegionProfitability(
         )
       : 0;
   const standardShare = 1 - dedicatedShare;
-  const dedicatedCoefficientPercent =
-    dedicated && dedicated.enabled ? Math.max(0, dedicated.coefficientPercent) : 0;
   const schemeFees =
     input.pricingModel === "blended"
       ? volume * standardShare * (normalizePercent(input.schemeFeesPercent) / 100) +
-        volume * dedicatedShare * (dedicatedCoefficientPercent / 100)
+        volume *
+          dedicatedShare *
+          (DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT / 100)
       : 0;
   // Product correction (2026-04-29): interchange is not a payin cost component.
   // Keep the field for compatibility in API shape, but exclude it from calculations.

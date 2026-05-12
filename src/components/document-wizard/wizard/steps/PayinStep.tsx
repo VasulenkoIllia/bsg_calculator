@@ -102,10 +102,11 @@ function PayinRegionEditor({
         {region === "eu" && pricing.model === "blended" ? (
           /*
             Dedicated Countries (EU Blended only — mirrors the calculator's
-            Zone 3 control. The wizard exposes this so ops can override the
-            split for the contract being generated without bouncing back to
-            the calculator. Math and persistence shape are documented in
-            docs/calculator_logic_and_formulas.md.
+            Zone 3 control. The wizard exposes the toggle + UK%/CH% so ops
+            can split the EU portion for the contract being generated. The
+            dedicated coefficient is locked to
+            DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT (1.30%) — see
+            docs/calculator_logic_and_formulas.md and docs/decisions.md.
           */
           <div className="rounded-lg border border-slate-200 bg-white p-3">
             <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
@@ -119,9 +120,7 @@ function PayinRegionEditor({
                     dedicatedCountries: {
                       enabled: event.target.checked,
                       ukPercent: current.dedicatedCountries?.ukPercent ?? 0,
-                      chPercent: current.dedicatedCountries?.chPercent ?? 0,
-                      coefficientPercent:
-                        current.dedicatedCountries?.coefficientPercent ?? 1.3
+                      chPercent: current.dedicatedCountries?.chPercent ?? 0
                     }
                   }))
                 }
@@ -131,10 +130,10 @@ function PayinRegionEditor({
             </label>
             <p className="mt-1 text-xs text-slate-500">
               Splits EU volume between standard scheme fees and the dedicated UK +
-              CH share, which is charged at a separate coefficient.
+              CH share. The dedicated portion is charged at a fixed 1.30%.
             </p>
             {pricing.dedicatedCountries?.enabled ? (
-              <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
                 <NumberField
                   label="UK %"
                   value={pricing.dedicatedCountries.ukPercent}
@@ -146,8 +145,7 @@ function PayinRegionEditor({
                         ...(current.dedicatedCountries ?? {
                           enabled: true,
                           ukPercent: 0,
-                          chPercent: 0,
-                          coefficientPercent: 1.3
+                          chPercent: 0
                         }),
                         ukPercent: Math.max(0, Math.min(100, value))
                       }
@@ -167,8 +165,7 @@ function PayinRegionEditor({
                         ...(current.dedicatedCountries ?? {
                           enabled: true,
                           ukPercent: 0,
-                          chPercent: 0,
-                          coefficientPercent: 1.3
+                          chPercent: 0
                         }),
                         chPercent: Math.max(0, Math.min(100, value))
                       }
@@ -177,26 +174,6 @@ function PayinRegionEditor({
                   min={0}
                   max={100}
                   step={1}
-                />
-                <NumberField
-                  label="Dedicated coefficient (%)"
-                  value={pricing.dedicatedCountries.coefficientPercent}
-                  onChange={value =>
-                    updatePricing(current => ({
-                      ...current,
-                      dedicatedCountries: {
-                        ...(current.dedicatedCountries ?? {
-                          enabled: true,
-                          ukPercent: 0,
-                          chPercent: 0,
-                          coefficientPercent: 1.3
-                        }),
-                        coefficientPercent: Math.max(0, value)
-                      }
-                    }))
-                  }
-                  min={0}
-                  step={0.05}
                 />
               </div>
             ) : null}

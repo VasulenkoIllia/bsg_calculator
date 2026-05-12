@@ -226,12 +226,15 @@ export function useCalculatorState() {
   };
 
   // Dedicated Countries (EU Blended only — see decisions.md / Commit D).
-  // Single setter handles every sub-field: checkbox + UK%/CH%/coefficient.
+  // Single setter handles every sub-field: checkbox + UK%/CH%. The
+  // dedicated coefficient is no longer editable — it's locked to
+  // DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT in the math layer
+  // (per 2026-05-12 follow-up).
   // Only meaningful for region === "eu" today; we still accept the region
   // arg so the public API matches sibling setters in case we later extend
   // the feature to WW.
   const setPayinRegionDedicatedCountriesField = <
-    K extends "enabled" | "ukPercent" | "chPercent" | "coefficientPercent"
+    K extends "enabled" | "ukPercent" | "chPercent"
   >(
     region: "eu" | "ww",
     field: K,
@@ -241,18 +244,13 @@ export function useCalculatorState() {
       const dedicated = current.dedicatedCountries ?? {
         enabled: false,
         ukPercent: 0,
-        chPercent: 0,
-        coefficientPercent: 1.3
+        chPercent: 0
       };
-      // Clamp numeric fields to non-negative. Percent fields are also
-      // capped at 100 to avoid UI flips; the calculation re-clamps the
-      // combined share. Coefficient is uncapped on purpose so ops can
-      // model unusual deals.
+      // Clamp numeric fields. Percent fields are capped at 100 to avoid
+      // UI flips; the calculation re-clamps the combined share.
       let nextValue: boolean | number = value as boolean | number;
       if (field === "ukPercent" || field === "chPercent") {
         nextValue = clampNumber(Math.max(0, Number(value)), 0, 100);
-      } else if (field === "coefficientPercent") {
-        nextValue = Math.max(0, Number(value));
       }
       return {
         ...current,

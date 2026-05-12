@@ -264,8 +264,7 @@ describe("zone3/pricingConfiguration", () => {
           dedicatedCountries: {
             enabled: false,
             ukPercent: 50,
-            chPercent: 25,
-            coefficientPercent: 5
+            chPercent: 25
           }
         }
       });
@@ -292,8 +291,7 @@ describe("zone3/pricingConfiguration", () => {
           dedicatedCountries: {
             enabled: true,
             ukPercent: 10,
-            chPercent: 35,
-            coefficientPercent: 1.3
+            chPercent: 35
           }
         }
       });
@@ -316,8 +314,7 @@ describe("zone3/pricingConfiguration", () => {
           dedicatedCountries: {
             enabled: true,
             ukPercent: 60,
-            chPercent: 60,
-            coefficientPercent: 1.3
+            chPercent: 60
           }
         }
       });
@@ -340,8 +337,7 @@ describe("zone3/pricingConfiguration", () => {
           dedicatedCountries: {
             enabled: true,
             ukPercent: 30,
-            chPercent: 20,
-            coefficientPercent: 1.3
+            chPercent: 20
           }
         }
       });

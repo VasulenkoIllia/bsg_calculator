@@ -246,7 +246,6 @@ export function useCalculatorDerivedData({
       payinEuPricing.dedicatedCountries?.enabled,
       payinEuPricing.dedicatedCountries?.ukPercent,
       payinEuPricing.dedicatedCountries?.chPercent,
-      payinEuPricing.dedicatedCountries?.coefficientPercent,
       payinWwPreview.mdrRevenue,
       payinWwPreview.trxRevenue,
       payinWwPricing.interchangePercent,
