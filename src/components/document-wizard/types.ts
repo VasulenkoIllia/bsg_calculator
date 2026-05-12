@@ -174,17 +174,13 @@ export interface PayinRegionPricing {
   tier2UpToMillion: number;
   single: PayinFeeBlock;
   tiers: PayinFeeBlock[];
-  // Dedicated Countries — mirrors PayinRegionPricingConfig.dedicatedCountries
-  // from the calculator domain. Optional for back-compat with payloads
-  // saved before 2026-05-12. Only the EU block uses this today. The
-  // dedicated coefficient is intentionally not in the payload — it's a
-  // fixed constant in the math layer (see
-  // DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT).
-  dedicatedCountries?: {
-    enabled: boolean;
-    ukPercent: number;
-    chPercent: number;
-  };
+  // NOTE: Dedicated Countries (UK + Switzerland) is intentionally
+  // calculator-only — see `PayinRegionPricingConfig.dedicatedCountries`
+  // in `domain/calculator/zone3/pricingConfiguration.ts`. The wizard
+  // payload deliberately does NOT mirror it: the feature affects the
+  // calculator's internal scheme-fee math only, and never surfaces in
+  // the OFFER PDF (no UI, no rendered row). Keeping it out of the
+  // payload prevents accidental wiring into the wizard / PDF layer.
 }
 
 // Payout pricing block — single trx fee per row plus its N/A toggle.

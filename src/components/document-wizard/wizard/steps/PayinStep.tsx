@@ -99,84 +99,14 @@ function PayinRegionEditor({
           </div>
         </div>
 
-        {region === "eu" && pricing.model === "blended" ? (
-          /*
-            Dedicated Countries (EU Blended only — mirrors the calculator's
-            Zone 3 control. The wizard exposes the toggle + UK%/CH% so ops
-            can split the EU portion for the contract being generated. The
-            dedicated coefficient is locked to
-            DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT (1.30%) — see
-            docs/calculator_logic_and_formulas.md and docs/decisions.md.
-          */
-          <div className="rounded-lg border border-slate-200 bg-white p-3">
-            <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
-              <input
-                className="h-4 w-4 accent-blue-600"
-                type="checkbox"
-                checked={Boolean(pricing.dedicatedCountries?.enabled)}
-                onChange={event =>
-                  updatePricing(current => ({
-                    ...current,
-                    dedicatedCountries: {
-                      enabled: event.target.checked,
-                      ukPercent: current.dedicatedCountries?.ukPercent ?? 0,
-                      chPercent: current.dedicatedCountries?.chPercent ?? 0
-                    }
-                  }))
-                }
-                aria-label="Enable dedicated countries split for EU Blended (wizard)"
-              />
-              Dedicated Countries (UK + Switzerland)
-            </label>
-            <p className="mt-1 text-xs text-slate-500">
-              Splits EU volume between standard scheme fees and the dedicated UK +
-              CH share. The dedicated portion is charged at a fixed 1.30%.
-            </p>
-            {pricing.dedicatedCountries?.enabled ? (
-              // Precondition: `dedicatedCountries` is non-null on `current`
-              // here, because this branch only renders when the outer
-              // `pricing.dedicatedCountries?.enabled` is true and the
-              // checkbox handler always seeds the block before flipping
-              // `enabled` to true. The non-null assertions below encode
-              // that precondition for TS without introducing a misleading
-              // synthetic fallback object.
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <NumberField
-                  label="UK %"
-                  value={pricing.dedicatedCountries.ukPercent}
-                  onChange={value =>
-                    updatePricing(current => ({
-                      ...current,
-                      dedicatedCountries: {
-                        ...current.dedicatedCountries!,
-                        ukPercent: Math.max(0, Math.min(100, value))
-                      }
-                    }))
-                  }
-                  min={0}
-                  max={100}
-                  step={1}
-                />
-                <NumberField
-                  label="Switzerland %"
-                  value={pricing.dedicatedCountries.chPercent}
-                  onChange={value =>
-                    updatePricing(current => ({
-                      ...current,
-                      dedicatedCountries: {
-                        ...current.dedicatedCountries!,
-                        chPercent: Math.max(0, Math.min(100, value))
-                      }
-                    }))
-                  }
-                  min={0}
-                  max={100}
-                  step={1}
-                />
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+        {/*
+          NOTE: Dedicated Countries (UK + Switzerland) is calculator-only.
+          It used to mirror into this wizard step but was removed on
+          2026-05-12 — the feature changes the calculator's internal
+          scheme-fee math only and is never reflected in the OFFER PDF.
+          The control lives exclusively in
+          `src/components/calculator/zones/zone3/PayinRegionPricingPanel.tsx`.
+        */}
 
         {pricing.rateMode === "single" ? (
           <div className="grid gap-3 md:grid-cols-3">

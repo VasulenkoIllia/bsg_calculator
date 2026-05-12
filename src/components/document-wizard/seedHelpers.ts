@@ -58,18 +58,18 @@ export function buildDocumentHeaderMetaFromCalculator(
 export function clonePayinRegionPricing(
   pricing: PayinRegionPricingConfig
 ): DocumentTemplatePayload["payinPricing"]["eu"] {
+  // `pricing.dedicatedCountries` is intentionally dropped here — the
+  // Dedicated Countries feature is calculator-only and must not bleed
+  // into wizard / PDF payloads. The destructure below excludes the
+  // field; the spread `...rest` carries everything else.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { dedicatedCountries: _excluded, ...rest } = pricing;
   return {
-    ...pricing,
+    ...rest,
     // N/A toggles default off — the calculator only emits numeric
     // values; the wizard exposes the toggles for the user to flip.
     single: { ...pricing.single, trxCcNa: false, trxApmNa: false },
-    tiers: pricing.tiers.map(tier => ({ ...tier, trxCcNa: false, trxApmNa: false })),
-    // Dedicated Countries — preserved verbatim from the calculator config.
-    // Cloned so wizard edits don't leak back into the live calculator
-    // state. Stays undefined when the calculator config didn't seed it.
-    dedicatedCountries: pricing.dedicatedCountries
-      ? { ...pricing.dedicatedCountries }
-      : undefined
+    tiers: pricing.tiers.map(tier => ({ ...tier, trxCcNa: false, trxApmNa: false }))
   };
 }
 

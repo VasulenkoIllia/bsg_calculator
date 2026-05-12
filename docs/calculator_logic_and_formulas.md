@@ -257,8 +257,15 @@ Scheme cost impact preview:
 - Current Scheme defaults: EU `0.75%`, WW `2%`.
 
 Dedicated Countries split (EU Blended only, added 2026-05-12):
+- **Calculator-only feature** — the control lives exclusively in
+  `src/components/calculator/zones/zone3/PayinRegionPricingPanel.tsx`
+  (EU panel + Blended model). It is intentionally NOT mirrored into
+  the wizard payload and NOT rendered into the OFFER PDF. The
+  wizard's `PayinRegionPricing` type does not carry the field; the
+  feature affects only the calculator's internal scheme-fee
+  accounting in Zone 5 profitability.
 - Optional `dedicatedCountries` block on `PayinRegionPricingConfig`:
-  - `enabled` — checkbox in Zone 3 EU panel + the wizard's Payin step.
+  - `enabled` — checkbox in the Zone 3 EU pricing panel.
   - `ukPercent`, `chPercent` — share of EU volume coming from the UK
     and Switzerland (each clamped 0–100; combined share clamped to
     ≤ 100% before applying).

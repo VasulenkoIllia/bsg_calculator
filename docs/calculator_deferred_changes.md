@@ -217,35 +217,53 @@ Logged here for completeness in case any item needs to be reverted.
 
 ### 4.4 New feature: Dedicated Countries (UK + CH) split (Commit D)
 
-- **Date:** 2026-05-12 (coefficient locked to constant later same day)
+- **Date:** 2026-05-12 (coefficient locked + scope narrowed to
+  calculator-only later same day)
 - **User request:** new opt-in checkbox on EU Blended that splits the
   EU scheme cost between the standard portion and a UK + Switzerland
   portion charged at the fixed `DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT`
-  constant (`1.30%`). An earlier version of this commit exposed the
-  coefficient as a user-editable input; product asked to lock it to a
-  constant the same day, so the editable field was removed.
-- **Applied across calc + wizard + PDF:**
+  constant (`1.30%`).
+- **Scope: CALCULATOR-ONLY.** The feature is intentionally not
+  mirrored into the wizard payload and never rendered in the OFFER
+  PDF. Two same-day product revisions narrowed the original spec:
+    1. The coefficient was originally a user-editable field; product
+       asked to lock it to a constant.
+    2. The wizard mirror (parallel UI block in `PayinStep.tsx` + the
+       `dedicatedCountries` field on `PayinRegionPricing`) was
+       removed entirely — the feature affects internal scheme-fee
+       math only and adds no value at the wizard/PDF layer.
+- **Currently applied in (calculator domain only):**
   - Domain types (`src/domain/calculator/zone3/pricingConfiguration.ts`,
-    `src/domain/calculator/zone5/types.ts`) gained an optional
-    `dedicatedCountries` block and the
+    `src/domain/calculator/zone5/types.ts`) carry the optional
+    `dedicatedCountries` block + the
     `DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT = 1.30` constant.
-  - Math updated in `zone5/payin.ts` and the preview in
-    `zone3/pricingConfiguration.ts` — when disabled/absent, formulas
-    collapse to the pre-feature `volume × schemeFeesPercent`.
-  - Calculator state (`useCalculatorState.ts`) gained
-    `setPayinRegionDedicatedCountriesField`; UI block in
-    `PayinRegionPricingPanel.tsx` (EU only). Wired through
-    `Zone3PricingConfiguration.tsx` and `pages/CalculatorPage.tsx`.
-  - Wizard payload type `PayinRegionPricing` mirrors the same block;
-    UI block in `PayinStep.tsx` (EU only). `fromCalculator.ts` and
-    `seedHelpers.ts` propagate the field with a defensive clone.
-  - Tests: 8 new cases (`zone3/pricingConfiguration.test.ts` +
-    `zone5/profitability.test.ts`) cover backward-compat (field
+  - Math in `zone5/payin.ts` and preview in
+    `zone3/pricingConfiguration.ts` (`resolveDedicatedCountriesShare`
+    is the single shared helper). When disabled/absent the formula
+    collapses to the pre-feature `volume × schemeFeesPercent`.
+  - Calculator state (`useCalculatorState.ts`) exposes
+    `setPayinRegionDedicatedCountriesField`; the UI block in
+    `PayinRegionPricingPanel.tsx` is the sole editing surface (EU +
+    Blended only). Wired through `Zone3PricingConfiguration.tsx`
+    and `pages/CalculatorPage.tsx`.
+  - Tests: 8 cases in `zone3/pricingConfiguration.test.ts` +
+    `zone5/profitability.test.ts` cover backward-compat (field
     absent / `enabled: false`) and new-behaviour splits.
-- **Revert:** see the full revert plan in the 2026-05-12 entry of
-  `docs/decisions.md` (delete the new type fields, restore the
-  original two-line `schemeFees` formula, drop the UI blocks, drop
-  the setter, delete the new test cases).
+- **Explicitly NOT in:**
+  - `src/components/document-wizard/types.ts` —
+    `PayinRegionPricing` does not carry `dedicatedCountries`.
+  - `src/components/document-wizard/fromCalculator.ts` — does not
+    propagate the field; only the rest of `PayinRegionPricingConfig`
+    flows through.
+  - `src/components/document-wizard/seedHelpers.ts` — explicitly
+    destructures `dedicatedCountries` out before spreading.
+  - `src/components/document-wizard/wizard/steps/PayinStep.tsx` —
+    no UI block; only a NOTE comment explaining why.
+  - PDF renderer (`offerPdf/sections/*`) — no row, no card, nothing.
+- **Revert:** see the full revert plan in the 2026-05-12 entries of
+  `docs/decisions.md`. The two-step revert (re-add wizard mirror +
+  re-add editable coefficient) is documented separately so each
+  half can be reverted independently if needed.
 
 <!-- Append further deferred changes below using the same template:
 

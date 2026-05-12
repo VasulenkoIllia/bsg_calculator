@@ -1817,3 +1817,74 @@ Use this file to record meaningful technical decisions for the project.
     compact), the simplest revert is to lower the four `--space-*`
     values and tighten the compact overrides back toward the
     pre-2026-05-12 numbers preserved in git history.
+
+### Decision: Scope Dedicated Countries to the calculator only
+- Date: 2026-05-12 (same evening, after the spacing pass)
+- Context:
+  - Commit D shipped the Dedicated Countries (UK + Switzerland)
+    feature as a mirrored block: a UI control in the calculator's
+    EU Blended panel + a parallel UI block in the wizard's
+    `PayinStep`, with the field propagated through the wizard
+    payload (`PayinRegionPricing.dedicatedCountries`),
+    `fromCalculator.ts`, and `seedHelpers.clonePayinRegionPricing`.
+  - Product reviewed the wizard UI and asked to remove it: the
+    feature affects the calculator's internal scheme-fee math
+    (Zone 5 profitability) and intentionally never shows up in the
+    OFFER PDF (no row added — see the earlier 2026-05-12 PDF scope
+    decision under the same batch). Mirroring it into the wizard
+    duplicated state without adding user value and risked future
+    drift if either side changed independently.
+- Decision:
+  - Remove the field and UI from the wizard layer entirely:
+    - `PayinRegionPricing.dedicatedCountries` deleted from
+      `src/components/document-wizard/types.ts`.
+    - `fromCalculator.ts` no longer propagates the field — the
+      wizard payload's `payinPricing.eu` / `payinPricing.ww` blocks
+      are now plain pricing config with N/A toggles only.
+    - `seedHelpers.clonePayinRegionPricing` explicitly destructures
+      `dedicatedCountries` out of the input before spreading the
+      rest, so a calculator config carrying the field still passes
+      through (TS-safely) but the wizard payload never gains it.
+    - The Dedicated Countries UI block in `PayinStep.tsx`
+      (checkbox + UK% + CH% inputs, region === "eu" + Blended only)
+      is removed. A `/* NOTE */` comment replaces it so a future
+      reader sees why the seemingly-obvious mirror is absent.
+  - Calculator side stays unchanged:
+    - `PayinRegionPricingConfig.dedicatedCountries` and
+      `DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT` live in
+      `src/domain/calculator/zone3/pricingConfiguration.ts`.
+    - Math (`resolveDedicatedCountriesShare`, preview + zone5
+      profitability) is untouched.
+    - UI control in `PayinRegionPricingPanel.tsx` (EU + Blended)
+      remains the single editing surface.
+- Alternatives considered:
+  - Keep the wizard mirror as read-only. Rejected — still
+    duplicates state and confuses ops about which surface is
+    authoritative.
+  - Surface the dedicated split in the OFFER PDF (extra row).
+    Rejected earlier in the day (see prior conversation): PDF is
+    merchant-facing pricing, dedicated split is internal cost
+    accounting.
+- Consequences:
+  - 238/238 tests still pass — there were no wizard tests
+    referencing `dedicatedCountries` (it was added at the same
+    time as the rest, and removal is symmetric).
+  - The Dedicated Countries feature now has one canonical surface
+    (calculator Zone 3 EU panel) and one canonical math path
+    (zone3 preview + zone5 profitability). Drift between wizard
+    and calculator is structurally impossible because the wizard
+    payload no longer carries the field at all.
+  - Saved wizard drafts from earlier today that include a
+    `dedicatedCountries` block deserialize cleanly — TS structural
+    typing drops the now-unknown property on assignment and
+    nothing downstream reads it.
+- Revert path:
+  - Restore `dedicatedCountries?: { enabled, ukPercent, chPercent }`
+    on `PayinRegionPricing` (types.ts).
+  - Re-add the propagation in `fromCalculator.ts` (both EU + WW
+    blocks) and the explicit clone in
+    `seedHelpers.clonePayinRegionPricing`.
+  - Restore the UI block in `PayinStep.tsx` — git history at
+    commit `e8007d8` has the post-coefficient-lock version.
+- Follow-up actions:
+  - None — feature now lives where product asked.

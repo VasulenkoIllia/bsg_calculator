@@ -147,6 +147,11 @@ export function buildDocumentTemplatePayloadFromCalculator({
       payoutCustomNoteText: ""
     },
     payinPricing: {
+      // NOTE: `dedicatedCountries` is intentionally NOT propagated into
+      // the wizard payload — the feature lives only in the calculator
+      // (it changes internal scheme-fee math and never surfaces in
+      // the OFFER PDF). The calculator config carries the field; this
+      // mapping deliberately drops it so the wizard / PDF stay clean.
       eu: {
         model: payinEuPricing.model,
         rateMode: payinEuPricing.rateMode,
@@ -154,14 +159,7 @@ export function buildDocumentTemplatePayloadFromCalculator({
         tier1UpToMillion: payinEuPricing.tier1UpToMillion,
         tier2UpToMillion: payinEuPricing.tier2UpToMillion,
         single: { ...payinEuPricing.single, trxCcNa: false, trxApmNa: false },
-        tiers: payinEuPricing.tiers.map(tier => ({ ...tier, trxCcNa: false, trxApmNa: false })),
-        // Dedicated Countries — propagate the calculator config so the
-        // wizard step shows the same UK%/CH%/coefficient values. Cloned
-        // to prevent shared-reference edits. Optional: stays undefined
-        // when the calculator state didn't seed it (back-compat).
-        dedicatedCountries: payinEuPricing.dedicatedCountries
-          ? { ...payinEuPricing.dedicatedCountries }
-          : undefined
+        tiers: payinEuPricing.tiers.map(tier => ({ ...tier, trxCcNa: false, trxApmNa: false }))
       },
       ww: {
         model: payinWwPricing.model,
@@ -170,12 +168,7 @@ export function buildDocumentTemplatePayloadFromCalculator({
         tier1UpToMillion: payinWwPricing.tier1UpToMillion,
         tier2UpToMillion: payinWwPricing.tier2UpToMillion,
         single: { ...payinWwPricing.single, trxCcNa: false, trxApmNa: false },
-        tiers: payinWwPricing.tiers.map(tier => ({ ...tier, trxCcNa: false, trxApmNa: false })),
-        // WW does not surface Dedicated Countries today; we still mirror
-        // whatever the calculator emits to keep the shape symmetric.
-        dedicatedCountries: payinWwPricing.dedicatedCountries
-          ? { ...payinWwPricing.dedicatedCountries }
-          : undefined
+        tiers: payinWwPricing.tiers.map(tier => ({ ...tier, trxCcNa: false, trxApmNa: false }))
       }
     },
     payoutPricing: {
