@@ -12,7 +12,7 @@ BSG Calculator is a React + Vite SPA with two cooperating workspaces:
 
 Backend is intentionally absent in the current phase. A minimal `server/` skeleton exists for later use; static assets are served via nginx in Docker.
 
-> **Backend specification is finalized; implementation has not started.** [docs/phase_08_backend_plan.md](phase_08_backend_plan.md) captures the confirmed stack (Express + Drizzle + Postgres + Puppeteer + JWT), full DB schema, API surface, document-save flow, seed data, and integration plan. All open questions have been resolved. Next step is to begin implementation in `server/`.
+> **Backend specification v2.0 finalised (2026-05-12); implementation has not started.** [docs/phase_08_backend_plan.md](phase_08_backend_plan.md) captures the confirmed stack (Express + Drizzle + Postgres + Puppeteer + JWT, **single Docker container** on Linux VPS), full DB schema, API surface, document-save flow, and HubSpot deferral plan. The previous (v1, 2026-05-03) plan is archived at `phase_08_backend_plan_v1_archived.md`. Companion specs: `backend_state_schemas.md`, `backend_computation_boundary.md`, `client_and_hubspot_workflow.md`, `ui_phase_8_9_requirements.md`. Next step is implementation in `server/`.
 
 ## 2. Hard rules
 

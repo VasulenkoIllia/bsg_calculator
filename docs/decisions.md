@@ -1950,3 +1950,83 @@ Use this file to record meaningful technical decisions for the project.
     (title + meta-grid + meta-note) rather than further squeeze
     the table cells, which are already at their original tight
     calibration.
+
+### Decision: Phase 8 backend planning v2.0 finalised
+- Date: 2026-05-12 (planning session, after frontend freeze)
+- Context:
+  - Phase 8 plan v1 (2026-05-03) was authored before the
+    2026-05-12 product-update batch + pre-Phase-8 audit + the
+    architect's decomposition recommendations. Several v1 design
+    choices were superseded by the audit findings and new product
+    decisions (unified `documents` table, server-side PDF render,
+    no public links, HubSpot-only client source, etc.).
+  - The product team also raised four new UI requirements during
+    the audit conversation: documents listing page with filters,
+    shareable view-mode links (logged-in only), clone-as-new-draft,
+    and HubSpot status tracking in listings.
+- Decision:
+  - Archive v1 plan as `phase_08_backend_plan_v1_archived.md` and
+    write a fully consolidated v2.0 at `phase_08_backend_plan.md`.
+  - V2.0 captures every decision from the 2026-05-12 planning Q&A
+    (numbered 1-20 in the plan's §16 decision log). Highlights:
+    1. Single Docker container on Linux VPS (was: two containers).
+    2. One auth role; admin creates users via script; no
+       self-signup, no password reset.
+    3. All URLs logged-in only; no public share tokens.
+    4. Document numbering: `BSG-<7d_monotonic>-<6d_hubspot_id>`,
+       start at `7100001`, no reset (was: `BSG-#####`).
+    5. Statuses: `draft → confirmed` only. Each row has a unique
+       number; clone = new row. No parent/superseded/archived.
+    6. Document types: `calculator_snapshot | offer | agreement`
+       in ONE unified `documents` table (was: separate
+       `calculator_snapshots` table + separate document types).
+    7. Latest "current" rendering: per `(company, document_type)`
+       so each company can simultaneously have a current offer
+       and a current agreement.
+    8. PDF render: server-side Puppeteer + Chrome in the same
+       container. Reuses existing `buildOfferPdfHtml`. Pixel-diff
+       CI gate against 10 baseline fixtures.
+    9. PDF binary NOT stored; rendered on-demand.
+    10. No email/notifications, no audit log, no automated
+        backups, no monitoring in Phase 8 MVP (all deferred to
+        Phase 8.1 hardening).
+    11. Wizard explicit "Save" — no per-keystroke autosave.
+    12. HubSpot data flows IN to our DB only (read sync via
+        "Refresh" button); we never write back in Phase 8.
+        Schema reserves nullable `hubspot_*` columns. Field
+        mapping deferred until API access available.
+  - Companion docs written today and integrated by the plan:
+    - `docs/backend_state_schemas.md` — Zod-ready type contracts.
+    - `docs/backend_computation_boundary.md` — recompute vs. trust.
+    - `docs/client_and_hubspot_workflow.md` — Phase 8 vs Phase 9
+      client/HubSpot mechanics.
+    - `docs/ui_phase_8_9_requirements.md` — listing, view-mode,
+      clone, HubSpot status UI specs.
+- Alternatives considered:
+  - Keep v1 and append a "2026-05-12 corrections" section.
+    Rejected — too many corrections for a coherent read; a backend
+    engineer walking in cold would have to mentally diff two
+    halves of the doc.
+  - Skip the consolidation, keep individual docs only. Rejected —
+    the orchestration plan with sprint order + acceptance criteria
+    + schema in one place is what backend kickoff needs.
+- Consequences:
+  - Single source of truth for Phase 8 implementation. Backend
+    engineer reads `phase_08_backend_plan.md` end-to-end and knows
+    what to implement, in what order, by which acceptance criteria.
+  - V1 stays in the repo (archived) for traceability — readers can
+    see what was originally planned vs. what changed.
+  - 246/246 frontend tests still pass; all decomposition modules
+    (`snapshotShape.ts`, `derivedSummaryShape.ts`,
+    `wizard/layoutHelpers.ts`) wait for backend consumption.
+- Follow-up actions:
+  - Backend kickoff meeting: walk through the v2.0 plan §12
+    (sprint plan).
+  - Capture 10 PDF baseline fixtures BEFORE writing the Puppeteer
+    endpoint — they're the safety net for "server render must
+    match current browser render".
+  - Update `docs/spec_v2_alignment.md` to flip Phase 8 rows from
+    "spec finalised" to "implementation in progress" once Sprint 1
+    starts.
+  - Phase 9 planning (HubSpot API integration) will happen after
+    Phase 8 ships. The schema groundwork is already in place.
