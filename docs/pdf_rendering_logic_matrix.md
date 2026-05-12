@@ -75,17 +75,20 @@ Flag wins over the value; the user toggles flags via `FeeFieldWithNa` (boolean) 
 
 ### 3.4 Page-budget strategy
 
-Page 1 is laid out around the payin section's "weight":
+Page 1 is laid out around the payin section's "weight" — whether the
+Card Acquiring table has tiers:
 
-| `layout.payin.tableMode` | Effective rows | Page-1 content | Page break |
-|---|---|---|---|
-| `byRegionTiered` | 6 (tiered, both regions) | header + section 1 + payin custom note | **forced** before Pay Out (`<tr class="force-page-break-before">`) |
-| `byRegionFlat` | 2 | header + section 1 + (optional note) + section 2 + (optional note) | natural |
-| `flatTiered` | 3 (tiered, one region) | header + section 1 + (optional note) + section 2 | natural |
-| `flatSingle` | 1 | header + sections 1 + 2 (+ notes) | natural |
+| `layout.payin.tableMode` | Has tiers? | Page-1 content | Page-2 content | Forced break |
+|---|---|---|---|---|
+| `byRegionTiered` | yes (6 rows, both regions) | header + section 1 + payin custom note | section 2 + payout note + sections 3 + 4 | before Pay Out |
+| `flatTiered` | yes (3 rows, one region) | header + section 1 + payin custom note | section 2 + payout note + sections 3 + 4 | before Pay Out |
+| `byRegionFlat` | no (2 rows, both regions) | header + sections 1 + 2 + their notes | sections 3 + 4 | before Other Services & Fees |
+| `flatSingle` | no (1 row) | header + sections 1 + 2 + their notes | sections 3 + 4 | before Other Services & Fees |
 
-The forced break for heavy payin keeps the compact preset honest:
-section 1 fills page 1 comfortably, section 2 starts fresh on page 2.
+Implementation: the orchestrator marks the corresponding row's `<tr>`
+with `force-page-break-before` (CSS `page-break-before: always`). When
+the payin section is absent (`calculatorType.payin === false`), no
+forced break fires — sections flow naturally.
 
 ### 3.5 Auto-compact mode (added 2026-05-08)
 

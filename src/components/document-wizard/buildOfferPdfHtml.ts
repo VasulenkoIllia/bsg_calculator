@@ -37,31 +37,41 @@ interface OfferBodyRow {
 // break points between rows — that is what makes `<tfoot>` reliably
 // repeat the disclaimer footer on every page.
 //
-// Page-budget rule (2026-05-08): when the Card Acquiring section is
-// heavy (`tableMode === "byRegionTiered"` → 6 rows), section 2 (Pay
-// Out) is forced onto page 2 so page 1 keeps a comfortable
-// "header + section 1 + payin custom note + per-page footer" layout.
-// When section 1 is light, no force-break: sections 1 + 2 share page
-// 1 naturally.
+// Page-budget rule (2026-05-08):
+//   Tiered payin  (tableMode = byRegionTiered / flatTiered):
+//     page 1 = header + section 1 + payin custom note
+//     page 2 = section 2 + payout custom note + sections 3 + 4
+//   Non-tiered payin (tableMode = byRegionFlat / flatSingle):
+//     page 1 = header + sections 1 + 2 + their notes
+//     page 2 = sections 3 + 4
+// Both halves of the rule are implemented as `breakBefore` flags on
+// the Pay Out and Other Services & Fees rows respectively. Light
+// payin + missing payin section falls back to natural flow.
 function buildOfferBodyRows(
   data: DocumentTemplatePayload,
   layout: DocumentWizardLayout
 ): OfferBodyRow[] {
   const rows: OfferBodyRow[] = [];
-  const payinIsHeavy = layout.payin.tableMode === "byRegionTiered";
 
   const payin = buildPayinSection(data, layout);
+  const payinIsPresent = payin.length > 0;
+  const payinHasTiers =
+    layout.payin.tableMode === "byRegionTiered" ||
+    layout.payin.tableMode === "flatTiered";
+  const heavyPayin = payinIsPresent && payinHasTiers;
+  const lightPayin = payinIsPresent && !payinHasTiers;
+
   if (payin) rows.push({ html: payin });
   const payinNote = buildPayinCustomNoteHtml(data);
   if (payinNote) rows.push({ html: payinNote });
 
   const payout = buildPayoutSection(data, layout);
-  if (payout) rows.push({ html: payout, breakBefore: payinIsHeavy });
+  if (payout) rows.push({ html: payout, breakBefore: heavyPayin });
   const payoutNote = buildPayoutCustomNoteHtml(data);
   if (payoutNote) rows.push({ html: payoutNote });
 
   const services = buildOtherServicesSection(data, layout);
-  if (services) rows.push({ html: services });
+  if (services) rows.push({ html: services, breakBefore: lightPayin });
 
   const terms = buildTermsSection(data, layout);
   if (terms) rows.push({ html: terms });

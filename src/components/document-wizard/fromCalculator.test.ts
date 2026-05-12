@@ -770,6 +770,11 @@ describe("buildOfferPdfHtml", () => {
       expect(html).toMatch(
         /<tr class="force-page-break-before"><td class="page-content-cell">[\s\S]*Pay Out/
       );
+      // Other Services & Fees DOES NOT carry the break in heavy mode —
+      // it follows section 2 on page 2 naturally.
+      expect(html).not.toMatch(
+        /<tr class="force-page-break-before"><td class="page-content-cell">[\s\S]*Other Services/
+      );
     });
 
     it("Pay Out row stays in normal flow when payin is light (non-tiered or one region)", () => {
@@ -785,6 +790,40 @@ describe("buildOfferPdfHtml", () => {
       // single-region / non-tiered.
       expect(html).not.toMatch(
         /<tr class="force-page-break-before"><td class="page-content-cell">[\s\S]*Pay Out/
+      );
+    });
+
+    it("Other Services & Fees carries force-page-break-before when payin is light", () => {
+      const data = buildBaseTemplateData();
+      data.layout.payin.regionMode = "both";
+      data.layout.payin.tableMode = "byRegionFlat";
+      data.payinPricing.eu.rateMode = "single";
+      data.payinPricing.ww.rateMode = "single";
+      data.layout.payout.regionMode = "global";
+      data.layout.payout.tableMode = "globalFlat";
+      data.contractSummary.refundCost = 15;
+      data.contractSummary.disputeCost = 75;
+
+      const html = buildOfferPdfHtml(data);
+      // Sections 1 + 2 stay on page 1; section 3 (Other Services & Fees)
+      // is forced to start on page 2 so sections 3 + 4 share page 2.
+      expect(html).toMatch(
+        /<tr class="force-page-break-before"><td class="page-content-cell">[\s\S]*Other Services/
+      );
+    });
+
+    it("Other Services & Fees stays inline when payin section is missing", () => {
+      const data = buildBaseTemplateData();
+      data.calculatorType.payin = false;
+      data.layout.payin.regionMode = "none";
+      data.contractSummary.refundCost = 15;
+      data.contractSummary.disputeCost = 75;
+
+      const html = buildOfferPdfHtml(data);
+      // With no payin section, the page-budget rule does not apply —
+      // Other Services & Fees flows naturally.
+      expect(html).not.toMatch(
+        /<tr class="force-page-break-before"><td class="page-content-cell">[\s\S]*Other Services/
       );
     });
 

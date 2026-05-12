@@ -1557,3 +1557,45 @@ Use this file to record meaningful technical decisions for the project.
   - If product adds a 5th section in the future, consider
     promoting the page-break rule into a small policy module so
     new sections can opt in.
+
+### Decision: Extend forced page break to non-tiered payin too
+- Date: 2026-05-12
+- Context:
+  - The first cut of the page-budget rule (2026-05-08) only
+    forced a page break before Pay Out when payin was heavy
+    (`byRegionTiered`). For non-tiered payin (light), nothing
+    forced a break, so page 1 ended up holding sections 1 + 2 + 3
+    when there was room — leaving section 4 alone on page 2.
+  - Product wants the symmetric rule: when payin has no tiers,
+    page 1 = sections 1 + 2 + their notes and page 2 = sections
+    3 + 4. Sections 3 + 4 always share a dedicated page.
+- Decision:
+  - Forced page break now fires in two cases:
+    1. `heavyPayin` (tiered: `byRegionTiered` or `flatTiered`) →
+       force break before **Pay Out**. Page 1 = section 1 + payin
+       note. Page 2 = sections 2 + 3 + 4.
+    2. `lightPayin` (non-tiered: `byRegionFlat` or `flatSingle`) →
+       force break before **Other Services & Fees**. Page 1 =
+       sections 1 + 2 + their notes. Page 2 = sections 3 + 4.
+  - When payin is absent (`!payin`), neither flag fires and the
+    document flows naturally — there's no "section 1" anchor for
+    the page-budget rule.
+- Alternatives considered:
+  - Always force break before Other Services & Fees regardless
+    of payin. Rejected — would push section 3 to page 2 even
+    when section 1 is heavy enough to fill page 1 on its own,
+    creating awkward page 2 layouts (just section 2, then
+    section 3 alone, then section 4 alone across multiple
+    pages).
+  - Force break inside heavy payin too. Rejected — section 1
+    naturally fills the page; explicit break is unnecessary.
+- Consequences:
+  - 230/230 tests pass (+2 covering the light-payin force-break
+    and the no-payin fallback).
+  - Both tiered and non-tiered offers now produce predictable
+    2-page layouts (3-page when bundled with the agreement).
+  - The rule lives entirely in `buildOfferBodyRows` and reads as
+    two booleans + two `breakBefore: …` flags — clear to follow.
+- Follow-up actions:
+  - Verify against real reference PDFs (CEI, ZenCreator) that
+    the page break locations match the expected layouts.
