@@ -1,9 +1,22 @@
 # Calculator Logic and Formulas (Current Code)
 
-Date: 2026-05-01
+Date: 2026-05-12 (last updated for the Dedicated Countries +
+T+3 default + label-rename batch, and the calculator-only scoping
+of Dedicated Countries — see `docs/decisions.md`).
 Scope: current implementation in `src/App.tsx`, `src/components/calculator/*`, and `src/domain/calculator/zone0..zone6`.
 
 This document is the technical source of truth for runtime calculation behavior.
+
+For the Phase 8 backend handoff, see also:
+- `docs/backend_state_schemas.md` — typed payload contracts for the
+  `calculator_snapshots` and `documents` rows.
+- `docs/backend_computation_boundary.md` — what the backend
+  recomputes vs. trusts from stored summaries.
+- `docs/client_and_hubspot_workflow.md` — Phase 8 manual-client
+  picker vs. Phase 9 HubSpot sync.
+- `docs/ui_phase_8_9_requirements.md` — documents listing, shareable
+  view-mode links, clone-as-new-draft.
+- `docs/phase_08_backend_plan.md` — the full backend plan.
 
 ## 1. Runtime flow (high level)
 

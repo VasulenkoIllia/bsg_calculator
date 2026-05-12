@@ -1,0 +1,58 @@
+{
+  // ────────────────────────────────────────────────────────────────
+  // Server-side typecheck config.
+  //
+  // Validates that the modules earmarked for Node-side reuse compile
+  // WITHOUT DOM / browser types. Runs alongside the main tsconfig
+  // (which still uses `DOM`/`DOM.Iterable` for the React frontend);
+  // this file is a guardrail — it catches accidental imports of
+  // `document`, `window`, `HTMLElement`, etc. in code that the Phase 8
+  // backend will reuse.
+  //
+  // Run:
+  //   npx tsc -p tsconfig.server.json --noEmit
+  //
+  // Scope intentionally narrow — extends only as backend reuse grows:
+  //   - `src/domain/calculator/**` — pure math, never any DOM.
+  //   - `src/shared/**` — escapeHtml + any future Node-safe utilities.
+  //   - `src/components/calculator/snapshotShape.ts` — backend payload
+  //     contract + extract/seed helpers.
+  //   - `src/components/calculator/derivedSummaryShape.ts` — backend
+  //     derived-summary payload contract.
+  //   - `src/components/document-wizard/wizard/layoutHelpers.ts` —
+  //     pure wizard layout helpers (no React).
+  //   - `src/components/document-wizard/types.ts` — DocumentTemplatePayload
+  //     shape (interfaces only, no runtime).
+  //
+  // Adding more files to `include` is fine when they're confirmed
+  // Node-safe. The PDF builder (`buildOfferPdfHtml.ts`,
+  // `offerPdf/sections/*`, `agreementPdf/*`) is intentionally NOT here
+  // yet — it's verified Node-safe by inspection but never tested
+  // against a strictly DOM-free typecheck. Adding it is a small follow-
+  // up worth doing before Phase 8 implements the Puppeteer endpoint.
+  // ────────────────────────────────────────────────────────────────
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    // Bare TS interfaces / unions don't emit; we still need to point
+    // at a clean output dir to keep IDE pickup happy even with noEmit.
+    "outDir": "dist-server"
+  },
+  "include": [
+    "src/domain/**/*.ts",
+    "src/shared/**/*.ts",
+    "src/components/calculator/snapshotShape.ts",
+    "src/components/calculator/derivedSummaryShape.ts",
+    "src/components/document-wizard/wizard/layoutHelpers.ts",
+    "src/components/document-wizard/types.ts"
+  ],
+  "exclude": ["**/*.test.ts", "**/*.test.tsx"]
+}
