@@ -95,7 +95,7 @@ export function buildPdfUiKitHtml(): string {
       ${renderSectionHeader(4, "Terms & Limitations", "GLOBAL")}
       <div class="terms-grid">
         <div class="terms-row"><div class="terms-item"><span class="terms-label">Settlement</span><span class="terms-value">Daily, T+3</span></div><div class="terms-item"><span class="terms-label">Settlement Note</span><span class="terms-value">Does not apply on weekends and bank holidays</span></div></div>
-        <div class="terms-row"><div class="terms-item"><span class="terms-label">Client Type</span><span class="terms-value">STD</span></div><div class="terms-item"><span class="terms-label">Restricted Jurisdictions</span><span class="terms-value">OFAC, US</span></div></div>
+        <div class="terms-row"><div class="terms-item"><span class="terms-label">Traffic Type</span><span class="terms-value">STD</span></div><div class="terms-item"><span class="terms-label">Restricted Jurisdictions</span><span class="terms-value">OFAC, US</span></div></div>
       </div>
     </section>
 

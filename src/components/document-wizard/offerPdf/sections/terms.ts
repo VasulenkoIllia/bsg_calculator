@@ -32,7 +32,10 @@ function buildTermsItems(data: DocumentTemplatePayload, layout: DocumentWizardLa
     items.push({ label: "Settlement Note", value: summary.settlementNote });
   }
   if (hasText(summary.clientType)) {
-    items.push({ label: "Client Type", value: summary.clientType });
+    // Label rename 2026-05-12: "Client Type" -> "Traffic Type".
+    // Data key (`clientType`) intentionally unchanged so existing
+    // payloads keep working. See decisions.md.
+    items.push({ label: "Traffic Type", value: summary.clientType });
   }
   if (hasText(summary.restrictedJurisdictions)) {
     items.push({ label: "Restricted Jurisdictions", value: summary.restrictedJurisdictions });

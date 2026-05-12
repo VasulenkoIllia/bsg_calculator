@@ -50,13 +50,13 @@ export function TermsLegalSection({
             />
           </label>
           <label>
-            <span className="field-label">Client Type</span>
+            <span className="field-label">Traffic Type</span>
             <input
               className="field-input"
               type="text"
               value={draft.contractSummary.clientType}
               onChange={event => update({ clientType: event.target.value })}
-              aria-label="Client type"
+              aria-label="Traffic type"
             />
           </label>
           <label>
