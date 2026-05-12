@@ -55,21 +55,38 @@ export function buildDocumentHeaderMetaFromCalculator(
   };
 }
 
+// Canonical calculator-config → wizard-payload pricing converter.
+// Used by:
+//   - `fromCalculator.ts` (snapshot a live calculator state into a
+//     wizard draft)
+//   - `manualSeeds.ts` (initial defaults for a freshly-opened wizard)
+// Centralising the shape transform here means a future field add
+// (e.g. new N/A toggle, new tier field) updates one site.
 export function clonePayinRegionPricing(
   pricing: PayinRegionPricingConfig
 ): DocumentTemplatePayload["payinPricing"]["eu"] {
   // `pricing.dedicatedCountries` is intentionally dropped here — the
   // Dedicated Countries feature is calculator-only and must not bleed
   // into wizard / PDF payloads. The destructure below excludes the
-  // field; the spread `...rest` carries everything else.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // field; the spread `...rest` carries everything else. The underscore
+  // prefix on the variable name signals "intentionally unused" to
+  // every linter without needing a directive.
   const { dedicatedCountries: _excluded, ...rest } = pricing;
+  void _excluded;
+  // `.map` widens the tuple to `PayinFeeBlock[]`; we cast back to the
+  // fixed 3-element tuple because the source `pricing.tiers` is
+  // already a 3-element tuple (`PayinRegionPricingConfig.tiers`).
+  const tiers = pricing.tiers.map(tier => ({
+    ...tier,
+    trxCcNa: false,
+    trxApmNa: false
+  })) as DocumentTemplatePayload["payinPricing"]["eu"]["tiers"];
   return {
     ...rest,
     // N/A toggles default off — the calculator only emits numeric
     // values; the wizard exposes the toggles for the user to flip.
     single: { ...pricing.single, trxCcNa: false, trxApmNa: false },
-    tiers: pricing.tiers.map(tier => ({ ...tier, trxCcNa: false, trxApmNa: false }))
+    tiers
   };
 }
 

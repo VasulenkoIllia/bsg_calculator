@@ -1,4 +1,4 @@
-import { escapeHtml } from "../../calculator/formatUtils.js";
+import { escapeHtml } from "../../../shared/html.js";
 
 // Wraps a value with a span that has the `var-substituted` class so it can be
 // visually highlighted in screen preview when the user toggles "Highlight

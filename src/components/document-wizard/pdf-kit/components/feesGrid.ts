@@ -1,4 +1,4 @@
-import { escapeHtml } from "../../../calculator/formatUtils.js";
+import { escapeHtml } from "../../../../shared/html.js";
 import type { FeeCardItem } from "../types.js";
 
 // Render the fee value. When it equals the literal "N/A" sentinel

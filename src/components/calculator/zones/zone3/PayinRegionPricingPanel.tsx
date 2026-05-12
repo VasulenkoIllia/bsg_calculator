@@ -27,11 +27,12 @@ export interface PayinRegionPricingPanelProps {
   // feature, added 2026-05-12). When absent, the controls aren't rendered
   // so the WW panel stays identical to its pre-feature form. Coefficient
   // is no longer editable (see DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT).
-  setDedicatedCountriesField?: <
-    K extends "enabled" | "ukPercent" | "chPercent"
-  >(
-    field: K,
-    value: K extends "enabled" ? boolean : number
+  // Patch is a discriminated union so each call site is type-safe end-to-end.
+  setDedicatedCountriesField?: (
+    patch:
+      | { field: "enabled"; value: boolean }
+      | { field: "ukPercent"; value: number }
+      | { field: "chPercent"; value: number }
   ) => void;
 }
 
@@ -228,7 +229,7 @@ export function PayinRegionPricingPanel({
                 type="checkbox"
                 checked={dedicatedEnabled}
                 onChange={event =>
-                  setDedicatedCountriesField?.("enabled", event.target.checked)
+                  setDedicatedCountriesField?.({ field: "enabled", value: event.target.checked })
                 }
                 aria-label="Enable dedicated countries split for EU Blended"
               />
@@ -243,7 +244,9 @@ export function PayinRegionPricingPanel({
                 <NumberField
                   label="UK %"
                   value={ukPercent}
-                  onChange={value => setDedicatedCountriesField?.("ukPercent", value)}
+                  onChange={value =>
+                    setDedicatedCountriesField?.({ field: "ukPercent", value })
+                  }
                   min={0}
                   max={100}
                   step={1}
@@ -251,7 +254,9 @@ export function PayinRegionPricingPanel({
                 <NumberField
                   label="Switzerland %"
                   value={chPercent}
-                  onChange={value => setDedicatedCountriesField?.("chPercent", value)}
+                  onChange={value =>
+                    setDedicatedCountriesField?.({ field: "chPercent", value })
+                  }
                   min={0}
                   max={100}
                   step={1}

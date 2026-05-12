@@ -226,19 +226,20 @@ export function useCalculatorState() {
   };
 
   // Dedicated Countries (EU Blended only — see decisions.md / Commit D).
-  // Single setter handles every sub-field: checkbox + UK%/CH%. The
-  // dedicated coefficient is no longer editable — it's locked to
-  // DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT in the math layer
-  // (per 2026-05-12 follow-up).
+  // Public signature is a discriminated union so each call site is
+  // type-checked end-to-end (no `as never` casts at the boundary). The
+  // coefficient is locked to DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT
+  // in the math layer (per 2026-05-12 follow-up).
   // Only meaningful for region === "eu" today; we still accept the region
   // arg so the public API matches sibling setters in case we later extend
   // the feature to WW.
-  const setPayinRegionDedicatedCountriesField = <
-    K extends "enabled" | "ukPercent" | "chPercent"
-  >(
+  type DedicatedCountriesFieldPatch =
+    | { field: "enabled"; value: boolean }
+    | { field: "ukPercent"; value: number }
+    | { field: "chPercent"; value: number };
+  const setPayinRegionDedicatedCountriesField = (
     region: "eu" | "ww",
-    field: K,
-    value: K extends "enabled" ? boolean : number
+    patch: DedicatedCountriesFieldPatch
   ) => {
     const update = (current: PayinRegionPricingConfig): PayinRegionPricingConfig => {
       const dedicated = current.dedicatedCountries ?? {
@@ -246,16 +247,18 @@ export function useCalculatorState() {
         ukPercent: 0,
         chPercent: 0
       };
-      // Clamp numeric fields. Percent fields are capped at 100 to avoid
-      // UI flips; the calculation re-clamps the combined share.
-      let nextValue: boolean | number = value as boolean | number;
-      if (field === "ukPercent" || field === "chPercent") {
-        nextValue = clampNumber(Math.max(0, Number(value)), 0, 100);
-      }
-      return {
-        ...current,
-        dedicatedCountries: { ...dedicated, [field]: nextValue }
-      };
+      // Branch by discriminant — TS narrows `patch.value` correctly in
+      // each branch, no casts needed.
+      const nextDedicated =
+        patch.field === "enabled"
+          ? { ...dedicated, enabled: patch.value }
+          : {
+              ...dedicated,
+              // Percent fields are clamped to [0,100] here; the math
+              // layer re-clamps the combined share to ≤ 100 anyway.
+              [patch.field]: clampNumber(Math.max(0, patch.value), 0, 100)
+            };
+      return { ...current, dedicatedCountries: nextDedicated };
     };
 
     if (region === "eu") {
@@ -413,7 +416,14 @@ export function useCalculatorState() {
 
   const navigateToZone = (zoneId: ZoneId) => {
     setZoneExpanded(current => ({ ...current, [zoneId]: true }));
-    document.getElementById(zoneId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    // Guarded DOM side-effect. The hook is React-only (uses useState /
+    // useMemo) and only runs in the browser, but the guard keeps it
+    // crash-free if a Node-side unit test or future SSR context ever
+    // mounts the hook — instead of throwing on `document` being
+    // undefined, the navigate call still expands the zone state.
+    if (typeof document !== "undefined") {
+      document.getElementById(zoneId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   };
 
   const visiblePrimaryZones = useMemo<ZoneNavigationTarget[]>(() => {

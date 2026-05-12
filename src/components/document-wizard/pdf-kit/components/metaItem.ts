@@ -1,4 +1,4 @@
-import { escapeHtml } from "../../../calculator/formatUtils.js";
+import { escapeHtml } from "../../../../shared/html.js";
 import type { MetaItem } from "../types.js";
 
 export function renderMetaItem(item: MetaItem): string {

@@ -173,7 +173,10 @@ export interface PayinRegionPricing {
   tier1UpToMillion: number;
   tier2UpToMillion: number;
   single: PayinFeeBlock;
-  tiers: PayinFeeBlock[];
+  // Fixed-length tuple to match the calculator domain's
+  // `PayinRegionPricingConfig.tiers` shape (also a 3-element tuple).
+  // Prevents accidental zero-length / oversized tier arrays.
+  tiers: [PayinFeeBlock, PayinFeeBlock, PayinFeeBlock];
   // NOTE: Dedicated Countries (UK + Switzerland) is intentionally
   // calculator-only — see `PayinRegionPricingConfig.dedicatedCountries`
   // in `domain/calculator/zone3/pricingConfiguration.ts`. The wizard

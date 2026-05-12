@@ -1,4 +1,4 @@
-import { escapeHtml } from "../../calculator/formatUtils.js";
+import { escapeHtml } from "../../../shared/html.js";
 import {
   AGREEMENT_PARTY_PLACEHOLDERS,
   BSG_ENTITY,

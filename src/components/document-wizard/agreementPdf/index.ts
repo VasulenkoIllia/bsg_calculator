@@ -1,4 +1,4 @@
-import { escapeHtml } from "../../calculator/formatUtils.js";
+import { escapeHtml } from "../../../shared/html.js";
 import type { DocumentTemplatePayload } from "../types.js";
 import { buildPartiesBlock } from "./parties.js";
 import {

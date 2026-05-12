@@ -55,17 +55,17 @@ export interface Zone3PricingConfigurationProps {
     value: number
   ) => void;
   // Dedicated Countries (EU Blended only — see decisions.md). The setter
-  // signature uses a discriminated K so booleans only flow through the
-  // `enabled` field. The dedicated coefficient is locked to
-  // DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT, so it's not part of
-  // the editable surface anymore. The panel only renders these controls
-  // for region=eu.
-  setPayinRegionDedicatedCountriesField: <
-    K extends "enabled" | "ukPercent" | "chPercent"
-  >(
+  // takes a discriminated `patch` so every call site is type-safe with
+  // no `as never` cast at the boundary. The dedicated coefficient is
+  // locked to DEFAULT_DEDICATED_COUNTRIES_COEFFICIENT_PERCENT, so it's
+  // not part of the editable surface anymore. The panel only renders
+  // these controls for region=eu.
+  setPayinRegionDedicatedCountriesField: (
     region: "eu" | "ww",
-    field: K,
-    value: K extends "enabled" ? boolean : number
+    patch:
+      | { field: "enabled"; value: boolean }
+      | { field: "ukPercent"; value: number }
+      | { field: "chPercent"; value: number }
   ) => void;
   setPayoutRateMode: (rateMode: PricingRateMode) => void;
   setPayoutSingleField: (field: "mdrPercent" | "trxFee", value: number) => void;
@@ -155,16 +155,8 @@ export function Zone3PricingConfiguration({
                   setSingleField={(field, value) => setPayinRegionSingleField("eu", field, value)}
                   setTierField={(tierIndex, field, value) => setPayinRegionTierField("eu", tierIndex, field, value)}
                   setTierBoundary={(boundary, value) => setPayinRegionTierBoundary("eu", boundary, value)}
-                  setDedicatedCountriesField={(field, value) =>
-                    setPayinRegionDedicatedCountriesField(
-                      "eu",
-                      field,
-                      // The conditional return type of the parent setter
-                      // is narrowed at the panel boundary; the unconditional
-                      // cast here is safe because the panel guarantees the
-                      // value matches the field discriminator (see panel).
-                      value as never
-                    )
+                  setDedicatedCountriesField={patch =>
+                    setPayinRegionDedicatedCountriesField("eu", patch)
                   }
                 />
                 <PayinRegionPricingPanel

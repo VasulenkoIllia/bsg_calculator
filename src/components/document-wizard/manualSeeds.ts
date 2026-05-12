@@ -154,13 +154,15 @@ export function buildDocumentTemplatePayloadManualBlank(): DocumentTemplatePaylo
           trxApm: 0,
           trxApmNa: false
         },
-        tiers: DEFAULT_PAYIN_EU_PRICING_CONFIG.tiers.map(() => ({
-          mdrPercent: 0,
-          trxCc: 0,
-          trxCcNa: false,
-          trxApm: 0,
-          trxApmNa: false
-        }))
+        // Zero-tier triplet — wizard `tiers` is a fixed-length tuple
+        // (`[PayinFeeBlock, PayinFeeBlock, PayinFeeBlock]`), so the
+        // shape is spelled out here rather than via `.map()` which
+        // widens to a plain array.
+        tiers: [
+          { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+          { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+          { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false }
+        ]
       },
       ww: {
         ...clonePayinRegionPricing(DEFAULT_PAYIN_WW_PRICING_CONFIG),
@@ -173,13 +175,11 @@ export function buildDocumentTemplatePayloadManualBlank(): DocumentTemplatePaylo
           trxApm: 0,
           trxApmNa: false
         },
-        tiers: DEFAULT_PAYIN_WW_PRICING_CONFIG.tiers.map(() => ({
-          mdrPercent: 0,
-          trxCc: 0,
-          trxCcNa: false,
-          trxApm: 0,
-          trxApmNa: false
-        }))
+        tiers: [
+          { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+          { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+          { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false }
+        ]
       }
     },
     payoutPricing: {

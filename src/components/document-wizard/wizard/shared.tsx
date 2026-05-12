@@ -69,7 +69,10 @@ export function getStepLabel(step: WizardStep): string {
   return ALL_STEPS.find(entry => entry.value === step)?.label ?? `Step ${step}`;
 }
 
-export const SETTLEMENT_PERIOD_OPTIONS = ["T+1", "T+2", "T+3", "T+4", "T+5"] as const;
+// Re-export from the domain layer (single source of truth for the
+// allowed settlement values). Kept under the old name so the
+// existing `TermsLegalSection` import keeps working without churn.
+export { SETTLEMENT_PERIODS as SETTLEMENT_PERIOD_OPTIONS } from "../../../domain/calculator/zone4/otherFeesAndLimits.js";
 
 export type PayinRegionKey = "eu" | "ww";
 

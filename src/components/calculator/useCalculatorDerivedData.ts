@@ -243,9 +243,12 @@ export function useCalculatorDerivedData({
       payinEuPricing.interchangePercent,
       payinEuPricing.model,
       payinEuPricing.schemeFeesPercent,
-      payinEuPricing.dedicatedCountries?.enabled,
-      payinEuPricing.dedicatedCountries?.ukPercent,
-      payinEuPricing.dedicatedCountries?.chPercent,
+      // The whole `dedicatedCountries` object is the dep — its reference
+      // is stable via the immutable setter in useCalculatorState, and
+      // listing the parent (instead of scalars) covers the transition
+      // from `undefined` → object cleanly. ESLint exhaustive-deps then
+      // stays clean without a suppression.
+      payinEuPricing.dedicatedCountries,
       payinWwPreview.mdrRevenue,
       payinWwPreview.trxRevenue,
       payinWwPricing.interchangePercent,
@@ -362,6 +365,9 @@ export function useCalculatorDerivedData({
     revShareIntroducer.partnerShare,
     standardIntroducer.totalCommission
   ]);
+  // Computed for display callers only; the memo below reads
+  // `selectedIntroducerCommissionAmount` directly, so this variable
+  // does NOT belong in the dep array.
   const introducerCommissionAmount = introducerEnabled ? selectedIntroducerCommissionAmount : 0;
   const totalProfitability = useMemo(
     () =>
@@ -375,7 +381,6 @@ export function useCalculatorDerivedData({
         revSharePercent
       }),
     [
-      introducerCommissionAmount,
       introducerEnabled,
       introducerCommissionType,
       otherRevenueProfitability,

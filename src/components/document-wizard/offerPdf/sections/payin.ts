@@ -1,4 +1,4 @@
-import { escapeHtml } from "../../../calculator/formatUtils.js";
+import { escapeHtml } from "../../../../shared/html.js";
 import { renderSectionHeader } from "../../pdf-kit/primitives.js";
 import type { DocumentTemplatePayload, DocumentWizardLayout } from "../../types.js";
 import {

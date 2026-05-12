@@ -1,4 +1,5 @@
-import { escapeHtml } from "../calculator/formatUtils.js";
+import { DEFAULT_CONTRACT_SUMMARY_SETTINGS } from "../../domain/calculator/index.js";
+import { escapeHtml } from "../../shared/html.js";
 import { buildPdfUiKitStyles, renderFooter, renderMetaItem, renderSectionHeader } from "./pdf-kit/primitives.js";
 import { OFFER_REFERENCE_TOKENS } from "./pdf-kit/tokens.js";
 
@@ -94,7 +95,7 @@ export function buildPdfUiKitHtml(): string {
     <section class="offer-section">
       ${renderSectionHeader(4, "Terms & Limitations", "GLOBAL")}
       <div class="terms-grid">
-        <div class="terms-row"><div class="terms-item"><span class="terms-label">Settlement</span><span class="terms-value">Daily, T+3</span></div><div class="terms-item"><span class="terms-label">Settlement Note</span><span class="terms-value">Does not apply on weekends and bank holidays</span></div></div>
+        <div class="terms-row"><div class="terms-item"><span class="terms-label">Settlement</span><span class="terms-value">Daily, ${escapeHtml(DEFAULT_CONTRACT_SUMMARY_SETTINGS.settlementPeriod)}</span></div><div class="terms-item"><span class="terms-label">Settlement Note</span><span class="terms-value">Does not apply on weekends and bank holidays</span></div></div>
         <div class="terms-row"><div class="terms-item"><span class="terms-label">Traffic Type</span><span class="terms-value">STD</span></div><div class="terms-item"><span class="terms-label">Restricted Jurisdictions</span><span class="terms-value">OFAC, US</span></div></div>
       </div>
     </section>

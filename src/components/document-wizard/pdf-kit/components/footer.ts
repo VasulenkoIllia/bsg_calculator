@@ -1,4 +1,4 @@
-import { escapeHtml } from "../../../calculator/formatUtils.js";
+import { escapeHtml } from "../../../../shared/html.js";
 
 // The page counter ("Page X of Y") is rendered via @page margin boxes
 // (see styles.ts → @page { @bottom-right }). Chrome's print engine has a

@@ -19,11 +19,7 @@ export function formatSignedAmount(value: number): string {
   return formatAmount2(value);
 }
 
-export function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
+// Re-export from `src/shared/html.ts` so the calculator barrel still
+// exposes `escapeHtml`. Canonical home is the shared module — the PDF
+// builder pipeline imports directly from there.
+export { escapeHtml } from "../../shared/html.js";

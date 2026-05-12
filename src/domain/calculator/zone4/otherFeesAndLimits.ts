@@ -1,5 +1,10 @@
 export type FailedTrxChargingMode = "overLimitOnly" | "allFailedVolume";
-export type SettlementPeriod = "T+1" | "T+2" | "T+3" | "T+4" | "T+5";
+
+// Allowed settlement period values, in ascending order. Domain is the
+// source of truth — wizard `shared.tsx` re-exports the constant so
+// dropdown options and state defaults stay in sync.
+export const SETTLEMENT_PERIODS = ["T+1", "T+2", "T+3", "T+4", "T+5"] as const;
+export type SettlementPeriod = (typeof SETTLEMENT_PERIODS)[number];
 export type PayoutMinimumFeeMode = "overall" | "byRegion";
 
 export interface PayoutMinimumFeeConfig {

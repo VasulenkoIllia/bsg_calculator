@@ -1,4 +1,4 @@
-import { escapeHtml } from "../calculator/formatUtils.js";
+import { escapeHtml } from "../../shared/html.js";
 import { buildAgreementBodyHtml } from "./agreementPdf/index.js";
 import {
   buildPdfUiKitStyles,

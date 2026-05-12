@@ -1,6 +1,7 @@
 import {
   DEFAULT_3DS_FEE_CONFIG,
   DEFAULT_CONTRACT_SUMMARY_SETTINGS,
+  SETTLEMENT_PERIODS,
   DEFAULT_CUSTOM_TIER_SETTINGS,
   DEFAULT_FAILED_TRX_CHARGING_CONFIG,
   DEFAULT_MONTHLY_MINIMUM_FEE_CONFIG,
@@ -121,7 +122,10 @@ const ZERO_CONTRACT_SUMMARY_SETTINGS: ContractSummarySettings = {
   accountSetupFee: 0,
   refundCost: 0,
   disputeCost: 0,
-  settlementPeriod: "T+1",
+  // First entry of the SETTLEMENT_PERIODS const tuple, by intent.
+  // Pinning the literal to the constant prevents drift if the
+  // canonical order or value set ever changes.
+  settlementPeriod: SETTLEMENT_PERIODS[0],
   collectionLimitMin: 0,
   collectionLimitMax: 0,
   payoutLimitMin: 0,

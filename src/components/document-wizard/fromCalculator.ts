@@ -12,6 +12,7 @@ import {
   DEFAULT_DOCUMENT_LEGAL_TERMS,
   DEFAULT_DOCUMENT_SCOPE
 } from "./legalDefaults.js";
+import { clonePayinRegionPricing, clonePayoutPricing } from "./seedHelpers.js";
 import type { DocumentHeaderMetaDraft, DocumentTemplatePayload } from "./types.js";
 
 export {
@@ -146,38 +147,14 @@ export function buildDocumentTemplatePayloadFromCalculator({
       payoutCustomNoteEnabled: false,
       payoutCustomNoteText: ""
     },
+    // Pricing blocks delegated to the canonical converters in
+    // `seedHelpers.ts`. The payin converter intentionally drops
+    // `dedicatedCountries` (calculator-only feature) — see its NOTE.
     payinPricing: {
-      // NOTE: `dedicatedCountries` is intentionally NOT propagated into
-      // the wizard payload — the feature lives only in the calculator
-      // (it changes internal scheme-fee math and never surfaces in
-      // the OFFER PDF). The calculator config carries the field; this
-      // mapping deliberately drops it so the wizard / PDF stay clean.
-      eu: {
-        model: payinEuPricing.model,
-        rateMode: payinEuPricing.rateMode,
-        trxFeeEnabled: payinEuPricing.trxFeeEnabled,
-        tier1UpToMillion: payinEuPricing.tier1UpToMillion,
-        tier2UpToMillion: payinEuPricing.tier2UpToMillion,
-        single: { ...payinEuPricing.single, trxCcNa: false, trxApmNa: false },
-        tiers: payinEuPricing.tiers.map(tier => ({ ...tier, trxCcNa: false, trxApmNa: false }))
-      },
-      ww: {
-        model: payinWwPricing.model,
-        rateMode: payinWwPricing.rateMode,
-        trxFeeEnabled: payinWwPricing.trxFeeEnabled,
-        tier1UpToMillion: payinWwPricing.tier1UpToMillion,
-        tier2UpToMillion: payinWwPricing.tier2UpToMillion,
-        single: { ...payinWwPricing.single, trxCcNa: false, trxApmNa: false },
-        tiers: payinWwPricing.tiers.map(tier => ({ ...tier, trxCcNa: false, trxApmNa: false }))
-      }
+      eu: clonePayinRegionPricing(payinEuPricing),
+      ww: clonePayinRegionPricing(payinWwPricing)
     },
-    payoutPricing: {
-      rateMode: payoutPricing.rateMode,
-      tier1UpToMillion: payoutPricing.tier1UpToMillion,
-      tier2UpToMillion: payoutPricing.tier2UpToMillion,
-      single: { ...payoutPricing.single, trxFeeNa: false },
-      tiers: payoutPricing.tiers.map(tier => ({ ...tier, trxFeeNa: false }))
-    },
+    payoutPricing: clonePayoutPricing(payoutPricing),
     toggles: {
       settlementIncluded,
       payoutMinimumFeeEnabled,

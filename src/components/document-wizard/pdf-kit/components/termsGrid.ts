@@ -1,4 +1,4 @@
-import { escapeHtml } from "../../../calculator/formatUtils.js";
+import { escapeHtml } from "../../../../shared/html.js";
 import type { TermsGridItem } from "../types.js";
 
 // Render the value text. When it equals the literal "N/A" sentinel,

@@ -93,15 +93,25 @@ function toMillion(valueEuro: number): number {
   return valueEuro / 1_000_000;
 }
 
+// Type guard — narrows `StandardTierConfig` (which allows `null` to
+// represent the unbounded top tier) to a variant with a numeric
+// `upToMillion`. Lets the tier-resolution function below avoid `!`
+// non-null assertions while keeping the union shape on the public type.
+function hasUpperBound(
+  tier: StandardTierConfig
+): tier is StandardTierConfig & { upToMillion: number } {
+  return tier.upToMillion !== null;
+}
+
 function resolveStandardTier(volumeMillion: number): StandardTierConfig {
-  if (volumeMillion <= DEFAULT_STANDARD_TIERS[0].upToMillion!) {
-    return DEFAULT_STANDARD_TIERS[0];
+  // Walk bounded tiers in order; the first whose cap covers the volume
+  // wins. The final tier in DEFAULT_STANDARD_TIERS has `upToMillion: null`
+  // (the unbounded top tier) and is returned as the catch-all below.
+  for (const tier of DEFAULT_STANDARD_TIERS) {
+    if (hasUpperBound(tier) && volumeMillion <= tier.upToMillion) {
+      return tier;
+    }
   }
-
-  if (volumeMillion <= DEFAULT_STANDARD_TIERS[1].upToMillion!) {
-    return DEFAULT_STANDARD_TIERS[1];
-  }
-
   return DEFAULT_STANDARD_TIERS[2];
 }
 
