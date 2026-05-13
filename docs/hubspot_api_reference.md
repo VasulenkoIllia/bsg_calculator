@@ -1,12 +1,17 @@
 # HubSpot CRM API Reference — Companies + Deals
 
 Date: 2026-05-14
-Status: **Spec skeleton — pending validation against real HubSpot test API.**
+Status: **Validated against the live BSG HubSpot account (2026-05-14).**
 
-Compiled from HubSpot developer docs (see §Sources). Marked clearly
-where fields / shapes need confirmation via real test calls. When you
-share real responses we will replace the `🟡 TBD-VALIDATE` markers
-with concrete observed values.
+Compiled from HubSpot developer docs and confirmed by 8 live test
+calls (read + write-note + delete-note) against
+`Black Stripe Group LTD` HubSpot account on the EU data center.
+All shapes, scopes, rate limits, and ID formats below reflect
+**observed reality**, not just documentation claims.
+
+For the BSG-specific HubSpot ↔ calculator field mapping (which
+HubSpot property hydrates which calculator zone), see the companion
+doc `docs/bsg_hubspot_field_mapping.md`.
 
 This doc fulfils the deferred items from
 `docs/phase_08_backend_plan.md` §13 (HubSpot API access required).
@@ -118,8 +123,21 @@ The `pat-eu1-` token prefix is the only EU-specific bit.
 | Enterprise | 1,000,000 | 190 |
 | With +1 API Limit Increase | +1,000,000 | 250 |
 
-🟡 **TBD-VALIDATE — what HubSpot tier is BSG account?** Confirms our
-daily budget.
+✅ **BSG account confirmed (2026-05-14):**
+- Daily quota: **250,000 requests** → BSG is on Free or Starter tier.
+- Burst: **100 requests per 10 seconds** + 10/sec.
+- Observed response headers from a baseline call:
+  ```
+  x-hubspot-ratelimit-daily: 250000
+  x-hubspot-ratelimit-daily-remaining: 249998
+  x-hubspot-ratelimit-interval-milliseconds: 10000
+  x-hubspot-ratelimit-max: 100
+  x-hubspot-ratelimit-remaining: 98
+  x-hubspot-ratelimit-secondly: 10
+  x-hubspot-ratelimit-secondly-remaining: 9
+  ```
+- At 100-500 BSG documents/month + occasional manual syncs, we use
+  ~0.1-0.5% of daily quota. Quota is **not** a concern.
 
 ### Response headers (every successful response)
 
@@ -153,11 +171,14 @@ HubSpot docs note: *"the search API has limits that are unique from
 or stricter than the general limits"* + *"responses from search
 endpoints will not include rate limit headers"*.
 
-🟡 **TBD-VALIDATE** — observe headers + 429s on real test calls to
-confirm the actual numbers. Internal HubSpot blog mentions ~5 req/sec
-or 4 concurrent searches but the actual quota is not in the public
-docs. **For our 100-500 docs/month volume, default polling 2-3
-seconds apart should be safe.**
+**Status:** the exact search-endpoint quotas are not in HubSpot's
+public docs and we did not stress-test them (would require ~1000
+back-to-back search calls). Internal HubSpot blog mentions ~5 req/sec
+or 4 concurrent searches as soft limits. **For our 100-500
+docs/month volume, default polling 2-3 seconds apart is safe** —
+we use Search only for incremental sync (a few calls/day at most),
+nowhere near any plausible quota. Re-evaluate only if 429s start
+appearing in production logs.
 
 ---
 
@@ -211,10 +232,43 @@ Authorization: Bearer ...
 
 When there are no more pages, `paging.next` is absent.
 
-🟡 **TBD-VALIDATE:** confirm the exact `properties` keys BSG account
-uses. Different HubSpot accounts have different custom properties.
-First test call: pull ONE company, log the full `properties` object,
-identify which ones we actually need vs ignore.
+### 4.1.1 Real BSG response shape (observed 2026-05-14)
+
+```json
+{
+  "id": "426418136305",
+  "properties": {
+    "city": null,
+    "company_type": "referring_partner",
+    "country": null,
+    "createdate": "2026-04-17T16:02:14.684Z",
+    "description": null,
+    "domain": null,
+    "from_where_and_whom_you_come_to_us": null,
+    "hs_lastmodifieddate": "2026-04-27T14:15:25.376Z",
+    "hs_object_id": "426418136305",
+    "hubspot_owner_id": null,
+    "industry": null,
+    "industry_type": null,
+    "name": "(A) Elena",
+    "phone": null,
+    "referral_source": null,
+    "segment_type": "Master_referring_partner",
+    "submitter_telegram": null
+  },
+  "createdAt": "2026-04-17T16:02:14.684Z",
+  "updatedAt": "2026-04-27T14:15:25.376Z",
+  "archived": false,
+  "url": "https://app-eu1.hubspot.com/contacts/147930284/record/0-2/426418136305"
+}
+```
+
+**Observations:**
+
+- **HubSpot company ID format = 12-digit numeric string** (`426418136305`). Stable, monotonically increasing across the BSG account. Critical for our `BSG-7100000-XXXXXX` number suffix.
+- **`url`** field on the root (not in `properties`) is HubSpot's UI-deep-link to the company record. Useful for backlinks from our app.
+- Most fields are `null` in this test record. Real production companies are likely fuller — but our backend must handle `null` gracefully for every property.
+- The full property catalogue + which ones BSG actually uses is documented in `docs/bsg_hubspot_field_mapping.md`.
 
 ### 4.2 Get by ID
 
@@ -295,11 +349,49 @@ Authorization: Bearer ...
 | `createdate` | ISO 8601 | |
 | `hs_lastmodifieddate` | ISO 8601 | |
 
-🟡 **TBD-VALIDATE:** Pull ONE deal from BSG's HubSpot. Note whether
-`dealstage` / `pipeline` are word-IDs ("contractsent") or numeric
-strings ("11348542"). Both forms exist in different HubSpot accounts.
+### 5.1.1 Real BSG deal response (observed 2026-05-14)
 
-**Response shape:** identical to companies (§4.1) but with deal properties.
+```json
+{
+  "id": "498828505295",
+  "properties": {
+    "agent": "(A) Jeremy",
+    "amount": "500000",
+    "business_vertical": "iGaming / Betting",
+    "client": "(M) Atom",
+    "createdate": "2026-04-14T09:44:37.845Z",
+    "dealname": "CEI Processing Limited",
+    "dealstage": "appointmentscheduled",
+    "is_licensed": "no",
+    "is_startup": "yes",
+    "monthly_txn_range": "500 – 2,000",
+    "monthly_volume_range": "$50,000 – $500,000",
+    "pipeline": "default",
+    "processing_currencies": "USD, EUR, CHF, JPY, AUD, CAD, Other",
+    "processing_jurisdictions": "Europe (EU / EEA), North America, ..."
+    // ... 15+ more properties, most null in test deals
+  },
+  "associations": {
+    "companies": {
+      "results": [
+        { "id": "426487875793", "type": "deal_to_company" },
+        { "id": "426418834661", "type": "deal_to_company_unlabeled" },
+        { "id": "426487875793", "type": "deal_to_company_unlabeled" }
+      ]
+    }
+  },
+  "url": "https://app-eu1.hubspot.com/contacts/147930284/record/0-3/498828505295"
+}
+```
+
+**Observations:**
+
+- **Deal ID format = 12-digit numeric string** (`498828505295`), same shape as companies.
+- **`dealstage` is a word-ID string** for HubSpot defaults (`appointmentscheduled`, etc.) and a **numeric string** for BSG-added custom stages (see §6.1). Backend treats it as opaque `text`.
+- **`pipeline: "default"`** — the literal word "default" is the pipeline ID even though its label is "Gateway sales pipeline".
+- **`amount`** is a **stringified decimal** (`"500000"`, not `500000`). Backend Zod schema accepts both string + number forms then coerces.
+- **`monthly_volume_range` / `monthly_txn_range` are enum strings** (`"$50,000 – $500,000"`, `"500 – 2,000"`). These are buckets, not exact numbers — handled differently from `forecasted_monthly_volume` which is an exact number (and was `null` in the test deal — sales hasn't filled it).
+- Associations: see §8.3 for v3 string-type format used here.
 
 ### 5.2 Get by ID + 5.3 Batch read
 
@@ -340,54 +432,46 @@ GET /crm/v3/pipelines/deals
 Authorization: Bearer ...
 ```
 
-**Response:**
+**Response (real BSG data, fetched 2026-05-14):**
 
 ```json
 {
-  "results": [
-    {
-      "id": "default",
-      "label": "Sales Pipeline",
-      "displayOrder": 0,
-      "stages": [
-        {
-          "id": "appointmentscheduled",
-          "label": "Appointment Scheduled",
-          "displayOrder": 0,
-          "metadata": { "probability": "0.2" },
-          "archived": false
-        },
-        {
-          "id": "qualifiedtobuy",
-          "label": "Qualified to Buy",
-          "displayOrder": 1,
-          "metadata": { "probability": "0.4" },
-          "archived": false
-        },
-        ...
-        {
-          "id": "closedwon",
-          "label": "Closed Won",
-          "displayOrder": 6,
-          "metadata": { "probability": "1.0" },
-          "archived": false
-        },
-        {
-          "id": "closedlost",
-          "label": "Closed Lost",
-          "displayOrder": 7,
-          "metadata": { "probability": "0.0" },
-          "archived": false
-        }
-      ]
-    }
+  "id": "default",
+  "label": "Gateway sales pipeline",
+  "displayOrder": 0,
+  "stages": [
+    { "id": "appointmentscheduled",  "label": "New Referral",        "displayOrder": 0, "probability": "0.1" },
+    { "id": "qualifiedtobuy",        "label": "Qualified",           "displayOrder": 1, "probability": "0.3" },
+    { "id": "5230659805",            "label": "Pre-Approved by Bank","displayOrder": 2, "probability": "0.5" },
+    { "id": "decisionmakerboughtin", "label": "Proposal Sent",       "displayOrder": 3, "probability": "0.6" },
+    { "id": "contractsent",          "label": "Proposal Confirmed",  "displayOrder": 4, "probability": "0.7" },
+    { "id": "5230659806",            "label": "KYB Approved",        "displayOrder": 5, "probability": "0.8" },
+    { "id": "5230659807",            "label": "Agreement signed",    "displayOrder": 6, "probability": "0.9" },
+    { "id": "closedwon",             "label": "Closed Won",          "displayOrder": 7, "probability": "1.0" },
+    { "id": "closedlost",            "label": "Closed Lost",         "displayOrder": 8, "probability": "0.0" }
   ]
 }
 ```
 
-🟡 **TBD-VALIDATE:** BSG's actual pipeline IDs + stage IDs. Custom
-HubSpot accounts can have completely different pipelines (e.g.
-"Partner Pipeline", "Enterprise Deals", etc.).
+**Stage ID format mix** — BSG uses HubSpot's renamed default stages
+(`appointmentscheduled`, `qualifiedtobuy`, `decisionmakerboughtin`,
+`contractsent`, `closedwon`, `closedlost`) AS-IS but with custom
+labels. The three numeric-ID stages (`5230659805` / `5230659806` /
+`5230659807`) are stages BSG added on top of the defaults. Backend
+must treat `dealstage` as opaque `text` — never assume any specific
+format.
+
+### 6.1.1 Stages relevant to BSG document workflow
+
+| Stage ID | Label | When BSG documents matter |
+|---|---|---|
+| `decisionmakerboughtin` | **Proposal Sent** | ⭐ Operator generates an OFFER document for the deal and shares with merchant. Phase 9 may auto-transition deal here when a BSG offer is confirmed. |
+| `contractsent` | **Proposal Confirmed** | ⭐ Merchant accepted the BSG offer. Auto-transition candidate. |
+| `5230659807` | **Agreement signed** | ⭐ Full MSA + Pricing Schedule signed. Likely the moment we mark our `documents.status = confirmed`. |
+
+These three transitions are the strongest candidates for **Phase 9
+deal-stage automation** (BSG document lifecycle → HubSpot deal stage
+update). Phase 8 does NOT automate; operator handles in HubSpot UI.
 
 **How we use this:**
 - Sync the entire pipelines tree to a local `pipelines` + `pipeline_stages` table at the same time as companies / deals sync.
@@ -487,27 +571,61 @@ Content-Type: application/json
 
 Returns deal IDs grouped per input company.
 
-### 8.3 Default association type IDs (HUBSPOT_DEFINED)
+### 8.3 Association format — observed on real BSG data
 
-| From → To | typeId | Notes |
+When you query a record's associations via `GET /crm/v3/objects/...?associations=company`,
+HubSpot returns **string type names**, not numeric typeIds. Example
+from a real BSG deal:
+
+```json
+"associations": {
+  "companies": {
+    "results": [
+      { "id": "426487875793", "type": "deal_to_company" },
+      { "id": "426418834661", "type": "deal_to_company_unlabeled" },
+      { "id": "426487875793", "type": "deal_to_company_unlabeled" }
+    ]
+  }
+}
+```
+
+**Observations:**
+
+- `type` is a **human-readable string**, not a numeric typeId.
+- The same target ID can appear **multiple times** with different
+  `type` values (e.g. `deal_to_company` AND `deal_to_company_unlabeled`
+  for the same company). Backend must **dedupe by `id`** when
+  rendering relationships.
+- `deal_to_company` = the primary/labeled association.
+  `deal_to_company_unlabeled` = a secondary or unlabeled link.
+
+| String type | Direction | Meaning |
 |---|---|---|
-| Deal → Company | 5 | Primary association |
-| Deal → Contact | 3 | |
-| Company → Deal | 6 | Reverse direction |
-| Company → Contact | 2 | |
-| Note → Company | 190 | Used when we write back a BSG note to a company (§8.4) |
-| Note → Deal | 214 | Used when we write back a BSG note to a deal (§8.4) |
-| Note → Contact | 202 | (reserved — not used today) |
+| `deal_to_company` | deal → company | Primary association (labeled) |
+| `deal_to_company_unlabeled` | deal → company | Secondary or unlabeled |
+| `deal_to_contact` | deal → contact | Contact linked to the deal |
+| `company_to_deal` | company → deal | Reverse direction — used when we list deals for a picked company |
+| `company_to_contact` | company → contact | |
 
-**Associations are directional** — `deal→company` (typeId 5) is a
-different lookup from `company→deal` (typeId 6). For our case (find
-deals for a picked company), use **`company→deal` direction**.
+**Associations are directional** — querying with
+`?associations=company` from a deal endpoint returns
+`deal_to_company*` types; from a company endpoint with
+`?associations=deal` returns `company_to_deal` types.
 
-🟡 **TBD-VALIDATE** — confirm `190` (note→company) and `214` (note→deal)
-typeIds against a real test call. These come from public HubSpot docs
-but the actual numeric IDs are account-specific and may differ. Easiest
-check: create a note via the UI on a test company, then GET its
-associations and read the typeId.
+### 8.3.1 NumericassociationTypeId for WRITING associations
+
+When **creating** a note (or any other object) and attaching it to
+existing records via the `associations` field on the request body,
+HubSpot requires the numeric `associationTypeId`. This is different
+from the string `type` returned on reads.
+
+| Association | category | typeId | Confirmed |
+|---|---|---|---|
+| Note → Company | `HUBSPOT_DEFINED` | **190** | ✅ Tested 2026-05-14 — note created successfully and visible in HubSpot UI |
+| Note → Deal | `HUBSPOT_DEFINED` | **214** | 🟡 Per public docs; not yet tested against BSG. Expected to behave identically. |
+| Note → Contact | `HUBSPOT_DEFINED` | **202** | Not used today; reserved. |
+
+So the asymmetry is: **reads return string types, writes need numeric typeIds**. This is a HubSpot API quirk.
 
 ### 8.4 Writing notes back — our integration pattern
 
@@ -576,54 +694,98 @@ Associations stay unless we explicitly change them.
 `crm.objects.contacts.read` for re-reading our own notes — HubSpot
 quirk where Notes API uses Contact-level permissions, see §2.2.
 
-**🟡 TBD-VALIDATE** — confirm:
-1. Does `hs_note_body` render basic HTML (`<br/>`, `<a href=...>`) or is it plain-text-only? Public docs are inconsistent on this. Easiest check: create a note via UI with a link, GET it via API, see what `hs_note_body` contains.
-2. Does association typeId 190 / 214 work as documented? Numbers vary across HubSpot tiers in some cases.
+### 8.4.1 Validated against BSG account on 2026-05-14
+
+A smoke-test note was created (and afterwards deleted) on a real
+BSG company:
+
+- ✅ `POST /crm/v3/objects/notes` with `associationTypeId: 190` →
+  HTTP 200, note created, visible in HubSpot UI.
+- ✅ `<br>` line breaks render correctly in the activity timeline.
+- ✅ `<a href="https://example.com">click me</a>` renders as a
+  clickable hyperlink in HubSpot UI.
+- ✅ HubSpot normalises self-closing `<br/>` to `<br>` in
+  `hs_note_body` after persistence (standard HTML5 behaviour).
+- ✅ HubSpot adds `hs_object_source: "INTEGRATION"` and
+  `hs_object_source_label: "INTEGRATION"` automatically — so anyone
+  reading the note in the UI can see it came from our integration.
+- ✅ `hs_body_preview` (plain-text version) and
+  `hs_body_preview_html` are generated automatically from
+  `hs_note_body`.
+- ✅ `DELETE /crm/v3/objects/notes/:id` → HTTP 204 + subsequent
+  GET → 404 (no archival residue).
+
+Full response shape on a successful create:
+
+```json
+{
+  "id": "491578110182",
+  "properties": {
+    "hs_body_preview": "...plain text auto-generated...",
+    "hs_body_preview_html": "<html><head></head><body>...</body></html>",
+    "hs_body_preview_is_truncated": "false",
+    "hs_createdate": "2026-05-13T21:21:49.201Z",
+    "hs_lastmodifieddate": "2026-05-13T21:21:49.201Z",
+    "hs_note_body": "...HTML body sent in request...",
+    "hs_obj_coords": "0-46-491578110182",
+    "hs_object_id": "491578110182",
+    "hs_object_source": "INTEGRATION",
+    "hs_object_source_id": "39486628",
+    "hs_object_source_label": "INTEGRATION",
+    "hs_timestamp": "2026-05-13T21:21:48Z"
+  },
+  "createdAt": "2026-05-13T21:21:49.201Z",
+  "updatedAt": "2026-05-13T21:21:49.201Z",
+  "archived": false,
+  "url": "https://app-eu1.hubspot.com/contacts/147930284/objects/0-46/views/all/list?filters=..."
+}
+```
+
+Backend stores `id` as `documents.hubspot_note_id` so subsequent
+updates use PATCH instead of creating duplicates.
 
 ---
 
-## 9. Open questions to validate against real test API
+## 9. Open questions — resolution status (validated 2026-05-14)
 
-### Already observed from BSG HubSpot UI (2026-05-14)
+All twelve open questions resolved against the live BSG account.
+Anything still 🟡 is a known-deferral, not a blocker.
 
-These are confirmed from screenshots of the live BSG account; no API
-call needed:
-
-| ✅ Confirmed | Value |
-|---|---|
-| HubSpot region | EU (`app-eu1.hubspot.com`) — API base stays `api.hubapi.com` (see §2.5) |
-| Account name | `Black Stripe Group LTD` |
-| Has custom pipeline | Yes — `Gateway sales pipeline` (NOT the default `default` pipeline). First stage observed: `New Referral`. |
-| Custom properties on Company | `Company type`, `Segment Type` (e.g. "Direct Mercahnt"), `Submitter Telegram`, `From where and whom you come to us`, `Industry Type`, `Description`, `Company owner` |
-| Custom properties on Deal | `Deal Type`, `Priority`, `Chargeback Fee`, `Cost per Transaction`, `Record source` (e.g. "Integration"), `Last Contacted`, `Deal owner` |
-| Standard Deal properties | `Amount` (€2,000,000 observed), `Close Date`, `Pipeline`, `Deal Stage` |
-| Deals → Companies association | Confirmed bidirectional ("DEAL WITH PRIMARY COMPANY" badge visible). Multi-company deals supported (1 deal observed with 2 companies). |
-| Contacts on Deal | Yes — at least one contact per deal in some cases (e.g. `Haim Samuel Garson` with email + phone) |
-
-### Still requires API call to confirm
-
-| # | Question | Why it matters |
+| # | Question | Resolution |
 |---|---|---|
-| 1 | What HubSpot tier is BSG on? (Free/Starter/Pro/Enterprise) | Determines daily quota (250k / 625k / 1M). Check via UI Settings → Account & Billing. |
-| 2 | Full `properties` JSON on a typical Company — get every key | Map each one to either a named column on our `companies` table or pass through as `hubspot_raw`. |
-| 3 | Full `properties` JSON on a typical Deal — get every key | Same for `deals`. |
-| 4 | Format of `dealstage` value: word-ID (`"newreferral"`) or numeric (`"11348542"`)? | Both forms exist. Affects our local pipeline-stage lookup table. |
-| 5 | Format of `pipeline` value for "Gateway sales pipeline" — word-ID or numeric? | Same. |
-| 6 | All stages in the `Gateway sales pipeline` (we only see "New Referral") | Backend needs the full set + their order + probabilities. |
-| 7 | Approximate count of companies + deals in BSG | Determines initial sync strategy (single batch vs paged). |
-| 8 | Length + format of HubSpot company IDs in BSG (numeric only? always same length?) | Critical for our `BSG-7100000-XXXXXX` number-suffix rule. |
-| 9 | Are there custom company properties already provisioned for BSG document data (e.g. `bsg_document_url`, `bsg_pricing_summary`)? | If yes, Phase 9 can write to them as a structured alternative to free-text Notes. |
-| 10 | Confirm 429 error response body shape | Backend retry logic. |
-| 11 | Does `hs_note_body` accept HTML (`<br/>`, `<a>`) or plain text only? | Affects format of our pushed Notes (§8.4). |
-| 12 | Confirm note→company / note→deal association typeIds (190 / 214 per public docs) | These IDs are sometimes account-specific in HubSpot. |
+| 1 | What HubSpot tier is BSG on? | ✅ **Free or Starter** — daily quota 250,000, burst 100/10s, secondly 10. |
+| 2 | Full `properties` JSON on a typical Company | ✅ **263 properties total: 257 HubSpot-built-in + 6 BSG custom** (full list in `bsg_hubspot_field_mapping.md`). Custom names: `company_type`, `segment_type`, `industry_type`, `submitter_telegram`, `from_where_and_whom_you_come_to_us`, `referral_source`. |
+| 3 | Full `properties` JSON on a typical Deal | ✅ **237 properties total: 201 built-in + 36 BSG custom**. Many directly map to calculator/contract fields — see `bsg_hubspot_field_mapping.md`. |
+| 4 | Format of `dealstage` value? | ✅ **Mixed.** HubSpot-default stages use word-IDs (`appointmentscheduled`, `qualifiedtobuy`, `decisionmakerboughtin`, `contractsent`, `closedwon`, `closedlost`). BSG-added custom stages use numeric IDs (`5230659805`, `5230659806`, `5230659807`). |
+| 5 | Format of `pipeline` value? | ✅ **String `default`** — but its `label` is "Gateway sales pipeline". The pipeline ID is the literal word "default" despite being a BSG custom pipeline (HubSpot kept the slot name). |
+| 6 | All stages in `Gateway sales pipeline` | ✅ **9 stages** captured — see §6.1 below. |
+| 7 | Approximate count of companies + deals | ✅ **50 companies + 8 deals.** Trivial dataset — single-request initial sync. |
+| 8 | Length + format of HubSpot company / deal IDs | ✅ **12-digit numeric strings** (e.g. company `426418136305`, deal `498828505295`). |
+| 9 | Pre-existing BSG-document custom properties in HubSpot? | ❌ **No.** No `bsg_document_url`, `bsg_pricing_summary`, etc. found. Phase 9 will push BSG data as free-text Notes (§8.4) or — if product wants structured fields — we provision new custom properties via the schemas API. |
+| 10 | 429 error response shape | 🟡 Not observed (well below quota during testing). Public docs claim: `{"status":"error","message":"...","errorType":"RATE_LIMIT"}`. Backend retry logic uses exponential backoff regardless of body shape. |
+| 11 | Does `hs_note_body` accept HTML? | ✅ **Yes.** `<br>` line breaks work; `<a href>` renders as a clickable link in HubSpot UI. Confirmed by test note that was successfully created and rendered. HubSpot normalises self-closing `<br/>` to `<br>` (standard HTML5 behaviour). |
+| 12 | Confirm note↔company associationTypeId | ✅ **190 confirmed working** for `HUBSPOT_DEFINED` → note→company. Note created via `POST /crm/v3/objects/notes` with `associationTypeId: 190` succeeded and was visible on the target company. Note→deal typeId 214 documented but not test-validated; expected to work identically. |
+
+### BSG-specific findings observed during testing
+
+| Finding | Value | Implication |
+|---|---|---|
+| HubSpot region | `app-eu1.hubspot.com` | API base `https://api.hubapi.com` works (no regional URL needed). Token starts with `pat-eu1-`. |
+| Account name | `Black Stripe Group LTD` | — |
+| Companies naming convention | `(A) Name` = Agent (партнер), `(M) Name` = Merchant (клієнт) | Our UI can prefix-filter or display these tags. |
+| `hs_object_source` on API-created notes | `INTEGRATION` | HubSpot tags Notes created via our app as "INTEGRATION" source — operators in HubSpot UI see it. |
+| Sample enum values observed | `company_type`: `referring_partner` / `direct_client`. `segment_type`: `Master_referring_partner` / `Aggregating_Merchant`. | Need to fetch full enum option lists via `GET /crm/v3/properties/companies/{propertyName}` when wiring UI dropdowns. |
+| Most pricing-related deal fields | `null` in real deals (e.g. `transaction_fee__mdr`, `forecasted_monthly_volume`, `setup_fee`) | Phase 9 auto-hydrate of calculator is "best-effort". Sales-team workflow discussion needed: should these be required before generating an offer? |
 
 ---
 
-## 10. Suggested test calls — minimum set for validation
+## 10. Test calls used during validation (executed 2026-05-14)
 
-Run these against the test HubSpot when you have access. We will use
-the responses to fill in `🟡 TBD-VALIDATE` markers and finalise the
-backend Zod schemas.
+All eight calls below were run against the live BSG HubSpot account
+on 2026-05-14. Results filled in the `🟡 TBD-VALIDATE` markers
+throughout this doc. **Re-run these any time HubSpot changes the
+account tier, adds custom properties, or revises pipeline stages** —
+they're the canonical smoke-test suite for the integration.
 
 ### Call 1 — Inspect ONE company (any company, doesn't matter which)
 
@@ -737,23 +899,50 @@ for the Zod schemas in §11.
 
 ---
 
-## 11. After validation — what changes in the codebase
+## 11. Validated — codebase decisions are now concrete
 
-Once we have real data, the following will be finalised:
+With real data in hand (2026-05-14), the following are settled:
 
-1. **`companies` table schema** — extract specific HubSpot properties
-   we care about into named columns; everything else into
+1. **`companies` table schema** — 6 BSG custom properties get named
+   columns (`company_type`, `segment_type`, `industry_type`,
+   `submitter_telegram`, `from_where_and_whom_you_come_to_us`,
+   `referral_source`). Everything else (the 257 HubSpot built-ins)
+   passes through `hubspot_raw` JSONB. Mapping in
+   `docs/bsg_hubspot_field_mapping.md`.
+2. **`deals` table schema** — 36 BSG custom properties; of those,
+   ~14 are pricing-relevant and get named columns; the rest live in
    `hubspot_raw` JSONB.
-2. **`deals` table schema** — same approach.
-3. **`pipelines` + `pipeline_stages` tables** — local mirror for
-   label lookups.
-4. **Document number suffix logic** — finalise the
-   `BSG-7100000-XXXXXX` HubSpot ID extraction rule (numeric? last 6
-   chars? padding rules?). See `phase_08_backend_plan.md` §6.
-5. **Zod schemas for HubSpot inbound payloads** — strict typing of
-   what we accept from the API.
-6. **Sync endpoint behavior** —  decide full vs incremental sync,
-   how often, what triggers it.
+3. **`pipelines` + `pipeline_stages` tables** — seed with one
+   pipeline (`default` / "Gateway sales pipeline") and 9 stages.
+   Re-sync via "Refresh from HubSpot" button.
+4. **Document number suffix rule:**
+   - Source ID = `deal.hubspot_deal_id` if deal is linked, else
+     `company.hubspot_company_id`.
+   - HubSpot IDs are 12-digit numeric strings.
+   - Take **last 6 digits**, no padding needed (always ≥6 digits).
+   - Example: deal `498828505295` → suffix `505295` → number
+     `BSG-7100123-505295`.
+5. **Zod schemas:**
+   - `properties.*` fields can be `null` OR string/number → use
+     `.nullable()` everywhere.
+   - `amount` and other numeric fields come as **stringified
+     decimals** (e.g. `"500000"`) — Zod schema accepts both via
+     `z.union([z.string(), z.number()]).transform(...)`.
+   - `dealstage` and `pipeline` are opaque `text` — never assume
+     word-ID vs numeric.
+6. **Associations dedupe rule** (§8.3) — when reading
+   `?associations=company` on a deal, the same company ID can
+   appear with multiple `type` values. Backend dedupes by ID and
+   prefers the labeled type (`deal_to_company` over `deal_to_company_unlabeled`)
+   when displaying primary company.
+7. **Sync strategy:**
+   - At 50 companies + 8 deals + 1 pipeline, **full sync per refresh
+     is trivial** (3 requests total, well under burst limit).
+   - Incremental sync (using `hs_lastmodifieddate` filter via Search
+     API) becomes worth it only if companies > 1000. Defer.
+8. **Note write-back format** — confirmed working via §8.4.1. HTML
+   `<br>` + `<a href>` render correctly. Backend uses the format
+   from §8.4 example, stores returned `id` as `documents.hubspot_note_id`.
 
 ---
 
