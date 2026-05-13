@@ -48,10 +48,36 @@ Content-Type: application/json
 |---|---|
 | `crm.objects.companies.read` | Read company records (incl. custom properties — `Company type`, `Segment Type`, `Submitter Telegram`, `From where and whom you come to us`, `Industry Type`, etc.) |
 | `crm.objects.deals.read` | Read deal records (incl. custom properties — `Deal Type`, `Priority`, `Chargeback Fee`, `Cost per Transaction`, etc.) |
-| `crm.objects.notes.write` | Create notes (we push BSG document links / pricing summaries onto the related Company or Deal as Notes — see §8.4) |
-| `crm.objects.notes.read` | Read existing notes (so we don't duplicate when re-syncing) |
+| `crm.objects.contacts.read` | **Required for reading notes** — see HubSpot quirk in §2.2. |
+| `crm.objects.contacts.write` | **Required for creating/updating notes** — see HubSpot quirk in §2.2. |
 
-### 2.2 Scopes — recommended (one-time discovery + UX polish)
+### 2.2 HubSpot quirk — Notes API uses Contact scopes
+
+The intuitive scopes `crm.objects.notes.read` / `crm.objects.notes.write`
+**do not exist** in the Private App scope picker for most HubSpot
+accounts (including BSG's). They're not hidden — they simply aren't a
+valid scope name despite appearing throughout some HubSpot docs.
+
+Confirmed source: [Activities | Notes guide](https://developers.hubspot.com/docs/api-reference/legacy/crm/activities/notes/guide)
+explicitly lists the required scopes as `crm.objects.contacts.read` +
+`crm.objects.contacts.write`. The Engagements API family (notes, tasks,
+calls, emails) is historically wired through Contact-level permissions
+rather than having its own per-engagement scopes.
+
+**Side-effect:** these scopes also grant read/write to Contact records
+themselves (the people / email addresses). We don't need that capability
+for our integration. Mitigations:
+
+1. **Backend code rule (lint or code review):** the HubSpot client wrapper
+   must NEVER call `POST/PATCH/DELETE /crm/v3/objects/contacts` or its
+   batch equivalents. Only `objects/notes/*` writes are allowed.
+2. **Tests:** add a regression test that scans the HubSpot client module
+   for the strings `objects/contacts` outside of GET / `objects/notes`
+   association payloads.
+3. **Auditing:** all HubSpot writes log the endpoint URL so any
+   accidental contact mutation is observable in logs.
+
+### 2.3 Scopes — recommended (one-time discovery + UX polish)
 
 | Scope | Purpose |
 |---|---|
@@ -59,8 +85,9 @@ Content-Type: application/json
 | `crm.schemas.deals.read` | Same for Deals. |
 | `crm.objects.owners.read` | Resolve `hubspot_owner_id` numeric → human name. Without it, deal owner shows as a number in our UI. |
 
-### 2.3 Scopes NOT needed (deliberately omitted)
+### 2.4 Scopes NOT needed (deliberately omitted)
 
+- ❌ `crm.objects.notes.read` / `crm.objects.notes.write` — these scopes don't exist in the Private App UI for BSG's account; the Notes API uses Contact scopes instead (see §2.2).
 - ❌ `crm.objects.companies.sensitive.read` / `highly_sensitive.read` — only required if BSG marks specific fields as sensitive (rare; usually for PII / payment-card data). Add later if missing data is observed.
 - ❌ `crm.objects.deals.sensitive.read` / `highly_sensitive.read` — same.
 - ❌ `crm.objects.companies.write` / `crm.objects.deals.write` — we never modify companies or deals directly. All write-back goes through Notes (see §8.4).
@@ -545,8 +572,9 @@ Content-Type: application/json
 
 Associations stay unless we explicitly change them.
 
-**Scope required:** `crm.objects.notes.write` (writing) +
-`crm.objects.notes.read` (re-reading our own notes during sync).
+**Scope required:** `crm.objects.contacts.write` for writing +
+`crm.objects.contacts.read` for re-reading our own notes — HubSpot
+quirk where Notes API uses Contact-level permissions, see §2.2.
 
 **🟡 TBD-VALIDATE** — confirm:
 1. Does `hs_note_body` render basic HTML (`<br/>`, `<a href=...>`) or is it plain-text-only? Public docs are inconsistent on this. Easiest check: create a note via UI with a link, GET it via API, see what `hs_note_body` contains.
