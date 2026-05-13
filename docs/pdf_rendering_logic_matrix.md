@@ -162,6 +162,60 @@ Already supported by `payinPricing.tiers[].trxCc` / `trxApm`.
 
 Identical across all samples: `≤2.5M: €1.00 / >2.5M: N/A`.
 
+### 4.5.1 Section 1 (Payin) — Custom rows (operator-added, 2026-05-14)
+
+Operator can append ad-hoc rows to the table after the standard
+EU / Global regions via the wizard's "Custom Payin Rows" section.
+Each custom row carries its own:
+
+- REGION (free-form text, rendered with `● ` bullet like standard rows)
+- CURRENCY (free-form text, default "EUR")
+- MDR / RATE (single or tiered; IC++ or Blended)
+- TRX FEE (C/D + APM with per-field N/A toggles, same `PayinFeeBlock` shape)
+- MIN. TRANSACTION FEE (per-row threshold + fee + whole-cell N/A toggle)
+
+METHODS column is hardcoded to the same default text as standard
+rows ("Credit / Debit - Visa, Mastercard" + "APM - Apple Pay,
+Google Pay") — no per-row override. Tier coloring uses the standard
+`tier-color-1/2/3` classes. A tiered custom row promotes the table
+to `byRegionTiered` mode (so MONTHLY VOLUME TIER column stays visible)
+even when standard rows are all single — handled by the 4th param
+on `resolvePayinTableMode()`.
+
+Type: `PayinCustomRow` in `document-wizard/types.ts`. Field is
+optional (`payinPricing.customRows?`) for back-compat.
+
+Renderer: `offerPdf/sections/payin.ts:buildPayinRows()` appends
+custom rows after the standard regions in the rows array.
+`hasAnyPayinMinFee()` also checks custom rows so the MIN. TRX FEE
+column visibility decision considers per-row values too.
+
+Auto-compact preset calibration: each tiered custom row adds 3
+rendered rows; the compact preset is calibrated against a worst
+case of 6 rows + 3-4 line note. Documents with many custom rows
+(8+ total rows) may extend to 3 pages — known limitation, not yet
+addressed via explicit force-page-break logic.
+
+### 4.5.2 Section 1 column widths
+
+Defined in `pdf-kit/styles.ts` `:root` as proportional weights
+(table-layout: fixed scales them to the table width):
+
+| Column | CSS class | Width |
+|---|---|---|
+| REGION | `.col-region` | 11% |
+| METHODS | `.col-methods` | 30% |
+| CURRENCY | `.col-currency` | 11% |
+| MONTHLY VOLUME TIER | `.col-tier` | 13% |
+| MDR / RATE | `.col-mdr` | 12% |
+| TRANSACTION FEE | `.col-trxfee` | 17% |
+| MIN. TRANSACTION FEE | `.col-minfee` | 17% |
+
+History: METHODS was 25% and MIN. TRX FEE was 22% before the
+2026-05-14 rebalance — METHODS widened to fit "Credit / Debit -
+Visa, Mastercard" + "APM - Apple Pay, Google Pay" on single lines
+per cell-line in compact preset.
+
 ### 4.6 Section 1 footnotes (annotations under the table)
 
 | Sample | Footnote |

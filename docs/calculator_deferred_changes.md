@@ -265,6 +265,71 @@ Logged here for completeness in case any item needs to be reverted.
   re-add editable coefficient) is documented separately so each
   half can be reverted independently if needed.
 
+---
+
+## 5. Custom Payin rows in OFFER PDF
+
+- **Date:** 2026-05-14
+- **User request:** ability to append operator-driven ad-hoc rows
+  to the Card Acquiring (Payin) PDF table — for one-off pricing
+  arrangements that don't fit the standard EU / Global region
+  split (e.g. "Russia bundle", "Crypto rails", LATAM-specific).
+- **Applied in (wizard + PDF, NOT calculator):**
+  - `src/components/document-wizard/types.ts` — new
+    `PayinCustomRow` interface + optional
+    `payinPricing.customRows?: PayinCustomRow[]` field on
+    `DocumentTemplatePayload`.
+  - `src/components/document-wizard/seedHelpers.ts` —
+    `makeDefaultPayinCustomRow()` factory +
+    `clonePayinCustomRow()` deep-clone +
+    `generateCustomRowId()` (uses `crypto.randomUUID` when
+    available).
+  - `src/components/document-wizard/wizard/steps/PayinStep.tsx`
+    — new `PayinCustomRowsEditor` + `PayinCustomRowCard`
+    components, placed between standard region editors and the
+    Payin Section Note.
+  - `src/components/document-wizard/wizard/layoutHelpers.ts` —
+    `resolvePayinTableMode()` gained an optional 4th param that
+    promotes the table to byRegionTiered when any custom row is
+    tiered. Existing call sites unchanged thanks to the default
+    empty array.
+  - `src/components/document-wizard/offerPdf/sections/payin.ts`
+    — `buildPayinRows()` appends custom rows after the standard
+    regions. New helper `formatCustomRowMinTransactionFee()`
+    reads per-row threshold/fee/N/A toggle (instead of the
+    global `contractSummary.payoutMinimumFee*`).
+    `hasAnyPayinMinFee()` also checks custom rows so the column
+    visibility decision is whole-table aware.
+  - `src/components/document-wizard/fromCalculator.ts` /
+    `manualSeeds.ts` — both seed `customRows: []` defaults
+    (calculator never emits custom rows; manual seed starts
+    blank).
+- **NOT in calculator (intentionally):**
+  - Calculator state (`useCalculatorState.ts`) has no concept of
+    custom rows. The whole feature lives at the wizard layer.
+  - `fromCalculator.ts` always sets `customRows: []` when
+    snapshot-ing a calculator state into a wizard draft. Operator
+    adds rows manually in Step 2.
+- **Why calculator-only would be wrong here:**
+  - Calculator math (Zones 0–6) operates on the standard
+    EU/WW region split for profitability calculations. A custom
+    row is **purely display** — it doesn't feed back into any
+    domain calculation. Adding it to the calculator would mean
+    introducing display-only state into the math layer, which
+    contradicts the calculator's role as "pure inputs that drive
+    pure formulas".
+- **Notes for future calculator change (if needed):**
+  - If product ever wants Custom rows to feed into calculator
+    profitability (e.g. "what's the EBITDA on this Russia
+    bundle?"), the row shape must extend with cost-side fields
+    (provider MDR, scheme fees, etc.). For now this is out of
+    scope.
+- **Revert:** see the 2026-05-14 entry in `docs/decisions.md`
+  for the canonical revert plan. Optional field, can be deleted
+  cleanly without schema migration.
+
+---
+
 <!-- Append further deferred changes below using the same template:
 
 ## N. Short title

@@ -2030,3 +2030,113 @@ Use this file to record meaningful technical decisions for the project.
     starts.
   - Phase 9 planning (HubSpot API integration) will happen after
     Phase 8 ships. The schema groundwork is already in place.
+
+### Decision: Custom Payin rows (wizard + PDF, ad-hoc table rows)
+- Date: 2026-05-14
+- Context:
+  - Sales-team request: a way to add one-off rows to the Card
+    Acquiring (Payin) PDF table that don't fit the standard EU /
+    Global region split. Examples raised: "Russia bundle", "Crypto
+    rails", LATAM-specific commercial offers.
+  - Existing rows are tied to `payinPricing.eu` and
+    `payinPricing.ww` from the calculator state — fixed shape. No
+    way to add an extra row without changing the schema.
+- Decision:
+  - Add an optional `payinPricing.customRows?: PayinCustomRow[]`
+    field to `DocumentTemplatePayload`. Each row has its own
+    free-form REGION + CURRENCY, the standard pricing model /
+    rate-mode / TRX fees / tier setup (reusing `PayinFeeBlock`),
+    and a structured MIN. TRANSACTION FEE (threshold + fee + N/A
+    toggle).
+  - METHODS column intentionally **hardcoded** to the same default
+    text as standard rows ("Credit / Debit - Visa, Mastercard" +
+    "APM - Apple Pay, Google Pay"). Operator cannot override per
+    row — confirmed product decision (Q1=A).
+  - Tier coloring (`tier-color-1/2/3`) and ● bullet behave
+    identically to standard rows. The rendered output uses the
+    same cell layout and the same column visibility rules
+    (`hasAnyPayinMinFee`, etc.).
+  - New Wizard section "Custom Payin Rows" lives in Step 2
+    between the standard region editors and the Payin Section
+    Note. Empty by default; "+ Add custom row" creates a card.
+  - Calculator state DOES NOT carry custom rows. `fromCalculator.ts`
+    always seeds `customRows: []`. Feature is wizard-only.
+  - `resolvePayinTableMode()` gained an optional 4th param that
+    accepts the custom-rows array; a tiered custom row promotes
+    the table to byRegionTiered (so MONTHLY VOLUME TIER column
+    stays visible) even when standard rows are single. Existing
+    call sites unchanged.
+- Alternatives considered:
+  - Per-row editable METHODS column. Rejected — adds UI complexity
+    without a real use case today; consistent METHODS text reads
+    cleaner.
+  - Free-form text for MIN. TRX FEE. Rejected — structured fields
+    keep the column format consistent with standard rows.
+- Consequences:
+  - 250/250 tests pass (+4 new): back-compat (undefined customRows),
+    single-rate row append, tiered row × 3-line render + tier
+    colors, tableMode promotion test.
+  - Saved drafts from before 2026-05-14 deserialize cleanly — the
+    new field is optional, renderer treats `undefined` as empty.
+  - Calculator side untouched; no regressions in 200+ existing
+    tests that depend on the calculator state shape.
+- Known consideration — page-break with many rows:
+  - Compact preset was calibrated for the worst-case 6 standard
+    tiered rows + 3-4 line note on page 1.
+  - Adding many custom rows (especially tiered) pushes total
+    row count above 6. Beyond ~8 rows the section won't fit on
+    page 1 and the document spreads to 3 pages with potentially
+    awkward breaks. Documented as a known limitation; no force-
+    page-break logic added yet. Will revisit if real production
+    PDFs hit the threshold and look awkward.
+
+### Decision: Card Acquiring column-width rebalance
+- Date: 2026-05-14
+- Context:
+  - Operator reported that "Credit / Debit - Visa, Mastercard"
+    and "APM - Apple Pay, Google Pay" were wrapping onto 3-4
+    visual lines in compact preset PDFs because the METHODS
+    column was too narrow at 25%. The intended layout is
+    exactly two `.cell-line` elements per cell.
+  - MIN. TRANSACTION FEE column ("≤Xm: €Y" / ">Xm: N/A") at 22%
+    had spare horizontal room — short content, never wraps.
+- Decision:
+  - Reallocate 5% from MIN. TRX FEE to METHODS:
+    - `.col-methods` 25% → 30%
+    - `.col-minfee` 22% → 17%
+  - All other column widths unchanged.
+- Alternatives considered:
+  - Shrink the METHODS font in compact preset further. Rejected
+    — already 8.5pt which is at the lower bound of readability.
+  - Force `white-space: nowrap` on the methods cell. Rejected —
+    if any unexpected long brand list appears in the future,
+    the cell would silently overflow horizontally.
+- Consequences:
+  - METHODS lines now fit on one line each (2-line cell as
+    designed).
+  - MIN. TRX FEE content tested at 17% — single-line per cell-line,
+    no wraps.
+  - CSS-only change, no logic touched; 250/250 tests still pass.
+
+### Decision: APM label round-trip (no net change)
+- Date: 2026-05-14
+- Context:
+  - User asked to rename "APM - Apple Pay, Google Pay" to
+    "APM - Apple & Google pay" everywhere (commit 9de2533).
+    A few minutes later, user reverted the request and asked
+    to restore the original label (commit e7ac0e7).
+- Decision:
+  - Label text returned to "APM - Apple Pay, Google Pay" in
+    all three files (renderer const, UI-kit reference page,
+    test assertion).
+  - The column-width rebalance (above entry) STAYS — the longer
+    label still fits on a single line thanks to the wider
+    `.col-methods`, so no width revert.
+- Consequences:
+  - Net behaviour identical to pre-9de2533 with one improvement:
+    the methods cell renders 2 lines as designed instead of
+    wrapping.
+- Follow-up actions:
+  - None. If product wants a different APM label later, change
+    the `apmLabel` const in `offerPdf/sections/payin.ts` — it's
+    the single source of truth for the rendered text.
