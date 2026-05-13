@@ -63,7 +63,7 @@ export function buildPdfUiKitHtml(): string {
         <tbody>
           <tr>
             <td class="cell-region">● EEA + UK</td>
-            <td><span class="cell-line">Credit / Debit - Visa, Mastercard</span><span class="cell-line cell-subtitle">APM - Apple & Google pay</span></td>
+            <td><span class="cell-line">Credit / Debit - Visa, Mastercard</span><span class="cell-line cell-subtitle">APM - Apple Pay, Google Pay</span></td>
             <td>EUR</td>
             <td class="accent-text">Up to €1M</td>
             <td><span class="cell-line accent-text">IC++</span><span class="cell-line">3.00%</span></td>
@@ -72,7 +72,7 @@ export function buildPdfUiKitHtml(): string {
           </tr>
           <tr>
             <td class="cell-region">● Global</td>
-            <td><span class="cell-line">Credit / Debit - Visa, Mastercard</span><span class="cell-line cell-subtitle">APM - Apple & Google pay</span></td>
+            <td><span class="cell-line">Credit / Debit - Visa, Mastercard</span><span class="cell-line cell-subtitle">APM - Apple Pay, Google Pay</span></td>
             <td>EUR</td>
             <td class="accent-text">€1M – €3M</td>
             <td><span class="cell-line accent-text">IC++</span><span class="cell-line">3.25%</span></td>

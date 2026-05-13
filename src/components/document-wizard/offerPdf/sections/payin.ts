@@ -177,7 +177,7 @@ function buildPayinRows(
   showMinFeeColumn: boolean
 ): string {
   const methodLabel = "Credit / Debit - Visa, Mastercard";
-  const apmLabel = "APM - Apple & Google pay";
+  const apmLabel = "APM - Apple Pay, Google Pay";
   const showRegionColumn = layout.payin.tableMode === "byRegionTiered" || layout.payin.tableMode === "byRegionFlat";
   const showTierColumn = layout.payin.tableMode === "byRegionTiered" || layout.payin.tableMode === "flatTiered";
 

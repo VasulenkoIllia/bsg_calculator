@@ -461,7 +461,7 @@ tbody tr:nth-child(even) {
  *
  * Calibration 2026-05-14: bumped col-methods 25% → 30% and trimmed
  * col-minfee 22% → 17% so that "Credit / Debit - Visa, Mastercard"
- * and "APM - Apple & Google pay" each fit on a single line in the
+ * and "APM - Apple Pay, Google Pay" each fit on a single line in the
  * compact preset, producing the intended 2-line cell instead of 3-4
  * line wraps. MIN. TRX FEE column content ("≤Xm: €Y" / ">Xm: N/A") is
  * short enough that 17% still holds it on a single line per row. */
