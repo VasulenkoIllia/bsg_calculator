@@ -65,7 +65,9 @@ export function buildDocumentTemplatePayloadManualDefaults(): DocumentTemplatePa
     },
     payinPricing: {
       eu: clonePayinRegionPricing(DEFAULT_PAYIN_EU_PRICING_CONFIG),
-      ww: clonePayinRegionPricing(DEFAULT_PAYIN_WW_PRICING_CONFIG)
+      ww: clonePayinRegionPricing(DEFAULT_PAYIN_WW_PRICING_CONFIG),
+      // Operator-added rows; manual seed never starts with any.
+      customRows: []
     },
     payoutPricing: clonePayoutPricing(DEFAULT_PAYOUT_PRICING_CONFIG),
     toggles: {
@@ -180,7 +182,9 @@ export function buildDocumentTemplatePayloadManualBlank(): DocumentTemplatePaylo
           { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
           { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false }
         ]
-      }
+      },
+      // Operator-added rows; blank manual seed never starts with any.
+      customRows: []
     },
     payoutPricing: {
       ...clonePayoutPricing(DEFAULT_PAYOUT_PRICING_CONFIG),

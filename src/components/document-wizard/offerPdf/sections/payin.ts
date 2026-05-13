@@ -1,6 +1,10 @@
 import { escapeHtml } from "../../../../shared/html.js";
 import { renderSectionHeader } from "../../pdf-kit/primitives.js";
-import type { DocumentTemplatePayload, DocumentWizardLayout } from "../../types.js";
+import type {
+  DocumentTemplatePayload,
+  DocumentWizardLayout,
+  PayinCustomRow
+} from "../../types.js";
 import {
   formatEuro,
   formatPayinModel,
@@ -76,6 +80,28 @@ function formatPayinMinTransactionFee(
   };
 }
 
+// Per-custom-row MIN. TRANSACTION FEE renderer. Custom rows store their
+// own threshold/fee/N/A toggle (see `PayinCustomRow.minTrxFee*`) instead
+// of reading the global `contractSummary.payoutMinimumFee*` values.
+// Same `MinFeeRender` union as standard regions so `renderMinFeeCell`
+// (below) can format both consistently.
+function formatCustomRowMinTransactionFee(
+  row: PayinCustomRow
+): MinFeeRender | null {
+  if (row.minTrxFeeRowNa) return { kind: "na" };
+  const threshold = row.minTrxFeeThresholdMillion;
+  const fee = row.minTrxFeePerTransaction;
+  if (!hasPositiveNumber(threshold) || !hasPositiveNumber(fee)) {
+    return null;
+  }
+  const thresholdLabel = `${threshold.toLocaleString("en-US")}M`;
+  return {
+    kind: "value",
+    primary: `≤${thresholdLabel}: ${formatEuro(fee)}`,
+    secondary: `>${thresholdLabel}: N/A`
+  };
+}
+
 function renderMinFeeCell(minFee: MinFeeRender | null): string {
   if (!minFee) return "";
   if (minFee.kind === "na") {
@@ -133,7 +159,16 @@ function resolvePayinRegionContexts(
 
 function hasAnyPayinMinFee(data: DocumentTemplatePayload, layout: DocumentWizardLayout): boolean {
   const regions = resolvePayinRegionContexts(data, layout);
-  return regions.some(region => formatPayinMinTransactionFee(data, region.code) !== null);
+  if (regions.some(region => formatPayinMinTransactionFee(data, region.code) !== null)) {
+    return true;
+  }
+  // Custom rows can independently contribute a MIN. TRX FEE value
+  // (each row has its own threshold/fee/N/A toggle — see
+  // `formatCustomRowMinTransactionFee`). If at least one custom row
+  // produces a non-null render, the column must stay visible for the
+  // whole table.
+  const customRows = data.payinPricing.customRows ?? [];
+  return customRows.some(row => formatCustomRowMinTransactionFee(row) !== null);
 }
 
 function buildPayinRows(
@@ -208,6 +243,61 @@ function buildPayinRows(
     </tr>`);
   });
 
+  // Custom rows (2026-05-14 feature). Appended after the standard
+  // regions. Each custom row uses the same tier-color logic and N/A
+  // handling as standard rows. METHODS column is intentionally
+  // hardcoded to the same default text (operator decision — methods
+  // text is not editable on custom rows; product confirmed).
+  // CURRENCY and REGION labels are taken from the row, MIN. TRX FEE
+  // is rendered from per-row threshold/fee/N/A toggle (not the global
+  // contractSummary values used by standard regions).
+  const customRows = data.payinPricing.customRows ?? [];
+  customRows.forEach(customRow => {
+    const tiersActive = showTierColumn && customRow.rateMode === "tiered";
+    const customMinFee = formatCustomRowMinTransactionFee(customRow);
+    const regionCell = showRegionColumn
+      ? `<td class="cell-region">● ${escapeHtml(customRow.region)}</td>`
+      : "";
+    const currencyCell = `<td>${escapeHtml(customRow.currency)}</td>`;
+    const methodsCell = `<td><span class="cell-line">${escapeHtml(methodLabel)}</span><span class="cell-line cell-subtitle">${escapeHtml(apmLabel)}</span></td>`;
+    const minFeeCell = showMinFeeColumn ? `<td>${renderMinFeeCell(customMinFee)}</td>` : "";
+
+    if (tiersActive) {
+      customRow.tiers.forEach((tier, index) => {
+        const tierLabel = formatTierRangeLabel(
+          index as 0 | 1 | 2,
+          customRow.tier1UpToMillion,
+          customRow.tier2UpToMillion
+        );
+        const tierColor = tierColorClass(index);
+        rows.push(`<tr>
+          ${regionCell}
+          ${methodsCell}
+          ${currencyCell}
+          ${showTierColumn ? `<td class="${tierColor}">${escapeHtml(tierLabel)}</td>` : ""}
+          <td><span class="cell-line ${tierColor}">${escapeHtml(formatPayinModel(customRow.model))}</span><span class="cell-line">${escapeHtml(
+            formatPercent(tier.mdrPercent)
+          )}</span></td>
+          <td>${renderTrxFeeCell(tier, customRow.trxFeeEnabled, tierColor)}</td>
+          ${minFeeCell}
+        </tr>`);
+      });
+      return;
+    }
+
+    rows.push(`<tr>
+      ${regionCell}
+      ${methodsCell}
+      ${currencyCell}
+      ${showTierColumn ? "<td>Non-tiered, fixed</td>" : ""}
+      <td><span class="cell-line tier-color-1">${escapeHtml(formatPayinModel(customRow.model))}</span><span class="cell-line">${escapeHtml(
+        formatPercent(customRow.single.mdrPercent)
+      )}</span></td>
+      <td>${renderTrxFeeCell(customRow.single, customRow.trxFeeEnabled)}</td>
+      ${minFeeCell}
+    </tr>`);
+  });
+
   return rows.join("");
 }
 
@@ -230,7 +320,16 @@ export function buildPayinSection(data: DocumentTemplatePayload, layout: Documen
   // regions) fits inside one A4 page alongside the document header
   // and the page-repeating footer reservation.
   const regions = resolvePayinRegionContexts(data, layout);
-  const totalRows = regions.length * (showTierColumn ? 3 : 1);
+  const customRows = data.payinPricing.customRows ?? [];
+  // Each region contributes 3 rows if the table is tiered, else 1.
+  // Custom rows are per-row tiered/single — a tiered custom row also
+  // expands to 3 PDF rows, while a single-rate custom row stays at 1.
+  const standardRowCount = regions.length * (showTierColumn ? 3 : 1);
+  const customRowCount = customRows.reduce(
+    (total, row) => total + (row.rateMode === "tiered" ? 3 : 1),
+    0
+  );
+  const totalRows = standardRowCount + customRowCount;
   const isCompact = totalRows >= 4 || (totalRows >= 2 && hasPayinCustomNote(data));
   const sectionClass = `offer-section${isCompact ? " compact" : ""}`;
 

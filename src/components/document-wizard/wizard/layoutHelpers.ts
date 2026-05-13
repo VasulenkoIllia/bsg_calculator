@@ -87,17 +87,25 @@ export const PAYIN_REGION_LABELS: Record<PayinRegionKey, string> = {
 export function resolvePayinTableMode(
   regionMode: PayinRegionMode,
   euRateMode: "single" | "tiered",
-  wwRateMode: "single" | "tiered"
+  wwRateMode: "single" | "tiered",
+  // Optional 4th param (added 2026-05-14 for custom rows). When any
+  // custom row is tiered, the table must show the MONTHLY VOLUME TIER
+  // column — same as a standard region being tiered. Omitted by older
+  // call sites; treated as empty array via the default.
+  customRows: ReadonlyArray<{ rateMode: "single" | "tiered" }> = []
 ): DocumentTemplatePayload["layout"]["payin"]["tableMode"] {
+  const customHasTiered = customRows.some(row => row.rateMode === "tiered");
+
   if (regionMode === "none") {
-    return euRateMode === "tiered" || wwRateMode === "tiered" ? "flatTiered" : "flatSingle";
+    const standardHasTiered = euRateMode === "tiered" || wwRateMode === "tiered";
+    return standardHasTiered || customHasTiered ? "flatTiered" : "flatSingle";
   }
 
   const activeModes: Array<"single" | "tiered"> = [];
   if (regionMode === "both" || regionMode === "euOnly") activeModes.push(euRateMode);
   if (regionMode === "both" || regionMode === "wwOnly") activeModes.push(wwRateMode);
 
-  const tiered = activeModes.some(mode => mode === "tiered");
+  const tiered = activeModes.some(mode => mode === "tiered") || customHasTiered;
   return tiered ? "byRegionTiered" : "byRegionFlat";
 }
 

@@ -152,7 +152,11 @@ export function buildDocumentTemplatePayloadFromCalculator({
     // `dedicatedCountries` (calculator-only feature) — see its NOTE.
     payinPricing: {
       eu: clonePayinRegionPricing(payinEuPricing),
-      ww: clonePayinRegionPricing(payinWwPricing)
+      ww: clonePayinRegionPricing(payinWwPricing),
+      // Custom rows are an operator-only feature added in the wizard
+      // step — the calculator has no concept of them, so the seed is
+      // always an empty array.
+      customRows: []
     },
     payoutPricing: clonePayoutPricing(payoutPricing),
     toggles: {

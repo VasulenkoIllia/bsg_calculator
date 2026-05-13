@@ -7,7 +7,7 @@ import {
   DEFAULT_DOCUMENT_SCOPE,
   DOCUMENT_TYPE_LABELS
 } from "./legalDefaults.js";
-import type { DocumentHeaderMetaDraft, DocumentTemplatePayload } from "./types.js";
+import type { DocumentHeaderMetaDraft, DocumentTemplatePayload, PayinCustomRow } from "./types.js";
 
 export const DEFAULT_COLLECTION_FREQUENCY = "Daily (unless agreed otherwise)";
 
@@ -97,5 +97,65 @@ export function clonePayoutPricing(
     ...pricing,
     single: { ...pricing.single, trxFeeNa: false },
     tiers: pricing.tiers.map(tier => ({ ...tier, trxFeeNa: false }))
+  };
+}
+
+// Generate a stable ID for new custom Payin rows. Uses crypto.randomUUID
+// when available (modern browsers + Node 19+); falls back to a
+// timestamp + random suffix for older environments. IDs only need to be
+// unique within a single draft — never sent to HubSpot, never stored
+// long-term beyond `documents.payload`.
+function generateCustomRowId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `row_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// Factory for a new PayinCustomRow with sensible defaults — applied
+// when the operator clicks "+ Add custom row" in the wizard. Matches
+// the wizard EU defaults (icpp / single / EUR / TRX enabled) so the
+// UI fields render in a familiar starting state.
+export function makeDefaultPayinCustomRow(): PayinCustomRow {
+  const zeroFeeBlock = {
+    mdrPercent: 0,
+    trxCc: 0,
+    trxCcNa: false,
+    trxApm: 0,
+    trxApmNa: false
+  };
+  return {
+    id: generateCustomRowId(),
+    region: "New region",
+    currency: "EUR",
+    model: "icpp",
+    rateMode: "single",
+    trxFeeEnabled: true,
+    tier1UpToMillion: 5,
+    tier2UpToMillion: 10,
+    single: { ...zeroFeeBlock },
+    tiers: [
+      { ...zeroFeeBlock },
+      { ...zeroFeeBlock },
+      { ...zeroFeeBlock }
+    ],
+    minTrxFeeThresholdMillion: 0,
+    minTrxFeePerTransaction: 0,
+    minTrxFeeRowNa: false
+  };
+}
+
+// Deep clone a PayinCustomRow. Used by `fromCalculator.ts` /
+// `manualSeeds.ts` whenever a draft is hydrated from a persisted
+// payload so the live wizard state never aliases the source.
+export function clonePayinCustomRow(row: PayinCustomRow): PayinCustomRow {
+  return {
+    ...row,
+    single: { ...row.single },
+    tiers: [
+      { ...row.tiers[0] },
+      { ...row.tiers[1] },
+      { ...row.tiers[2] }
+    ]
   };
 }

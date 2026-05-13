@@ -842,4 +842,172 @@ describe("buildOfferPdfHtml", () => {
       expect(html).toMatch(/<section class="offer-section compact">[\s\S]*Terms &amp; Limitations/);
     });
   });
+
+  describe("payin custom rows (2026-05-14 feature)", () => {
+    // These tests guard the Payin custom-rows feature. Pin both the
+    // "no rows = no PDF change" back-compat path and the new rendering
+    // shape (single vs. tiered) so regressions show up immediately.
+    //
+    // NB: buildBaseTemplateData has `regionMode: "none"` and
+    // `tableMode: "flatSingle"` — a "single fallback row" mode where
+    // resolvePayinRegionContexts emits one row labeled "Global". We
+    // override regionMode / tableMode in tests that need standard
+    // EU + WW rows on the table.
+
+    function withBothRegions(data: DocumentTemplatePayload): DocumentTemplatePayload {
+      data.layout.payin.regionMode = "both";
+      data.layout.payin.tableMode = "byRegionFlat";
+      return data;
+    }
+
+    it("undefined customRows (back-compat) → PDF identical to pre-feature output", () => {
+      const data = withBothRegions(buildBaseTemplateData());
+      // The seed factory used pre-2026-05-14 has no `customRows` key.
+      // The renderer must treat this as an empty list.
+      expect(data.payinPricing.customRows).toBeUndefined();
+
+      const html = buildOfferPdfHtml(data);
+
+      // Only the 2 standard rows (EEA + UK + Global) appear in the
+      // Card Acquiring section. Custom regions like "Russia" must not
+      // be present.
+      expect(html).toContain("● EEA + UK");
+      expect(html).toContain("● Global");
+      expect(html).not.toContain("● Russia");
+    });
+
+    it("single-rate custom row appends ONE row at the end of the Payin table", () => {
+      const data = withBothRegions(buildBaseTemplateData());
+      data.payinPricing.customRows = [
+        {
+          id: "row-test-1",
+          region: "Russia",
+          currency: "USDT",
+          model: "blended",
+          rateMode: "single",
+          trxFeeEnabled: true,
+          tier1UpToMillion: 5,
+          tier2UpToMillion: 10,
+          single: {
+            mdrPercent: 6.5,
+            trxCc: 0.5,
+            trxCcNa: false,
+            trxApm: 0.5,
+            trxApmNa: false
+          },
+          tiers: [
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false }
+          ],
+          minTrxFeeThresholdMillion: 2.5,
+          minTrxFeePerTransaction: 1.5,
+          minTrxFeeRowNa: false
+        }
+      ];
+
+      const html = buildOfferPdfHtml(data);
+
+      // Region bullet + free-form label rendered.
+      expect(html).toContain("● Russia");
+      // Free-form currency.
+      expect(html).toContain("<td>USDT</td>");
+      // Model + MDR — blended at 6.50%.
+      expect(html).toContain("Blended");
+      expect(html).toContain("6.50%");
+      // TRX fee values from `single` (per-row).
+      expect(html).toContain("C/D: €0.50");
+      expect(html).toContain("APM: €0.50");
+      // MIN. TRX FEE uses per-row threshold/fee (NOT contractSummary).
+      expect(html).toContain("≤2.5M: €1.50");
+      expect(html).toContain("&gt;2.5M: N/A");
+    });
+
+    it("tiered custom row appends THREE rows with tier-color classes", () => {
+      const data = withBothRegions(buildBaseTemplateData());
+      // Promote table to tiered so the MONTHLY VOLUME TIER column shows
+      // (wizard would have done this via resolvePayinTableMode given
+      // the tiered custom row below).
+      data.layout.payin.tableMode = "byRegionTiered";
+      data.payinPricing.customRows = [
+        {
+          id: "row-test-2",
+          region: "LATAM Bundle",
+          currency: "USD",
+          model: "icpp",
+          rateMode: "tiered",
+          trxFeeEnabled: true,
+          tier1UpToMillion: 3,
+          tier2UpToMillion: 7,
+          single: { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+          tiers: [
+            { mdrPercent: 5.0, trxCc: 0.4, trxCcNa: false, trxApm: 0.4, trxApmNa: false },
+            { mdrPercent: 4.5, trxCc: 0.35, trxCcNa: false, trxApm: 0.35, trxApmNa: false },
+            { mdrPercent: 4.0, trxCc: 0.3, trxCcNa: false, trxApm: 0.3, trxApmNa: false }
+          ],
+          minTrxFeeThresholdMillion: 0,
+          minTrxFeePerTransaction: 0,
+          minTrxFeeRowNa: true
+        }
+      ];
+
+      const html = buildOfferPdfHtml(data);
+
+      // Three different MDR values from the three tiers — same row.
+      expect(html).toContain("5.00%");
+      expect(html).toContain("4.50%");
+      expect(html).toContain("4.00%");
+      // Tier-color classes applied to tier label cells (any of the three).
+      expect(html).toMatch(/<td class="tier-color-1">/);
+      expect(html).toMatch(/<td class="tier-color-2">/);
+      expect(html).toMatch(/<td class="tier-color-3">/);
+      // Region appears 3 times (once per tier row).
+      const regionMatches = html.match(/● LATAM Bundle/g);
+      expect(regionMatches?.length).toBe(3);
+      // Free-form currency appears 3 times too.
+      const currencyMatches = html.match(/<td>USD<\/td>/g);
+      expect(currencyMatches?.length).toBe(3);
+      // MIN. TRX FEE renders as muted N/A for this row.
+      expect(html).toContain('<span class="cell-line value-na">N/A</span>');
+    });
+
+    it("tiered custom row promotes layout.tableMode to byRegionTiered even when standard rows are single", () => {
+      const data = withBothRegions(buildBaseTemplateData());
+      // Standard rows already single in the fixture; promote layout —
+      // wizard would do this automatically via the updated
+      // resolvePayinTableMode helper (with customRows arg).
+      data.layout.payin.tableMode = "byRegionTiered";
+      data.payinPricing.customRows = [
+        {
+          id: "row-test-3",
+          region: "Asia Bundle",
+          currency: "USD",
+          model: "icpp",
+          rateMode: "tiered",
+          trxFeeEnabled: true,
+          tier1UpToMillion: 5,
+          tier2UpToMillion: 10,
+          single: { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+          tiers: [
+            { mdrPercent: 5.0, trxCc: 0.4, trxCcNa: false, trxApm: 0.4, trxApmNa: false },
+            { mdrPercent: 4.5, trxCc: 0.35, trxCcNa: false, trxApm: 0.35, trxApmNa: false },
+            { mdrPercent: 4.0, trxCc: 0.3, trxCcNa: false, trxApm: 0.3, trxApmNa: false }
+          ],
+          minTrxFeeThresholdMillion: 0,
+          minTrxFeePerTransaction: 0,
+          minTrxFeeRowNa: false
+        }
+      ];
+
+      const html = buildOfferPdfHtml(data);
+
+      // MONTHLY VOLUME TIER column header visible because tiered.
+      expect(html).toContain("MONTHLY VOLUME TIER");
+      // Standard single-rate rows now also show in the tiered table
+      // with the "Non-tiered, fixed" subtitle.
+      expect(html).toContain("Non-tiered, fixed");
+      // Custom row's 3 tier rows present.
+      expect(html).toContain("Asia Bundle");
+    });
+  });
 });

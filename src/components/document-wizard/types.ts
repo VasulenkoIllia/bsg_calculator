@@ -127,6 +127,12 @@ export interface DocumentTemplatePayload {
   payinPricing: {
     eu: PayinRegionPricing;
     ww: PayinRegionPricing;
+    // Optional ad-hoc rows appended to the Payin table after the
+    // standard EU / WW rows. Operator-driven; calculator does not
+    // emit these. See `PayinCustomRow` below. Optional (undefined ⇒
+    // no custom rows) keeps payloads saved before 2026-05-14
+    // deserialising cleanly.
+    customRows?: PayinCustomRow[];
   };
   payoutPricing: {
     rateMode: "single" | "tiered";
@@ -192,4 +198,62 @@ export interface PayoutFeeBlock {
   trxFee: number;
   // "N/A" toggle for the payout transaction fee. Renders "N/A" in PDF.
   trxFeeNa: boolean;
+}
+
+// Ad-hoc Payin row appended to the table after the standard EU / WW
+// regions. Operator-only feature (added 2026-05-14). Designed to let
+// sales describe one-off pricing arrangements (e.g. "Russia bundle",
+// "Crypto rails") that don't fit the standard EU/WW region split.
+//
+// Reuses the standard `PayinFeeBlock` shape for `single` and `tiers`
+// so the existing renderers (`renderTrxFeeCell`, tier-color logic,
+// MDR/TRX cells) accept these rows without special-casing.
+//
+// METHODS column (Credit/Debit + APM) is intentionally hardcoded by
+// the renderer to match the standard rows — no per-row override.
+// REGION + CURRENCY are free-form strings.
+//
+// MIN. TRANSACTION FEE uses its own per-row threshold/fee/N/A fields
+// rather than reading from `contractSummary` (which is global to all
+// standard regions). When `minTrxFeeRowNa = true`, the cell renders
+// the muted "N/A" label. When threshold/fee both > 0, renders the
+// two-line `≤Xm: €Y / >Xm: N/A` format. When both are 0 and not N/A
+// — the cell stays empty (same hide-when-empty logic as standard).
+export interface PayinCustomRow {
+  // Stable identifier for React keys + delete operations. Generated
+  // client-side on row creation (e.g. `crypto.randomUUID()` or a
+  // monotonic counter). Never sent to HubSpot.
+  id: string;
+
+  // Free-form REGION label (e.g. "Russia", "LATAM bundle"). Displayed
+  // with the same `● ` bullet as standard EU / WW rows.
+  region: string;
+
+  // Free-form CURRENCY label (e.g. "EUR", "USDT", "USD"). Defaults to
+  // "EUR" on row creation.
+  currency: string;
+
+  // Pricing model + rate mode — same enums as PayinRegionPricing.
+  model: "icpp" | "blended";
+  rateMode: "single" | "tiered";
+  trxFeeEnabled: boolean;
+
+  // Tier boundaries (used only when rateMode === "tiered").
+  tier1UpToMillion: number;
+  tier2UpToMillion: number;
+
+  // Single-rate block — reused PayinFeeBlock shape.
+  single: PayinFeeBlock;
+
+  // Tiered blocks — fixed-length tuple of 3, matching PayinRegionPricing.
+  tiers: [PayinFeeBlock, PayinFeeBlock, PayinFeeBlock];
+
+  // MIN. TRANSACTION FEE inputs (mirrors the structure used by
+  // standard rows in `contractSummary.payoutMinimumFee*` but stored
+  // per-custom-row).
+  minTrxFeeThresholdMillion: number;
+  minTrxFeePerTransaction: number;
+  // Whole-cell N/A toggle. When true the cell renders muted "N/A"
+  // regardless of threshold / fee values.
+  minTrxFeeRowNa: boolean;
 }
