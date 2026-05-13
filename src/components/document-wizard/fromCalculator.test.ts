@@ -421,7 +421,7 @@ describe("buildOfferPdfHtml", () => {
 
       const html = buildOfferPdfHtml(data);
       expect(html).toMatch(
-        /<span class="cell-line cell-subtitle">APM - Apple Pay, Google Pay/
+        /<span class="cell-line cell-subtitle">APM - Apple &amp; Google pay/
       );
     });
 
