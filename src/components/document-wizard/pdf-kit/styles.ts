@@ -453,19 +453,25 @@ tbody tr:nth-child(even) {
 .cell-subtitle { color: var(--text-light); }
 
 /* Card Acquiring (payin) table column widths.
- * Numbers sum to 100% when all six columns are shown; when optional
- * columns are hidden the browser scales the remaining ones
+ * Numbers sum proportionally when all six columns are shown; when
+ * optional columns are hidden the browser scales the remaining ones
  * proportionally because table-layout fixed is set on the table.
- * Compact columns (region/currency/mdr) are ~25% narrower than the
- * default equal split so METHODS can grow to fit two-line wrapped
- * values without breaking awkwardly. */
+ * Compact columns (region/currency/mdr) are narrower than the default
+ * equal split so METHODS can grow.
+ *
+ * Calibration 2026-05-14: bumped col-methods 25% → 30% and trimmed
+ * col-minfee 22% → 17% so that "Credit / Debit - Visa, Mastercard"
+ * and "APM - Apple & Google pay" each fit on a single line in the
+ * compact preset, producing the intended 2-line cell instead of 3-4
+ * line wraps. MIN. TRX FEE column content ("≤Xm: €Y" / ">Xm: N/A") is
+ * short enough that 17% still holds it on a single line per row. */
 .col-region   { width: 11%; }
-.col-methods  { width: 25%; }
+.col-methods  { width: 30%; }
 .col-currency { width: 11%; }
 .col-tier     { width: 13%; }
 .col-mdr      { width: 12%; }
 .col-trxfee   { width: 17%; }
-.col-minfee   { width: 22%; }
+.col-minfee   { width: 17%; }
 
 .fees-grid {
   display: grid;
