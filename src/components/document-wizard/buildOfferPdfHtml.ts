@@ -41,37 +41,45 @@ interface OfferBodyRow {
 // print engine has natural break points between rows — that is what
 // makes `<tfoot>` reliably repeat the disclaimer footer on every page.
 //
-// Page-budget rule (refined 2026-05-14 for section 1.1, fixed double-
-// break bug 2026-05-14):
+// Page-budget rule (refined 2026-05-14 for section 1.1 across all
+// four sub-cases — second double-break fix on 2026-05-14):
 //
-//   Heavy payin (tiered: byRegionTiered / flatTiered) WITHOUT 1.1:
+//   Heavy payin (tiered) WITHOUT 1.1:
 //     page 1 = header + section 1 + payin custom note
 //     page 2 = section 2 + payout note + sections 3 + 4
-//     Rule: section 2 carries breakBefore=true (force page break).
+//     Rule: section 2 carries breakBefore=true. Sections 3+4 flow
+//     after it on page 2.
 //
 //   Heavy payin WITH 1.1:
 //     page 1 = header + section 1 + payin custom note
-//     page 2 = section 1.1 + section 2 + payout note + sections 3 + 4
+//     page 2 = section 1.1 + section 2 + payout note + 3 + 4
 //     Rule: ONLY section 1.1 carries breakBefore=true. Section 2
-//     flows naturally beneath 1.1 on page 2. (Previously both 1.1
-//     AND section 2 had breakBefore=true, which produced TWO
-//     `page-break-before: always` rules and pushed section 2 to a
-//     third page with a huge empty gap.)
+//     flows naturally beneath 1.1.
 //
-//   Light payin (non-tiered: byRegionFlat / flatSingle):
-//     page 1 = header + section 1 + payin note + section 1.1 (if any)
-//              + section 2 + payout note
+//   Light payin (non-tiered) WITHOUT 1.1:
+//     page 1 = header + section 1 + payin note + section 2 + note
 //     page 2 = sections 3 + 4
-//     Rule: nothing on the payin half forces a break; section 3 is
-//     forced to page 2 by the original lightPayin rule.
+//     Rule: section 3 carries breakBefore=true. Section 1 is small
+//     enough that 1+2 share page 1 cleanly.
+//
+//   Light payin WITH 1.1:
+//     page 1 = header + section 1 + payin note + section 1.1
+//     page 2 = section 2 + payout note + sections 3 + 4
+//     Rule: nothing forces a break. Section 1.1's extra height
+//     (especially when tiered) naturally cascades section 2 onto
+//     page 2; section 3 must NOT force a break (that would orphan
+//     section 2 alone on page 2 with sections 3+4 on page 3).
 //
 // `breakBefore` flags by section:
-//   - Section 1.1: heavyPayin (push to page 2 only when section 1 is
-//     heavy)
-//   - Section 2:   heavyPayin && !hasAdditional (force only when 1.1
-//     is absent — when 1.1 is present, 1.1 already opened page 2 and
-//     section 2 must flow after it, not start its own page)
-//   - Section 3:   lightPayin (unchanged from prior)
+//   - Section 1.1: heavyPayin
+//     (push to page 2 only when section 1 is heavy)
+//   - Section 2:   heavyPayin && !hasAdditional
+//     (force only when 1.1 is absent — when 1.1 is present, 1.1
+//     already opened page 2 and section 2 must flow after it)
+//   - Section 3:   lightPayin && !hasAdditional
+//     (force only when 1.1 is absent — when 1.1 is present, the
+//     extra ~50mm of 1.1 already cascades section 2 onto page 2
+//     naturally, and forcing 3 would strand section 2 alone there)
 function buildOfferBodyRows(
   data: DocumentTemplatePayload,
   layout: DocumentWizardLayout
@@ -107,8 +115,13 @@ function buildOfferBodyRows(
   const payoutNote = buildPayoutCustomNoteHtml(data);
   if (payoutNote) rows.push({ html: payoutNote });
 
+  // Section 3 — Other Services & Fees. When section 1.1 exists, its
+  // extra height (especially tiered) already cascades section 2 onto
+  // page 2 naturally; forcing section 3 to page 2 would strand
+  // section 2 alone there with sections 3+4 on page 3. So mirror the
+  // section-2 rule and gate the force-break on !hasAdditional.
   const services = buildOtherServicesSection(data, layout);
-  if (services) rows.push({ html: services, breakBefore: lightPayin });
+  if (services) rows.push({ html: services, breakBefore: lightPayin && !hasAdditional });
 
   const terms = buildTermsSection(data, layout);
   if (terms) rows.push({ html: terms });

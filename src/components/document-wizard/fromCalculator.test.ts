@@ -1204,6 +1204,87 @@ describe("buildOfferPdfHtml", () => {
       );
     });
 
+    it("LIGHT payin WITH section 1.1 → Other Services flows naturally (NO force-break)", () => {
+      // Regression for the second double-page-break bug fixed
+      // 2026-05-14 (reported via last2.pdf): when section 1 is light
+      // but section 1.1 is present (especially when 1.1 is tiered),
+      // 1.1's extra height pushes section 2 onto page 2 naturally.
+      // The original `lightPayin → break before section 3` rule then
+      // stranded section 2 alone on page 2 with sections 3+4 forced
+      // to page 3 (huge empty gap on page 2). Fix: gate the section-3
+      // force-break on `!hasAdditional` so the break fires only when
+      // 1.1 is absent.
+      const data = withBothRegions(buildBaseTemplateData());
+      // Light payin: flat both regions, single rate.
+      data.layout.payin.tableMode = "byRegionFlat";
+      data.payinPricing.eu.rateMode = "single";
+      data.payinPricing.ww.rateMode = "single";
+      // Section 1.1 present and tiered (the worst case for height).
+      data.payinPricing.customRows = [
+        {
+          id: "row-light-with-additional",
+          region: "New region",
+          currency: "EUR",
+          model: "icpp",
+          rateMode: "tiered",
+          trxFeeEnabled: true,
+          tier1UpToMillion: 5,
+          tier2UpToMillion: 10,
+          single: { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+          tiers: [
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false }
+          ],
+          minTrxFeeThresholdMillion: 0,
+          minTrxFeePerTransaction: 0,
+          minTrxFeeRowNa: false
+        }
+      ];
+      // Pay Out tiered (matches the last2.pdf scenario).
+      data.layout.payout.regionMode = "global";
+      data.layout.payout.tableMode = "globalTiered";
+      data.payoutPricing.rateMode = "tiered";
+      data.contractSummary.refundCost = 15;
+      data.contractSummary.disputeCost = 75;
+
+      const html = buildOfferPdfHtml(data);
+
+      // Section 1.1 emitted.
+      expect(html).toMatch(/<h2>Additional Card Acquiring/);
+      // Section 3 (Other Services & Fees) MUST NOT carry the
+      // force-page-break class. It flows naturally after section 2
+      // on page 2 alongside section 4.
+      expect(html).not.toMatch(
+        /<tr class="force-page-break-before"><td class="page-content-cell">(?:(?!<tr)[\s\S])*?<h2>Other Services/
+      );
+    });
+
+    it("LIGHT payin WITHOUT section 1.1 → Other Services still carries force-break (regression guard)", () => {
+      // Companion to the previous test: when 1.1 is absent, the
+      // original `lightPayin → break before section 3` rule still
+      // applies. Guards against the new condition being over-applied.
+      const data = withBothRegions(buildBaseTemplateData());
+      data.layout.payin.tableMode = "byRegionFlat";
+      data.payinPricing.eu.rateMode = "single";
+      data.payinPricing.ww.rateMode = "single";
+      // Explicitly no customRows → no section 1.1.
+      data.payinPricing.customRows = undefined;
+      data.layout.payout.regionMode = "global";
+      data.layout.payout.tableMode = "globalFlat";
+      data.contractSummary.refundCost = 15;
+      data.contractSummary.disputeCost = 75;
+
+      const html = buildOfferPdfHtml(data);
+
+      // No section 1.1 in the output.
+      expect(html).not.toMatch(/<h2>Additional Card Acquiring/);
+      // Section 3 carries the force-page-break-before class.
+      expect(html).toMatch(
+        /<tr class="force-page-break-before"><td class="page-content-cell">(?:(?!<tr)[\s\S])*?<h2>Other Services/
+      );
+    });
+
     it("HEAVY payin WITHOUT section 1.1 → Pay Out still carries force-break (regression guard)", () => {
       // Companion to the previous test: when 1.1 is absent, section 2
       // is still the first content on page 2 and MUST carry the

@@ -2368,3 +2368,77 @@ Use this file to record meaningful technical decisions for the project.
 - Follow-up actions:
   - None. The new rule is fully covered by tests; the comment block
     documents the rationale for future readers.
+
+### Decision: Fix light-payin page-2 gap when section 1.1 is present
+- Date: 2026-05-14
+- Context:
+  - User reported (with `last2.pdf` attached) the SAME symptom we
+    just fixed for the heavy-payin case, but on the page 2 / page 3
+    boundary: page 2 contained only section 2 with a huge empty
+    space, and sections 3+4 were pushed to page 3.
+  - Reproduction layout: section 1 light (flat, 2 rows) + custom
+    payin note + section 1.1 tiered (3 rows) + section 2 tiered
+    (3 rows) + section 3 (refund + dispute) + section 4 (8 terms).
+  - Root cause: section 3 was carrying `breakBefore: lightPayin`
+    (a pre-1.1 rule), so on light-payin documents section 3 was
+    always force-broken to page 2. With section 1.1 added, page 1's
+    budget became:
+      header (~90mm) + section 1 (~20mm) + note (~10mm)
+        + section 1.1 tiered (~50mm) ≈ 170mm
+    leaving ~57mm for section 2 (~30mm) — section 2 sometimes fits,
+    sometimes cascades to page 2 depending on edge cases. When it
+    cascades, section 3's forced break leaves section 2 alone on
+    page 2 with sections 3+4 on page 3.
+  - The pre-1.1 design assumption was that light-payin documents fit
+    `header + 1 + note + 2 + note` on page 1 comfortably, so we
+    forced section 3 to page 2 to keep the layout clean. Adding 1.1
+    invalidated that assumption.
+- Decision:
+  - Section 3's `breakBefore` becomes conditional on the absence of
+    section 1.1, mirroring the section-2 fix:
+      breakBefore: lightPayin && !hasAdditional
+  - Net effect across all four sub-cases:
+      heavy + no 1.1: section 2 forced to page 2; sections 3+4
+                      flow after it. (Unchanged.)
+      heavy + 1.1:    section 1.1 forced to page 2; sections 2/3/4
+                      flow after it. (Fixed in prior decision.)
+      light + no 1.1: section 3 forced to page 2; section 4 flows
+                      after it. (Unchanged.)
+      light + 1.1:    NO force-breaks. Section 1.1 naturally
+                      cascades section 2 onto page 2 if needed;
+                      sections 3+4 fill page 2 alongside section 2.
+                      (Fixed in this decision.)
+- Alternatives considered:
+  - Always drop section 3's force-break unconditionally: rejected
+    because the original light+no-1.1 case (header+1+note+2+note
+    fits page 1 with room to spare) would otherwise put section 3
+    near the bottom of page 1 with section 4 spilling — uglier than
+    a clean page-2 separation. The conditional preserves the
+    original layout for the most common case.
+  - Force section 1.1 onto page 2 unconditionally (mirror the
+    heavy rule): rejected because in light+1.1 documents,
+    section 1.1 often fits page 1 alongside section 1, and forcing
+    it down would create the symmetric "section 1 + note alone on
+    page 1" gap. Let the browser decide whether 1.1 stays with 1.
+  - Use CSS `page-break-inside: avoid` on section tables: rejected
+    (same reason as the prior decision) — Chrome's support is
+    unreliable across our `<tr>`-per-section orchestration.
+- Consequences:
+  - light + 1.1 documents (such as last2.pdf's repro) now use page 2
+    fully: section 2 + payout note + section 3 + section 4.
+  - All 258/258 tests pass (+2 new regression tests):
+      - LIGHT + 1.1   → asserts Other Services & Fees DOES NOT have
+        `force-page-break-before` on its wrapping TR.
+      - LIGHT + no 1.1 → asserts Other Services & Fees DOES carry
+        `force-page-break-before` (guards against the new condition
+        being over-applied).
+  - Doc comment on `buildOfferBodyRows()` rewritten to enumerate ALL
+    FOUR sub-cases (heavy+no-1.1, heavy+1.1, light+no-1.1, light+1.1)
+    so future editors see the complete decision tree.
+  - The two fixes (section 2 and section 3) are symmetric: both gate
+    the original force-break on `!hasAdditional`. This consistency
+    makes the rule easier to remember and reason about.
+- Follow-up actions:
+  - None. The pair of fixes (section 2 + section 3) covers the
+    cartesian product of {light, heavy} × {no 1.1, has 1.1} cleanly.
+    Re-examine only if a fifth section is introduced.
