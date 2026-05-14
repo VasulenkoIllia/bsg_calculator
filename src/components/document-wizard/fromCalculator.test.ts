@@ -7,7 +7,7 @@ import {
   buildDocumentTemplatePayloadManual,
   resolveCollectionModelDisplay
 } from "./fromCalculator.js";
-import type { DocumentTemplatePayload } from "./types.js";
+import type { DocumentTemplatePayload, PayinCustomRow } from "./types.js";
 
 describe("resolveCollectionModelDisplay", () => {
   it("returns single model label when both regions match", () => {
@@ -863,6 +863,44 @@ describe("buildOfferPdfHtml", () => {
       return data;
     }
 
+    // Factory helpers for section 1.1 custom-row tests. Most tests in
+    // this describe block care only about the shape (single vs tiered,
+    // region label, presence/absence of min-fee), not the specific
+    // numeric values — so the helpers emit a "neutral" zeroed row and
+    // expose `overrides` for the few tests that need particular
+    // values. Reduces ~60 lines of repeated object literals.
+
+    function buildSingleCustomRow(
+      overrides: Partial<PayinCustomRow> = {}
+    ): PayinCustomRow {
+      return {
+        id: "row-fixture-single",
+        region: "New region",
+        currency: "EUR",
+        model: "icpp",
+        rateMode: "single",
+        trxFeeEnabled: true,
+        tier1UpToMillion: 5,
+        tier2UpToMillion: 10,
+        single: { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+        tiers: [
+          { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+          { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+          { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false }
+        ],
+        minTrxFeeThresholdMillion: 0,
+        minTrxFeePerTransaction: 0,
+        minTrxFeeRowNa: false,
+        ...overrides
+      };
+    }
+
+    function buildTieredCustomRow(
+      overrides: Partial<PayinCustomRow> = {}
+    ): PayinCustomRow {
+      return buildSingleCustomRow({ rateMode: "tiered", ...overrides });
+    }
+
     it("undefined customRows (back-compat) → no section 1.1 emitted", () => {
       const data = withBothRegions(buildBaseTemplateData());
       expect(data.payinPricing.customRows).toBeUndefined();
@@ -983,26 +1021,10 @@ describe("buildOfferPdfHtml", () => {
       // wizard would do this automatically via the updated
       // resolvePayinTableMode helper (with customRows arg).
       data.layout.payin.tableMode = "byRegionTiered";
+      // Values are irrelevant for this layout-class test — only the
+      // presence of a row matters for triggering section 1.1.
       data.payinPricing.customRows = [
-        {
-          id: "row-test-heavy",
-          region: "Asia Bundle",
-          currency: "USD",
-          model: "icpp",
-          rateMode: "single",
-          trxFeeEnabled: true,
-          tier1UpToMillion: 5,
-          tier2UpToMillion: 10,
-          single: { mdrPercent: 5, trxCc: 0.4, trxCcNa: false, trxApm: 0.4, trxApmNa: false },
-          tiers: [
-            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
-            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
-            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false }
-          ],
-          minTrxFeeThresholdMillion: 0,
-          minTrxFeePerTransaction: 0,
-          minTrxFeeRowNa: false
-        }
+        buildSingleCustomRow({ id: "row-test-heavy", region: "Asia Bundle", currency: "USD" })
       ];
       // Force heavy payin: tiered both regions.
       data.payinPricing.eu.rateMode = "tiered";
@@ -1111,26 +1133,9 @@ describe("buildOfferPdfHtml", () => {
     it("section 1.1 stays inline (no force-break) on LIGHT payin", () => {
       const data = withBothRegions(buildBaseTemplateData());
       // Light payin: standard single rates, no force-break needed.
+      // Values irrelevant — only row presence matters for this test.
       data.payinPricing.customRows = [
-        {
-          id: "row-test-light",
-          region: "Crypto Rails",
-          currency: "USDT",
-          model: "blended",
-          rateMode: "single",
-          trxFeeEnabled: true,
-          tier1UpToMillion: 5,
-          tier2UpToMillion: 10,
-          single: { mdrPercent: 6, trxCc: 0.5, trxCcNa: false, trxApm: 0.5, trxApmNa: false },
-          tiers: [
-            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
-            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
-            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false }
-          ],
-          minTrxFeeThresholdMillion: 0,
-          minTrxFeePerTransaction: 0,
-          minTrxFeeRowNa: false
-        }
+        buildSingleCustomRow({ id: "row-test-light", region: "Crypto Rails", currency: "USDT", model: "blended" })
       ];
 
       const html = buildOfferPdfHtml(data);
@@ -1162,25 +1167,7 @@ describe("buildOfferPdfHtml", () => {
       data.payinPricing.eu.rateMode = "tiered";
       data.payinPricing.ww.rateMode = "tiered";
       data.payinPricing.customRows = [
-        {
-          id: "row-heavy-with-additional",
-          region: "Asia Bundle",
-          currency: "USD",
-          model: "icpp",
-          rateMode: "single",
-          trxFeeEnabled: true,
-          tier1UpToMillion: 5,
-          tier2UpToMillion: 10,
-          single: { mdrPercent: 5, trxCc: 0.4, trxCcNa: false, trxApm: 0.4, trxApmNa: false },
-          tiers: [
-            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
-            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
-            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false }
-          ],
-          minTrxFeeThresholdMillion: 0,
-          minTrxFeePerTransaction: 0,
-          minTrxFeeRowNa: false
-        }
+        buildSingleCustomRow({ id: "row-heavy-with-additional", region: "Asia Bundle", currency: "USD" })
       ];
       data.layout.payout.regionMode = "global";
       data.layout.payout.tableMode = "globalFlat";
@@ -1221,25 +1208,7 @@ describe("buildOfferPdfHtml", () => {
       heavyData.payinPricing.eu.rateMode = "tiered";
       heavyData.payinPricing.ww.rateMode = "tiered";
       heavyData.payinPricing.customRows = [
-        {
-          id: "row-parity-heavy",
-          region: "New region",
-          currency: "EUR",
-          model: "icpp",
-          rateMode: "tiered",
-          trxFeeEnabled: true,
-          tier1UpToMillion: 5,
-          tier2UpToMillion: 10,
-          single: { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
-          tiers: [
-            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
-            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
-            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false }
-          ],
-          minTrxFeeThresholdMillion: 0,
-          minTrxFeePerTransaction: 0,
-          minTrxFeeRowNa: false
-        }
+        buildTieredCustomRow({ id: "row-parity-heavy" })
       ];
       const heavyHtml = buildOfferPdfHtml(heavyData);
       // BOTH sections carry `offer-section compact`.
@@ -1264,25 +1233,7 @@ describe("buildOfferPdfHtml", () => {
       lightData.layout.payin.tableMode = "byRegionFlat";
       lightData.payinPricing.eu.rateMode = "single";
       lightData.payinPricing.customRows = [
-        {
-          id: "row-parity-light",
-          region: "New region",
-          currency: "EUR",
-          model: "icpp",
-          rateMode: "single",
-          trxFeeEnabled: true,
-          tier1UpToMillion: 5,
-          tier2UpToMillion: 10,
-          single: { mdrPercent: 4, trxCc: 0.3, trxCcNa: false, trxApm: 0.3, trxApmNa: false },
-          tiers: [
-            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
-            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
-            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false }
-          ],
-          minTrxFeeThresholdMillion: 0,
-          minTrxFeePerTransaction: 0,
-          minTrxFeeRowNa: false
-        }
+        buildSingleCustomRow({ id: "row-parity-light" })
       ];
       const lightHtml = buildOfferPdfHtml(lightData);
       // BOTH sections render plain `offer-section` (no compact).
@@ -1318,25 +1269,7 @@ describe("buildOfferPdfHtml", () => {
       data.payinPricing.ww.rateMode = "single";
       // Section 1.1 present and tiered (the worst case for height).
       data.payinPricing.customRows = [
-        {
-          id: "row-light-with-additional",
-          region: "New region",
-          currency: "EUR",
-          model: "icpp",
-          rateMode: "tiered",
-          trxFeeEnabled: true,
-          tier1UpToMillion: 5,
-          tier2UpToMillion: 10,
-          single: { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
-          tiers: [
-            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
-            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
-            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false }
-          ],
-          minTrxFeeThresholdMillion: 0,
-          minTrxFeePerTransaction: 0,
-          minTrxFeeRowNa: false
-        }
+        buildTieredCustomRow({ id: "row-light-with-additional" })
       ];
       // Pay Out tiered (matches the last2.pdf scenario).
       data.layout.payout.regionMode = "global";

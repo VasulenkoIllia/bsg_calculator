@@ -311,9 +311,7 @@ export function buildPayinSection(data: DocumentTemplatePayload, layout: Documen
 
   const payinRows = buildPayinRows(data, layout, showMinFeeColumn);
 
-  // Auto-compact preset. See `resolvePayinCompact` above for the rule.
-  // Section 1.1 reads the SAME helper so both sections render with
-  // identical font / padding / column-wrapping.
+  // Auto-compact preset: see `resolvePayinCompact`.
   const isCompact = resolvePayinCompact(data, layout);
   const sectionClass = `offer-section${isCompact ? " compact" : ""}`;
 

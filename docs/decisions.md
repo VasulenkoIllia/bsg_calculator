@@ -2513,3 +2513,60 @@ Use this file to record meaningful technical decisions for the project.
   - None. The parity rule is now enforced by a single function
     (`resolvePayinCompact`) and a single test. Any future change to
     section 1's compact heuristic automatically propagates to 1.1.
+
+### Decision: Post-fix audit cleanup — test fixtures + redundant comment
+- Date: 2026-05-14
+- Context:
+  - typescript-reviewer audit of commits e41261a / 75fc7bd / cd9c777
+    surfaced two action items:
+      1. Six tests in `fromCalculator.test.ts` constructed
+         near-identical `PayinCustomRow` object literals inline (each
+         ~20 LOC, only `id` / `region` / `currency` / `rateMode`
+         differing). Pattern was already established for layout setup
+         (`withBothRegions`); rows had no equivalent helper.
+      2. The inline comment at `buildPayinSection`'s isCompact line
+         was a summary of the block comment on `resolvePayinCompact`
+         a few lines above — redundant given the helper's own docs.
+  - Reviewer also confirmed: page-break orchestration in
+    `buildOfferBodyRows` is at the threshold but still readable
+    (would need a fifth section before extraction pays off);
+    `resolvePayinCompact` is correctly placed in the section builder
+    file (no cross-module coupling); `breakBefore` boolean coercion
+    is type-safe (no `boolean | undefined` leaks).
+- Decision:
+  - Add two factory helpers next to `withBothRegions`:
+      buildSingleCustomRow(overrides?: Partial<PayinCustomRow>)
+      buildTieredCustomRow(overrides?: Partial<PayinCustomRow>)
+    Both emit a "neutral" zeroed row by default and accept overrides
+    for the few tests that care about specific numeric values.
+    `buildTieredCustomRow` is implemented as a one-liner on top of
+    `buildSingleCustomRow` (same shape, `rateMode: "tiered"` override).
+  - Replace all six inline row constructions with helper calls.
+  - Shorten the redundant `buildPayinSection` comment to a one-line
+    pointer: `// Auto-compact preset: see resolvePayinCompact.`
+- Alternatives considered:
+  - Keep inline literals "for explicitness": rejected because the
+    literals were ALREADY identical in shape — the duplication was
+    obscuring intent, not exposing it. A test that names its fixture
+    "buildSingleCustomRow" reads more directly than the same test
+    inlining 20 lines of `{ trxCcNa: false, trxApmNa: false, … }`
+    which has zero relevance to the assertions.
+  - Make the helpers freeze the returned object: rejected because
+    tests legitimately mutate the row (e.g. through overrides on the
+    second helper invocation). The "neutral baseline + overrides"
+    pattern handles this correctly without freezing.
+- Consequences:
+  - −69 net LOC in `fromCalculator.test.ts` (−118 / +49).
+  - Test intent is clearer: each test now reads as
+    "data.payinPricing.customRows = [ buildSingleCustomRow({ id: '…' }) ]"
+    instead of a 20-line literal that buries the meaningful diff.
+  - `payin.ts` loses one orphan comment block (−3 LOC). The
+    `resolvePayinCompact` block comment (the one source of truth)
+    is unchanged.
+  - All 259/259 tests pass. `tsc --noEmit` clean. `vite build` clean.
+- Follow-up actions:
+  - None. The remaining inline row constructions (e.g. the
+    HTML-injection test and the zero-fee column-hide test) keep
+    their literal form because the test's assertions depend on the
+    SPECIFIC values in those literals — a generic helper would hide
+    the relevant context.
