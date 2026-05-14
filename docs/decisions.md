@@ -2140,3 +2140,67 @@ Use this file to record meaningful technical decisions for the project.
   - None. If product wants a different APM label later, change
     the `apmLabel` const in `offerPdf/sections/payin.ts` — it's
     the single source of truth for the rendered text.
+
+### Decision: Split Custom Payin Rows into separate section 1.1
+- Date: 2026-05-14 (same evening)
+- Context:
+  - The first implementation of Custom Payin Rows (commit 95ba2ce)
+    appended rows to section 1's table. That made page-break
+    handling fragile — adding tiered custom rows pushed section 1
+    beyond its 6-row worst-case calibration and risked mid-table
+    breaks, asymmetric page layouts, and squeezed-out custom notes.
+  - Product feedback: "make Custom Payin Rows their own table in
+    the PDF (section 1.1) so they can be force-page-break'd onto
+    page 2 when section 1 is heavy, and stay alongside section 1
+    when it's light."
+- Decision:
+  - PDF: custom rows now render in their own `<section class="offer-section">`
+    titled "1.1 Additional Card Acquiring — Credit / Debit Cards,
+    APM & E-wallet". Same column widths, same `tier-color-*`
+    classes, same `MIN. TRX FEE` rendering — visually a sibling
+    of section 1, NOT an extension of it.
+  - Wizard: the `PayinCustomRowsEditor` UI block moved from
+    BEFORE the Payin Section Note to AFTER it. The intent is
+    that operators first set up the standard regions + note,
+    then optionally tack on ad-hoc rows.
+  - Page-break orchestration: `buildOfferBodyRows` now emits
+    section 1.1 as a separate row with `breakBefore: heavyPayin`.
+    - Heavy payin (tiered): section 1 alone on page 1; section 1.1
+      lands on page 2 alongside section 2 + sections 3 + 4.
+    - Light payin (single rates): section 1.1 flows naturally on
+      page 1 right after section 1 + payin note. Existing light-
+      payin force-break before section 3 stays in place.
+  - `renderSectionHeader` signature widened: `index: number` →
+    `number | string` so the "1.1" string fits. `.section-index`
+    CSS swapped fixed `width: 22px` for `min-width: 22px` +
+    `padding: 0 6px` so single-digit indices stay square while
+    "1.1" expands to fit.
+  - `resolvePayinTableMode` reverted to its 3-param signature —
+    custom rows live in their own section and no longer influence
+    section 1's tableMode. Cleaner separation.
+  - Custom rows still use the same `PayinCustomRow` type shape
+    introduced in 95ba2ce. No schema migration required.
+- Alternatives considered:
+  - Stick with one big table + add force-page-break inside section 1.
+    Rejected — `page-break-inside: avoid` is a soft hint;
+    Chrome may still break mid-table on overflow, producing
+    awkward visual layouts.
+  - Tighter compact preset for section 1 when custom rows present.
+    Rejected — sacrifices readability without solving the
+    fundamental "section 1 grew beyond its calibration" issue.
+- Consequences:
+  - 251/251 tests pass (+1 new compared to previous round). The
+    5 custom-row tests now assert section 1.1 separation, the
+    "1.1" index badge, and the orchestrator's heavy/light
+    breakBefore semantics.
+  - Section 1 stays within its calibrated 6-row + 3-4 line note
+    budget regardless of how many custom rows operators add.
+  - The known limitation "many custom rows extend the doc to 3
+    pages" from the 2026-05-14 entry above is no longer a real
+    risk on heavy payin (1.1 is on page 2 with section 2,
+    naturally splitting if needed) — still possible on extreme
+    light-payin + many custom rows, but that's the path of least
+    resistance and Chrome handles it gracefully now that 1.1 is
+    its own bounded section.
+- Follow-up actions:
+  - None. The architecture is stable.

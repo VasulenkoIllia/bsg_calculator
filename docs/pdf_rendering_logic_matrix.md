@@ -162,39 +162,63 @@ Already supported by `payinPricing.tiers[].trxCc` / `trxApm`.
 
 Identical across all samples: `≤2.5M: €1.00 / >2.5M: N/A`.
 
-### 4.5.1 Section 1 (Payin) — Custom rows (operator-added, 2026-05-14)
+### 4.5.1 Section 1.1 — Additional Card Acquiring (operator-added, 2026-05-14)
 
-Operator can append ad-hoc rows to the table after the standard
-EU / Global regions via the wizard's "Custom Payin Rows" section.
-Each custom row carries its own:
+**Refactored same day** (initial implementation 95ba2ce appended
+custom rows to section 1's table; second pass moved them into a
+separate sibling section to give the orchestrator a clean
+force-page-break boundary).
 
-- REGION (free-form text, rendered with `● ` bullet like standard rows)
+Operator can add ad-hoc rows via the wizard's "Custom Payin Rows"
+section (placed AFTER the Payin Section Note in Step 2). Each row
+renders into its own `<section class="offer-section">` with
+"1.1 Additional Card Acquiring — Credit / Debit Cards, APM &
+E-wallet" header. Visually identical to section 1: same column
+widths, same `tier-color-*` classes, same MIN. TRX FEE rendering.
+
+Per-row fields:
+
+- REGION (free-form text, rendered with `● ` bullet)
 - CURRENCY (free-form text, default "EUR")
 - MDR / RATE (single or tiered; IC++ or Blended)
-- TRX FEE (C/D + APM with per-field N/A toggles, same `PayinFeeBlock` shape)
-- MIN. TRANSACTION FEE (per-row threshold + fee + whole-cell N/A toggle)
+- TRX FEE (C/D + APM with per-field N/A toggles)
+- MIN. TRANSACTION FEE (per-row threshold + fee + whole-cell N/A)
 
 METHODS column is hardcoded to the same default text as standard
 rows ("Credit / Debit - Visa, Mastercard" + "APM - Apple Pay,
-Google Pay") — no per-row override. Tier coloring uses the standard
-`tier-color-1/2/3` classes. A tiered custom row promotes the table
-to `byRegionTiered` mode (so MONTHLY VOLUME TIER column stays visible)
-even when standard rows are all single — handled by the 4th param
-on `resolvePayinTableMode()`.
+Google Pay") — no per-row override.
+
+**Section 1.1 has its own column-visibility decisions** independent
+of section 1:
+- MONTHLY VOLUME TIER column shown when any custom row is tiered
+- MIN. TRX FEE column shown when at least one custom row produces
+  a non-null min-fee render (via `hasAnyCustomRowMinFee`)
+
+**Page-break orchestration** (`buildOfferBodyRows`):
+- `breakBefore: heavyPayin` on the section-1.1 row.
+- Heavy payin (standard rows tiered) → section 1.1 on page 2 with
+  section 2.
+- Light payin (standard rows single) → section 1.1 flows naturally
+  on page 1 after section 1 + payin note.
 
 Type: `PayinCustomRow` in `document-wizard/types.ts`. Field is
 optional (`payinPricing.customRows?`) for back-compat.
 
-Renderer: `offerPdf/sections/payin.ts:buildPayinRows()` appends
-custom rows after the standard regions in the rows array.
-`hasAnyPayinMinFee()` also checks custom rows so the MIN. TRX FEE
-column visibility decision considers per-row values too.
+Renderers:
+- `offerPdf/sections/payin.ts:buildPayinSection()` — standard
+  rows only (section 1)
+- `offerPdf/sections/payin.ts:buildPayinAdditionalSection()` —
+  custom rows only (section 1.1). Returns `""` when no custom rows.
+- `pdf-kit/components/sectionHeader.ts` signature now accepts
+  `number | string` for the index parameter, allowing "1.1".
+- `pdf-kit/styles.ts` `.section-index` uses `min-width: 22px` +
+  horizontal padding so single-digit indices stay square while
+  multi-char indices ("1.1") expand to fit.
 
-Auto-compact preset calibration: each tiered custom row adds 3
-rendered rows; the compact preset is calibrated against a worst
-case of 6 rows + 3-4 line note. Documents with many custom rows
-(8+ total rows) may extend to 3 pages — known limitation, not yet
-addressed via explicit force-page-break logic.
+Auto-compact preset: section 1.1 has its OWN compact decision
+based on its own row count (`>= 4` threshold, same as section 1).
+Section 1's calibration is no longer at risk regardless of how
+many custom rows operators add.
 
 ### 4.5.2 Section 1 column widths
 

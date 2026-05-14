@@ -157,16 +157,17 @@ function resolvePayinRegionContexts(
   return contexts;
 }
 
+// Whether section 1 (standard regions only) has any MIN. TRX FEE to
+// show. Section 1.1 (custom rows) has its own independent decision —
+// see `hasAnyCustomRowMinFee` below. Splitting the predicates means
+// the two sections can independently hide the MIN. TRX FEE column.
 function hasAnyPayinMinFee(data: DocumentTemplatePayload, layout: DocumentWizardLayout): boolean {
   const regions = resolvePayinRegionContexts(data, layout);
-  if (regions.some(region => formatPayinMinTransactionFee(data, region.code) !== null)) {
-    return true;
-  }
-  // Custom rows can independently contribute a MIN. TRX FEE value
-  // (each row has its own threshold/fee/N/A toggle — see
-  // `formatCustomRowMinTransactionFee`). If at least one custom row
-  // produces a non-null render, the column must stay visible for the
-  // whole table.
+  return regions.some(region => formatPayinMinTransactionFee(data, region.code) !== null);
+}
+
+// Same predicate but for the Additional Card Acquiring section (1.1).
+function hasAnyCustomRowMinFee(data: DocumentTemplatePayload): boolean {
   const customRows = data.payinPricing.customRows ?? [];
   return customRows.some(row => formatCustomRowMinTransactionFee(row) !== null);
 }
@@ -243,21 +244,93 @@ function buildPayinRows(
     </tr>`);
   });
 
-  // Custom rows (2026-05-14 feature). Appended after the standard
-  // regions. Each custom row uses the same tier-color logic and N/A
-  // handling as standard rows. METHODS column is intentionally
-  // hardcoded to the same default text (operator decision — methods
-  // text is not editable on custom rows; product confirmed).
-  // CURRENCY and REGION labels are taken from the row, MIN. TRX FEE
-  // is rendered from per-row threshold/fee/N/A toggle (not the global
-  // contractSummary values used by standard regions).
+  return rows.join("");
+}
+
+export function buildPayinSection(data: DocumentTemplatePayload, layout: DocumentWizardLayout): string {
+  if (!data.calculatorType.payin) {
+    return "";
+  }
+
+  const showRegionColumn = layout.payin.tableMode === "byRegionTiered" || layout.payin.tableMode === "byRegionFlat";
+  const showTierColumn = layout.payin.tableMode === "byRegionTiered" || layout.payin.tableMode === "flatTiered";
+  // Hide-if-empty rule: drop the MIN. TRANSACTION FEE column entirely when no
+  // region has a configured threshold/fee pair to display.
+  const showMinFeeColumn = hasAnyPayinMinFee(data, layout);
+
+  const payinRows = buildPayinRows(data, layout, showMinFeeColumn);
+
+  // Auto-compact heuristic. Total row count drives whether the
+  // section gets the `.compact` class (smaller padding + font in
+  // CSS). Calibrated so the worst-case fill (6 rows: tiered + both
+  // regions) fits inside one A4 page alongside the document header
+  // and the page-repeating footer reservation. Custom rows (operator-
+  // added) live in their own section 1.1 — see
+  // `buildPayinAdditionalSection` below — so they don't bloat
+  // section 1's row count.
+  const regions = resolvePayinRegionContexts(data, layout);
+  const totalRows = regions.length * (showTierColumn ? 3 : 1);
+  const isCompact = totalRows >= 4 || (totalRows >= 2 && hasPayinCustomNote(data));
+  const sectionClass = `offer-section${isCompact ? " compact" : ""}`;
+
+  // The section returns ONLY the section element. The custom note (if
+  // any) is emitted by the orchestrator as a separate sibling so it
+  // can live in its own <tr> in the page-layout table — that lets
+  // Chrome break the (potentially long) note across pages without
+  // dragging the section's avoid-break rule down with it. See
+  // buildPayinCustomNoteHtml and buildOfferBodyRows.
+  return `<section class="${sectionClass}">
+    ${renderSectionHeader(1, "Card Acquiring — Credit / Debit Cards, APM & E-wallet", showTierColumn ? "VOLUME TIERED" : "FIXED RATE")}
+    <table>
+      <thead>
+        <tr>
+          ${showRegionColumn ? '<th class="col-region">REGION</th>' : ""}
+          <th class="col-methods">METHODS</th>
+          <th class="col-currency">CURRENCY</th>
+          ${showTierColumn ? '<th class="col-tier">MONTHLY VOLUME TIER</th>' : ""}
+          <th class="col-mdr">MDR / RATE</th>
+          <th class="col-trxfee">TRANSACTION FEE</th>
+          ${showMinFeeColumn ? '<th class="col-minfee">MIN. TRANSACTION FEE</th>' : ""}
+        </tr>
+      </thead>
+      <tbody>${payinRows}</tbody>
+    </table>
+  </section>`;
+}
+
+// ────────────────────────────────────────────────────────────────
+// Section 1.1 — Additional Card Acquiring (custom rows only)
+//
+// Operator-added ad-hoc rows live in their own section to keep
+// section 1's calibration intact (6-row worst case + 3-4 line note
+// on page 1) and to give the orchestrator a clean break point —
+// the orchestrator sets `breakBefore` on this section when payin
+// is heavy so the additional rows land on page 2 instead of
+// stretching section 1 beyond its budget.
+//
+// The section is visually identical to section 1: same column
+// widths, same `tier-color-*` classes, same MIN. TRX FEE rendering.
+// The only visible difference is the "1.1" index badge and the
+// "Additional Card Acquiring" title. METHODS column is hardcoded
+// with the same default text as section 1 (Q1=A — no per-row
+// METHODS override).
+// ────────────────────────────────────────────────────────────────
+
+function buildPayinAdditionalRows(
+  data: DocumentTemplatePayload,
+  showTierColumn: boolean,
+  showMinFeeColumn: boolean
+): string {
+  const methodLabel = "Credit / Debit - Visa, Mastercard";
+  const apmLabel = "APM - Apple Pay, Google Pay";
   const customRows = data.payinPricing.customRows ?? [];
+
+  const rows: string[] = [];
+
   customRows.forEach(customRow => {
     const tiersActive = showTierColumn && customRow.rateMode === "tiered";
     const customMinFee = formatCustomRowMinTransactionFee(customRow);
-    const regionCell = showRegionColumn
-      ? `<td class="cell-region">● ${escapeHtml(customRow.region)}</td>`
-      : "";
+    const regionCell = `<td class="cell-region">● ${escapeHtml(customRow.region)}</td>`;
     const currencyCell = `<td>${escapeHtml(customRow.currency)}</td>`;
     const methodsCell = `<td><span class="cell-line">${escapeHtml(methodLabel)}</span><span class="cell-line cell-subtitle">${escapeHtml(apmLabel)}</span></td>`;
     const minFeeCell = showMinFeeColumn ? `<td>${renderMinFeeCell(customMinFee)}</td>` : "";
@@ -274,7 +347,7 @@ function buildPayinRows(
           ${regionCell}
           ${methodsCell}
           ${currencyCell}
-          ${showTierColumn ? `<td class="${tierColor}">${escapeHtml(tierLabel)}</td>` : ""}
+          <td class="${tierColor}">${escapeHtml(tierLabel)}</td>
           <td><span class="cell-line ${tierColor}">${escapeHtml(formatPayinModel(customRow.model))}</span><span class="cell-line">${escapeHtml(
             formatPercent(tier.mdrPercent)
           )}</span></td>
@@ -301,50 +374,44 @@ function buildPayinRows(
   return rows.join("");
 }
 
-export function buildPayinSection(data: DocumentTemplatePayload, layout: DocumentWizardLayout): string {
+export function buildPayinAdditionalSection(
+  data: DocumentTemplatePayload
+): string {
   if (!data.calculatorType.payin) {
     return "";
   }
-
-  const showRegionColumn = layout.payin.tableMode === "byRegionTiered" || layout.payin.tableMode === "byRegionFlat";
-  const showTierColumn = layout.payin.tableMode === "byRegionTiered" || layout.payin.tableMode === "flatTiered";
-  // Hide-if-empty rule: drop the MIN. TRANSACTION FEE column entirely when no
-  // region has a configured threshold/fee pair to display.
-  const showMinFeeColumn = hasAnyPayinMinFee(data, layout);
-
-  const payinRows = buildPayinRows(data, layout, showMinFeeColumn);
-
-  // Auto-compact heuristic. Total row count drives whether the
-  // section gets the `.compact` class (smaller padding + font in
-  // CSS). Calibrated so the worst-case fill (6 rows: tiered + both
-  // regions) fits inside one A4 page alongside the document header
-  // and the page-repeating footer reservation.
-  const regions = resolvePayinRegionContexts(data, layout);
   const customRows = data.payinPricing.customRows ?? [];
-  // Each region contributes 3 rows if the table is tiered, else 1.
-  // Custom rows are per-row tiered/single — a tiered custom row also
-  // expands to 3 PDF rows, while a single-rate custom row stays at 1.
-  const standardRowCount = regions.length * (showTierColumn ? 3 : 1);
-  const customRowCount = customRows.reduce(
+  if (customRows.length === 0) {
+    return "";
+  }
+
+  // Section 1.1 has its own column-visibility decisions independent
+  // of section 1: MONTHLY VOLUME TIER column shows when any custom
+  // row is tiered, MIN. TRX FEE column shows when at least one
+  // custom row produces a non-null min-fee render.
+  const showTierColumn = customRows.some(row => row.rateMode === "tiered");
+  const showMinFeeColumn = hasAnyCustomRowMinFee(data);
+
+  const additionalRows = buildPayinAdditionalRows(data, showTierColumn, showMinFeeColumn);
+
+  // Own auto-compact decision based on custom-row count. Each tiered
+  // row contributes 3 PDF rows; each single row contributes 1. Same
+  // >= 4 threshold as section 1.
+  const totalRows = customRows.reduce(
     (total, row) => total + (row.rateMode === "tiered" ? 3 : 1),
     0
   );
-  const totalRows = standardRowCount + customRowCount;
-  const isCompact = totalRows >= 4 || (totalRows >= 2 && hasPayinCustomNote(data));
+  const isCompact = totalRows >= 4;
   const sectionClass = `offer-section${isCompact ? " compact" : ""}`;
 
-  // The section returns ONLY the section element. The custom note (if
-  // any) is emitted by the orchestrator as a separate sibling so it
-  // can live in its own <tr> in the page-layout table — that lets
-  // Chrome break the (potentially long) note across pages without
-  // dragging the section's avoid-break rule down with it. See
-  // buildPayinCustomNoteHtml and buildOfferBodyRows.
+  // REGION column is always shown for 1.1 (custom rows always have a
+  // free-form region label). Currency column also always shown.
   return `<section class="${sectionClass}">
-    ${renderSectionHeader(1, "Card Acquiring — Credit / Debit Cards, APM & E-wallet", showTierColumn ? "VOLUME TIERED" : "FIXED RATE")}
+    ${renderSectionHeader("1.1", "Additional Card Acquiring — Credit / Debit Cards, APM & E-wallet", showTierColumn ? "VOLUME TIERED" : "FIXED RATE")}
     <table>
       <thead>
         <tr>
-          ${showRegionColumn ? '<th class="col-region">REGION</th>' : ""}
+          <th class="col-region">REGION</th>
           <th class="col-methods">METHODS</th>
           <th class="col-currency">CURRENCY</th>
           ${showTierColumn ? '<th class="col-tier">MONTHLY VOLUME TIER</th>' : ""}
@@ -353,7 +420,7 @@ export function buildPayinSection(data: DocumentTemplatePayload, layout: Documen
           ${showMinFeeColumn ? '<th class="col-minfee">MIN. TRANSACTION FEE</th>' : ""}
         </tr>
       </thead>
-      <tbody>${payinRows}</tbody>
+      <tbody>${additionalRows}</tbody>
     </table>
   </section>`;
 }

@@ -344,8 +344,13 @@ table.page-layout > tbody > tr.force-page-break-before {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
+  /* min-width keeps single-digit indices at the standard 22px square
+   * shape; multi-char indices (e.g. "1.1" for the operator-added
+   * sub-section) expand to fit their text via the 6px horizontal
+   * padding without breaking layout. */
+  min-width: 22px;
   height: 22px;
+  padding: 0 6px;
   border-radius: ${tokens.radiusS};
   background: var(--accent);
   color: #ffffff;

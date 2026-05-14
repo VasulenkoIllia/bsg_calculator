@@ -9,7 +9,11 @@ import { OFFER_REFERENCE_TOKENS } from "./pdf-kit/tokens.js";
 import type { DocumentTemplatePayload, DocumentWizardLayout } from "./types.js";
 import { formatDisplayDate, resolveModelHeaderLabel } from "./offerPdf/formatters.js";
 import { resolveLayout } from "./offerPdf/layoutResolution.js";
-import { buildPayinCustomNoteHtml, buildPayinSection } from "./offerPdf/sections/payin.js";
+import {
+  buildPayinAdditionalSection,
+  buildPayinCustomNoteHtml,
+  buildPayinSection
+} from "./offerPdf/sections/payin.js";
 import {
   buildPayoutCustomNoteHtml,
   buildPayoutSection
@@ -30,23 +34,37 @@ interface OfferBodyRow {
   breakBefore?: boolean;
 }
 
-// Returns each top-level OFFER section (Card Acquiring / Pay Out /
-// Other Services & Fees / Terms & Limitations) as its own row. The
-// orchestrator wraps each row in a separate `<tr><td>` inside
-// `table.page-layout > tbody` so Chrome's print engine has natural
-// break points between rows — that is what makes `<tfoot>` reliably
-// repeat the disclaimer footer on every page.
+// Returns each top-level OFFER section (Card Acquiring / Additional
+// Card Acquiring / Pay Out / Other Services & Fees / Terms &
+// Limitations) as its own row. The orchestrator wraps each row in a
+// separate `<tr><td>` inside `table.page-layout > tbody` so Chrome's
+// print engine has natural break points between rows — that is what
+// makes `<tfoot>` reliably repeat the disclaimer footer on every page.
 //
-// Page-budget rule (2026-05-08):
-//   Tiered payin  (tableMode = byRegionTiered / flatTiered):
+// Page-budget rule (refined 2026-05-14 for section 1.1):
+//
+//   Heavy payin (tiered: byRegionTiered / flatTiered):
 //     page 1 = header + section 1 + payin custom note
-//     page 2 = section 2 + payout custom note + sections 3 + 4
-//   Non-tiered payin (tableMode = byRegionFlat / flatSingle):
-//     page 1 = header + sections 1 + 2 + their notes
+//     page 2 = section 1.1 (if any) + section 2 + payout note +
+//              sections 3 + 4
+//     Rationale: section 1 already fills its page-1 budget at 6
+//     tiered rows; section 1.1 must NOT pile on top, so we force a
+//     break before it. Section 2 (already forced via the original
+//     heavyPayin rule) lands on the same page 2.
+//
+//   Light payin (non-tiered: byRegionFlat / flatSingle):
+//     page 1 = header + section 1 + payin note + section 1.1 (if any)
+//              + section 2 + payout note
 //     page 2 = sections 3 + 4
-// Both halves of the rule are implemented as `breakBefore` flags on
-// the Pay Out and Other Services & Fees rows respectively. Light
-// payin + missing payin section falls back to natural flow.
+//     Rationale: section 1 is small enough that 1.1 fits alongside it
+//     naturally. Section 3 still forced to page 2 by the original
+//     lightPayin rule.
+//
+// `breakBefore` flags drive both rules:
+//   - Section 1.1: breakBefore = heavyPayin (push to page 2 only
+//     when section 1 is heavy)
+//   - Section 2:   breakBefore = heavyPayin (unchanged from prior)
+//   - Section 3:   breakBefore = lightPayin (unchanged from prior)
 function buildOfferBodyRows(
   data: DocumentTemplatePayload,
   layout: DocumentWizardLayout
@@ -64,6 +82,13 @@ function buildOfferBodyRows(
   if (payin) rows.push({ html: payin });
   const payinNote = buildPayinCustomNoteHtml(data);
   if (payinNote) rows.push({ html: payinNote });
+
+  // Section 1.1 — Additional Card Acquiring (custom operator rows).
+  // Returns "" when there are no custom rows; the orchestrator skips
+  // the push in that case. When heavy payin, force-page-break-before
+  // sends it to page 2; when light payin it flows on page 1.
+  const payinAdditional = buildPayinAdditionalSection(data);
+  if (payinAdditional) rows.push({ html: payinAdditional, breakBefore: heavyPayin });
 
   const payout = buildPayoutSection(data, layout);
   if (payout) rows.push({ html: payout, breakBefore: heavyPayin });

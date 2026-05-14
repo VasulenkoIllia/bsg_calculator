@@ -843,10 +843,13 @@ describe("buildOfferPdfHtml", () => {
     });
   });
 
-  describe("payin custom rows (2026-05-14 feature)", () => {
-    // These tests guard the Payin custom-rows feature. Pin both the
-    // "no rows = no PDF change" back-compat path and the new rendering
-    // shape (single vs. tiered) so regressions show up immediately.
+  describe("payin custom rows — section 1.1 Additional Card Acquiring", () => {
+    // These tests guard the operator-driven custom-rows feature, which
+    // lives in its OWN section 1.1 "Additional Card Acquiring" in the
+    // PDF (NOT appended to section 1's table). The split keeps
+    // section 1 within its calibrated 6-row worst-case fill and gives
+    // the orchestrator a clean force-page-break point for section 1.1
+    // on heavy payin.
     //
     // NB: buildBaseTemplateData has `regionMode: "none"` and
     // `tableMode: "flatSingle"` — a "single fallback row" mode where
@@ -860,23 +863,21 @@ describe("buildOfferPdfHtml", () => {
       return data;
     }
 
-    it("undefined customRows (back-compat) → PDF identical to pre-feature output", () => {
+    it("undefined customRows (back-compat) → no section 1.1 emitted", () => {
       const data = withBothRegions(buildBaseTemplateData());
-      // The seed factory used pre-2026-05-14 has no `customRows` key.
-      // The renderer must treat this as an empty list.
       expect(data.payinPricing.customRows).toBeUndefined();
 
       const html = buildOfferPdfHtml(data);
 
-      // Only the 2 standard rows (EEA + UK + Global) appear in the
-      // Card Acquiring section. Custom regions like "Russia" must not
-      // be present.
       expect(html).toContain("● EEA + UK");
       expect(html).toContain("● Global");
-      expect(html).not.toContain("● Russia");
+      // Section 1.1 absent entirely when customRows is undefined.
+      // Check the actual rendered <h2>, not bare text (CSS comments
+      // mention the string for documentation — they live in <style>).
+      expect(html).not.toMatch(/<h2>Additional Card Acquiring/);
     });
 
-    it("single-rate custom row appends ONE row at the end of the Payin table", () => {
+    it("single-rate custom row → emits its own section 1.1 with one data row", () => {
       const data = withBothRegions(buildBaseTemplateData());
       data.payinPricing.customRows = [
         {
@@ -908,27 +909,30 @@ describe("buildOfferPdfHtml", () => {
 
       const html = buildOfferPdfHtml(data);
 
-      // Region bullet + free-form label rendered.
+      // Section 1.1 has the expected title + "1.1" index badge.
+      expect(html).toMatch(/<h2>Additional Card Acquiring/);
+      expect(html).toMatch(/<span class="section-index">1\.1<\/span>/);
+      // Custom row content rendered inside section 1.1.
       expect(html).toContain("● Russia");
-      // Free-form currency.
       expect(html).toContain("<td>USDT</td>");
-      // Model + MDR — blended at 6.50%.
       expect(html).toContain("Blended");
       expect(html).toContain("6.50%");
-      // TRX fee values from `single` (per-row).
       expect(html).toContain("C/D: €0.50");
       expect(html).toContain("APM: €0.50");
-      // MIN. TRX FEE uses per-row threshold/fee (NOT contractSummary).
+      // Per-row MIN. TRX FEE rendered inside section 1.1.
       expect(html).toContain("≤2.5M: €1.50");
       expect(html).toContain("&gt;2.5M: N/A");
+      // Russia must NOT bleed into section 1 (standard regions).
+      const standardSection =
+        html.match(/section-index">1<\/span>[\s\S]*?<\/section>/)?.[0] ?? "";
+      expect(standardSection).not.toContain("Russia");
     });
 
-    it("tiered custom row appends THREE rows with tier-color classes", () => {
+    it("tiered custom row → emits section 1.1 with 3 tier rows + tier-color classes", () => {
       const data = withBothRegions(buildBaseTemplateData());
-      // Promote table to tiered so the MONTHLY VOLUME TIER column shows
-      // (wizard would have done this via resolvePayinTableMode given
-      // the tiered custom row below).
-      data.layout.payin.tableMode = "byRegionTiered";
+      // Standard rows stay single. Section 1.1 has its OWN tier-column
+      // visibility — driven by the tiered custom row regardless of
+      // section 1's mode.
       data.payinPricing.customRows = [
         {
           id: "row-test-2",
@@ -953,6 +957,8 @@ describe("buildOfferPdfHtml", () => {
 
       const html = buildOfferPdfHtml(data);
 
+      // Section 1.1 present.
+      expect(html).toMatch(/<h2>Additional Card Acquiring/);
       // Three different MDR values from the three tiers — same row.
       expect(html).toContain("5.00%");
       expect(html).toContain("4.50%");
@@ -961,17 +967,17 @@ describe("buildOfferPdfHtml", () => {
       expect(html).toMatch(/<td class="tier-color-1">/);
       expect(html).toMatch(/<td class="tier-color-2">/);
       expect(html).toMatch(/<td class="tier-color-3">/);
-      // Region appears 3 times (once per tier row).
+      // Region repeated 3 times (once per tier row) within section 1.1.
       const regionMatches = html.match(/● LATAM Bundle/g);
       expect(regionMatches?.length).toBe(3);
-      // Free-form currency appears 3 times too.
-      const currencyMatches = html.match(/<td>USD<\/td>/g);
-      expect(currencyMatches?.length).toBe(3);
+      // MONTHLY VOLUME TIER column shown inside section 1.1 because
+      // at least one custom row is tiered.
+      expect(html).toContain("MONTHLY VOLUME TIER");
       // MIN. TRX FEE renders as muted N/A for this row.
       expect(html).toContain('<span class="cell-line value-na">N/A</span>');
     });
 
-    it("tiered custom row promotes layout.tableMode to byRegionTiered even when standard rows are single", () => {
+    it("section 1.1 gets force-page-break-before on HEAVY payin (push to page 2)", () => {
       const data = withBothRegions(buildBaseTemplateData());
       // Standard rows already single in the fixture; promote layout —
       // wizard would do this automatically via the updated
@@ -979,19 +985,58 @@ describe("buildOfferPdfHtml", () => {
       data.layout.payin.tableMode = "byRegionTiered";
       data.payinPricing.customRows = [
         {
-          id: "row-test-3",
+          id: "row-test-heavy",
           region: "Asia Bundle",
           currency: "USD",
           model: "icpp",
-          rateMode: "tiered",
+          rateMode: "single",
           trxFeeEnabled: true,
           tier1UpToMillion: 5,
           tier2UpToMillion: 10,
-          single: { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+          single: { mdrPercent: 5, trxCc: 0.4, trxCcNa: false, trxApm: 0.4, trxApmNa: false },
           tiers: [
-            { mdrPercent: 5.0, trxCc: 0.4, trxCcNa: false, trxApm: 0.4, trxApmNa: false },
-            { mdrPercent: 4.5, trxCc: 0.35, trxCcNa: false, trxApm: 0.35, trxApmNa: false },
-            { mdrPercent: 4.0, trxCc: 0.3, trxCcNa: false, trxApm: 0.3, trxApmNa: false }
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false }
+          ],
+          minTrxFeeThresholdMillion: 0,
+          minTrxFeePerTransaction: 0,
+          minTrxFeeRowNa: false
+        }
+      ];
+      // Force heavy payin: tiered both regions.
+      data.payinPricing.eu.rateMode = "tiered";
+      data.payinPricing.ww.rateMode = "tiered";
+
+      const html = buildOfferPdfHtml(data);
+
+      // The Section 1.1 <tr> wrapper carries the force-page-break-before
+      // class on heavy payin. Cap the lookahead at 1000 chars so the
+      // regex cannot span multiple TRs and accidentally match section 1
+      // followed by section 1.1.
+      expect(html).toMatch(
+        /<tr class="force-page-break-before">[\s\S]{0,1000}?<h2>Additional Card Acquiring/
+      );
+    });
+
+    it("section 1.1 stays inline (no force-break) on LIGHT payin", () => {
+      const data = withBothRegions(buildBaseTemplateData());
+      // Light payin: standard single rates, no force-break needed.
+      data.payinPricing.customRows = [
+        {
+          id: "row-test-light",
+          region: "Crypto Rails",
+          currency: "USDT",
+          model: "blended",
+          rateMode: "single",
+          trxFeeEnabled: true,
+          tier1UpToMillion: 5,
+          tier2UpToMillion: 10,
+          single: { mdrPercent: 6, trxCc: 0.5, trxCcNa: false, trxApm: 0.5, trxApmNa: false },
+          tiers: [
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false }
           ],
           minTrxFeeThresholdMillion: 0,
           minTrxFeePerTransaction: 0,
@@ -1001,13 +1046,19 @@ describe("buildOfferPdfHtml", () => {
 
       const html = buildOfferPdfHtml(data);
 
-      // MONTHLY VOLUME TIER column header visible because tiered.
-      expect(html).toContain("MONTHLY VOLUME TIER");
-      // Standard single-rate rows now also show in the tiered table
-      // with the "Non-tiered, fixed" subtitle.
-      expect(html).toContain("Non-tiered, fixed");
-      // Custom row's 3 tier rows present.
-      expect(html).toContain("Asia Bundle");
+      // Section 1.1 emitted.
+      expect(html).toMatch(/<h2>Additional Card Acquiring/);
+      // On LIGHT payin, the <tr> wrapping section 1.1 is a PLAIN
+      // `<tr>` (no force-page-break-before class). Look backward at
+      // most 1000 chars from the section's <h2> for a `<tr` opening
+      // tag — that nearest opener must be plain.
+      expect(html).toMatch(
+        /<tr><td class="page-content-cell">[\s\S]{0,1000}?<h2>Additional Card Acquiring/
+      );
+      // And explicitly NOT the force-break variant.
+      expect(html).not.toMatch(
+        /<tr class="force-page-break-before">[\s\S]{0,1000}?<h2>Additional Card Acquiring/
+      );
     });
   });
 });

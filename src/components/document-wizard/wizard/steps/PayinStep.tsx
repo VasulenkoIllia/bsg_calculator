@@ -553,27 +553,16 @@ function PayinCustomRowsEditor({
   const customRows = draft.payinPricing.customRows ?? [];
 
   // Single chokepoint that writes a new `customRows` array back into
-  // the draft + recomputes the layout tableMode (a tiered custom row
-  // may need to flip the table into byRegionTiered / flatTiered).
+  // the draft. Custom rows live in their own section 1.1 in the PDF
+  // (see `buildPayinAdditionalSection`), so they do NOT influence
+  // section 1's tableMode — no tableMode recomputation needed when
+  // a custom row toggles between single ↔ tiered.
   const updateCustomRows = (nextRows: PayinCustomRow[]) => {
-    const tableMode = resolvePayinTableMode(
-      draft.layout.payin.regionMode,
-      draft.payinPricing.eu.rateMode,
-      draft.payinPricing.ww.rateMode,
-      nextRows
-    );
     onDraftChange({
       ...draft,
       payinPricing: {
         ...draft.payinPricing,
         customRows: nextRows
-      },
-      layout: {
-        ...draft.layout,
-        payin: {
-          ...draft.layout.payin,
-          tableMode
-        }
       }
     });
   };
@@ -772,10 +761,6 @@ export function PayinStep({
           <PayinRegionEditor region="ww" draft={draft} onDraftChange={onDraftChange} />
         ) : null}
 
-        {payinEnabled ? (
-          <PayinCustomRowsEditor draft={draft} onDraftChange={onDraftChange} />
-        ) : null}
-
         <SectionCustomNoteCard
           title="Payin Section Note"
           description="Free-form note rendered in muted gray under the Card Acquiring (Payin) table in the OFFER PDF."
@@ -801,6 +786,10 @@ export function PayinStep({
           }
           ariaPrefix="Payin section note"
         />
+
+        {payinEnabled ? (
+          <PayinCustomRowsEditor draft={draft} onDraftChange={onDraftChange} />
+        ) : null}
       </div>
 
       <StepNavigation
