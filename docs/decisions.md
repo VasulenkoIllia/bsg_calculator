@@ -2442,3 +2442,74 @@ Use this file to record meaningful technical decisions for the project.
   - None. The pair of fixes (section 2 + section 3) covers the
     cartesian product of {light, heavy} × {no 1.1, has 1.1} cleanly.
     Re-examine only if a fifth section is introduced.
+
+### Decision: Section 1.1 inherits section 1's compact state (visual parity)
+- Date: 2026-05-14
+- Context:
+  - User reported (with `workflo_base_fullstack.pdf` attached) that
+    sections 1 and 1.1 — which are supposed to look IDENTICAL except
+    for the index badge and the "Additional" prefix in the title —
+    rendered with different row heights, header heights, and column
+    wrapping. Specifically: "APM - Apple Pay, Google Pay" fit on one
+    line in section 1 but wrapped to "APM - Apple Pay, Google" +
+    "Pay" in section 1.1.
+  - Root cause: the `.col-*` widths in `pdf-kit/styles.ts` are
+    calibrated for the COMPACT preset's smaller font (8.5pt). The
+    width comment explicitly says so:
+      "Calibration 2026-05-14: bumped col-methods 25% → 30% ...
+       so that 'Credit / Debit - Visa, Mastercard' and
+       'APM - Apple Pay, Google Pay' each fit on a single line
+       in the compact preset"
+    Each section computed its own `isCompact` independently:
+      Section 1:    totalRows >= 4 || (totalRows >= 2 && hasPayinCustomNote)
+      Section 1.1:  totalRows >= 4  (own custom-row count only)
+    In the repro: section 1 had 6 tiered rows (heavy + both regions)
+    → compact, font 8.5pt → APM line fits 30%. Section 1.1 had 1
+    tiered custom row = 3 PDF rows < 4 → NOT compact, font 9pt →
+    APM line wraps. Two visually-identical sections rendered with
+    different fonts because the column widths are font-size-sensitive
+    and the two sections disagreed on the font.
+- Decision:
+  - Extract `resolvePayinCompact(data, layout)` in `payin.ts` as the
+    SINGLE source of truth for both sections.
+  - Section 1 keeps its existing rule (`>= 4 rows || >= 2 && note`).
+  - Section 1.1 DROPS its own `>= 4 custom-rows` threshold and reads
+    `resolvePayinCompact` directly — always matching section 1.
+  - `buildPayinAdditionalSection` gains a `layout` parameter (was
+    `(data)`, now `(data, layout)`); the call site in
+    `buildOfferBodyRows` was updated accordingly.
+- Alternatives considered:
+  - Make section 1.1 ALWAYS compact: rejected because in the
+    light-payin case (1 region, single rate) section 1 is non-compact
+    (font 9pt), and we'd get the same mismatch with 1.1 forced to
+    8.5pt. Strict inheritance covers both directions.
+  - Keep section 1.1's own `>= 4` trigger AS WELL AS inheritance
+    (logical OR): rejected because it can produce mismatches in the
+    rare case where section 1 has 1-3 rows non-compact and section
+    1.1 has many rows compact. User's instruction ("зроби однакові")
+    means strict equality, not "compact if either has many rows".
+  - Recalibrate `.col-methods` to fit "APM - Apple Pay, Google Pay"
+    at the default 9pt font: rejected because section 1's compact
+    layout is intentional (saves ~14px page-1 budget on heavy payin,
+    fits the 6-row table + payin custom note in the page budget);
+    widening METHODS at non-compact wouldn't fix the row-height /
+    header-height differences and would change section 1's
+    proportions in the compact case.
+- Consequences:
+  - Sections 1 and 1.1 now ALWAYS render with the same font, padding,
+    line-height, header-height, and column-wrapping behavior.
+  - The `.col-methods` width comment in styles.ts remains correct
+    (calibrated for compact) — both sections now honor that
+    calibration consistently.
+  - All 259/259 tests pass (+1 new regression test):
+      - "section 1.1 mirrors section 1's compact state (visual parity
+        rule)" — covers two cases:
+          a) heavy section 1 (compact) + 1 tiered custom row in 1.1
+             → BOTH render `offer-section compact`.
+          b) light section 1 (non-compact) + 1 single custom row in
+             1.1 → BOTH render plain `offer-section`.
+  - `tsc --noEmit` clean. `vite build` clean.
+- Follow-up actions:
+  - None. The parity rule is now enforced by a single function
+    (`resolvePayinCompact`) and a single test. Any future change to
+    section 1's compact heuristic automatically propagates to 1.1.

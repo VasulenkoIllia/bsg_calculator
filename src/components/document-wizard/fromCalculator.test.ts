@@ -1204,6 +1204,103 @@ describe("buildOfferPdfHtml", () => {
       );
     });
 
+    it("section 1.1 mirrors section 1's compact state (visual parity rule)", () => {
+      // The `.col-*` column widths in styles.ts are calibrated for the
+      // compact font (8.5pt). If section 1 is compact but 1.1 is not
+      // (or vice-versa), "APM - Apple Pay, Google Pay" wraps in only
+      // one of them and the two visually-identical sections render
+      // with different row heights / wrapping. `resolvePayinCompact`
+      // is the single source of truth — both sections call it.
+
+      // Case A: section 1 compact (6 tiered rows) + section 1.1 has
+      // ONLY 1 tiered custom row (3 PDF rows, below 1.1's old `>= 4`
+      // threshold). Without the parity rule, 1.1 would be NON-compact.
+      // Under the parity rule, 1.1 inherits section 1's compact.
+      const heavyData = withBothRegions(buildBaseTemplateData());
+      heavyData.layout.payin.tableMode = "byRegionTiered";
+      heavyData.payinPricing.eu.rateMode = "tiered";
+      heavyData.payinPricing.ww.rateMode = "tiered";
+      heavyData.payinPricing.customRows = [
+        {
+          id: "row-parity-heavy",
+          region: "New region",
+          currency: "EUR",
+          model: "icpp",
+          rateMode: "tiered",
+          trxFeeEnabled: true,
+          tier1UpToMillion: 5,
+          tier2UpToMillion: 10,
+          single: { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+          tiers: [
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false }
+          ],
+          minTrxFeeThresholdMillion: 0,
+          minTrxFeePerTransaction: 0,
+          minTrxFeeRowNa: false
+        }
+      ];
+      const heavyHtml = buildOfferPdfHtml(heavyData);
+      // BOTH sections carry `offer-section compact`.
+      expect(heavyHtml).toMatch(
+        /<section class="offer-section compact">[\s\S]*?<h2>Card Acquiring/
+      );
+      expect(heavyHtml).toMatch(
+        /<section class="offer-section compact">[\s\S]*?<h2>Additional Card Acquiring/
+      );
+      // NEITHER section is plain `offer-section` (without compact).
+      expect(heavyHtml).not.toMatch(
+        /<section class="offer-section">[\s\S]*?<h2>Card Acquiring — Credit/
+      );
+      expect(heavyHtml).not.toMatch(
+        /<section class="offer-section">[\s\S]*?<h2>Additional Card Acquiring/
+      );
+
+      // Case B: section 1 non-compact (1 region, single = 1 row) +
+      // section 1.1 has 1 single-rate row. Both should stay non-compact.
+      const lightData = buildBaseTemplateData();
+      lightData.layout.payin.regionMode = "euOnly";
+      lightData.layout.payin.tableMode = "byRegionFlat";
+      lightData.payinPricing.eu.rateMode = "single";
+      lightData.payinPricing.customRows = [
+        {
+          id: "row-parity-light",
+          region: "New region",
+          currency: "EUR",
+          model: "icpp",
+          rateMode: "single",
+          trxFeeEnabled: true,
+          tier1UpToMillion: 5,
+          tier2UpToMillion: 10,
+          single: { mdrPercent: 4, trxCc: 0.3, trxCcNa: false, trxApm: 0.3, trxApmNa: false },
+          tiers: [
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false }
+          ],
+          minTrxFeeThresholdMillion: 0,
+          minTrxFeePerTransaction: 0,
+          minTrxFeeRowNa: false
+        }
+      ];
+      const lightHtml = buildOfferPdfHtml(lightData);
+      // BOTH sections render plain `offer-section` (no compact).
+      expect(lightHtml).toMatch(
+        /<section class="offer-section">[\s\S]*?<h2>Card Acquiring — Credit/
+      );
+      expect(lightHtml).toMatch(
+        /<section class="offer-section">[\s\S]*?<h2>Additional Card Acquiring/
+      );
+      // And NEITHER section has compact class.
+      expect(lightHtml).not.toMatch(
+        /<section class="offer-section compact">[\s\S]*?<h2>Card Acquiring — Credit/
+      );
+      expect(lightHtml).not.toMatch(
+        /<section class="offer-section compact">[\s\S]*?<h2>Additional Card Acquiring/
+      );
+    });
+
     it("LIGHT payin WITH section 1.1 → Other Services flows naturally (NO force-break)", () => {
       // Regression for the second double-page-break bug fixed
       // 2026-05-14 (reported via last2.pdf): when section 1 is light

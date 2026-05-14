@@ -102,7 +102,7 @@ function buildOfferBodyRows(
   // Returns "" when there are no custom rows; the orchestrator skips
   // the push in that case. When heavy payin, force-page-break-before
   // sends it to page 2; when light payin it flows on page 1.
-  const payinAdditional = buildPayinAdditionalSection(data);
+  const payinAdditional = buildPayinAdditionalSection(data, layout);
   const hasAdditional = payinAdditional.length > 0;
   if (hasAdditional) rows.push({ html: payinAdditional, breakBefore: heavyPayin });
 

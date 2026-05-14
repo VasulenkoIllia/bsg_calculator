@@ -189,6 +189,41 @@ function hasAnyCustomRowMinFee(customRows: ReadonlyArray<PayinCustomRow>): boole
   return customRows.some(row => formatCustomRowMinTransactionFee(row) !== null);
 }
 
+// Single source of truth for "is the payin block in compact preset?".
+//
+// Used by both section 1 (`buildPayinSection`) and section 1.1
+// (`buildPayinAdditionalSection`) so they always carry the same
+// `.compact` class. This matters because the `.col-*` widths in
+// styles.ts are CALIBRATED FOR THE COMPACT FONT (8.5pt) — at the
+// default 9pt non-compact size, "APM - Apple Pay, Google Pay" no
+// longer fits the 30% METHODS column and wraps. If section 1 is
+// compact (font 8.5pt, APM line fits) and section 1.1 is not
+// (font 9pt, APM line wraps), the two visually-identical sections
+// render with different row heights and wrapping. Mirroring section
+// 1's decision into 1.1 guarantees visual parity.
+//
+// The compact rule is driven by section 1's row budget only:
+//   - >= 4 standard rows (e.g. tiered + both regions = 6 rows)
+//   - OR >= 2 rows AND a payin custom note (the note adds vertical
+//     pressure that would otherwise push section 2 off page 1)
+// Section 1.1's own row count is NOT a separate trigger — we want
+// 1.1 to match section 1 exactly, even when 1.1 has many rows and
+// section 1 has few. (In practice the orchestrator force-page-breaks
+// 1.1 to page 2 on heavy payin, so 1.1's own height rarely matters
+// for page 1's budget.)
+function resolvePayinCompact(
+  data: DocumentTemplatePayload,
+  layout: DocumentWizardLayout
+): boolean {
+  if (!data.calculatorType.payin) return false;
+  const showTierColumn =
+    layout.payin.tableMode === "byRegionTiered" ||
+    layout.payin.tableMode === "flatTiered";
+  const regions = resolvePayinRegionContexts(data, layout);
+  const totalRows = regions.length * (showTierColumn ? 3 : 1);
+  return totalRows >= 4 || (totalRows >= 2 && hasPayinCustomNote(data));
+}
+
 function buildPayinRows(
   data: DocumentTemplatePayload,
   layout: DocumentWizardLayout,
@@ -276,17 +311,10 @@ export function buildPayinSection(data: DocumentTemplatePayload, layout: Documen
 
   const payinRows = buildPayinRows(data, layout, showMinFeeColumn);
 
-  // Auto-compact heuristic. Total row count drives whether the
-  // section gets the `.compact` class (smaller padding + font in
-  // CSS). Calibrated so the worst-case fill (6 rows: tiered + both
-  // regions) fits inside one A4 page alongside the document header
-  // and the page-repeating footer reservation. Custom rows (operator-
-  // added) live in their own section 1.1 — see
-  // `buildPayinAdditionalSection` below — so they don't bloat
-  // section 1's row count.
-  const regions = resolvePayinRegionContexts(data, layout);
-  const totalRows = regions.length * (showTierColumn ? 3 : 1);
-  const isCompact = totalRows >= 4 || (totalRows >= 2 && hasPayinCustomNote(data));
+  // Auto-compact preset. See `resolvePayinCompact` above for the rule.
+  // Section 1.1 reads the SAME helper so both sections render with
+  // identical font / padding / column-wrapping.
+  const isCompact = resolvePayinCompact(data, layout);
   const sectionClass = `offer-section${isCompact ? " compact" : ""}`;
 
   // The section returns ONLY the section element. The custom note (if
@@ -388,7 +416,8 @@ function buildPayinAdditionalRows(
 }
 
 export function buildPayinAdditionalSection(
-  data: DocumentTemplatePayload
+  data: DocumentTemplatePayload,
+  layout: DocumentWizardLayout
 ): string {
   if (!data.calculatorType.payin) {
     return "";
@@ -407,22 +436,17 @@ export function buildPayinAdditionalSection(
 
   const additionalRows = buildPayinAdditionalRows(customRows, showTierColumn, showMinFeeColumn);
 
-  // Own auto-compact decision based on custom-row count. Each tiered
-  // row contributes 3 PDF rows; each single row contributes 1. Same
-  // `>= 4` threshold as section 1.
-  //
-  // Deliberate difference vs section 1: section 1 also flips to
-  // compact at `>= 2 rows && has payin custom note` (the note adds
-  // vertical pressure on page 1). Section 1.1 does NOT use that
-  // second trigger because (a) the payin custom note lives between
-  // section 1 and section 1.1 — not below 1.1 — and (b) on heavy
-  // payin section 1.1 is force-page-break'd to page 2 where it has
-  // its own layout budget. The note never crowds section 1.1.
-  const totalRows = customRows.reduce(
-    (total, row) => total + (row.rateMode === "tiered" ? 3 : 1),
-    0
-  );
-  const isCompact = totalRows >= 4;
+  // VISUAL PARITY RULE (2026-05-14): section 1.1 inherits section 1's
+  // compact state via `resolvePayinCompact`. Reason: the `.col-*`
+  // widths in styles.ts are calibrated for the compact font (8.5pt).
+  // If section 1 ended up compact (e.g. 6 tiered rows) but 1.1 came
+  // in non-compact (e.g. 1 tiered custom row → 3 PDF rows < 4
+  // threshold), the two sections rendered with different row heights
+  // and the METHODS column would wrap differently in 1.1 ("Google" /
+  // "Pay" split onto two lines). Mirroring section 1's decision —
+  // and dropping 1.1's own independent threshold — guarantees the
+  // two sections always look identical.
+  const isCompact = resolvePayinCompact(data, layout);
   const sectionClass = `offer-section${isCompact ? " compact" : ""}`;
 
   // REGION column is always shown for 1.1 (custom rows always have a
