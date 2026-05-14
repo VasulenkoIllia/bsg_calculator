@@ -1,8 +1,5 @@
 import { MiniToggle, NumberField } from "../../../calculator/index.js";
-import {
-  clonePayinCustomRow,
-  makeDefaultPayinCustomRow
-} from "../../seedHelpers.js";
+import { makeDefaultPayinCustomRow } from "../../seedHelpers.js";
 import type { DocumentTemplatePayload, PayinCustomRow, PayinRegionMode } from "../../types.js";
 import {
   FeeFieldWithNa,
@@ -316,8 +313,6 @@ function PayinCustomRowCard({
   onPatchTier,
   onDelete
 }: PayinCustomRowCardProps) {
-  const isTiered = row.rateMode === "tiered";
-
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
       <div className="flex items-start justify-between gap-3">
@@ -607,10 +602,10 @@ function PayinCustomRowsEditor({
     updateCustomRows(customRows.filter((_, idx) => idx !== rowIndex));
   };
 
-  // Defensive: avoid sharing references with the live draft when
-  // children mutate (rendering uses the array directly; updates always
-  // produce a new array via `.map` / `.filter`).
-  const rowsToRender = customRows.map(clonePayinCustomRow);
+  // Render directly from the live array — `PayinCustomRowCard` is a
+  // pure-read component; every `onPatch*` callback below produces a
+  // brand-new array via `.map` / `.filter` and calls `updateCustomRows`
+  // which immutably reassigns. No deep clone needed.
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -633,13 +628,13 @@ function PayinCustomRowsEditor({
         </button>
       </div>
 
-      {rowsToRender.length === 0 ? (
+      {customRows.length === 0 ? (
         <p className="mt-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-xs text-slate-500">
           No custom rows. Click "+ Add custom row" to add one.
         </p>
       ) : (
         <div className="mt-3 grid gap-4">
-          {rowsToRender.map((row, idx) => (
+          {customRows.map((row, idx) => (
             <PayinCustomRowCard
               key={row.id}
               row={row}

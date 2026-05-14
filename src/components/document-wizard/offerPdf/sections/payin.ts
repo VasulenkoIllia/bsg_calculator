@@ -23,6 +23,21 @@ interface PayinRegionContext {
   pricing: PayinPricingRegion;
 }
 
+// Module-level constants for the METHODS column text. Standard rows
+// (section 1) and custom rows (section 1.1) both render the same two
+// hardcoded lines (per product decision — no per-row override). Kept
+// in one place so a future product change is a one-line edit instead
+// of two parallel string literals that can drift (as nearly happened
+// in commits 9de2533 → e7ac0e7).
+const PAYIN_METHOD_LABEL = "Credit / Debit - Visa, Mastercard";
+const PAYIN_APM_LABEL = "APM - Apple Pay, Google Pay";
+
+// Tier-index tuple — used both to drive the section-1 / section-1.1
+// per-tier rendering loops and to satisfy the
+// `[PayinFeeBlock, PayinFeeBlock, PayinFeeBlock]` tuple shape without
+// an `as 0|1|2` cast on `.forEach`'s `index` parameter.
+const TIER_INDICES = [0, 1, 2] as const;
+
 // MIN. TRANSACTION FEE cell rendering. Three possible outcomes:
 //   - { kind: "value" }: render two stacked lines, e.g. "≤2.5M: €1.00" /
 //     ">2.5M: N/A"
@@ -167,8 +182,10 @@ function hasAnyPayinMinFee(data: DocumentTemplatePayload, layout: DocumentWizard
 }
 
 // Same predicate but for the Additional Card Acquiring section (1.1).
-function hasAnyCustomRowMinFee(data: DocumentTemplatePayload): boolean {
-  const customRows = data.payinPricing.customRows ?? [];
+// Takes the rows array directly so the caller (which already extracted
+// it from `data.payinPricing.customRows ?? []`) doesn't have to drill
+// through the payload a second time.
+function hasAnyCustomRowMinFee(customRows: ReadonlyArray<PayinCustomRow>): boolean {
   return customRows.some(row => formatCustomRowMinTransactionFee(row) !== null);
 }
 
@@ -177,8 +194,6 @@ function buildPayinRows(
   layout: DocumentWizardLayout,
   showMinFeeColumn: boolean
 ): string {
-  const methodLabel = "Credit / Debit - Visa, Mastercard";
-  const apmLabel = "APM - Apple Pay, Google Pay";
   const showRegionColumn = layout.payin.tableMode === "byRegionTiered" || layout.payin.tableMode === "byRegionFlat";
   const showTierColumn = layout.payin.tableMode === "byRegionTiered" || layout.payin.tableMode === "flatTiered";
 
@@ -190,9 +205,10 @@ function buildPayinRows(
     const tiersActive = showTierColumn && region.pricing.rateMode === "tiered";
 
     if (tiersActive) {
-      region.pricing.tiers.forEach((tier, index) => {
+      TIER_INDICES.forEach(index => {
+        const tier = region.pricing.tiers[index];
         const tierLabel = formatTierRangeLabel(
-          index as 0 | 1 | 2,
+          index,
           region.pricing.tier1UpToMillion,
           region.pricing.tier2UpToMillion
         );
@@ -208,8 +224,8 @@ function buildPayinRows(
               ? `<td class="cell-region">● ${escapeHtml(region.label)}</td>`
               : ""
           }
-          <td><span class="cell-line">${escapeHtml(methodLabel)}</span><span class="cell-line cell-subtitle">${escapeHtml(
-            apmLabel
+          <td><span class="cell-line">${escapeHtml(PAYIN_METHOD_LABEL)}</span><span class="cell-line cell-subtitle">${escapeHtml(
+            PAYIN_APM_LABEL
           )}</span></td>
           <td>EUR</td>
           ${showTierColumn ? `<td class="${tierColor}">${escapeHtml(tierLabel)}</td>` : ""}
@@ -231,8 +247,8 @@ function buildPayinRows(
           ? `<td class="cell-region">● ${escapeHtml(region.label)}</td>`
           : ""
       }
-      <td><span class="cell-line">${escapeHtml(methodLabel)}</span><span class="cell-line cell-subtitle">${escapeHtml(
-        apmLabel
+      <td><span class="cell-line">${escapeHtml(PAYIN_METHOD_LABEL)}</span><span class="cell-line cell-subtitle">${escapeHtml(
+        PAYIN_APM_LABEL
       )}</span></td>
       <td>EUR</td>
       ${showTierColumn ? "<td>Non-tiered, fixed</td>" : ""}
@@ -317,14 +333,10 @@ export function buildPayinSection(data: DocumentTemplatePayload, layout: Documen
 // ────────────────────────────────────────────────────────────────
 
 function buildPayinAdditionalRows(
-  data: DocumentTemplatePayload,
+  customRows: ReadonlyArray<PayinCustomRow>,
   showTierColumn: boolean,
   showMinFeeColumn: boolean
 ): string {
-  const methodLabel = "Credit / Debit - Visa, Mastercard";
-  const apmLabel = "APM - Apple Pay, Google Pay";
-  const customRows = data.payinPricing.customRows ?? [];
-
   const rows: string[] = [];
 
   customRows.forEach(customRow => {
@@ -332,13 +344,14 @@ function buildPayinAdditionalRows(
     const customMinFee = formatCustomRowMinTransactionFee(customRow);
     const regionCell = `<td class="cell-region">● ${escapeHtml(customRow.region)}</td>`;
     const currencyCell = `<td>${escapeHtml(customRow.currency)}</td>`;
-    const methodsCell = `<td><span class="cell-line">${escapeHtml(methodLabel)}</span><span class="cell-line cell-subtitle">${escapeHtml(apmLabel)}</span></td>`;
+    const methodsCell = `<td><span class="cell-line">${escapeHtml(PAYIN_METHOD_LABEL)}</span><span class="cell-line cell-subtitle">${escapeHtml(PAYIN_APM_LABEL)}</span></td>`;
     const minFeeCell = showMinFeeColumn ? `<td>${renderMinFeeCell(customMinFee)}</td>` : "";
 
     if (tiersActive) {
-      customRow.tiers.forEach((tier, index) => {
+      TIER_INDICES.forEach(index => {
+        const tier = customRow.tiers[index];
         const tierLabel = formatTierRangeLabel(
-          index as 0 | 1 | 2,
+          index,
           customRow.tier1UpToMillion,
           customRow.tier2UpToMillion
         );
@@ -390,13 +403,21 @@ export function buildPayinAdditionalSection(
   // row is tiered, MIN. TRX FEE column shows when at least one
   // custom row produces a non-null min-fee render.
   const showTierColumn = customRows.some(row => row.rateMode === "tiered");
-  const showMinFeeColumn = hasAnyCustomRowMinFee(data);
+  const showMinFeeColumn = hasAnyCustomRowMinFee(customRows);
 
-  const additionalRows = buildPayinAdditionalRows(data, showTierColumn, showMinFeeColumn);
+  const additionalRows = buildPayinAdditionalRows(customRows, showTierColumn, showMinFeeColumn);
 
   // Own auto-compact decision based on custom-row count. Each tiered
   // row contributes 3 PDF rows; each single row contributes 1. Same
-  // >= 4 threshold as section 1.
+  // `>= 4` threshold as section 1.
+  //
+  // Deliberate difference vs section 1: section 1 also flips to
+  // compact at `>= 2 rows && has payin custom note` (the note adds
+  // vertical pressure on page 1). Section 1.1 does NOT use that
+  // second trigger because (a) the payin custom note lives between
+  // section 1 and section 1.1 — not below 1.1 — and (b) on heavy
+  // payin section 1.1 is force-page-break'd to page 2 where it has
+  // its own layout budget. The note never crowds section 1.1.
   const totalRows = customRows.reduce(
     (total, row) => total + (row.rateMode === "tiered" ? 3 : 1),
     0

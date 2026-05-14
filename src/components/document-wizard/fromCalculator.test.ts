@@ -1019,6 +1019,95 @@ describe("buildOfferPdfHtml", () => {
       );
     });
 
+    it("explicit empty customRows = [] (back-compat) → no section 1.1 emitted", () => {
+      // Mirrors the undefined-customRows test but with an explicit
+      // empty array. Guards the early-exit guard in
+      // buildPayinAdditionalSection against being reordered or moved
+      // below the `?? []` coalesce in the future.
+      const data = withBothRegions(buildBaseTemplateData());
+      data.payinPricing.customRows = [];
+
+      const html = buildOfferPdfHtml(data);
+
+      expect(html).not.toMatch(/<h2>Additional Card Acquiring/);
+    });
+
+    it("custom row with zero threshold + zero fee + no N/A → MIN. TRX FEE column hidden", () => {
+      const data = withBothRegions(buildBaseTemplateData());
+      data.payinPricing.customRows = [
+        {
+          id: "row-test-zero-fee",
+          region: "ZeroFeeRegion",
+          currency: "EUR",
+          model: "icpp",
+          rateMode: "single",
+          trxFeeEnabled: true,
+          tier1UpToMillion: 5,
+          tier2UpToMillion: 10,
+          single: { mdrPercent: 4, trxCc: 0.3, trxCcNa: false, trxApm: 0.3, trxApmNa: false },
+          tiers: [
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false }
+          ],
+          // All three min-fee fields signal "no fee for this row".
+          // Renderer must hide the MIN. TRX FEE column for section 1.1.
+          minTrxFeeThresholdMillion: 0,
+          minTrxFeePerTransaction: 0,
+          minTrxFeeRowNa: false
+        }
+      ];
+
+      const html = buildOfferPdfHtml(data);
+
+      // Section 1.1 emitted, but its <thead> does NOT contain
+      // MIN. TRANSACTION FEE column (hide-if-empty rule).
+      expect(html).toMatch(/<h2>Additional Card Acquiring/);
+      // Look inside section 1.1's thead specifically.
+      const additionalSectionMatch = html.match(
+        /<h2>Additional Card Acquiring[\s\S]*?<\/thead>/
+      );
+      expect(additionalSectionMatch).not.toBeNull();
+      expect(additionalSectionMatch?.[0]).not.toContain("MIN. TRANSACTION FEE");
+    });
+
+    it("custom row REGION with HTML-injection chars is escaped in the output", () => {
+      // The free-form region field is user-controlled. escapeHtml() in
+      // the renderer must escape it; this test pins that behaviour so
+      // a future refactor cannot accidentally drop the escape.
+      const data = withBothRegions(buildBaseTemplateData());
+      data.payinPricing.customRows = [
+        {
+          id: "row-test-injection",
+          region: "<script>alert(1)</script>",
+          currency: "EUR<\"&>",
+          model: "icpp",
+          rateMode: "single",
+          trxFeeEnabled: true,
+          tier1UpToMillion: 5,
+          tier2UpToMillion: 10,
+          single: { mdrPercent: 4, trxCc: 0.3, trxCcNa: false, trxApm: 0.3, trxApmNa: false },
+          tiers: [
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false }
+          ],
+          minTrxFeeThresholdMillion: 0,
+          minTrxFeePerTransaction: 0,
+          minTrxFeeRowNa: false
+        }
+      ];
+
+      const html = buildOfferPdfHtml(data);
+
+      // Raw script tag must NEVER appear in the output.
+      expect(html).not.toContain("<script>alert(1)</script>");
+      // The escaped form is present instead.
+      expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+      // Currency-cell special chars escaped too.
+      expect(html).toContain("EUR&lt;&quot;&amp;&gt;");
+    });
+
     it("section 1.1 stays inline (no force-break) on LIGHT payin", () => {
       const data = withBothRegions(buildBaseTemplateData());
       // Light payin: standard single rates, no force-break needed.

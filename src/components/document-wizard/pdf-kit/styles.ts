@@ -664,7 +664,15 @@ tbody tr:nth-child(even) {
 
   .offer-title { font-size: 66px; }
   .offer-subtitle { font-size: 17px; }
-  .section-index { width: 32px; height: 32px; font-size: 30px; }
+  /* Screen preview override — uses min-width so multi-char indices
+   * like "1.1" (Additional Card Acquiring sub-section) expand
+   * instead of being clipped. Matches the print rule pattern. */
+  .section-index {
+    min-width: 32px;
+    height: 32px;
+    padding: 0 8px;
+    font-size: 30px;
+  }
   .section-header h2 { font-size: 45px; }
   th, td { font-size: 13px; }
   .meta-value { font-size: 34px; }

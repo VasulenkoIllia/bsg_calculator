@@ -2204,3 +2204,95 @@ Use this file to record meaningful technical decisions for the project.
     its own bounded section.
 - Follow-up actions:
   - None. The architecture is stable.
+
+### Decision: Section 1.1 audit cleanup + screen-view badge bug fix
+- Date: 2026-05-14 (immediately after the split-into-1.1 refactor)
+- Context:
+  - Operator reported the "1.1" section badge was visually clipped
+    in the wizard's screen preview — rendered as a thin vertical
+    bar instead of "1.1" text. Root cause: `.section-index` in the
+    `@media screen` block of `pdf-kit/styles.ts` used `width: 32px`
+    (fixed). Single-digit indices fit; "1.1" at `font-size: 30px`
+    needed ~36-40px and was overflow-hidden by the fixed dimension.
+  - An independent code review of the Section 1.1 refactor flagged
+    additional cleanups: unused variables, an unnecessary defensive
+    deep clone in render, duplicated `methodLabel` / `apmLabel`
+    string literals across the two row builders, and a missing
+    test scenarios.
+- Decision:
+  - **Screen-view bug fix**: `.section-index` in the screen media
+    query now uses `min-width: 32px` + `padding: 0 8px`, matching
+    the pattern from the print rule. Single-digit indices stay
+    square; "1.1" expands to fit.
+  - **Audit cleanup**:
+    - Removed unused `isTiered` local in `PayinCustomRowCard`
+      (`PayinStep.tsx:319` before patch).
+    - Removed the defensive `customRows.map(clonePayinCustomRow)`
+      call in `PayinCustomRowsEditor`'s render. `PayinCustomRowCard`
+      is a pure-read component; all updates already pass through
+      `updateCustomRows` which produces brand-new arrays via
+      `.map`/`.filter`. The clone was dead protection at the cost
+      of an O(n) deep copy per render + a confusing precedent that
+      children mutate props.
+    - Promoted the duplicated METHODS / APM column-label string
+      literals to module-level constants `PAYIN_METHOD_LABEL` /
+      `PAYIN_APM_LABEL` at the top of `payin.ts`. Both
+      `buildPayinRows` (section 1) and `buildPayinAdditionalRows`
+      (section 1.1) now reference the same const — a future label
+      change is a one-line edit instead of two parallel literals.
+    - Added a module-level `TIER_INDICES = [0, 1, 2] as const`
+      tuple. Both `buildPayinRows` and `buildPayinAdditionalRows`
+      now iterate via `TIER_INDICES.forEach(index => ...)`,
+      eliminating the `index as 0 | 1 | 2` casts on `.forEach`'s
+      number-typed index parameter.
+    - `buildPayinAdditionalRows` and `hasAnyCustomRowMinFee` now
+      take `customRows: ReadonlyArray<PayinCustomRow>` directly
+      instead of drilling through `data.payinPricing.customRows`.
+      Caller already holds the array — no need for a second
+      `?? []` coalesce. Functions are independently unit-testable
+      and easier to reason about.
+    - Added an explanatory comment to the compact-heuristic
+      difference between section 1 and section 1.1 (section 1
+      uses a secondary "rows ≥ 2 && has note" trigger; section 1.1
+      only uses the primary "rows ≥ 4" trigger because the note
+      lives between sections 1 and 1.1, not below 1.1).
+  - **Test additions** (3 new scenarios in
+    `fromCalculator.test.ts`):
+    - Explicit empty `customRows = []` (mirrors the `undefined`
+      back-compat test; guards against the early-exit guard being
+      reordered with the coalesce).
+    - All-zero MIN. TRX FEE inputs (`threshold = 0`, `fee = 0`,
+      `rowNa = false`) → MIN. TRANSACTION FEE column hidden in
+      section 1.1's `<thead>`.
+    - REGION + CURRENCY with HTML-injection characters
+      (`<script>alert(1)</script>` / `EUR<"&>`) → renderer escapes
+      via `escapeHtml`, raw tag never appears in output.
+- Alternatives considered:
+  - Full decomposition: extract a shared `<PayinPricingFieldsEditor>`
+    React component covering the common model/rateMode/trx/tier UI
+    AND a shared `renderPayinDataRow` HTML helper covering both
+    standard and custom row HTML output. Reviewed by the audit and
+    rejected on cost/benefit grounds:
+    - React layer: prop-shape and update-plumbing differences would
+      require threading 4-5 extra callbacks through a generic
+      component to save ~60 LOC of UI duplication. Single-file
+      sibling components are easier to read than a generic shared
+      one for the current team size. Revisit only if a third
+      sibling appears.
+    - PDF layer: column-visibility logic differs (section 1 uses
+      a layout-enum derivation, section 1.1 uses per-row `.some()`).
+      Merging would need 4-5 flag parameters and produce a less
+      readable function than the current slight repetition. The two
+      builders are likely to diverge further as the custom-rows
+      feature evolves.
+- Consequences:
+  - Bug fix: "1.1" badge now renders correctly in screen preview.
+  - 254/254 tests pass (+3 over the prior 251).
+  - tsc clean (main + server). Vite build clean.
+  - Code is measurably cleaner without sacrificing readability:
+    no dead code, no duplicate magic strings, no spurious type
+    casts, parameters take the minimum data they need.
+- Follow-up actions:
+  - None. Decomposition deferred per the cost/benefit analysis
+    above. Revisit if a third row-type sibling appears or if the
+    two row-builder functions converge in their column logic.
