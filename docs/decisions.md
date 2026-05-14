@@ -2570,3 +2570,97 @@ Use this file to record meaningful technical decisions for the project.
     their literal form because the test's assertions depend on the
     SPECIFIC values in those literals — a generic helper would hide
     the relevant context.
+
+### Decision: Link-only HubSpot integration + Phase 8 field selection
+- Date: 2026-05-14
+- Context:
+  - User confirmed a NEW HubSpot Private App token, allowing live
+    inspection of the BSG production account. Two read-only scripts
+    were added (`scripts/hubspot-one-company.ts`,
+    `scripts/hubspot-merchant-and-deal.ts`) and used to validate
+    real field-fill rates.
+  - User clarified the integration model on 2026-05-14:
+      "ми не будемо інтегрувати калькулятор і хабспот в прямому
+       сенсі — ми будемо давати посилання на наш сервіс"
+    Translated: we do NOT pre-fill the calculator from HubSpot deal
+    pricing fields; HubSpot's role is identification + context, and
+    we post a link back to our service after document confirm.
+  - Live inspection confirmed earlier audit: every HubSpot deal
+    pricing field (`forecasted_monthly_volume`, `transaction_fee__mdr`,
+    `cost_per_transaction`, `setup_fee`, `chargeback_fee`,
+    `switzerland_share_*`, `united_kingdom_share_*`, etc.) was NULL
+    on the sampled deal. Sales team does not fill them. The
+    link-only model makes that irrelevant.
+- Decision:
+  - **Sync trigger**: pull-on-demand. When the operator searches in
+    the wizard, the backend hits HubSpot Search API for unknown
+    records and upserts into our cache. No periodic cron in Phase 8.
+  - **Refresh**: TTL-based (`HUBSPOT_SYNC_TTL_SECONDS`, default 300s).
+    Stale row → background refetch driven by the next search hit.
+  - **Companies — 8 extracted columns**:
+      `hubspot_company_id`, `name`, `company_type`, `segment_type`,
+      `lifecycle_stage`, `hs_task_label`, `hubspot_created_at`,
+      `hubspot_modified_at`. Plus `hubspot_raw` JSONB.
+  - **Deals — 12 extracted columns**:
+      `hubspot_deal_id`, `hubspot_company_id` (FK), `name`, `stage`,
+      `pipeline_id`, `amount`, `currency`, `client_label`,
+      `agent_label`, `business_vertical`, `hubspot_created_at`,
+      `hubspot_modified_at`. Plus `hubspot_raw` JSONB.
+  - **Deal→Company link**: single FK on
+    `hs_primary_associated_company`. HubSpot supports many-to-many
+    associations but always maintains one "primary"; modeling as a
+    single FK matches every BSG deal we've inspected.
+  - **NO pricing-field extraction.** All deal pricing fields stay
+    in `hubspot_raw` JSONB only. They are not used by the
+    calculator and not displayed in any list view.
+  - **Write-back model**: note + link after document confirm.
+    Phase 8 reserves DB columns (`documents.hubspot_sync_state`,
+    `documents.hubspot_links`, `documents.last_sync_at`,
+    `documents.last_sync_error`) and a stub endpoint
+    `POST /api/v1/documents/:id/sync` returning `not_synced`.
+    Phase 9 wires the actual HubSpot calls behind that endpoint.
+  - **Empty deals**: import unconditionally — pricing-NULL is the
+    common case, not the exception. No "Generate offer" blocker
+    based on field-fill status.
+- Alternatives considered:
+  - Coverage option A (minimal — 2 columns + JSONB only): rejected
+    because the four columns beyond `(id, name)` we did extract
+    (`company_type`, `segment_type`, `lifecycle_stage`, both
+    timestamps) drive primary UI filters and incremental-sync
+    logic. Querying JSONB for every list view is unnecessary.
+  - Coverage option C (full ~35 deal columns): rejected. The user
+    explicitly asked for the minimum; live data shows only ~12
+    fields per deal are reliably useful. Promoting an extra column
+    is a one-migration step when a real demand surfaces.
+  - Periodic full sync (cron 1×/day): rejected. Adds infra
+    (scheduler), creates drift risk between HubSpot edits and our
+    cache, and provides no benefit over pull-on-demand for a
+    single-operator UI workflow.
+  - Auto-hydrate calculator from deal pricing fields (Phase 9
+    plan): explicitly killed by the link-only decision above. The
+    earlier `bsg_hubspot_field_mapping.md` draft was rewritten to
+    remove that path and document why it's deliberately dropped.
+- Consequences:
+  - `bsg_hubspot_field_mapping.md` fully rewritten under the
+    link-only model. Lost: auto-hydrate sections, ~40 lines of
+    deal pricing field tables. Gained: explicit `hubspot_raw`
+    rationale and validation against live data.
+  - `phase_08_backend_plan.md` §3 `companies` and `deals` schemas
+    replaced with the chosen column lists + indexes.
+  - `.env.example` already had the `HUBSPOT_*` slots set up; no
+    further changes needed.
+  - `scripts/hubspot-one-company.ts` and
+    `scripts/hubspot-merchant-and-deal.ts` committed as reference
+    tooling for future field-set re-validations (e.g. after a
+    HubSpot schema change).
+- Follow-up actions:
+  - Phase 8 implementation: when the backend reaches the
+    `companies` / `deals` migration step, use the column lists
+    above verbatim.
+  - Phase 9 stub-to-real-call swap: only the inside of
+    `POST /api/v1/documents/:id/sync` changes; column shape stays
+    the same.
+  - If sales workflow changes and pricing fields start being filled
+    reliably, revisit only `hubspot_raw → named column` promotion
+    for the specific fields that surface in UI filters. The
+    link-only decision itself stands.

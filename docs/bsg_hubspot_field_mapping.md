@@ -2,188 +2,159 @@
 
 Date: 2026-05-14
 Status: **Source of truth — validated against live BSG HubSpot 2026-05-14.**
+Integration model: **Link-only** (BSG documents reference HubSpot
+deals; HubSpot does NOT pre-fill the calculator).
 
-Single canonical reference for which HubSpot property feeds which BSG
-calculator/contract field. Used by:
+Single canonical reference for which HubSpot fields BSG reads + writes.
+Used by:
 
-- **Phase 8 sync** (read-only) — pulls these fields into our DB.
-- **Phase 9 auto-hydrate** — when an operator opens the calculator
-  from a HubSpot deal, the matching properties pre-fill the form.
-- **Phase 9 write-back** — selected BSG outputs push back as
-  structured fields (where we provision them) or as free-text
-  Notes (default).
+- **Phase 8 sync** (read-only) — pulls the listed fields into our DB
+  via pull-on-demand. Everything else lands in `hubspot_raw` JSONB.
+- **Phase 9 write-back** — backend posts a Note on the deal + company
+  with a link to the generated BSG document.
+- **Operator UX** — the wizard's "pick a deal" picker queries our
+  cached `deals` rows + falls back to HubSpot search for unfamiliar
+  records.
+
+⚠️ **No calculator auto-hydration.** Earlier drafts of this document
+mapped HubSpot deal pricing fields (`forecasted_monthly_volume`,
+`transaction_fee__mdr`, `switzerland_share_in_total_europe_volume`,
+etc.) to calculator inputs. That model was dropped on 2026-05-14
+after the user clarified: "we won't integrate calculator and HubSpot
+directly — we'll just give a link to our service". Operators always
+fill the calculator manually; HubSpot's role is identification +
+context, not data input.
 
 See also:
 - `docs/hubspot_api_reference.md` — endpoints, rate limits, scopes.
-- `docs/phase_08_backend_plan.md` §10 — Phase 8 sync mechanics.
+- `docs/phase_08_backend_plan.md` §3 — `companies` / `deals` table
+  schemas use the exact column names listed below.
 - `docs/client_and_hubspot_workflow.md` — operator UX flow.
 
 ---
 
-## 1. Companies — full property catalogue
+## 1. Companies — 8 extracted columns
 
-### 1.1 BSG custom properties (6 total)
+Validated by inspecting two live records (`(A) Elena` referring
+partner + `(M) Finqly` direct client) on 2026-05-14. Of the 263
+property names the HubSpot schema exposes, only ~30 are populated
+per record and only 8 of them carry meaning for our workflow.
 
-These six are the only non-HubSpot-built-in properties on Companies in
-the BSG account. They get **dedicated columns** on our `companies`
-table.
-
-| HubSpot property | UI label | Type | Sample value | Our column | Use in app |
-|---|---|---|---|---|---|
-| `company_type` | Company type | enum/select | `referring_partner`, `direct_client` | `company_type` text | Distinguishes Agent vs Merchant for filters/UI. |
-| `segment_type` | Segment Type | enum/select | `Master_referring_partner`, `Aggregating_Merchant`, `Direct_Merchant` | `segment_type` text | Display badge in documents listing. |
-| `industry_type` | Industry Type | string/text | (often null in test data) | `industry_type` text NULL | Display only. Distinct from HubSpot's built-in `industry` enum. |
-| `submitter_telegram` | Submitter Telegram | string/text | (null) | `submitter_telegram` text NULL | Display only — partner contact handle. |
-| `from_where_and_whom_you_come_to_us` | From where and whom you come to us | string/text | (null) | `from_where_and_whom_you_come_to_us` text NULL | Display only. Free-form attribution. |
-| `referral_source` | Referral source | string/text | (null) | `referral_source` text NULL | Display only. Cross-references the partner who introduced this merchant. |
-
-### 1.2 HubSpot built-in properties we read
-
-We don't extract every one of the 257 HubSpot built-ins — we read only
-the ones we use. The rest passes through to `companies.hubspot_raw` JSONB.
-
-| HubSpot property | Type | Our usage |
-|---|---|---|
-| `name` | string | Display name (with "(A)" / "(M)" prefix convention) |
-| `domain` | string | Display + optional autocomplete from email domain |
-| `city` | string | Display |
-| `country` | string | Display + ISO mapping to flag |
-| `industry` | enum | Display (note: BSG also has its own custom `industry_type`) |
-| `phone` | string | Display |
-| `description` | textarea | Display in company detail panel |
-| `hubspot_owner_id` | number | Resolved via `crm.objects.owners.read` to person name |
-| `createdate` | datetime | First-seen timestamp |
-| `hs_lastmodifieddate` | datetime | Used for incremental sync trigger (Phase 9 if needed) |
-| `hs_object_id` | string (numeric) | = `id` field — primary key on HubSpot side |
-
-### 1.3 Properties we explicitly DON'T extract
-
-Everything else in the 257-property HubSpot built-in catalogue:
-analytics fields (`hs_analytics_*`), lifecycle stage history fields
-(`hs_date_entered_*`, `hs_date_exited_*`), marketing-touch fields
-(`first_conversion_*`, `hs_analytics_first_touch_*`), etc.
-
-These are stored in `companies.hubspot_raw` JSONB so no data is lost,
-but they're not extracted into named columns until/unless a feature
-needs them.
-
----
-
-## 2. Deals — full property catalogue
-
-### 2.1 Pricing properties that map to the calculator
-
-These are the **most valuable** for Phase 9 auto-hydration. When an
-operator clicks "Open calculator from this deal", the calculator's
-form pre-fills from these fields. Note: **in real BSG data most are
-null** (sales has not standardised filling them yet).
-
-| HubSpot property | UI label | Type | Calculator field | Notes |
+| HubSpot property | Our column | Type | NULL? | Use in app |
 |---|---|---|---|---|
-| `forecasted_monthly_volume` | Forecasted Monthly Volume | number | `payinVolume` (Zone 1) | Exact monthly EUR. Often null — see §3. |
-| `forecasted_transaction_count` | Forecasted Transaction Count | number | `payinTransactions` (Zone 1) | |
-| `transaction_fee__mdr` | Transaction Fee / MDR (%) | number | `payinEuPricing.single.mdrPercent` (Zone 3) | |
-| `cost_per_transaction` | Cost per Transaction | number | `payinEuPricing.single.trxCc` (Zone 3) | |
-| `setup_fee` | Setup Fee | number | `contractSummary.accountSetupFee` (Zone 4) | One-time fee. |
-| `chargeback_fee` | Chargeback Fee | number | `contractSummary.disputeCost` (Zone 4) | Per-action. |
-| `min_monthly_fee` | Min Monthly Fee | number | `toggles.monthlyMinimumFeeAmount` (Zone 4) | Triggers `monthlyMinimumFeeEnabled` if > 0. |
-| `current_chargeback_rate` | Current Chargeback Rate | number | (display only — informational) | Read-only context. |
-| `switzerland_share_in_total_europe_volume` | Switzerland share in total EUROPE volume | number | `payinEuPricing.dedicatedCountries.chPercent` (Zone 3) ⭐ | **Maps directly to our Dedicated Countries CH%.** |
-| `united_kingdom_share_in_total_europe_volume` | United Kingdom share in total EUROPE volume | number | `payinEuPricing.dedicatedCountries.ukPercent` (Zone 3) ⭐ | **Maps directly to our Dedicated Countries UK%.** Auto-toggles `enabled: true` when value > 0. |
+| `hs_object_id` | `hubspot_company_id` | text UNIQUE | NOT NULL | Primary key on HubSpot side. Stable across renames. |
+| `name` | `name` | text | NOT NULL | Display name. BSG convention: prefix `(A)` for agents / `(M)` for merchants. |
+| `company_type` | `company_type` | text | NULL | Enum: `referring_partner`, `direct_client`, `aggregating_merchant`. Distinguishes Agent vs Merchant for filters. Confirmed values from §6. |
+| `segment_type` | `segment_type` | text | NULL | Enum: `Master_referring_partner`, `Direct_Merchant`, `Aggregating_Merchant`. Often NULL on Merchant records — column MUST be nullable. |
+| `lifecyclestage` | `lifecycle_stage` | text | NULL | HubSpot lifecycle stage (`lead`, `opportunity`, …). Display + segment filter. |
+| `hs_task_label` | `hs_task_label` | text | NULL | HubSpot CRM task label. Usually duplicates `name` but kept because some records have it filled when `name` is shorthand. |
+| `createdate` | `hubspot_created_at` | timestamptz | NOT NULL | First seen in HubSpot. |
+| `hs_lastmodifieddate` | `hubspot_modified_at` | timestamptz | NOT NULL | Used by Phase 9 incremental sync (`if hubspot_modified_at > last_synced_at → refetch`). |
 
-### 2.2 Context properties for display
+Everything else (`domain`, `country`, `city`, `industry`, `phone`,
+`hubspot_owner_id`, plus ~250 HubSpot built-ins) → **`hubspot_raw`
+JSONB**. If a feature needs one of them later, promote it to a named
+column via a migration; we don't lose data in the meantime.
 
-Not for calculation but shown in the operator's deal context panel.
+### Why so few extracted columns?
 
-| HubSpot property | UI label | Type | Our usage |
-|---|---|---|---|
-| `dealname` | Deal Name | string | Title at top of deal context |
-| `amount` | Amount | number (stringified) | Deal monetary value — display |
-| `dealstage` | Deal Stage | string (mixed format — see §6.1) | Resolved via `pipeline_stages.label` |
-| `pipeline` | Pipeline | string | Resolved to "Gateway sales pipeline" |
-| `closedate` | Close Date | datetime | Expected close |
-| `business_vertical` | Business vertical | enum | e.g. "iGaming / Betting" |
-| `business_vertical_other` | Vertical - other | string | Free-text if `business_vertical=other` |
-| `business_description` | Business description | textarea | |
-| `processing_currencies` | Processing currencies | string | Comma-separated list |
-| `processing_currencies_other` | Currencies - other | string | |
-| `processing_jurisdictions` | Processing jurisdictions | string | Region list |
-| `payment_rails` | Payment rails | string | |
-| `payout_destinations` | Payout destinations | string | |
-| `apm_detail` | APM detail | string | Alternative Payment Methods detail |
-| `clientele_type` | Clientele type | string | B2B/B2C/B2G etc. |
-| `monthly_volume_range` | Monthly volume range | enum string | Bucket like "$50,000 – $500,000" — used only when the exact `forecasted_monthly_volume` is null |
-| `monthly_txn_range` | Monthly txn range | enum string | Same pattern |
-| `client` | Client | string | BSG-internal client name. Often duplicates `dealname` or contains `(M) ...` |
-| `agent` | Agent | string | BSG-internal agent name. Cross-references `company_type=referring_partner` companies |
-
-### 2.3 KYB / compliance properties (display only)
-
-| HubSpot property | UI label | Notes |
-|---|---|---|
-| `is_licensed` | Is licensed | radio yes/no |
-| `is_startup` | Is startup | radio yes/no |
-| `license_type` | License type | enum |
-| `license_issuing_authority` | Issuing authority | string |
-| `incorporation_date` | Incorporation date | string (free-form date) |
-| `operating_duration` | Operating duration | enum |
-| `company_registration_country` | Company location | string |
-| `ubo_data` | UBO Data (JSON) | textarea — Ultimate Beneficial Owner data as JSON string |
-| `integration_status` | Integration Status | enum |
-| `order_reference_number` | Order Reference Number | string |
-| `referring_partner_or_affiliate` | Referring partner or affiliate | string |
-| `website_urls` | Website URLs | string (potentially multiple) |
-
-### 2.4 HubSpot built-in deal fields we use
-
-| HubSpot property | Our usage |
-|---|---|
-| `dealname` | Display name |
-| `amount` | Deal value display |
-| `dealstage` | Pipeline stage lookup |
-| `pipeline` | Pipeline lookup |
-| `closedate` | Display |
-| `hubspot_owner_id` | Resolved via owners API |
-| `createdate` | Display |
-| `hs_lastmodifieddate` | Sync trigger (Phase 9) |
-| `hs_object_id` | Primary key |
-
-### 2.5 Built-ins we explicitly skip
-
-All `hs_analytics_*`, `hs_date_entered_*`, `hs_date_exited_*`,
-`hs_v2_*` (lifecycle pipeline calculation fields), days-in-stage
-metrics, etc. → captured in `deals.hubspot_raw` JSONB for forensic
-inspection but not extracted to named columns.
+Live data shows BSG's sales team fills almost nothing besides `name`,
+`company_type` and lifecycle. The four "obvious" built-ins (`domain`,
+`country`, `industry`, `phone`) are **NULL on both records we
+inspected**. Promoting them to columns up front would yield mostly
+empty rows; better to keep them in JSONB and add columns when a
+specific UI feature surfaces a real demand for filtering / sorting.
 
 ---
 
-## 3. Sales-team workflow gap (important)
+## 2. Deals — 12 extracted columns
 
-**Observation from live data:** every pricing-related deal property
-listed in §2.1 was `null` in the test deal we fetched. This means:
+Validated by inspecting deal `CEI Processing Limited` (id
+`498828505295`) on 2026-05-14. Of 237 deal properties, 75 are
+populated; we extract 12.
 
-- **Phase 9 auto-hydrate is opportunistic, not guaranteed.** When
-  a property is null, the calculator falls back to its default seed.
-- **Operators will need to manually fill the calculator** for most
-  current deals.
-- **Long-term improvement (out of Phase 8 scope):** discuss with
-  sales whether deals at stage `Pre-Approved by Bank` or later
-  should have these pricing properties **required** before an
-  operator generates a BSG offer. This could be enforced via:
-  - HubSpot UI required-field rules at pipeline stage transitions
-  - A pre-check on our backend's "Open calculator from deal" endpoint
-    that warns the operator if critical fields are missing
+| HubSpot property | Our column | Type | NULL? | Use in app |
+|---|---|---|---|---|
+| `hs_object_id` | `hubspot_deal_id` | text UNIQUE | NOT NULL | Primary key on HubSpot side. |
+| `hs_primary_associated_company` | `hubspot_company_id` | text FK → `companies.hubspot_company_id` | NOT NULL | **The deal↔company link.** HubSpot supports multi-company associations but always maintains a `primary` — we model it as a single FK because every BSG deal has exactly one owning company. |
+| `dealname` | `name` | text | NOT NULL | Display in deal-picker. |
+| `dealstage` | `stage` | text | NULL | HubSpot pipeline stage ID (e.g. `appointmentscheduled`, `decisionmakerboughtin`). Resolved to label via the cached pipeline list (§5). |
+| `pipeline` | `pipeline_id` | text | NULL | HubSpot pipeline ID. Currently always `default` (= Gateway sales pipeline). Stored for forward compatibility if BSG adds a second pipeline. |
+| `amount` | `amount` | numeric(14,2) | NULL | Deal value. |
+| `deal_currency_code` | `currency` | text | NULL | ISO currency code (e.g. `EUR`). |
+| `client` | `client_label` | text | NULL | Free-text client name set by BSG sales (e.g. `(M) Atom`). Distinct from `dealname` — sometimes more informative, sometimes less. Both displayed in the picker. |
+| `agent` | `agent_label` | text | NULL | Free-text agent name (e.g. `(A) Jeremy`). Cross-references the agent-type company on the HubSpot side. |
+| `business_vertical` | `business_vertical` | text | NULL | Enum (`iGaming / Betting`, …). Shown in deal context panel during calculation. |
+| `createdate` | `hubspot_created_at` | timestamptz | NOT NULL | First seen. |
+| `hs_lastmodifieddate` | `hubspot_modified_at` | timestamptz | NOT NULL | Incremental sync trigger (Phase 9). |
 
-**Phase 8 behavior:** sync the values as-is. Phase 9 auto-hydrate
-uses whatever exists. No backend rules enforce sales workflow.
+### What lives in `hubspot_raw` (NOT extracted)
+
+Everything else, including:
+
+- **All pricing fields**: `forecasted_monthly_volume`,
+  `forecasted_transaction_count`, `transaction_fee__mdr`,
+  `cost_per_transaction`, `setup_fee`, `chargeback_fee`,
+  `min_monthly_fee`, `current_chargeback_rate`,
+  `switzerland_share_in_total_europe_volume`,
+  `united_kingdom_share_in_total_europe_volume`. The link-only
+  integration model does NOT use these — the calculator is filled
+  manually. (They were ~100% NULL anyway in our audit, but the
+  decision stands even if sales starts filling them.)
+- **All KYB / compliance**: `is_licensed`, `is_startup`,
+  `license_type`, `license_issuing_authority`, `incorporation_date`,
+  `operating_duration`, `company_registration_country`, `ubo_data`,
+  `integration_status`, `referring_partner_or_affiliate`,
+  `website_urls`, `order_reference_number`.
+- **All context strings**: `business_description`, `clientele_type`,
+  `monthly_volume_range`, `monthly_txn_range`,
+  `processing_currencies`, `processing_jurisdictions`,
+  `payment_rails`, `payout_destinations`, `apm_detail`,
+  `business_vertical_other`.
+- **All HubSpot analytics / engagement / lifecycle**: `hs_v2_*`,
+  `hs_analytics_*`, `hs_date_entered_*`, `hs_date_exited_*`,
+  `hs_time_in_*`, `num_*_engagements`, etc.
+
+Promote on demand: if Phase 9 UI surfaces a need for, say,
+`business_description` in the deal-picker, that's one migration
+(`ADD COLUMN business_description text`) plus a one-line projection
+update. The JSONB blob keeps the raw value available the whole time.
 
 ---
 
-## 4. Notes write-back format
+## 3. Sync model
 
-When BSG generates an offer document, the backend pushes a Note onto
-both the related Company (typeId 190) and Deal (typeId 214). The note
-body uses this template:
+Pull-on-demand, confirmed 2026-05-14. Flow:
+
+1. Operator opens the document wizard's "Pick a client" step.
+2. Frontend autocomplete hits `GET /api/v1/companies?search=<text>`.
+3. Backend checks the local `companies` table first; if no match,
+   calls HubSpot Search API (`POST /crm/v3/objects/companies/search`)
+   and **upserts** matching records into our table.
+4. When the operator picks a company, the backend lists its deals:
+   `GET /api/v1/companies/:id/deals` → checks local cache, falls
+   back to HubSpot if a deal isn't known yet.
+5. Once a deal is picked, the rest of the wizard runs offline; no
+   further HubSpot reads.
+
+### Refresh policy
+
+- A row is considered fresh if `last_synced_at` is within
+  `HUBSPOT_SYNC_TTL_SECONDS` (default 300s — see `.env`).
+- Stale row → background re-fetch from HubSpot during the
+  search/list endpoint, applying `hubspot_modified_at`-based
+  incremental update.
+- No periodic cron in Phase 8. Phase 9 may add a nightly drift
+  check; not required for correctness because every operator
+  interaction triggers an opportunistic refresh.
+
+---
+
+## 4. Notes write-back format (Phase 9, stubs in Phase 8)
+
+When BSG generates an offer or agreement document, the backend
+pushes a Note onto both the Company (typeId 190) and Deal (typeId
+214). The note body template:
 
 ```html
 📄 <b>BSG-7100123-505295 — Offer</b><br>
@@ -191,74 +162,96 @@ Created 2026-05-14 by operator@bsg.com<br>
 <a href="https://bsg-app.example.com/documents/<uuid>">View document</a>
 ```
 
-(Phase 8 publishes Notes manually via operator action; Phase 9 may
-auto-publish on `documents.status → confirmed`.)
+The link points to our own service — operators click through from
+HubSpot, view the document in our UI, never need to copy data
+between systems.
 
-When an existing note (tracked by `documents.hubspot_note_id`)
-needs updating (e.g. operator confirms a draft, or generates a
-new revision), the backend uses `PATCH /crm/v3/objects/notes/{id}`
-to overwrite `hs_note_body`. Associations stay intact.
+### Endpoints
 
----
+- **Create note**: `POST /crm/v3/objects/notes`
+  - body: `{ properties: { hs_note_body, hs_timestamp }, associations: [{ to, types }] }`
+  - returns `id`, stored in `documents.hubspot_links.noteId`
+- **Update note** (on document re-confirm or revision):
+  `PATCH /crm/v3/objects/notes/{id}` overwrites `hs_note_body`.
+  Associations stay intact — no re-association needed.
 
-## 5. Pipeline stage → BSG document workflow
+### Phase 8 stub
 
-| HubSpot stage | Label | BSG document trigger | Auto-action |
-|---|---|---|---|
-| `appointmentscheduled` | New Referral | — | — |
-| `qualifiedtobuy` | Qualified | — | — |
-| `5230659805` | Pre-Approved by Bank | Operator may start building calc | — |
-| `decisionmakerboughtin` | **Proposal Sent** | ⭐ BSG offer generated | Phase 9: when operator confirms an offer, **suggest** stage transition here (don't auto-do it — operator confirms in HubSpot UI). |
-| `contractsent` | **Proposal Confirmed** | Merchant accepted | Phase 9: similar suggestion. |
-| `5230659806` | KYB Approved | KYB done | — |
-| `5230659807` | **Agreement signed** | ⭐ Full bundle signed | Phase 9: when our doc moves to `documents.status = confirmed` AND `document_type = agreement`, suggest transition. |
-| `closedwon` | Closed Won | Deal won | — |
-| `closedlost` | Closed Lost | Deal lost | — |
-
-⭐ Phase 8 has **no auto-transitions**. Operator manages stage
-movement in HubSpot UI. Phase 9 may add suggestions / confirmations.
+Phase 8 reserves the DB columns (`documents.hubspot_sync_state`,
+`documents.hubspot_links`, `documents.last_sync_at`,
+`documents.last_sync_error`) and exposes a no-op endpoint
+`POST /api/v1/documents/:id/sync` that returns
+`{ hubspot_sync_state: "not_synced" }`. Phase 9 wires the actual
+HubSpot calls behind that endpoint.
 
 ---
 
-## 6. Sample enum option lists (TBD — fetch when wiring UI dropdowns)
+## 5. Pipeline stage reference
 
-When building any UI control that lists allowed enum values, fetch
-the option list via:
+The Gateway sales pipeline (HubSpot pipeline id `default`) carries
+these stages, in order:
+
+| HubSpot stage id | Label | BSG document relevance |
+|---|---|---|
+| `appointmentscheduled` | New Referral | — |
+| `qualifiedtobuy` | Qualified | — |
+| `5230659805` | Pre-Approved by Bank | Operator may start building the calculator. |
+| `decisionmakerboughtin` | **Proposal Sent** | ⭐ BSG offer generated. Phase 9: when operator confirms an offer, **suggest** stage transition (operator confirms in HubSpot UI; no auto-transition). |
+| `contractsent` | **Proposal Confirmed** | Merchant accepted. Phase 9: similar suggestion. |
+| `5230659806` | KYB Approved | KYB done. |
+| `5230659807` | **Agreement signed** | ⭐ Full bundle signed. Phase 9: when our doc moves to `documents.status = confirmed` AND `document_type = agreement`, suggest transition. |
+| `closedwon` | Closed Won | Deal won. |
+| `closedlost` | Closed Lost | Deal lost. |
+
+⭐ **Phase 8 does NOT auto-transition stages.** Stage movement
+stays in HubSpot UI under operator control.
+
+The stage list is **fetched once on backend startup** and cached:
+`GET /crm/v3/pipelines/deals` → store labels keyed by stage id.
+Re-fetched on every full sync or container restart.
+
+---
+
+## 6. Enum options — fetch on demand
+
+Some HubSpot properties are enums. Fetch options once:
 
 ```
 GET /crm/v3/properties/companies/{propertyName}
 GET /crm/v3/properties/deals/{propertyName}
 ```
 
-The response includes an `options[]` array with `label` + `value`
-pairs.
+Response includes `options[]` with `label` + `value` pairs.
 
-**Confirmed enum values observed in real data** (not exhaustive —
-fetch via API for the complete authoritative list):
+### Observed values (not exhaustive — fetch via API for full list)
 
 | Property | Observed values |
 |---|---|
-| `company_type` | `referring_partner`, `direct_client` |
-| `segment_type` | `Master_referring_partner`, `Aggregating_Merchant` |
-| `business_vertical` | `iGaming / Betting` (+ likely others) |
-| `is_licensed` | `yes`, `no` |
-| `is_startup` | `yes`, `no` |
-| `monthly_volume_range` | `$50,000 – $500,000` (one of several buckets) |
-| `monthly_txn_range` | `500 – 2,000` (one of several buckets) |
+| `company_type` | `referring_partner`, `direct_client` (likely `aggregating_merchant` too — schema confirmed) |
+| `segment_type` | `Master_referring_partner`, `Aggregating_Merchant`, `Direct_Merchant` |
+| `lifecyclestage` | `lead`, `opportunity` (HubSpot defaults) |
+| `business_vertical` | `iGaming / Betting` (+ others per schema) |
+| `dealstage` | See §5. |
 
-Phase 8 backend: fetch full option lists once during initial sync,
-store in `companies_property_options` and `deals_property_options`
-lookup tables (or in a single `hubspot_enum_options` JSONB blob on a
-config row). Refresh on each "Sync from HubSpot" trigger.
+Phase 8: cache option lists in a `hubspot_enum_options` JSONB blob
+on a single config row; refresh on each manual "Sync from HubSpot"
+trigger. No per-property table needed.
 
 ---
 
 ## 7. Cross-references
 
 - `docs/hubspot_api_reference.md` — endpoints, scopes, rate limits.
-- `docs/phase_08_backend_plan.md` — Phase 8 backend orchestration.
-- `docs/backend_state_schemas.md` — TS contracts for snapshot/document payloads.
-- `docs/client_and_hubspot_workflow.md` — operator UX for client picker + HubSpot link.
-- `docs/ui_phase_8_9_requirements.md` — documents listing / view / clone UI.
-- `docs/calculator_logic_and_formulas.md` — calculator math (target of auto-hydration).
-- `docs/decisions.md` — full decision log.
+- `docs/phase_08_backend_plan.md` §3 — `companies` / `deals` table
+  schemas with exact column types matching the tables above.
+- `docs/backend_state_schemas.md` — TS contracts for snapshot /
+  document payloads.
+- `docs/client_and_hubspot_workflow.md` — operator UX for the
+  client picker + HubSpot link flow.
+- `docs/ui_phase_8_9_requirements.md` — documents listing / view /
+  clone UI.
+- `docs/decisions.md` — full decision log (search for
+  "Link-only HubSpot integration" and "Phase 8 HubSpot field
+  selection" entries).
+- `scripts/hubspot-one-company.ts` / `hubspot-merchant-and-deal.ts`
+  — read-only inspection scripts used to validate this mapping.

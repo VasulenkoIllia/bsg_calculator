@@ -157,38 +157,71 @@ Indexes: `user_id`, `token_hash`.
 
 ### `companies` (HubSpot-synced)
 
+Schema finalized 2026-05-14 after inspecting live BSG HubSpot data
+(`(A) Elena` agent + `(M) Finqly` merchant). See
+`docs/bsg_hubspot_field_mapping.md` §1 for the column-by-column
+rationale and the inspection scripts used.
+
 | Column | Type | Notes |
 |---|---|---|
 | `id` | uuid PK | Internal ID. |
-| `hubspot_company_id` | text UNIQUE NOT NULL | HubSpot Company object ID. Source of truth. |
-| `name` | text NOT NULL | Display name from HubSpot. |
-| `hubspot_raw` | jsonb NOT NULL | Full HubSpot payload at last sync. |
-| `last_synced_at` | timestamptz NOT NULL | |
-| `created_at` | timestamptz | First time we saw this company. |
+| `hubspot_company_id` | text UNIQUE NOT NULL | HubSpot `hs_object_id`. Stable across renames. |
+| `name` | text NOT NULL | HubSpot `name`. BSG convention: `(A) <agent>` / `(M) <merchant>`. |
+| `company_type` | text NULL | HubSpot `company_type` enum. Values: `referring_partner`, `direct_client`, `aggregating_merchant`. NULL on records sales has not categorised yet. |
+| `segment_type` | text NULL | HubSpot `segment_type` enum. Values: `Master_referring_partner`, `Direct_Merchant`, `Aggregating_Merchant`. **Confirmed NULL on the merchant we inspected** — column MUST allow NULL. |
+| `lifecycle_stage` | text NULL | HubSpot `lifecyclestage` (`lead`, `opportunity`, …). |
+| `hs_task_label` | text NULL | HubSpot `hs_task_label`. Usually duplicates `name`. |
+| `hubspot_created_at` | timestamptz NOT NULL | HubSpot `createdate`. |
+| `hubspot_modified_at` | timestamptz NOT NULL | HubSpot `hs_lastmodifieddate`. Drives incremental sync. |
+| `hubspot_raw` | jsonb NOT NULL | Full HubSpot payload (all 263 properties) at last sync. Anything not in a named column above is read from here. |
+| `last_synced_at` | timestamptz NOT NULL | When we last refetched this row from HubSpot. |
+| `created_at` | timestamptz | First time we saw this company in our DB. |
 | `updated_at` | timestamptz | |
 
-Indexes: `hubspot_company_id` (unique), `name` (for autocomplete).
-
-**Field mapping table from HubSpot properties is deferred** until we
-have HubSpot API access (Q8). `hubspot_raw` stores the full payload so
-we never lose data; specific columns (jurisdiction, address, etc.) get
-extracted into named columns once mapping is confirmed.
+Indexes:
+- `hubspot_company_id` (unique)
+- `name` text_pattern_ops — for prefix-search autocomplete
+- `(company_type, name)` — for "agents only" / "merchants only" filters
+- `hubspot_modified_at` — for incremental-sync queries
 
 ### `deals` (HubSpot-synced)
 
+Schema finalized 2026-05-14 against deal `CEI Processing Limited`
+(id `498828505295`). See `docs/bsg_hubspot_field_mapping.md` §2 for
+the column-by-column rationale.
+
 | Column | Type | Notes |
 |---|---|---|
-| `id` | uuid PK | |
-| `hubspot_deal_id` | text UNIQUE NOT NULL | |
-| `hubspot_company_id` | text FK → `companies.hubspot_company_id` | Owning company. |
-| `name` | text NOT NULL | |
-| `stage` | text | HubSpot pipeline stage. |
-| `hubspot_raw` | jsonb NOT NULL | |
+| `id` | uuid PK | Internal ID. |
+| `hubspot_deal_id` | text UNIQUE NOT NULL | HubSpot `hs_object_id`. |
+| `hubspot_company_id` | text NOT NULL FK → `companies.hubspot_company_id` | HubSpot `hs_primary_associated_company`. Single FK — every BSG deal has one primary company. |
+| `name` | text NOT NULL | HubSpot `dealname`. |
+| `stage` | text NULL | HubSpot `dealstage` (stage id; resolve to label via cached pipeline list). |
+| `pipeline_id` | text NULL | HubSpot `pipeline` (currently always `default` = Gateway sales). |
+| `amount` | numeric(14,2) NULL | HubSpot `amount`. |
+| `currency` | text NULL | HubSpot `deal_currency_code` (ISO code, e.g. `EUR`). |
+| `client_label` | text NULL | HubSpot `client` free-text (e.g. `(M) Atom`). |
+| `agent_label` | text NULL | HubSpot `agent` free-text (e.g. `(A) Jeremy`). |
+| `business_vertical` | text NULL | HubSpot `business_vertical` enum (e.g. `iGaming / Betting`). |
+| `hubspot_created_at` | timestamptz NOT NULL | HubSpot `createdate`. |
+| `hubspot_modified_at` | timestamptz NOT NULL | HubSpot `hs_lastmodifieddate`. Incremental sync trigger. |
+| `hubspot_raw` | jsonb NOT NULL | Full HubSpot payload (all 237 properties), including all pricing / KYB / business context fields that we deliberately do NOT extract — see field-mapping doc §2 for the rationale. |
 | `last_synced_at` | timestamptz NOT NULL | |
 | `created_at` | timestamptz | |
 | `updated_at` | timestamptz | |
 
-Indexes: `hubspot_deal_id` (unique), `hubspot_company_id`.
+Indexes:
+- `hubspot_deal_id` (unique)
+- `hubspot_company_id` — for "deals for this company" listing
+- `(hubspot_company_id, hubspot_created_at DESC)` — for paginated company→deals view
+- `stage` — for stage-filtered listings
+- `hubspot_modified_at` — for incremental-sync queries
+
+**Note on the link-only integration model**: we deliberately do NOT
+extract HubSpot deal pricing fields (`forecasted_monthly_volume`,
+`transaction_fee__mdr`, `setup_fee`, etc.) even though our earlier
+draft did. The calculator is always filled manually by the operator;
+HubSpot's role is identification + context only.
 
 ### `documents` (unified)
 
