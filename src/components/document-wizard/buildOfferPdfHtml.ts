@@ -41,30 +41,37 @@ interface OfferBodyRow {
 // print engine has natural break points between rows — that is what
 // makes `<tfoot>` reliably repeat the disclaimer footer on every page.
 //
-// Page-budget rule (refined 2026-05-14 for section 1.1):
+// Page-budget rule (refined 2026-05-14 for section 1.1, fixed double-
+// break bug 2026-05-14):
 //
-//   Heavy payin (tiered: byRegionTiered / flatTiered):
+//   Heavy payin (tiered: byRegionTiered / flatTiered) WITHOUT 1.1:
 //     page 1 = header + section 1 + payin custom note
-//     page 2 = section 1.1 (if any) + section 2 + payout note +
-//              sections 3 + 4
-//     Rationale: section 1 already fills its page-1 budget at 6
-//     tiered rows; section 1.1 must NOT pile on top, so we force a
-//     break before it. Section 2 (already forced via the original
-//     heavyPayin rule) lands on the same page 2.
+//     page 2 = section 2 + payout note + sections 3 + 4
+//     Rule: section 2 carries breakBefore=true (force page break).
+//
+//   Heavy payin WITH 1.1:
+//     page 1 = header + section 1 + payin custom note
+//     page 2 = section 1.1 + section 2 + payout note + sections 3 + 4
+//     Rule: ONLY section 1.1 carries breakBefore=true. Section 2
+//     flows naturally beneath 1.1 on page 2. (Previously both 1.1
+//     AND section 2 had breakBefore=true, which produced TWO
+//     `page-break-before: always` rules and pushed section 2 to a
+//     third page with a huge empty gap.)
 //
 //   Light payin (non-tiered: byRegionFlat / flatSingle):
 //     page 1 = header + section 1 + payin note + section 1.1 (if any)
 //              + section 2 + payout note
 //     page 2 = sections 3 + 4
-//     Rationale: section 1 is small enough that 1.1 fits alongside it
-//     naturally. Section 3 still forced to page 2 by the original
-//     lightPayin rule.
+//     Rule: nothing on the payin half forces a break; section 3 is
+//     forced to page 2 by the original lightPayin rule.
 //
-// `breakBefore` flags drive both rules:
-//   - Section 1.1: breakBefore = heavyPayin (push to page 2 only
-//     when section 1 is heavy)
-//   - Section 2:   breakBefore = heavyPayin (unchanged from prior)
-//   - Section 3:   breakBefore = lightPayin (unchanged from prior)
+// `breakBefore` flags by section:
+//   - Section 1.1: heavyPayin (push to page 2 only when section 1 is
+//     heavy)
+//   - Section 2:   heavyPayin && !hasAdditional (force only when 1.1
+//     is absent — when 1.1 is present, 1.1 already opened page 2 and
+//     section 2 must flow after it, not start its own page)
+//   - Section 3:   lightPayin (unchanged from prior)
 function buildOfferBodyRows(
   data: DocumentTemplatePayload,
   layout: DocumentWizardLayout
@@ -88,10 +95,15 @@ function buildOfferBodyRows(
   // the push in that case. When heavy payin, force-page-break-before
   // sends it to page 2; when light payin it flows on page 1.
   const payinAdditional = buildPayinAdditionalSection(data);
-  if (payinAdditional) rows.push({ html: payinAdditional, breakBefore: heavyPayin });
+  const hasAdditional = payinAdditional.length > 0;
+  if (hasAdditional) rows.push({ html: payinAdditional, breakBefore: heavyPayin });
 
+  // Section 2 — Pay Out. When section 1.1 exists AND we forced a
+  // break before it, section 2 must NOT also force a break (that
+  // would push section 2 to page 3 with a large empty gap on page
+  // 2). Section 2 flows naturally after 1.1 in that case.
   const payout = buildPayoutSection(data, layout);
-  if (payout) rows.push({ html: payout, breakBefore: heavyPayin });
+  if (payout) rows.push({ html: payout, breakBefore: heavyPayin && !hasAdditional });
   const payoutNote = buildPayoutCustomNoteHtml(data);
   if (payoutNote) rows.push({ html: payoutNote });
 

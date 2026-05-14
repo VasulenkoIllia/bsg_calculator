@@ -2296,3 +2296,75 @@ Use this file to record meaningful technical decisions for the project.
   - None. Decomposition deferred per the cost/benefit analysis
     above. Revisit if a third row-type sibling appears or if the
     two row-builder functions converge in their column logic.
+
+### Decision: Fix double page-break between section 1.1 and section 2
+- Date: 2026-05-14
+- Context:
+  - User reported (with `test2.pdf` attached) a large empty gap
+    between section 1.1 ("Additional Card Acquiring") and section 2
+    ("Pay Out") on heavy-payin documents. Section 1.1 was rendering
+    alone on page 2 and section 2 was pushed to page 3 with a near-
+    blank page 2.
+  - Root cause: in `buildOfferBodyRows()` (`buildOfferPdfHtml.ts`)
+    both the section 1.1 row AND the section 2 row carried
+    `breakBefore: heavyPayin`. The orchestrator wraps any row whose
+    `breakBefore` is true in `<tr class="force-page-break-before">`,
+    and CSS applies `page-break-before: always`. With BOTH rows
+    forced, the browser fired the page break twice:
+      - first break: end of page 1 → section 1.1 opens page 2
+      - second break: end of page 2 → section 2 opens page 3
+    Page 2 therefore contained only section 1.1, leaving the rest
+    of the budget unused.
+  - The original `heavyPayin → break before Pay Out` rule (pre-1.1)
+    was correct when section 1.1 did not exist: in that case section
+    2 was the FIRST thing after the heavy section 1, so it needed
+    its own break. Adding section 1.1 made the section-2 break
+    redundant whenever 1.1 was present.
+- Decision:
+  - Section 2's `breakBefore` becomes conditional on the absence of
+    section 1.1:
+      breakBefore: heavyPayin && !hasAdditional
+    where `hasAdditional = payinAdditional.length > 0` (the section
+    1.1 builder returns `""` when there are no custom rows).
+  - Section 1.1's `breakBefore` rule is unchanged
+    (`breakBefore: heavyPayin`) — it remains the page-2 opener on
+    heavy-payin documents that carry custom rows.
+  - Net result is a single force-break per heavy-payin document
+    regardless of whether section 1.1 is present:
+      heavy + no 1.1   → break before section 2 (unchanged)
+      heavy + has 1.1  → break before section 1.1, section 2 flows
+                         naturally after it (NEW)
+      light + any      → no break in the payin half (unchanged)
+- Alternatives considered:
+  - Drop the section-2 break entirely and rely on Chrome's natural
+    break behaviour: rejected because in the heavy-no-1.1 case the
+    payin custom note often leaves enough budget that section 2
+    would partially fit on page 1 with the table wrapping awkwardly
+    across the page boundary. The forced break preserves the
+    "section 2 starts a fresh page when section 1 is heavy" rule.
+  - Move section 1.1's break to section 2 unconditionally: rejected
+    because section 1.1's own height varies wildly (8mm single row
+    → ~50mm tiered row); without a forced break it sometimes
+    straddled the page-1/page-2 boundary on edge cases.
+  - Add an explicit `keep-together` rule via CSS `page-break-inside:
+    avoid`: rejected because Chrome's support for cross-tbody-row
+    page-break-inside is unreliable (the very reason every block is
+    wrapped in its own `<tr>` in the first place).
+- Consequences:
+  - Heavy-payin documents with section 1.1 now use page 2 fully
+    (section 1.1 + section 2 + payout note), and sections 3+4 either
+    fit on the same page or naturally flow to page 3.
+  - All 256/256 tests pass (+2 new regression tests):
+      - HEAVY + 1.1   → asserts Pay Out's wrapping TR is plain
+        (no `force-page-break-before`); section 1.1's TR still has
+        the class.
+      - HEAVY + no 1.1 → asserts Pay Out's wrapping TR DOES have
+        `force-page-break-before` (guards against the new condition
+        being over-applied).
+  - `tsc --noEmit` clean. `vite build` clean.
+  - Doc comment on `buildOfferBodyRows()` rewritten to document the
+    three sub-cases (heavy+no-1.1, heavy+1.1, light) explicitly so
+    future editors do not reintroduce the double-break.
+- Follow-up actions:
+  - None. The new rule is fully covered by tests; the comment block
+    documents the rationale for future readers.

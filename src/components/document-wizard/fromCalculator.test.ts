@@ -1149,5 +1149,84 @@ describe("buildOfferPdfHtml", () => {
         /<tr class="force-page-break-before">[\s\S]{0,1000}?<h2>Additional Card Acquiring/
       );
     });
+
+    it("HEAVY payin WITH section 1.1 → Pay Out flows after 1.1 (NO force-break)", () => {
+      // Regression for the double-page-break bug fixed 2026-05-14:
+      // when both section 1.1 AND section 2 carry breakBefore=true,
+      // Chrome's `page-break-before: always` rule fires twice — once
+      // for 1.1 (page 1 → page 2) and again for section 2 (page 2 →
+      // page 3), leaving page 2 mostly empty. Fix: when 1.1 exists,
+      // only 1.1 carries the force-break; section 2 flows after it.
+      const data = withBothRegions(buildBaseTemplateData());
+      data.layout.payin.tableMode = "byRegionTiered";
+      data.payinPricing.eu.rateMode = "tiered";
+      data.payinPricing.ww.rateMode = "tiered";
+      data.payinPricing.customRows = [
+        {
+          id: "row-heavy-with-additional",
+          region: "Asia Bundle",
+          currency: "USD",
+          model: "icpp",
+          rateMode: "single",
+          trxFeeEnabled: true,
+          tier1UpToMillion: 5,
+          tier2UpToMillion: 10,
+          single: { mdrPercent: 5, trxCc: 0.4, trxCcNa: false, trxApm: 0.4, trxApmNa: false },
+          tiers: [
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
+            { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false }
+          ],
+          minTrxFeeThresholdMillion: 0,
+          minTrxFeePerTransaction: 0,
+          minTrxFeeRowNa: false
+        }
+      ];
+      data.layout.payout.regionMode = "global";
+      data.layout.payout.tableMode = "globalFlat";
+
+      const html = buildOfferPdfHtml(data);
+
+      // Section 1.1 still carries the break (it opens page 2).
+      expect(html).toMatch(
+        /<tr class="force-page-break-before">[\s\S]{0,1000}?<h2>Additional Card Acquiring/
+      );
+      // Section 2 (Pay Out) must NOT carry force-page-break — it flows
+      // naturally beneath 1.1 on page 2. Looking forward from the
+      // wrapping TR to the Pay Out <h2>, we use a negative-lookahead
+      // `(?!<tr)` so the regex CANNOT cross into the next TR. That
+      // pins each assertion to the IMMEDIATE TR wrapping section 2.
+      expect(html).toMatch(
+        /<tr><td class="page-content-cell">(?:(?!<tr)[\s\S])*?<h2>Card Acquiring [^<]*Pay Out/
+      );
+      expect(html).not.toMatch(
+        /<tr class="force-page-break-before"><td class="page-content-cell">(?:(?!<tr)[\s\S])*?<h2>Card Acquiring [^<]*Pay Out/
+      );
+    });
+
+    it("HEAVY payin WITHOUT section 1.1 → Pay Out still carries force-break (regression guard)", () => {
+      // Companion to the previous test: when 1.1 is absent, section 2
+      // is still the first content on page 2 and MUST carry the
+      // force-page-break-before class. Guards against the fix above
+      // being over-applied (e.g. dropping the break unconditionally).
+      const data = withBothRegions(buildBaseTemplateData());
+      data.layout.payin.tableMode = "byRegionTiered";
+      data.payinPricing.eu.rateMode = "tiered";
+      data.payinPricing.ww.rateMode = "tiered";
+      // Explicitly no customRows → no section 1.1.
+      data.payinPricing.customRows = undefined;
+      data.layout.payout.regionMode = "global";
+      data.layout.payout.tableMode = "globalFlat";
+
+      const html = buildOfferPdfHtml(data);
+
+      // No section 1.1 in the output.
+      expect(html).not.toMatch(/<h2>Additional Card Acquiring/);
+      // Section 2 ("Card Acquiring — Pay Out / Push to Card") carries
+      // the force-page-break-before class.
+      expect(html).toMatch(
+        /<tr class="force-page-break-before"><td class="page-content-cell">[\s\S]{0,2000}?<h2>Card Acquiring [^<]*Pay Out/
+      );
+    });
   });
 });
