@@ -12,7 +12,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "start": "node --loader tsx server/server.ts"
+    "start": "node --loader tsx server/server.ts",
+    "hubspot:inspect": "tsx scripts/hubspot-inspect.ts"
   },
   "dependencies": {
     "react": "^19.0.0",
