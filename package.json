@@ -13,7 +13,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "start": "node --loader tsx server/server.ts",
-    "hubspot:inspect": "tsx scripts/hubspot-inspect.ts"
+    "hubspot:inspect": "tsx scripts/hubspot-inspect.ts",
+    "hubspot:one-company": "tsx scripts/hubspot-one-company.ts",
+    "hubspot:merchant-and-deal": "tsx scripts/hubspot-merchant-and-deal.ts"
   },
   "dependencies": {
     "react": "^19.0.0",
