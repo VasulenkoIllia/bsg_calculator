@@ -2664,3 +2664,173 @@ Use this file to record meaningful technical decisions for the project.
     reliably, revisit only `hubspot_raw → named column` promotion
     for the specific fields that surface in UI filters. The
     link-only decision itself stands.
+
+### Decision: Phase 8 final functional model (pre-implementation)
+- Date: 2026-05-15
+- Context:
+  - Before starting Phase 8 implementation, the user enumerated the
+    final functional model and answered 12 clarifying questions in
+    three batches. This entry consolidates all answers so the
+    implementation phase has a single authoritative reference.
+  - Quote-form summary of the integration contract (user, 2026-05-15):
+    > "ми оновлюємо данні про компанію і угоду в нашу базу з хабспота
+    >  (данні по компаніях і угодах ми не оновлюємо) тільки вписуємо
+    >  нотатку. в нотатці буде лінк на наш сервіс на калькулятор,
+    >  пропозицію або договір + можна буде додати текст."
+- Decisions (consolidated):
+
+  **A. Data flow**
+  - HubSpot → us: read companies, deals.
+  - Us → HubSpot: write Notes only (link + addendum). NEVER push
+    company / deal field updates back.
+
+  **B. Sync trigger** — Webhooks + manual refresh button.
+  - HubSpot Private App webhook subscriptions: `company.creation`,
+    `company.propertyChange`, `company.deletion`, `deal.creation`,
+    `deal.propertyChange`, `deal.deletion`.
+  - Payload contains object id + event type only; backend fetches
+    full object from `GET /crm/v3/objects/{type}/{id}`.
+  - Signature verification: HMAC SHA-256 with HubSpot client secret
+    (new env var `HUBSPOT_WEBHOOK_SECRET`). Reject unverified requests.
+  - Listing page has a "Refresh from HubSpot" button as fallback;
+    triggers `POST /api/v1/hubspot/refresh` which re-pulls the
+    objects currently visible.
+  - **No polling cron.** Webhooks + on-demand refresh together cover
+    every realistic drift case without hammering the HubSpot API.
+
+  **C. Initial backfill** — One-time on first deploy.
+  - Admin command: `npm run hubspot:backfill` (or auto-run on first
+    container start when `companies` table is empty).
+  - Paginates `GET /crm/v3/objects/companies?limit=100` and
+    `/deals?limit=100` exhaustively; upserts into our tables.
+  - Targets ~minutes for hundreds of records (BSG scale).
+  - After backfill, the system relies on webhooks for fresh data.
+
+  **D. Document numbering** — `BSG-<7digit>-<6digit>`.
+  - 7-digit middle = singleton sequence (`document_number_sequence.
+    next_doc_id`), starts at 7100001, monotonic, **shared across
+    offer + agreement**.
+  - 6-digit suffix = **last 6 digits of `hubspot_company_id`**
+    (chosen 2026-05-15 by user — NOT deal id). Implication:
+    multiple offers for the same company share the suffix; only
+    the middle digits differ.
+  - Calculator configs DO NOT get a number.
+
+  **E. Calculator configs — separate table**
+  - `calculator_configs` table (independent of `documents`):
+      id uuid PK
+      name text NULL (operator label; auto-suggest from company/deal)
+      hubspot_company_id text NULL FK
+      hubspot_deal_id text NULL FK
+      payload jsonb NOT NULL (full DocumentTemplatePayload-like)
+      created_at, updated_at, created_by, last_edited_by
+  - Mutable: operator edits freely, no number, no immutability.
+  - Hard-delete allowed (operator can delete drafts they don't need).
+
+  **F. Documents — immutable after save**
+  - `documents` table:
+      id uuid PK
+      document_number text UNIQUE NOT NULL
+      document_type text NOT NULL CHECK ('offer' | 'agreement')
+      hubspot_company_id text NOT NULL FK
+      hubspot_deal_id text NULL FK  (← deal optional, company mandatory)
+      payload jsonb NOT NULL (frozen snapshot at save)
+      source_calculator_config_id uuid NULL FK → calculator_configs.id
+      source_document_id uuid NULL FK → documents.id (template lineage)
+      hubspot_sync_state text NULL (Phase 9)
+      hubspot_links jsonb NULL (Phase 9; `{ companyNoteId, dealNoteId? }`)
+      last_sync_at timestamptz NULL
+      last_sync_error text NULL
+      created_at, created_by  (immutable after these are set)
+  - **No UPDATE allowed.** Operator "edits" by creating a new doc
+    with `source_document_id = <old>` and a fresh number.
+  - **No delete allowed** for offers/agreements (immutable
+    business documents; HubSpot notes would dangle).
+
+  **G. Save flow**
+  - Operator builds calc → clicks "Save offer/agreement":
+      POST /api/v1/documents
+      body: { document_type, source_calculator_config_id, hubspot_company_id, hubspot_deal_id? }
+      backend:
+        1. Allocate number atomically (`document_number_sequence`)
+        2. Freeze calc payload into `documents.payload`
+        3. INSERT documents row
+        4. Return { document_number, id }
+      The source `calculator_configs` row is UNCHANGED — operator
+      keeps editing it, can generate another offer later.
+  - Use-as-template flow:
+      POST /api/v1/documents
+      body: { document_type, source_document_id, ... }
+      backend creates a NEW `calculator_configs` row seeded with the
+      source document's payload, returns redirect URL `/calc/<uuid>`.
+      Operator edits in calc UI, then saves as offer/agreement.
+
+  **H. Note write-back** — Template + free addendum.
+  - On document save, frontend prompts operator for optional free
+    text (1-line input).
+  - Backend (Phase 9; stubbed in Phase 8) posts a Note to both the
+    Company and the Deal (if linked) via
+    `POST /crm/v3/objects/notes`, body shape:
+      <b>📄 BSG-7100123-874808 — Offer</b>
+      Created 2026-05-15 by operator@bsg.com
+      <a href="...">View document</a>
+      <hr>
+      <i>{operator addendum, if any}</i>
+  - Note id stored in `documents.hubspot_links.companyNoteId` /
+    `.dealNoteId` for later updates.
+
+  **I. Listing page** — Hierarchical Company → Deals → Documents.
+  - Tree/accordion view:
+      [+] (M) Acme Ltd            — 2 deals, 3 documents
+        ├─ Deal: CEI Processing   — appointmentscheduled · €500,000
+        │   ├─ BSG-7100123-874808 (Offer · 2026-05-12)
+        │   └─ Calc draft "v2 with CH share"
+        └─ Standalone documents (no deal)
+            └─ BSG-7100099-874808 (Offer · 2026-04-30)
+  - Backend endpoint: `GET /api/v1/listings/companies?expand=deals,docs`
+    returns the joined hierarchy in one shot to avoid waterfall
+    requests.
+  - Pagination: by company. Default 50 companies per page.
+
+  **J. Permissions** — All authenticated users see all data.
+  - `documents.created_by` and `calculator_configs.created_by`
+    stored for audit. No per-user filtering in Phase 8.
+  - JWT auth gates the listing; once logged in, everything visible.
+  - Phase 9+ may add roles.
+- Alternatives considered (rejected):
+  - Daily cron sync: rejected vs webhooks for being noisier on
+    HubSpot side and slower to surface changes.
+  - Pull-on-demand with TTL 300s: rejected because user explicitly
+    wanted minimal HubSpot load; webhooks achieve that better.
+  - Unified `documents` table with `document_type=calculator_config`
+    and NULL document_number: rejected — mixes mutable and immutable
+    semantics in one table; separate `calculator_configs` is cleaner.
+  - Suffix from deal_id: rejected per user — suffix is from
+    company_id so all docs for one company group visually.
+  - Per-user document visibility: rejected for Phase 8 simplicity.
+  - Soft-delete for offers/agreements: rejected — HubSpot notes
+    would dangle, and "immutable business document with new
+    revision via clone" is a cleaner story than tombstone rows.
+- Consequences:
+  - DB schema fully specified — implementation can start without
+    further schema design.
+  - New env var: `HUBSPOT_WEBHOOK_SECRET` (HMAC verification).
+  - Backend gains 4 new endpoint groups:
+      `/api/v1/calculator-configs/*` (CRUD)
+      `/api/v1/documents/*` (immutable + listing)
+      `/api/v1/hubspot/webhooks` (POST receiver)
+      `/api/v1/hubspot/refresh` (POST manual trigger)
+  - Frontend gains:
+      `/login` (auth)
+      `/listings` (hierarchical Company → Deal → Docs)
+      `/calc/:id` (existing wizard, wired to backend)
+      `/documents/:number` (read-only view + "Use as template")
+  - PDF render: existing `buildOfferPdfHtml` + Puppeteer in same
+    container.
+  - Phase 9 = wire Note write-back + add HubSpot stage transitions.
+- Follow-up actions:
+  - Update `phase_08_backend_plan.md` schemas + endpoints per above
+    (next commit).
+  - Add `HUBSPOT_WEBHOOK_SECRET` to `.env.example` (next commit).
+  - Propose phased implementation plan (7 sub-phases, ~7 dev-days).
+  - User picks which sub-phase to start with.

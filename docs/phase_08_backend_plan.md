@@ -223,67 +223,98 @@ extract HubSpot deal pricing fields (`forecasted_monthly_volume`,
 draft did. The calculator is always filled manually by the operator;
 HubSpot's role is identification + context only.
 
-### `documents` (unified)
+### `calculator_configs` (mutable drafts — NEW 2026-05-15)
+
+Operator's working calculator state. NOT a "document" in the formal
+sense — no number, freely editable, can be deleted. Becomes the
+source for one or many `documents` rows when the operator clicks
+"Save offer / agreement". See decisions.md → "Phase 8 final
+functional model" for the full rationale.
 
 | Column | Type | Notes |
 |---|---|---|
-| `id` | uuid PK | Stable; used in `/documents/:id` URL. |
-| `document_number` | text UNIQUE NOT NULL | `BSG-<7digit>-<6digit>` (§6). |
-| `document_type` | text NOT NULL CHECK IN (`calculator_snapshot`, `offer`, `agreement`) | (Q17) |
-| `status` | text NOT NULL CHECK IN (`draft`, `confirmed`) | (Q6) |
-| `company_id` | uuid FK → `companies.id` NULL | Required for `offer` and `agreement`. Optional for `calculator_snapshot` (Q16 deferred — we allow null in Phase 8 and validate at confirm time). |
-| `deal_id` | uuid FK → `deals.id` NULL | Optional even for offer/agreement; the link mode is finalized when HubSpot API access lands. |
-| `payload` | jsonb NOT NULL | Shape depends on `document_type`: see §3.1. |
-| `derived_summary` | jsonb NULL | Cached `DerivedSummaryPayload` for listing. Only populated for `calculator_snapshot`. |
-| `parent_document_id` | uuid FK → `documents.id` NULL | Set when this row was created via "Clone". For lineage display only — does NOT imply status transitions on the parent. |
-| `name` | text NULL | Optional operator label (for finding drafts later). |
-| `created_at` | timestamptz | |
+| `id` | uuid PK | Used in `/calc/:id` URL. |
+| `name` | text NULL | Operator label (e.g. "Acme deal — CH-tier draft v2"). NULL → backend renders as "Untitled calculator · 2026-05-15". |
+| `hubspot_company_id` | text NULL FK → `companies.hubspot_company_id` | Optional during early drafting. Required before "Save as offer/agreement". |
+| `hubspot_deal_id` | text NULL FK → `deals.hubspot_deal_id` | Optional. |
+| `payload` | jsonb NOT NULL | Full `DocumentTemplatePayload`-like state (calculator inputs + computed derived state). |
+| `created_at` | timestamptz NOT NULL | |
 | `created_by` | uuid FK → `users.id` NOT NULL | |
-| `updated_at` | timestamptz | |
-| `confirmed_at` | timestamptz NULL | Set when status transitions to `confirmed`. NULL while draft. |
-| `confirmed_by` | uuid FK → `users.id` NULL | |
+| `updated_at` | timestamptz NOT NULL | |
+| `last_edited_by` | uuid FK → `users.id` NOT NULL | Updated on every save. |
+
+Indexes:
+- `hubspot_company_id` — for "calcs for this company" in the listing
+- `hubspot_deal_id` — for "calcs for this deal"
+- `(created_by, updated_at DESC)` — for "my recent calcs" filter (Phase 9)
+- `updated_at DESC` — default sort
+
+Mutation policy: UPDATE freely allowed. DELETE allowed (operator can
+prune their own drafts). No FK cascades from `documents.source_calculator_config_id` — that FK keeps the lineage pointer but its NULL-ability means deleting a calc does NOT delete derived documents.
+
+### `documents` (immutable offers + agreements — REVISED 2026-05-15)
+
+After 2026-05-15 decisions: documents are write-once. No draft/confirmed
+states. No UPDATE allowed. "Edit a document" means "create a new
+calculator_configs seeded from this document's payload, edit in calc UI,
+save as a new document". The `source_document_id` FK preserves lineage.
+
+`document_type` is now strictly `'offer' | 'agreement'` — calculator
+configs moved to their own table.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | uuid PK | Stable. Internal use only — public URLs use `document_number`. |
+| `document_number` | text UNIQUE NOT NULL | `BSG-<7digit>-<6digit>` (§6). Generated atomically inside the create TX. |
+| `document_type` | text NOT NULL CHECK IN (`offer`, `agreement`) | |
+| `hubspot_company_id` | text NOT NULL FK → `companies.hubspot_company_id` | **Mandatory.** Document is always for a known HubSpot company. |
+| `hubspot_deal_id` | text NULL FK → `deals.hubspot_deal_id` | Optional — operator can generate a document for a company without a specific deal (pre-sales scenarios). |
+| `payload` | jsonb NOT NULL | Frozen `DocumentTemplatePayload` snapshot at save time. See §3.1. |
+| `source_calculator_config_id` | uuid NULL FK → `calculator_configs.id` | The calc this document was generated from. NULL if cloned from another document (then `source_document_id` is set). |
+| `source_document_id` | uuid NULL FK → `documents.id` | The template document this was cloned from. NULL if generated fresh from a calc. Exactly ONE of `source_calculator_config_id` / `source_document_id` is non-NULL (CHECK constraint). |
+| `note_addendum` | text NULL | Operator's free-text addendum to the HubSpot note (Phase 9 includes this in the note body). |
 | `hubspot_sync_state` | text NULL | `not_synced` / `pending` / `synced` / `failed`. NULL in Phase 8 — Phase 9 populates. |
-| `hubspot_links` | jsonb NULL | `{ companyId?, dealId?, noteId? }` populated by Phase 9 sync. |
+| `hubspot_links` | jsonb NULL | `{ companyNoteId, dealNoteId? }` populated by Phase 9 sync. |
 | `last_sync_at` | timestamptz NULL | Phase 9. |
 | `last_sync_error` | text NULL | Phase 9. |
+| `created_at` | timestamptz NOT NULL | Immutable. |
+| `created_by` | uuid FK → `users.id` NOT NULL | Immutable. |
+
+Note the absence of `updated_at`, `confirmed_at`, `confirmed_by`,
+`status`, `name`, `parent_document_id` (renamed to `source_document_id`).
 
 #### Indexes
 
 - `document_number` (unique)
-- `(company_id, document_type, created_at DESC)` — for "latest per (company, type)" queries (Q15=A)
+- `hubspot_company_id` — for "all documents for this company"
+- `(hubspot_company_id, document_type, created_at DESC)` — for "latest offer per company"
+- `hubspot_deal_id` — for "documents for this deal"
 - `(document_type, created_at DESC)` — for type-filtered listings
-- `(deal_id, created_at DESC)` — for deal-filtered listings
 - `created_at DESC` — default sort
-- `status` — for draft filtering
 
-#### Immutability rules
+#### Immutability enforcement
 
-- `status = 'draft'` → row is mutable: `UPDATE documents SET payload=$1, updated_at=now() WHERE id=$2 AND status='draft'`. Numbers do NOT change.
-- `status = 'confirmed'` → row is locked. Application enforces this; a DB trigger that rejects UPDATEs on confirmed rows is **recommended** for defense-in-depth.
-- Cloning a confirmed row = INSERT a new row with `parent_document_id = source.id`, new `document_number`, fresh `payload` copy, `status = 'draft'`.
+Application layer: no UPDATE endpoint. Defense-in-depth: optional DB
+trigger that rejects `UPDATE documents` on any row (except `last_sync_*`
+and `hubspot_sync_state` columns, which Phase 9 writes after the row
+exists). Implementation deferred to Phase 8.5 hardening.
 
-### 3.1 `payload` shape per `document_type`
+### 3.1 `payload` shape
 
-| document_type | payload shape | Source TS type |
+| Table | payload shape | Source TS type |
 |---|---|---|
-| `calculator_snapshot` | `CalculatorSnapshotPayload` | `src/components/calculator/snapshotShape.ts` |
-| `offer` | `DocumentTemplatePayload` with `documentScope = "offer"` | `src/components/document-wizard/types.ts` |
-| `agreement` | `DocumentTemplatePayload` with `documentScope = "offerAndAgreement"` | same |
+| `calculator_configs.payload` | `DocumentTemplatePayload`-like (mutable draft, may include calculator-only fields not yet on the document) | `src/components/document-wizard/types.ts` |
+| `documents.payload` (`document_type='offer'`) | `DocumentTemplatePayload` with `documentScope = "offer"` | same |
+| `documents.payload` (`document_type='agreement'`) | `DocumentTemplatePayload` with `documentScope = "offerAndAgreement"` | same |
 
-Zod validators on the API endpoint pick the right schema based on
-`document_type` and reject mismatched shapes.
-
-The pre-existing `documentScope: "offer" | "offerAndAgreement"` inside
-`DocumentTemplatePayload` is a frontend concept; the new
-`documents.document_type` column is the persistence concept. They
-agree but are NOT the same field. The frontend never sends
-`document_type` directly — backend derives it from the payload
-(`calculator_snapshot` is its own endpoint; `offer` vs `agreement`
-maps to the `documentScope` inside the payload).
+Zod validators on the API endpoints validate shape on write.
 
 ### `document_number_sequence`
 
-Singleton table. Atomic counter for the 7-digit middle segment.
+Singleton table. Atomic counter for the 7-digit middle segment. Shared
+across ALL document types — offers and agreements draw from the same
+counter (decisions.md 2026-05-15). Calculator configs do not get a
+number.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -303,6 +334,18 @@ UPDATE document_number_sequence
 
 If the document insert rolls back, the increment rolls back too — no
 wasted numbers.
+
+The final `document_number` is composed in the same TX:
+
+```ts
+const allocatedDocId: number = /* from UPDATE … RETURNING */;
+const companySuffix = hubspotCompanyId.slice(-6).padStart(6, "0");
+const documentNumber = `BSG-${String(allocatedDocId).padStart(7, "0")}-${companySuffix}`;
+```
+
+The 6-digit suffix comes from `hubspot_company_id` (decisions.md
+2026-05-15). All documents for the same company share that suffix;
+only the 7-digit middle differs.
 
 ---
 
@@ -349,134 +392,263 @@ GET    /api/v1/deals/:id                            single
 
 Same Phase 8/9 split: sync is Phase 9. Read works against whatever is in the DB.
 
-### Documents (the main resource)
+### Calculator configs (NEW 2026-05-15)
+
+Mutable working drafts. No number assigned. Operator can edit freely
+and delete.
 
 ```
-POST   /api/v1/documents                            create new draft.
-                                                     body: { document_type, company_id?, deal_id?, payload, name? }
-                                                     allocates BSG number, status='draft'.
-GET    /api/v1/documents/:id                        single — full row including payload.
-PATCH  /api/v1/documents/:id                        update DRAFT only.
-                                                     body: partial { company_id?, deal_id?, payload?, name? }.
-                                                     409 if status='confirmed'.
-POST   /api/v1/documents/:id/confirm                draft → confirmed transition.
-                                                     409 if already confirmed.
-POST   /api/v1/documents/:id/clone                  creates a new draft row.
-                                                     body (optional): { document_type, name? }
-                                                     copies payload + company_id + deal_id.
-                                                     parent_document_id = source.id.
-                                                     status = 'draft'.
-                                                     returns new row.
-GET    /api/v1/documents/:id/pdf                    server-side render via Puppeteer.
-                                                     Content-Type: application/pdf
-                                                     Content-Disposition: attachment (download).
-                                                     Works for confirmed AND draft (operator preview).
+POST   /api/v1/calculator-configs                   create new calc.
+                                                     body: { name?, hubspot_company_id?, hubspot_deal_id?, payload }
+                                                     returns { id, ...row }.
+GET    /api/v1/calculator-configs/:id               single — full payload.
+PATCH  /api/v1/calculator-configs/:id               update any combination of fields.
+                                                     body: partial { name?, hubspot_company_id?, hubspot_deal_id?, payload? }.
+DELETE /api/v1/calculator-configs/:id               hard-delete. 200 on success.
+                                                     Does NOT cascade to derived documents
+                                                     (documents.source_calculator_config_id becomes NULL).
+GET    /api/v1/calculator-configs                   list, ?company_id=&deal_id=&created_by=&cursor=&limit=
+```
+
+### Documents (REVISED 2026-05-15 — immutable offers + agreements)
+
+No draft state, no PATCH, no DELETE. Two create paths: from a calc, or
+cloned from a template document. Both allocate a fresh number.
+
+```
+POST   /api/v1/documents                            create + assign number atomically.
+                                                     body: {
+                                                       document_type: 'offer' | 'agreement',
+                                                       source: { calculator_config_id } | { document_id }, // exactly one
+                                                       hubspot_company_id: <text>,            // REQUIRED
+                                                       hubspot_deal_id?: <text>,              // optional
+                                                       note_addendum?: <text>                  // optional free-text for HubSpot note
+                                                     }
+                                                     backend:
+                                                       1. Load source (calc or doc) payload
+                                                       2. Validate Zod schema per document_type
+                                                       3. Resolve hubspot_company_id → fetch suffix
+                                                       4. Allocate next_doc_id atomically
+                                                       5. INSERT documents row (immutable)
+                                                       6. (Phase 9) trigger HubSpot note write
+                                                     returns { id, document_number, created_at }.
+
+GET    /api/v1/documents/:number                    single — full row by document_number.
+                                                     Note: lookup by NUMBER not id, because public URL is /documents/BSG-...
+
+GET    /api/v1/documents/:number/pdf                server-side render via Puppeteer.
+                                                     Content-Type: application/pdf.
+                                                     Content-Disposition: inline | attachment (?download=true).
+
+POST   /api/v1/documents/:number/use-as-template    convenience: create a new calculator_config
+                                                     seeded with this doc's payload + linkage.
+                                                     returns { calculator_config_id, redirect_to: '/calc/<uuid>' }.
+                                                     Frontend redirects operator to the calc UI.
+
 GET    /api/v1/documents                            paginated list with filters.
-                                                     ?type=&company_id=&deal_id=&status=
+                                                     ?type=offer|agreement
+                                                     &hubspot_company_id=
+                                                     &hubspot_deal_id=
                                                      &date_from=&date_to=
                                                      &latest_only=true|false
                                                      &cursor=&limit= (max 50)
                                                      &order=created_at_desc|document_number_desc
 ```
 
-`latest_only=true` returns one row per `(company_id, document_type)` — the most recent. Used by the documents listing page's "current contracts per company" view (Q15=A).
+`latest_only=true` returns one row per `(hubspot_company_id, document_type)` — the most recent. Used by the listings page's "current contracts per company" view.
+
+### Listings (NEW 2026-05-15 — hierarchical view)
+
+One endpoint returns the full Company → Deal → Documents/Calcs tree
+needed by the main listing page, avoiding N+1 waterfalls.
+
+```
+GET    /api/v1/listings/companies                   ?cursor=&limit=&q=
+                                                     returns:
+                                                     [{
+                                                       hubspot_company_id, name, company_type, segment_type,
+                                                       deals: [
+                                                         { hubspot_deal_id, name, stage, amount, currency,
+                                                           documents: [{ document_number, document_type, created_at }],
+                                                           calculator_configs: [{ id, name, updated_at }]
+                                                         }
+                                                       ],
+                                                       standalone_documents: [...],     // documents with no deal
+                                                       standalone_calculator_configs: [...]
+                                                     }]
+
+POST   /api/v1/hubspot/refresh                      manual refresh trigger for the listing page.
+                                                     body: { company_ids?: text[] }     // empty → refresh visible page
+                                                     refetches from HubSpot + upserts.
+                                                     returns { refreshed: { companies, deals } }.
+```
+
+### HubSpot webhooks (NEW 2026-05-15)
+
+```
+POST   /api/v1/hubspot/webhooks                     receives HubSpot events.
+                                                     Headers required:
+                                                       X-HubSpot-Signature-v3
+                                                       X-HubSpot-Request-Timestamp
+                                                     Backend verifies HMAC SHA-256 with HUBSPOT_WEBHOOK_SECRET
+                                                     against `<method><uri><body><timestamp>` payload.
+                                                     Rejected (401) on signature mismatch.
+                                                     Subscribed events:
+                                                       company.creation, company.propertyChange, company.deletion
+                                                       deal.creation,    deal.propertyChange,    deal.deletion
+                                                     On valid event:
+                                                       1. Fetch full object from HubSpot
+                                                       2. Upsert into our table
+                                                       3. (deletion) hard-delete from cache
+                                                     200 OK as fast as possible (HubSpot retries on slow responses).
+                                                     No body in response.
+```
+
+### HubSpot sync write-back (Phase 9 — stub in Phase 8)
+
+```
+POST   /api/v1/documents/:number/sync               triggers HubSpot Note write.
+                                                     Phase 8: returns { hubspot_sync_state: 'not_synced' } 501.
+                                                     Phase 9: posts note + updates hubspot_links.
+GET    /api/v1/documents/:number/sync               sync status from documents.hubspot_*.
+                                                     Phase 8: returns the current null state. 200.
+```
 
 ### Numbering preview
 
 ```
 GET    /api/v1/numbering/peek                       returns { next_doc_id: 7100123 }
                                                      no allocation, UI preview only.
+                                                     Also returns { recent: ['BSG-7100122-874808', ...] } for context.
 ```
 
 ### Health
 
 ```
-GET    /health                                      { status: 'ok', db: 'ok', timestamp } — no auth.
-```
-
-### HubSpot sync (Phase 9 — endpoints reserved in Phase 8)
-
-```
-POST   /api/v1/documents/:id/hubspot-sync           triggers a sync attempt. 501 in Phase 8.
-GET    /api/v1/documents/:id/hubspot-sync           sync status from documents.hubspot_*. 501 in Phase 8.
+GET    /health                                      { status: 'ok', db: 'ok', hubspot: 'ok'|'unreachable', timestamp }
+                                                     no auth.
 ```
 
 ---
 
-## 5. Document save & confirm flow
+## 5. Document save & template flow (REVISED 2026-05-15)
+
+Three flows, all using `POST /api/v1/documents`:
+
+### Flow A — From scratch (calc → offer)
 
 ```
-Operator opens wizard
+Operator opens calculator wizard at /calc/<uuid> (new or existing calc)
+        │
+        ▼
+  PATCH /api/v1/calculator-configs/:id        (auto-save on every change)
+        │
+        ▼ operator picks company in calc UI (sets hubspot_company_id on the row)
+        │
+        ▼ operator clicks "Save as offer"
+        │
+        ▼ optional addendum prompt: "Add note for HubSpot?"
         │
         ▼
   POST /api/v1/documents
     body: {
-      document_type: 'offer' | 'agreement',
-      company_id: <uuid>,             ← REQUIRED for offer/agreement
-      deal_id?: <uuid>,
-      payload: { ...DocumentTemplatePayload }
+      document_type: 'offer',
+      source: { calculator_config_id: <uuid> },
+      hubspot_company_id: <text>,
+      hubspot_deal_id?: <text>,
+      note_addendum?: <text>
     }
-    backend:
-      1. Validate Zod schema per document_type
-      2. Allocate next_doc_id atomically
-      3. Build document_number = `BSG-{next_doc_id:7d}-{hubspot_id:6d}`
-         (use deal.hubspot_deal_id if deal_id is set, else company.hubspot_company_id)
-      4. INSERT documents row, status='draft'
-      5. Return { id, document_number, status, created_at }
+    backend (single TX):
+      1. Load calc row, validate payload via Zod
+      2. UPDATE document_number_sequence ... RETURNING next_doc_id
+      3. Build document_number = `BSG-${seq:07d}-${last6(company_id):06d}`
+      4. INSERT documents row (source_calculator_config_id = calc.id)
+      5. (Phase 9) async POST note to HubSpot
+    returns { id, document_number, created_at }
         │
         ▼
-Operator continues editing → PATCH /api/v1/documents/:id with new payload
-                              (any number of times)
-        │
-        ▼
-Operator clicks "Confirm"
-        │
-        ▼
-  POST /api/v1/documents/:id/confirm
-    backend:
-      1. Verify status='draft'
-      2. UPDATE documents SET status='confirmed', confirmed_at=now(), confirmed_by=$user
-      3. Return updated row
-        │
-        ▼
-Document is now immutable. Operator can:
-  - Download PDF (GET /pdf)
-  - Clone to make a new draft (POST /clone)
-  - View it forever (GET /:id)
-  - (Phase 9) Sync to HubSpot
+Frontend redirects to /documents/BSG-7100123-874808 (read-only view)
+Calc row is UNCHANGED — operator can keep editing, generate more docs.
 ```
 
-**Calculator snapshots** follow the same flow but with
-`document_type='calculator_snapshot'` and an optional `company_id`
-(operators can save calc state without a company picked — useful for
-prospecting). At confirm time, a company picker prompt enforces an
-association if it's still missing.
+### Flow B — Use existing document as template
+
+```
+Operator views /documents/BSG-7100099-874808 (an old offer)
+        │
+        ▼ clicks "Use as template"
+        │
+        ▼
+  POST /api/v1/documents/BSG-7100099-874808/use-as-template
+    backend:
+      1. INSERT calculator_configs row, payload = source doc payload
+                                       hubspot_company_id = source.hubspot_company_id
+                                       hubspot_deal_id    = source.hubspot_deal_id
+                                       name = `From BSG-7100099-874808 · 2026-05-15`
+    returns { calculator_config_id, redirect_to: '/calc/<new-uuid>' }
+        │
+        ▼ frontend redirects to /calc/<new-uuid>
+        │
+        ▼ operator edits as in Flow A, then clicks "Save as offer"
+        │
+        ▼
+  POST /api/v1/documents (same as Flow A but source includes:
+    source: { calculator_config_id: <new-uuid> },
+    AND we attach source_document_id on the resulting documents row
+    by reading calculator_configs.source_document_id (set during the
+    `/use-as-template` call). New BSG number allocated.
+```
+
+### Flow C — Direct clone (skip calc editing)
+
+```
+Operator wants an identical offer with a fresh number — no edits.
+        │
+        ▼
+  POST /api/v1/documents
+    body: {
+      document_type: 'offer',
+      source: { document_id: <uuid> },         // direct doc-from-doc
+      hubspot_company_id, hubspot_deal_id?, note_addendum?
+    }
+    backend snapshots source.payload, allocates new number, sets
+    source_document_id (not source_calculator_config_id).
+```
+
+This direct path skips creating an intermediate calc. Useful when
+operator wants the new number stamp but no payload changes (e.g.
+formal annual re-issue).
 
 ---
 
-## 6. Document numbering format
+## 6. Document numbering format (REVISED 2026-05-15)
 
 ```
-BSG-7100123-456789
+BSG-7100123-874808
     └──┬──┘ └──┬──┘
-       │       └── 6-digit HubSpot ID (last 6 chars):
-       │            - Use the deal's HubSpot ID if deal_id is set
-       │            - Otherwise use the company's HubSpot ID
-       │            - Pad with leading zeros to 6 chars
-       │            - Placeholder `000000` if neither is set
-       │              (only legal for calculator_snapshot type)
+       │       └── 6-digit suffix = LAST 6 DIGITS of hubspot_company_id
+       │           (chosen 2026-05-15: company id, NOT deal id).
+       │           Always 6 chars — pad with leading zeros if needed.
+       │           All documents for the same company share this suffix.
        │
-       └── 7-digit monotonic document ID from
-           document_number_sequence. Starts at 7100001.
+       └── 7-digit monotonic document_id from document_number_sequence.
+           Starts at 7100001. Shared across offer + agreement.
+           Calculator configs do NOT consume a number.
 ```
 
 ### Examples
 
-| Scenario | `document_number` |
-|---|---|
-| Offer for Acme (HubSpot company `12345678`), no deal | `BSG-7100123-345678` (last 6 of company) |
-| Offer for Acme, linked to deal `987654321` | `BSG-7100124-654321` (last 6 of deal) |
-| Calculator snapshot with no company | `BSG-7100125-000000` |
+Given HubSpot company id `426487874808`:
+
+| Order | Document | `document_number` |
+|---|---|---|
+| 1st | Offer for Acme | `BSG-7100001-874808` |
+| 2nd | Agreement for Acme (after offer accepted) | `BSG-7100002-874808` |
+| 3rd | Offer for DIFFERENT company id `426418136305` | `BSG-7100003-136305` |
+| 4th | Revised offer for Acme (clone of #1) | `BSG-7100004-874808` |
+
+Notice: the suffix tells you "which company". The middle digits tell
+you "when in the global sequence".
 
 ### Edge cases (open until HubSpot API access)
 
@@ -494,30 +666,117 @@ runway. We're fine.
 
 ---
 
-## 7. Status lifecycle
+## 7. Document lifecycle (REVISED 2026-05-15 — single state)
+
+Documents have **no status field**. A row only exists once it has a
+number — and once it exists, it is immutable.
 
 ```
-       ┌─────────┐  PATCH /documents/:id (any field)
-       │  draft  │ ←─── operator edits freely
-       └─────────┘
+        Calculator config (mutable, editable, no number)
+                       │
+                       │ POST /documents
+                       ▼
+        Document allocated  ─── created_at, created_by frozen
             │
-            │ POST /documents/:id/confirm
-            ▼
-       ┌──────────┐
-       │ confirmed│ ←─── immutable. Application rejects PATCH.
-       └──────────┘     Optional DB trigger as defense-in-depth.
+            ├─── GET /documents/:number             — view forever
+            ├─── GET /documents/:number/pdf         — render forever
+            ├─── POST /documents/:number/use-as-template
+            │       │
+            │       ▼
+            │     NEW calculator_config (seeded)
+            │       │ edit → POST /documents
+            │       ▼
+            │     NEW Document (fresh number, source_document_id = original)
             │
-            │ POST /documents/:id/clone
-            ▼
-       ┌─────────┐
-       │  draft  │ (NEW row, parent_document_id = source.id)
-       └─────────┘
+            └─── (Phase 9) POST /documents/:number/sync — write HubSpot note
 ```
 
-No other statuses. No `archived`, no `superseded`. The "current
-document per company" is **computed** at query time via the
+"Current document per company" view is computed at query time via the
 `latest_only=true` filter on `GET /documents`, ordering by
-`created_at DESC` per (`company_id`, `document_type`).
+`created_at DESC` per (`hubspot_company_id`, `document_type`).
+
+Comparison to the pre-2026-05-15 model: the prior plan had `draft →
+confirmed` states with PATCH on draft + `confirmed` lock. The user
+chose the simpler "save = immutable" model on 2026-05-15. Editing is
+expressed as "create a new calc seeded from the document, edit calc,
+save as new document".
+
+---
+
+## 7.5 HubSpot sync architecture (NEW 2026-05-15)
+
+Three components: webhooks (push), backfill (one-shot pull), manual
+refresh (operator-triggered pull).
+
+### 7.5.1 Webhooks (real-time)
+
+HubSpot Private App webhook subscriptions configured manually in the
+HubSpot UI (NOT via API). Required subscriptions:
+
+| Event | Effect |
+|---|---|
+| `company.creation` | Fetch & upsert into `companies` |
+| `company.propertyChange` | Same |
+| `company.deletion` | DELETE from `companies` (cascade to `deals` via FK) |
+| `deal.creation` | Fetch & upsert into `deals` |
+| `deal.propertyChange` | Same |
+| `deal.deletion` | DELETE from `deals` |
+
+Webhook URL: `https://bsg.workflo.space/api/v1/hubspot/webhooks` (POST).
+
+Signature verification (server-side):
+
+```ts
+// HubSpot v3 signature:
+// HMAC-SHA-256(secret, `${method}${uri}${body}${timestamp}`)
+const expected = crypto
+  .createHmac("sha256", process.env.HUBSPOT_WEBHOOK_SECRET!)
+  .update(`${req.method}${req.originalUrl}${rawBody}${timestamp}`)
+  .digest("base64");
+
+if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) {
+  return res.status(401).end();
+}
+```
+
+Webhook handler MUST return 200 fast (<1s). HubSpot retries on slow
+responses, which can cause duplicate processing. Pattern:
+
+```ts
+app.post("/api/v1/hubspot/webhooks", async (req, res) => {
+  if (!verifySignature(req)) return res.status(401).end();
+  res.status(200).end();              // ack immediately
+  setImmediate(() => processEvents(req.body));  // process async
+});
+```
+
+### 7.5.2 Initial backfill (one-shot on first deploy)
+
+Admin command:
+
+```bash
+npm run hubspot:backfill
+```
+
+Implementation: paginates `/crm/v3/objects/companies?limit=100` then
+`/crm/v3/objects/deals?limit=100`, upserts each. Idempotent — safe to
+re-run.
+
+Trigger: optionally auto-run on container startup when `companies`
+table is empty. Logged with progress (`[1200/3400 companies synced]`).
+
+### 7.5.3 Manual refresh button
+
+Listing page button `Refresh from HubSpot`. Triggers:
+
+```
+POST /api/v1/hubspot/refresh
+body: { company_ids?: text[] }     // empty → refresh visible page
+```
+
+Backend re-pulls each company id + its deals from HubSpot, upserts,
+returns count. Used when operator suspects local cache is stale
+(e.g. HubSpot webhook delivery failed silently).
 
 ---
 
