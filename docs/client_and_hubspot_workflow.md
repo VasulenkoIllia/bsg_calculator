@@ -1,203 +1,241 @@
-# Client & HubSpot Workflow — Phase 8 / Phase 9
+# Client & HubSpot Workflow (REWRITTEN 2026-05-15)
 
-How a client identity flows through the calculator → wizard →
-backend pipeline today (Phase 8) and how it will evolve when HubSpot
-sync ships (Phase 9). Pinned now so the Phase 8 endpoints leave the
-right hooks open without committing to Phase 9 mechanics.
+How a HubSpot company / deal flows through the listing page → calculator
+→ document pipeline. Pinned now so Phase 8 endpoints leave the right
+hooks open for Phase 9 write-back without committing to mechanics that
+contradict the link-only integration model.
 
----
-
-## Phase 8 — Seed clients, manual picker, no HubSpot calls
-
-```
-+-----------+      +-----------+      +-----------+      +-----------+
-|  Operator |──→──│  Pick     │──→──│  Save     │──→──│  documents│
-|  opens    │      │  client   │      │  document│      │  row      │
-|  wizard   │      │  (drop-  │      │           │      │  + client │
-+-----------+      │  down)    │      +-----------+      │  _id FK   │
-                   +-----------+                          +-----------+
-```
-
-### Client model
-
-`clients` table is seeded manually for Phase 8 — a small admin tool
-(or just an SQL insert) populates rows. Each row has at minimum:
-
-```sql
-clients (
-  id              uuid primary key,
-  name            text not null,
-  legal_name      text,
-  country         text,
-  created_at      timestamptz,
-  -- Phase 9 columns, nullable in Phase 8 (see below).
-  hubspot_company_id text,
-  hubspot_synced_at  timestamptz
-)
-```
-
-### Wizard UX (Phase 8)
-
-1. Operator clicks "New Document" → wizard mounts on Step 1 (Header).
-2. A new "Client" field (dropdown / autocomplete) appears alongside
-   the existing header fields. Source: `GET /clients?search=<query>`.
-3. Operator picks an existing client OR clicks "+ New client" to open
-   an inline form that `POST /clients` and then auto-selects the new
-   row.
-4. The chosen `client_id` is held in wizard React state — NOT in
-   `DocumentTemplatePayload`. It's sent as a side-channel param on
-   `POST /documents` (`{ payload, client_id, source_calculator_snapshot_id }`).
-5. Backend writes `documents.client_id = <picked>` and stores the
-   payload verbatim.
-
-**Important:** the wizard's existing `agreementParties.merchant` fields
-(name, registration number, address) are SEPARATE from the picked
-client. The client picker identifies the legal entity for billing/audit;
-`agreementParties` is what gets rendered on the MSA. Today they're
-typed manually each time. A Phase 8 follow-up may auto-populate
-`agreementParties.merchant` from the picked `client` row when the
-operator confirms; flag it as an open question for the meeting.
-
-### What Phase 8 does NOT do
-
-- Talk to HubSpot. No API calls. `hubspot_*` columns on `clients` and
-  `documents` exist but stay null.
-- Auto-sync new clients to HubSpot companies.
-- Show "synced / not synced" status (the listing page from
-  `docs/ui_phase_8_9_requirements.md` §1 should render an empty
-  HubSpot status column in Phase 8 — it lights up in Phase 9).
+> ⚠️ The earlier version of this doc described a separate `clients`
+> table that was seeded manually for Phase 8 and replaced by HubSpot
+> in Phase 9. That model was dropped on 2026-05-15. There is no
+> `clients` table. HubSpot companies and deals ARE the source of
+> truth from day 1, mirrored into our `companies` and `deals` tables
+> via webhooks + on-demand pull. See `docs/decisions.md` →
+> "Link-only HubSpot integration" + "Phase 8 final functional model".
 
 ---
 
-## Phase 9 — HubSpot sync
+## 1. Day-1 picture (Phase 8 ships with this)
 
 ```
-+-----------+      +-----------+      +-----------+      +-----------+
-|  Operator │──→──│  Pick     │──→──│  Save +   │──→──│  Sync to   │
-|  opens    │      │  client   │      │  confirm  │      │  HubSpot   │
-|  wizard   │      │  (CRM    │      │  document│      │  (deal +   │
-+-----------+      │  picker)  │      +-----------+      │  note +    │
-                   +-----------+                          │  prop write)│
-                                                          +-----------+
++-----------+      +------------------+      +-----------+      +-----------+
+|  Operator │──→──│  Listings page   │──→──│  Calc     │──→──│  Document │
+|  logs in  │      │  Company →       │      │  page     │      │  saved    │
+|           │      │  Deal →           │      │  /calc/:id│      │  (offer / │
++-----------+      │  Docs/Calcs       │      └─────┬─────┘      │  agreement)│
+                   └─────┬─────────────┘             │             └─────┬─────┘
+                         │                            │                   │
+                         ▼                            ▼                   ▼
+                  GET /listings/companies       PATCH calc                POST /documents
+                    (cached from HubSpot)         (auto-save, 1s)         (immutable, numbered)
+                                                                                │
+                                                                                ▼
+                                                                          (Phase 9) Note posted
+                                                                          to HubSpot company + deal
 ```
 
-### What changes
+Concrete flow:
 
-1. **Client picker reads from HubSpot directly.** `GET /clients` returns
-   HubSpot companies (cached server-side for ~1 minute). Phase 8 seed
-   clients can be migrated to HubSpot companies once + dropped, OR
-   kept as a fallback list — to be decided.
-2. **New documents trigger HubSpot writes.** When `documents.status`
-   transitions to `confirmed`:
-   - Server upserts a HubSpot DEAL associated with the client's
-     company.
-   - Server attaches a NOTE with the rendered PDF.
-   - Server writes structured properties (margin, volume, pricing
-     model, settlement period, …) onto the deal.
-   - `documents.hubspot_sync_state` moves `not_synced → pending →
-     synced` (or `failed` with `last_sync_error`).
-3. **Sync is idempotent.** Re-confirming or re-syncing updates the
-   existing deal in place (looked up via `documents.hubspot_links.dealId`).
-4. **Clone preserves no HubSpot links.** A cloned document starts at
-   `hubspot_sync_state = not_synced` and `hubspot_links = null` —
-   it's a separate artefact, not a revision of the original deal.
+1. Operator logs in (`POST /api/v1/auth/login`).
+2. Frontend loads `/listings` → `GET /api/v1/listings/companies`.
+   Returns a hierarchical tree: companies → their deals → each deal's
+   documents + calculator configs. Companies without deals appear as
+   leaves too.
+3. Operator expands a company, sees its deals + existing
+   docs/calcs. They can:
+   - Click an existing calc → opens `/calc/<uuid>` (edit).
+   - Click an existing document → opens `/documents/<number>` (view).
+   - Click "+ New calc for this deal" → `POST /calculator-configs`
+     with `hubspot_company_id` + `hubspot_deal_id` preset.
+4. On `/calc/:id`, the wizard loads via `GET
+   /calculator-configs/:id`, and every change triggers a debounced
+   (1s) `PATCH /calculator-configs/:id`.
+5. When ready, operator clicks "Save as offer" / "Save as
+   agreement" → modal prompts for an optional note addendum →
+   `POST /api/v1/documents` allocates `BSG-<7d>-<6d company id
+   suffix>` atomically + freezes the payload. Frontend redirects to
+   `/documents/<number>`.
+6. (Phase 9) The save action also queues a HubSpot Note write
+   containing: number, type, created_at, link to `/documents/<number>`,
+   optional addendum. Phase 8 reserves the columns + stub endpoint
+   `POST /documents/:number/sync` returning `not_synced`.
 
-### Field mapping (initial proposal — to be finalised in Phase 9 spec)
+### "Use as template" flow
 
-| HubSpot deal property | Source |
+From `/documents/<number>` view, clicking "Use as template":
+
+1. `POST /api/v1/documents/:number/use-as-template`
+2. Backend creates a NEW `calculator_configs` row, seeded with the
+   document's payload + same company + same deal + auto-name "From
+   BSG-<n> · <date>".
+3. Returns `{ calculator_config_id, redirect_to: '/calc/<uuid>' }`.
+4. Frontend redirects. Operator edits as in step 4 above. Saving
+   produces a NEW document with a NEW number; the original document
+   is unchanged.
+
+This is the ONLY way to "edit" an existing document. The original
+stays immutable forever.
+
+---
+
+## 2. HubSpot sync mechanics
+
+### Sources of fresh data
+
+| Trigger | Action | Coverage |
+|---|---|---|
+| Initial deploy | `npm run hubspot:backfill` paginates `/crm/v3/objects/{companies,deals}` exhaustively + upserts | All existing HubSpot data |
+| HubSpot webhook (`company.creation`, `propertyChange`, `deletion`, plus deal equivalents) | Backend verifies HMAC → INSERT into `hubspot_webhook_events` → async processor refetches the affected object + upserts | Real-time post-deploy updates |
+| Manual `POST /api/v1/hubspot/refresh` (listing page button) | Re-pulls a specific company id (or visible page) from HubSpot, upserts | Operator-driven recovery when a webhook was missed |
+
+No polling cron. Webhooks + backfill + manual refresh together
+guarantee freshness without hammering HubSpot.
+
+### What we extract vs keep in JSONB
+
+See `docs/bsg_hubspot_field_mapping.md` for the full table. Summary:
+
+- **Companies**: 8 named columns (`hubspot_company_id`, `name`,
+  `company_type`, `segment_type`, `lifecycle_stage`, `hs_task_label`,
+  `hubspot_created_at`, `hubspot_modified_at`) + `hubspot_raw`
+  JSONB.
+- **Deals**: 12 named columns (`hubspot_deal_id`, `hubspot_company_id`
+  FK, `name`, `stage`, `pipeline_id`, `amount`, `currency`,
+  `client_label`, `agent_label`, `business_vertical`,
+  `hubspot_created_at`, `hubspot_modified_at`) + `hubspot_raw` JSONB.
+
+Pricing fields (`forecasted_monthly_volume`, `transaction_fee__mdr`,
+etc.) live ONLY in `hubspot_raw`. They are NOT used to pre-fill the
+calculator — the link-only model means the operator fills the
+calculator manually.
+
+### Phase 9 write-back
+
+When a document is saved (`POST /api/v1/documents`), Phase 9 (stubbed
+in Phase 8) will:
+
+1. POST a Note to HubSpot via `POST /crm/v3/objects/notes` with
+   associations to BOTH the deal (typeId 214) and the company
+   (typeId 190).
+2. Note body template:
+   ```html
+   📄 <b>BSG-7100123-874808 — Offer</b><br>
+   Created 2026-05-15 by operator@bsg.com<br>
+   <a href="https://bsg.workflo.space/documents/BSG-7100123-874808">View document</a>
+   <hr>
+   <i>{operator addendum, if non-empty}</i>
+   ```
+3. Note IDs returned by HubSpot stored in `documents.hubspot_links`
+   as `{ companyNoteId, dealNoteId? }`.
+4. `documents.hubspot_sync_state` moves
+   `not_synced → pending → synced` (or `failed` with `last_sync_error`).
+
+Phase 8 reserves all these columns and exposes
+`POST /api/v1/documents/:number/sync` returning 501 — frontend wiring
+is complete, real HubSpot calls land in Phase 9.
+
+### Idempotency
+
+- Webhook delivery: every event INSERTed into
+  `hubspot_webhook_events` with UNIQUE constraint on
+  `hubspot_event_id`. Duplicate deliveries silently dedupe via
+  `ON CONFLICT DO NOTHING`.
+- Note write-back: on re-sync (operator manually re-triggers), if
+  `hubspot_links.companyNoteId` is set, backend PATCHes the existing
+  note instead of creating a new one. Re-confirm of the same
+  document never creates a duplicate HubSpot note.
+
+---
+
+## 3. Backend endpoints (covered in detail in `phase_08_backend_plan.md` §4)
+
+### Phase 8 ships
+
+```
+# HubSpot ingestion
+POST /api/v1/hubspot/webhooks         HubSpot event receiver (HMAC)
+POST /api/v1/hubspot/refresh          Manual refresh button
+
+# Read paths
+GET  /api/v1/companies[?q=&cursor=]
+GET  /api/v1/companies/:id
+GET  /api/v1/companies/:id/deals
+GET  /api/v1/deals/:id
+GET  /api/v1/listings/companies       Hierarchical (used by listing page)
+
+# Calculator configs (mutable drafts)
+POST   /api/v1/calculator-configs
+GET    /api/v1/calculator-configs/:id
+PATCH  /api/v1/calculator-configs/:id    (debounced auto-save target)
+DELETE /api/v1/calculator-configs/:id
+GET    /api/v1/calculator-configs?company_id=&deal_id=
+
+# Documents (immutable offers + agreements)
+POST /api/v1/documents                   Allocates number + INSERTs row
+GET  /api/v1/documents/:number           Read view
+GET  /api/v1/documents/:number/pdf       Server-rendered PDF (stream-only)
+POST /api/v1/documents/:number/use-as-template
+GET  /api/v1/documents[?…filters…]
+GET  /api/v1/numbering/peek              Preview next number (no allocation)
+
+# Phase 9 stubs (return 501 in Phase 8)
+POST /api/v1/documents/:number/sync
+GET  /api/v1/documents/:number/sync
+```
+
+### Phase 9 deltas (no schema migrations needed)
+
+- `POST /documents/:number/sync` becomes a real HubSpot note write
+  instead of returning 501.
+- `POST /api/v1/hubspot/refresh` may grow background-queue semantics
+  for bulk refreshes.
+- No new tables; the existing `documents.hubspot_*` columns become
+  active.
+
+---
+
+## 4. Frontend wiring (consumed by `src/`)
+
+### Routes added in Phase 8
+
+| URL | Backed by | Purpose |
+|---|---|---|
+| `/login` | `POST /auth/login` | Auth gate. Public. |
+| `/listings` | `GET /listings/companies` | Hierarchical Company → Deal → Docs/Calcs view. Default route after login. |
+| `/calc/:id` | `GET/PATCH /calculator-configs/:id` | Calculator wizard (existing) bound to a server row. Debounced auto-save. |
+| `/documents/:number` | `GET /documents/:number` | Read-only document view. "Use as template" + "Download PDF" buttons. |
+
+### Existing routes
+
+| URL | Phase 8 status |
 |---|---|
-| `dealname` | `documents.payload.header.documentNumber` + client name |
-| `amount` | derived summary `ourMarginEuro` |
-| `closedate` | `documents.payload.header.documentDateIso` |
-| `pipeline` / `dealstage` | static (configured per environment) |
-| `bsg_settlement_model` | `documents.payload.header.collectionModel` |
-| `bsg_settlement_period` | `documents.payload.contractSummary.settlementPeriod` |
-| `bsg_payin_volume` | snapshot `payinVolume` |
-| `bsg_payout_volume` | snapshot `payoutVolume` |
-| `bsg_pdf_url` | URL to `/documents/:id/pdf` |
+| `/calculator` (legacy direct-mount calculator) | Stays during Phase 8 as a "scratchpad" mode (no persistence). Phase 9 may retire it once `/calc/:id` is dominant. |
+| `/wizard` (legacy unbound wizard) | Same — kept for compatibility, no longer the primary entry point. |
 
-The detailed mapping table lives in `docs/integrations.md` (Phase 9
-section, to be expanded). Use this doc as the source of truth for the
-HANDOFF moment; expand the mapping there.
+### Replacements
+
+| Today | Phase 8 |
+|---|---|
+| `defaultDraftNumber()` placeholder | `GET /numbering/peek` for preview, `POST /documents` for real allocation. |
+| `window.print()` PDF | `GET /documents/:number/pdf` server render (stream-only, no disk). |
+| Wizard state in `useState` | `/calc/:id` reads via `GET /calculator-configs/:id`, writes via debounced 1s `PATCH /calculator-configs/:id`. |
+| Hardcoded `KASEF PAY` party defaults | Stay as defaults; operator overrides per document. |
 
 ---
 
-## Backend endpoints — client + sync
+## 5. Cross-references
 
-### Phase 8
-
-```
-GET    /clients?search=&limit=&offset=
-POST   /clients                     { name, legal_name?, country? }
-GET    /clients/:id
-PATCH  /clients/:id                 partial update
-POST   /documents                   { payload, client_id, source_snapshot_id? }
-GET    /documents/:id
-GET    /documents?client_id=&type=&date_from=&date_to=&status=
-```
-
-### Phase 9 (additions)
-
-```
-POST   /documents/:id/hubspot-sync  triggers a sync attempt
-POST   /documents/:id/hubspot-retry retries a failed sync
-GET    /clients/hubspot-search      proxy to HubSpot companies API
-POST   /clients/from-hubspot        creates a clients row from a
-                                    HubSpot company (or NOOPs if it
-                                    already exists)
-```
-
----
-
-## Migration path: Phase 8 → Phase 9
-
-**Schema:** add nullable HubSpot columns in the **Phase 8 initial
-migration** even though Phase 8 never writes to them. Saves one
-migration when Phase 9 starts and lets `documents` row shapes stay
-stable.
-
-**Data:** existing Phase 8 documents either:
-- Stay un-synced forever (operator decides per-row to backfill via
-  the new "Sync to HubSpot" button); or
-- A one-shot script walks the table and pushes everything. To be
-  decided during Phase 9 planning.
-
-**UX:**
-- Documents listing page (`docs/ui_phase_8_9_requirements.md` §1)
-  gets a new "HubSpot" column that's always shown but empty / "—" in
-  Phase 8. Phase 9 lights it up with status pills.
-- Wizard client picker swaps `GET /clients` for HubSpot-backed search.
-  No UX change visible to operators beyond results becoming richer
-  (more companies in autocomplete).
-
----
-
-## Open questions for the planning meeting
-
-- [ ] Phase 8 `clients` seed source — admin UI, SQL inserts, or
-      operator-self-serve "+ New client"?
-- [ ] Does the wizard auto-populate `agreementParties.merchant` from
-      the picked client row, or does the operator always type it?
-- [ ] On HubSpot sync failure, retry policy — automatic backoff
-      attempts vs. manual retry button only?
-- [ ] Does cloning a document carry over the same `client_id` by
-      default, or is it always blank?
-- [ ] Idempotency window — if the operator clicks "Confirm" twice,
-      should the second call be a no-op or a new draft? (`POST
-      /documents` request-id header recommended either way.)
-- [ ] HubSpot rate-limit handling — what's the budget per day, and how
-      do we surface "rate-limited, try again later" in the UI?
-
----
-
-## Cross-references
-
-- `docs/ui_phase_8_9_requirements.md` — listing / view / clone UI that
-  consumes this workflow.
-- `docs/backend_state_schemas.md` — `DocumentTemplatePayload` shape +
-  what flows through `POST /documents`.
-- `docs/backend_computation_boundary.md` — Rule 4 covers HubSpot
-  compute responsibilities.
-- `docs/integrations.md` — HubSpot integration boundary spec (to be
-  expanded with the field-mapping table during Phase 9).
-- `docs/phase_08_backend_plan.md` — full backend plan.
+- `docs/phase_08_backend_plan.md` — DB schema, endpoints, save/template
+  flows in full detail.
+- `docs/backend_conventions.md` — folder structure, error envelope,
+  logging, validation, TX boundaries, rate limit, CORS, health.
+- `docs/bsg_hubspot_field_mapping.md` — which HubSpot fields we keep
+  in named columns vs JSONB.
+- `docs/hubspot_api_reference.md` — endpoint catalogue.
+- `docs/backend_state_schemas.md` — `DocumentTemplatePayload` shape
+  that flows through `POST /documents.payload` and
+  `calculator_configs.payload`.
+- `docs/decisions.md` — full decision log; recent entries:
+  "Phase 8 final functional model" (2026-05-15),
+  "Link-only HubSpot integration" (2026-05-14),
+  "Phase 8 architectural conventions" (2026-05-15).

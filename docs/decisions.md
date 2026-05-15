@@ -2834,3 +2834,163 @@ Use this file to record meaningful technical decisions for the project.
   - Add `HUBSPOT_WEBHOOK_SECRET` to `.env.example` (next commit).
   - Propose phased implementation plan (7 sub-phases, ~7 dev-days).
   - User picks which sub-phase to start with.
+
+### Decision: Phase 8 architectural conventions ratified
+- Date: 2026-05-15
+- Context:
+  - Post-decisions architecture audit (architect agent, 2026-05-15)
+    surfaced 8 🔴 CRITICAL doc-level blockers plus ~15 🟡 important
+    items. User instruction: "фіксимо відразу всю документацію все
+    правильно описуємо. Складай повну чітку архітектурно правильну
+    документацію."
+  - Audit also surfaced an explicit user requirement on PDFs:
+    "Стосовно пдф які будуть генеруватися потрібно буде відразу
+    очищати все що б не засмічувати" — translated: "regarding PDFs
+    being generated, we need to clean everything up immediately so
+    we don't pollute".
+- Decisions:
+
+  **A. PDF lifecycle — stream-only, no disk, no cache.**
+  - Each `GET /api/v1/documents/:number/pdf` request renders fresh
+    via Puppeteer + `buildOfferPdfHtml(payload)` into an in-memory
+    Buffer, streams to HTTP response, releases Buffer on response
+    end. NO filesystem write. NO Redis/S3 cache.
+  - Rationale: documents are immutable, rendering is deterministic,
+    no correctness gain from caching, eliminates GC burden in
+    single-container deploy.
+  - Future: if >10 RPS sustained on PDF generation, add Redis cache
+    keyed by `document_number` with TTL. Phase 8 doesn't need it.
+
+  **B. Puppeteer browser recycle policy.**
+  - Headless Chrome leaks memory. Browser process is killed +
+    re-spawned after EITHER `PUPPETEER_RENDERS_PER_BROWSER` (default
+    1000) OR `PUPPETEER_BROWSER_TTL_MS` (default 24h).
+  - `BrowserPool` class in `server/modules/pdf/pdf.browser-pool.ts`
+    tracks renderCount + spawnedAt, checks on each `getBrowser()`.
+  - OOM-style render failures force-recycle the browser before
+    returning 500.
+
+  **C. Schema fixes (added to documents/users/refresh_tokens).**
+  - `users.email` and `users.login` typed as `citext` (extension
+    enabled in initial migration). Removes manual `LOWER()` wrapping
+    for login lookups.
+  - `users.is_admin boolean NOT NULL DEFAULT false`. Gates
+    `/api/v1/users/*` endpoints. First admin via
+    `npm run create-user --admin` CLI.
+  - `refresh_tokens.last_used_at timestamptz NULL` for active-session
+    listing.
+  - `refresh_tokens` partial index on `(user_id) WHERE revoked_at
+    IS NULL` for fast active-session queries.
+  - `documents.hubspot_sync_updated_at timestamptz NULL` — sync
+    state needs its own timestamp distinct from `last_sync_at`
+    (success time).
+  - All CHECK constraints written out as SQL:
+      documents_document_type_check
+      documents_source_xor_check  (exactly one source is non-NULL)
+      documents_document_number_format_check  (regex)
+      documents_hubspot_sync_state_check  (allowed values)
+
+  **D. Error response envelope.**
+  - Single shape: `{ error: { code: string, message: string,
+    details?: object } }`.
+  - Codes are stable strings: `AUTH_INVALID_CREDENTIALS`,
+    `VALIDATION_FAILED`, `RESOURCE_NOT_FOUND`, `CONFLICT_*`,
+    `FORBIDDEN`, `UNPROCESSABLE`, `RATE_LIMITED`, `INTERNAL_ERROR`,
+    `HUBSPOT_UNREACHABLE`, `DB_UNAVAILABLE`. Documented in
+    `backend_conventions.md` §2.
+  - Every error response carries `X-Request-Id` header.
+
+  **E. Logging — pino + pino-http.**
+  - JSON-only output. Required fields: `ts`, `level`, `msg`.
+    Encouraged: `reqId`, `userId`, `route`, `durationMs`.
+  - Level semantics defined in `backend_conventions.md` §3.
+  - HTTP request line per request via pino-http; NEVER log request
+    body (secrets risk).
+
+  **F. Config loading — single `config/env.ts` with Zod.**
+  - Reads ALL env vars in one place at module load. Fails fast on
+    missing/invalid. Frozen object exported as `env`.
+  - No `process.env.X` access anywhere else in `server/`.
+  - 24 env vars enumerated in `backend_conventions.md` §4.
+
+  **G. Folder structure — vertical slices in `modules/`.**
+  - Each domain (auth, users, companies, deals, calculator-configs,
+    documents, hubspot, pdf, listings) is a self-contained module
+    with `routes.ts`, `controller.ts`, `service.ts`, `schemas.ts`,
+    `repository.ts`.
+  - Cross-module: services can call other services. Repositories
+    are private.
+  - Full tree in `backend_conventions.md` §1.
+
+  **H. Save semantics — RECONCILED.**
+  - Calculator configs: **debounced auto-save** (1s) via
+    `PATCH /api/v1/calculator-configs/:id`. Operator may spend
+    hours; losing work to a reload is unacceptable.
+  - Documents (offer/agreement): **never auto-saved**. Only via
+    explicit `POST /api/v1/documents` action that allocates a
+    number + freezes the payload. Number allocation is a deliberate
+    act.
+
+  **I. Refresh-token rotation — grace window 10s.**
+  - Multi-tab races: tokens revoked within last 10s still accepted,
+    but ONLY issue a new access token (not a new refresh). Avoids
+    logging the user out on legitimate concurrent refresh attempts.
+  - Frontend supplements with single-flight: concurrent
+    `/auth/refresh` calls collapse into one promise.
+
+  **J. Webhook idempotency — `hubspot_webhook_events` table.**
+  - Every event INSERTed with UNIQUE constraint on
+    `hubspot_event_id` (ON CONFLICT DO NOTHING). Ack 200 to HubSpot
+    fast (<50ms), process async via worker reading pending rows.
+  - Failed processing increments `attempts` + records `last_error`.
+    At ≥5 attempts the row is left for manual triage (Phase 9
+    alerting).
+  - Schema added to `phase_08_backend_plan.md` §7.5.1.
+
+  **K. Per-endpoint auth matrix documented.**
+  - Table in `phase_08_backend_plan.md` §4.0 specifies which scheme
+    (none, refresh cookie, access bearer, HMAC) and which role
+    (any active user, is_admin) gates each endpoint.
+  - `POST /api/v1/users/*` and `POST /users/:id/reset-password`
+    now correctly require `is_admin = true`.
+
+  **L. Stale `clients` table references purged.**
+  - `client_and_hubspot_workflow.md` fully rewritten. The Phase 8 /
+    Phase 9 split was correct CONCEPTUALLY but used a deprecated
+    schema vocabulary. New version aligns to the actual data model
+    (HubSpot day-1 via webhooks + manual refresh, no `clients`
+    intermediate table).
+
+  **M. Test strategy breakdown.**
+  - 60 unit + 80 integration + 10 e2e + 10 pixel-diff = ~160 tests
+    total. Tooling: vitest + supertest + Testcontainers Postgres +
+    Playwright + nock for HubSpot mocks. Detailed in
+    `backend_conventions.md` §12.
+
+- Alternatives considered (rejected):
+  - PDF cache in Redis/S3: rejected per explicit user requirement
+    "очищати все що б не засмічувати". Revisit if perf justifies.
+  - Persistent webhook events with full retry orchestrator
+    (Kafka/SQS): overkill for 100-500 docs/month. Pg table +
+    in-process worker handles the volume.
+  - Refresh-token jwt-with-revocation-list: rejected vs DB-row-based
+    revocation because we need active-sessions listing anyway.
+  - Per-feature-module barrel `index.ts`: rejected — direct imports
+    make the dep graph readable in PR diffs.
+- Consequences:
+  - `phase_08_backend_plan.md` substantially extended: schema fixes,
+    auth matrix, PDF lifecycle, browser recycle, webhook idempotency,
+    refresh-token race.
+  - NEW: `docs/backend_conventions.md` consolidates folder layout,
+    error envelope, logging, config, validation, TX, rate limit,
+    CORS, health, migration tooling, pagination, test strategy.
+  - REWRITTEN: `docs/client_and_hubspot_workflow.md` aligns to the
+    HubSpot-day-1 model.
+  - NEW env vars: `HUBSPOT_WEBHOOK_SECRET`,
+    `PUPPETEER_RENDERS_PER_BROWSER`, `PUPPETEER_BROWSER_TTL_MS`.
+  - Implementation can start with zero design ambiguity.
+- Follow-up actions:
+  - Create `docs/phase_08_implementation_plan.md` mapping
+    decisions to a sprint plan (next commit).
+  - Begin coding Sprint 1 (Foundation: Drizzle + users +
+    refresh_tokens + auth) after user gives green light.

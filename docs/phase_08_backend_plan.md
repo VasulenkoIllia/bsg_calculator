@@ -67,9 +67,18 @@ References.
 - **Password reset flow** — admin re-issues manually.
 - **Full-text search** — filter by company / deal / type / date is
   enough at 100–500 docs/month volume (Q12).
-- **Auto-save on wizard** — operator clicks "Save" explicitly; no
-  per-keystroke autosave. Decision: lean MVP, revisit if operators
-  complain about losing work.
+- **Save semantics (RECONCILED 2026-05-15)**:
+    - **Calculator configs**: debounced auto-save (1s after last
+      edit) via `PATCH /api/v1/calculator-configs/:id`. Frontend
+      shows "Saved · 2s ago" indicator. Rationale: operator may
+      spend hours fine-tuning a calculator; losing work to a
+      browser reload is unacceptable.
+    - **Documents (offer / agreement)**: NEVER auto-saved. Created
+      ONLY by an explicit "Save as offer" / "Save as agreement"
+      action (POST /api/v1/documents) which allocates a number and
+      freezes the payload. Rationale: number allocation is a
+      significant, non-reversible act — must be a deliberate
+      operator decision.
 
 ### New UI requirements integrated
 
@@ -128,32 +137,45 @@ container).
 
 ### `users`
 
+Requires the `citext` Postgres extension (enabled in the first
+migration via `CREATE EXTENSION IF NOT EXISTS citext`) so email
+lookups are case-insensitive without manual `LOWER()` wrapping.
+
 | Column | Type | Notes |
 |---|---|---|
-| `id` | uuid PK | |
-| `email` | text UNIQUE NOT NULL | Login identifier (also accepts a short login). |
-| `login` | text UNIQUE NULL | Optional short login. NULL if user logs in with email. |
-| `password_hash` | text NOT NULL | bcrypt, cost 12. |
-| `display_name` | text | Shown in UI. |
-| `is_active` | boolean DEFAULT true | Soft-disable without delete. |
-| `created_at` | timestamptz | |
-| `updated_at` | timestamptz | |
+| `id` | uuid PK DEFAULT gen_random_uuid() | |
+| `email` | citext UNIQUE NOT NULL | Login identifier. Case-insensitive. |
+| `login` | citext UNIQUE NULL | Optional short login. NULL if user logs in with email. |
+| `password_hash` | text NOT NULL | bcrypt, cost 12 (4 in test env via `BCRYPT_COST=4`). |
+| `display_name` | text NOT NULL DEFAULT '' | Shown in UI. |
+| `is_active` | boolean NOT NULL DEFAULT true | Soft-disable without delete. |
+| `is_admin` | boolean NOT NULL DEFAULT false | Gates `/api/v1/users/*` endpoints. First admin created via `npm run create-user --admin` CLI. |
+| `created_at` | timestamptz NOT NULL DEFAULT now() | |
+| `updated_at` | timestamptz NOT NULL DEFAULT now() | Updated by application on every write. |
 
-No self-registration. No password reset. Admin creates rows manually
-via SQL or a minimal admin form.
+No self-registration. No password reset via API. Admin creates rows
+via the CLI command `npm run create-user`.
 
 ### `refresh_tokens`
 
+Rotation policy: each `/auth/refresh` issues a brand new token and
+revokes the previous one (`revoked_at = now()`). Grace window 10s
+to absorb multi-tab races (see §11.6).
+
 | Column | Type | Notes |
 |---|---|---|
-| `id` | uuid PK | |
-| `user_id` | uuid FK → `users.id` ON DELETE CASCADE | |
+| `id` | uuid PK DEFAULT gen_random_uuid() | |
+| `user_id` | uuid NOT NULL FK → `users.id` ON DELETE CASCADE | |
 | `token_hash` | text UNIQUE NOT NULL | SHA-256 of raw token (never store raw). |
-| `expires_at` | timestamptz NOT NULL | 30 days. |
-| `revoked_at` | timestamptz NULL | NULL = valid. |
-| `created_at` | timestamptz | |
+| `expires_at` | timestamptz NOT NULL | 30 days from creation. |
+| `revoked_at` | timestamptz NULL | NULL = valid. Set during rotation. |
+| `last_used_at` | timestamptz NULL | Set on each `/auth/refresh` hit using this token. Powers the "active sessions" view (Phase 9). |
+| `created_at` | timestamptz NOT NULL DEFAULT now() | |
 
-Indexes: `user_id`, `token_hash`.
+Indexes:
+- `user_id` — for "logout all my sessions" + active-sessions list
+- `token_hash` (unique, B-tree) — for verification
+- `(user_id, revoked_at)` partial WHERE `revoked_at IS NULL` — for fast active-session listing
 
 ### `companies` (HubSpot-synced)
 
@@ -271,17 +293,48 @@ configs moved to their own table.
 | `hubspot_deal_id` | text NULL FK → `deals.hubspot_deal_id` | Optional — operator can generate a document for a company without a specific deal (pre-sales scenarios). |
 | `payload` | jsonb NOT NULL | Frozen `DocumentTemplatePayload` snapshot at save time. See §3.1. |
 | `source_calculator_config_id` | uuid NULL FK → `calculator_configs.id` | The calc this document was generated from. NULL if cloned from another document (then `source_document_id` is set). |
-| `source_document_id` | uuid NULL FK → `documents.id` | The template document this was cloned from. NULL if generated fresh from a calc. Exactly ONE of `source_calculator_config_id` / `source_document_id` is non-NULL (CHECK constraint). |
+| `source_document_id` | uuid NULL FK → `documents.id` | The template document this was cloned from. NULL if generated fresh from a calc. |
 | `note_addendum` | text NULL | Operator's free-text addendum to the HubSpot note (Phase 9 includes this in the note body). |
 | `hubspot_sync_state` | text NULL | `not_synced` / `pending` / `synced` / `failed`. NULL in Phase 8 — Phase 9 populates. |
 | `hubspot_links` | jsonb NULL | `{ companyNoteId, dealNoteId? }` populated by Phase 9 sync. |
-| `last_sync_at` | timestamptz NULL | Phase 9. |
-| `last_sync_error` | text NULL | Phase 9. |
-| `created_at` | timestamptz NOT NULL | Immutable. |
-| `created_by` | uuid FK → `users.id` NOT NULL | Immutable. |
+| `hubspot_sync_updated_at` | timestamptz NULL | When `hubspot_sync_state` last changed. Phase 9. |
+| `last_sync_at` | timestamptz NULL | When sync last succeeded. Phase 9. |
+| `last_sync_error` | text NULL | Last sync error message. Phase 9. |
+| `created_at` | timestamptz NOT NULL DEFAULT now() | Immutable. |
+| `created_by` | uuid NOT NULL FK → `users.id` | Immutable. |
 
 Note the absence of `updated_at`, `confirmed_at`, `confirmed_by`,
 `status`, `name`, `parent_document_id` (renamed to `source_document_id`).
+
+#### CHECK constraints (full SQL)
+
+```sql
+ALTER TABLE documents
+  ADD CONSTRAINT documents_document_type_check
+    CHECK (document_type IN ('offer', 'agreement')),
+  ADD CONSTRAINT documents_source_xor_check
+    CHECK (
+      (source_calculator_config_id IS NULL) <> (source_document_id IS NULL)
+    ),
+  ADD CONSTRAINT documents_document_number_format_check
+    CHECK (document_number ~ '^BSG-[0-9]{7}-[0-9]{6}$'),
+  ADD CONSTRAINT documents_hubspot_sync_state_check
+    CHECK (hubspot_sync_state IS NULL
+           OR hubspot_sync_state IN ('not_synced','pending','synced','failed'));
+```
+
+`hubspot_sync_state` is text + CHECK rather than a Postgres ENUM
+because ENUM changes require an `ALTER TYPE` migration; the list of
+states is likely to grow in Phase 9.
+
+#### Phase 9 sync columns are the only mutable surface
+
+The application enforces immutability by simply not exposing PATCH
+endpoints. Phase 9 mutates ONLY: `hubspot_sync_state`,
+`hubspot_links`, `hubspot_sync_updated_at`, `last_sync_at`,
+`last_sync_error`. Optional defense-in-depth: a DB BEFORE-UPDATE
+trigger that rejects mutations on any other column. Implementation
+in Phase 8.5 hardening.
 
 #### Indexes
 
@@ -351,8 +404,32 @@ only the 7-digit middle differs.
 
 ## 4. API surface
 
-All endpoints under `/api/v1/`. All except `/health` and
-`/auth/login` require `Authorization: Bearer <accessToken>`.
+All endpoints under `/api/v1/`. Auth model summarised in the matrix
+below; per-endpoint definitions follow.
+
+### 4.0 Auth matrix
+
+| Endpoint pattern | Auth scheme | Role required |
+|---|---|---|
+| `GET /health`, `GET /ready` | None | — |
+| `POST /api/v1/auth/login` | None | — |
+| `POST /api/v1/auth/refresh` | Refresh token (httpOnly cookie) | — |
+| `POST /api/v1/auth/logout` | Refresh token | — |
+| `GET /api/v1/auth/me` | Access token (Bearer) | any active user |
+| `GET/POST/PATCH /api/v1/users/*` | Access token | `is_admin = true` |
+| `POST /api/v1/users/:id/reset-password` | Access token | `is_admin = true` |
+| `GET /api/v1/companies/*`, `/deals/*` | Access token | any active user |
+| `GET/POST/PATCH/DELETE /api/v1/calculator-configs/*` | Access token | any active user |
+| `GET/POST /api/v1/documents/*` | Access token | any active user |
+| `POST /api/v1/documents/:number/use-as-template` | Access token | any active user |
+| `GET /api/v1/listings/*` | Access token | any active user |
+| `POST /api/v1/hubspot/refresh` | Access token | any active user |
+| `POST /api/v1/hubspot/webhooks` | **HMAC SHA-256** of body via `HUBSPOT_WEBHOOK_SECRET`. No JWT. | — |
+| `GET /api/v1/numbering/peek` | Access token | any active user |
+
+Default rule for any future endpoint: require Bearer access token. The
+HubSpot webhook receiver is the ONLY public endpoint that doesn't
+require a JWT — it authenticates via signature.
 
 ### Auth
 
@@ -740,15 +817,59 @@ if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) {
 ```
 
 Webhook handler MUST return 200 fast (<1s). HubSpot retries on slow
-responses, which can cause duplicate processing. Pattern:
+responses, which can cause duplicate processing.
+
+#### Idempotency (RATIFIED 2026-05-15)
+
+HubSpot may deliver the same event multiple times (retries on
+network blip, our own slow processing, etc.). Naive "ack 200 +
+setImmediate(processEvents)" loses events if processing fails AFTER
+the ack. Pattern: persist every event to a dedup table, process in
+a worker.
+
+Schema:
+
+```sql
+CREATE TABLE hubspot_webhook_events (
+  id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  hubspot_event_id   text UNIQUE NOT NULL,    -- from HubSpot payload
+  subscription_type  text NOT NULL,           -- 'company.creation', ...
+  object_id          text NOT NULL,           -- HubSpot company/deal id
+  payload            jsonb NOT NULL,          -- full event JSON
+  received_at        timestamptz NOT NULL DEFAULT now(),
+  processed_at       timestamptz NULL,        -- NULL = pending
+  attempts           int NOT NULL DEFAULT 0,
+  last_error         text NULL
+);
+CREATE INDEX hubspot_webhook_events_pending_idx
+  ON hubspot_webhook_events (received_at)
+  WHERE processed_at IS NULL;
+```
+
+Handler flow:
 
 ```ts
 app.post("/api/v1/hubspot/webhooks", async (req, res) => {
   if (!verifySignature(req)) return res.status(401).end();
-  res.status(200).end();              // ack immediately
-  setImmediate(() => processEvents(req.body));  // process async
+
+  // INSERT … ON CONFLICT (hubspot_event_id) DO NOTHING
+  // ensures each event recorded exactly once.
+  await db.insert(hubspotWebhookEvents).values(req.body).onConflictDoNothing();
+
+  res.status(200).end();          // ack <50ms
+  setImmediate(() => kickProcessor());  // process pending rows
 });
+
+// processPending:
+//   SELECT * FROM hubspot_webhook_events
+//    WHERE processed_at IS NULL ORDER BY received_at LIMIT 100;
+//   for each row: try { upsert(...); SET processed_at = now() }
+//                 catch { SET attempts++, last_error }
+//   on `attempts >= 5` → leave for manual triage (alert in Phase 9).
 ```
+
+Trade-off: one extra INSERT per webhook (~5ms) for guaranteed
+exactly-once semantics. Worth it given how cheap HubSpot retries are.
 
 ### 7.5.2 Initial backfill (one-shot on first deploy)
 
@@ -782,22 +903,106 @@ returns count. Used when operator suspects local cache is stale
 
 ## 8. PDF render service
 
-### Architecture
+### 8.1 Lifecycle policy (RATIFIED 2026-05-15) — stream-only, no disk
+
+**Critical operational rule**: PDFs are NEVER written to the
+filesystem and NEVER cached. Each request renders fresh in-memory
+and streams the Buffer directly to the HTTP response. After the
+response ends, the Buffer is garbage-collected.
+
+```ts
+// Conceptual flow inside the controller:
+const html = buildOfferPdfHtml(document.payload);
+const page = await browser.newPage();
+try {
+  await page.setContent(html, { waitUntil: "networkidle0" });
+  const pdfBuffer = await page.pdf({
+    format: "A4",
+    printBackground: true,
+    margin: { top: "10mm", right: "10mm", bottom: "10mm", left: "10mm" }
+  });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", inline ? "inline" : "attachment");
+  res.end(pdfBuffer);                  // ← Buffer released after .end()
+} finally {
+  await page.close();                  // ← always close page
+}
+```
+
+Why no disk:
+1. Documents are immutable — rendering is deterministic. Re-renders
+   produce byte-identical output. Caching offers no correctness win,
+   only CPU savings.
+2. Storing PDFs on disk in a single-container deploy creates
+   garbage-collection burden (when to delete? how to prevent
+   unbounded growth?). Stream-only sidesteps the problem entirely.
+3. If perf becomes an issue at higher scale (>10 RPS PDF generation),
+   add a Redis cache keyed by `document_number` with TTL or an S3
+   bucket with lifecycle-rule expiration — at that point we have
+   metrics to justify the complexity. Phase 8 doesn't.
+
+User requirement (2026-05-15): "потрібно буде відразу очищати все
+що б не засмічувати" — translated: "we need to clean everything up
+immediately so we don't pollute". Stream-only honours this exactly.
+
+### 8.2 Browser pool architecture
 
 - Single `Browser` instance kept alive in the process (lazy
-  initialised on first request).
-- Pool of 1 — at 100-500 docs/month + 2-5 concurrent users, no
-  contention.
+  initialised on first PDF request).
+- Pool of 1 page-per-request lane — at 100-500 docs/month + 2-5
+  concurrent users, no contention.
 - Per-request: open new page → setContent(html) → page.pdf() → close
   page. ~150ms warm, ~1s cold.
 
-### Reuse of existing builder
+### 8.3 Browser recycle policy (NEW 2026-05-15)
+
+Headless Chrome leaks memory over time. After ~1000 renders or 24
+hours, the Browser process must be killed and re-spawned to keep
+RSS bounded. Implementation:
+
+```ts
+// server/modules/pdf/pdf.browser-pool.ts
+class BrowserPool {
+  private browser: Browser | null = null;
+  private renderCount = 0;
+  private spawnedAt = 0;
+  private readonly maxRenders = Number(process.env.PUPPETEER_RENDERS_PER_BROWSER ?? 1000);
+  private readonly maxAgeMs = Number(process.env.PUPPETEER_BROWSER_TTL_MS ?? 24 * 3600 * 1000);
+
+  async getBrowser(): Promise<Browser> {
+    if (this.shouldRecycle()) await this.recycle();
+    if (!this.browser) this.browser = await this.spawn();
+    return this.browser;
+  }
+
+  private shouldRecycle(): boolean {
+    if (!this.browser) return false;
+    if (this.renderCount >= this.maxRenders) return true;
+    if (Date.now() - this.spawnedAt >= this.maxAgeMs) return true;
+    return false;
+  }
+
+  // ... spawn(), recycle() with await browser.close() then null
+}
+```
+
+Plus a guard: if `page.pdf()` rejects with an OOM-style error,
+force-recycle the browser before returning the 500 to the client.
+
+Environment knobs (added to `.env.example` in this commit batch):
+- `PUPPETEER_RENDERS_PER_BROWSER` (default 1000)
+- `PUPPETEER_BROWSER_TTL_MS` (default 86400000 — 24h)
+
+Process metrics to monitor (Phase 8.5 hardening): RSS over time,
+render latency p95, recycle frequency.
+
+### 8.4 Reuse of existing builder
 
 ```ts
 import { buildOfferPdfHtml } from
-  "../src/components/document-wizard/buildOfferPdfHtml.js";
+  "../../src/components/document-wizard/buildOfferPdfHtml.js";
 
-const html = buildOfferPdfHtml(payload);
+const html = buildOfferPdfHtml(document.payload);
 // → exact same HTML the frontend's browser print uses today.
 ```
 
@@ -854,9 +1059,60 @@ POST /api/v1/auth/login
 
 ### Token storage on frontend
 
-httpOnly cookie for the refresh token (XSS-safe). Access token in
-memory (React context). On 401 from any API call, automatic refresh
-attempt; if refresh fails, redirect to `/login`.
+httpOnly cookie for the refresh token (XSS-safe, `SameSite=Lax`,
+`Secure` in prod). Access token in memory (React context). On 401
+from any API call, automatic refresh attempt; if refresh fails,
+redirect to `/login`.
+
+### Refresh-token rotation policy (RATIFIED 2026-05-15)
+
+Each `/auth/refresh` issues a fresh refresh token and revokes the
+old one. Multi-tab / multi-device scenarios create a race: two
+tabs see a 401 simultaneously, both call `/auth/refresh` with the
+SAME refresh token. Naive "revoke-then-issue" fails the second
+request and logs the user out.
+
+Mitigation: **grace window of 10 seconds**. A refresh token that
+was revoked within the last 10s is still accepted (issues a new
+token but does NOT issue a duplicate refresh). Implementation:
+
+```ts
+// inside /auth/refresh handler:
+const row = await db.query.refreshTokens.findFirst({
+  where: eq(refreshTokens.tokenHash, sha256(rawRefreshToken))
+});
+if (!row) return res.status(401).end();
+if (row.expiresAt < now) return res.status(401).end();
+
+const recentlyRevoked = row.revokedAt
+  && row.revokedAt > new Date(Date.now() - 10_000);
+
+if (row.revokedAt && !recentlyRevoked) {
+  return res.status(401).end();      // permanently invalid
+}
+
+if (recentlyRevoked) {
+  // 10s window: still issue an access token, but do NOT issue a
+  // new refresh token. The first refresh call (which already
+  // revoked this token) has the live refresh token.
+  return res.json({ accessToken: signAccess(row.userId) });
+}
+
+// fresh refresh: rotate
+await db.transaction(async tx => {
+  await tx.update(refreshTokens).set({ revokedAt: now }).where(...);
+  await tx.insert(refreshTokens).values({ /* new */ });
+});
+return res.json({ accessToken: ..., /* + Set-Cookie new refresh */ });
+```
+
+Frontend supplements this with single-flight on the client side:
+all concurrent `/auth/refresh` calls from the same SPA tab/window
+collapse into one promise.
+
+Env var (already in `.env.example`): `JWT_ACCESS_EXPIRES=15m`,
+`JWT_REFRESH_EXPIRES=30d`. The 10s grace is hard-coded — too small
+to merit an env knob.
 
 ### User creation (admin)
 
@@ -908,21 +1164,24 @@ See `docs/client_and_hubspot_workflow.md` for full Phase 8/9 workflow.
   searchable.
 - `/companies/:id` — single company view with list of its documents.
 
-### Existing routes
+### Existing routes (REVISED 2026-05-15)
 
-- `/calculator` — adds "Save" button → `POST /documents` with
-  `document_type='calculator_snapshot'`. Loading a saved snapshot via
-  `/calculator/:id` hydrates via `seedCalculatorStateFromSnapshot()`.
-- `/wizard` — adds "Save Draft" + "Confirm" buttons. Confirm calls
-  `POST /documents/:id/confirm`.
+- `/calc/:id` — calculator UI bound to a `calculator_configs` row.
+  Mount loads via `GET /calculator-configs/:id`. Edits trigger
+  **debounced auto-save** (1s) via `PATCH /calculator-configs/:id`.
+  "Save as offer" / "Save as agreement" buttons → `POST /documents`.
+- `/documents/:number` — read-only view of an immutable document.
+  "Use as template" button → `POST /documents/:number/use-as-template`
+  → frontend redirects to a new `/calc/:id` seeded from the document.
+- `/listings` — hierarchical Company → Deal → Documents/Calcs page.
 
 ### Replacements
 
 | Today | Phase 8 |
 |---|---|
 | `defaultDraftNumber()` placeholder | `GET /numbering/peek` for preview, `POST /documents` for real allocation. |
-| `window.print()` PDF | `GET /documents/:id/pdf?download=true` server render. |
-| Wizard state in `useState` | API-backed: PATCH on draft as operator works (no per-keystroke autosave — explicit "Save" button). |
+| `window.print()` PDF | `GET /documents/:number/pdf` server render via Puppeteer (stream-only — see §8). |
+| Wizard state in `useState` | API-backed `calculator_configs` row. Wizard hydrates on mount, debounced auto-save (1s) on every change. |
 | Hardcoded `KASEF PAY` party defaults | Stay as defaults; operator can override per document. |
 
 ### Snapshot/seed integration
@@ -972,12 +1231,12 @@ Each step ends with `npm run verify` (tsc + vitest + build).
 ### Sprint 5 — Frontend integration (3-4 days)
 
 17. Login page + token storage.
-18. Documents listing page with filters.
-19. Document view page.
-20. Wizard wiring: explicit "Save" + "Confirm" buttons.
-21. Calculator wiring: "Save" → snapshot.
-22. PDF download button calls server endpoint.
-23. "Refresh from HubSpot" button (501 toast for now).
+18. Hierarchical listings page (Company → Deal → Docs/Calcs).
+19. Document view page `/documents/:number` + "Use as template" button.
+20. Calc page `/calc/:id` wired to backend (debounced auto-save).
+21. Wizard "Save as offer/agreement" buttons → `POST /documents`.
+22. PDF download button calls `GET /documents/:number/pdf`.
+23. "Refresh from HubSpot" button on listings page.
 
 ### Sprint 6 — Single Docker container (1-2 days)
 
@@ -1113,7 +1372,7 @@ All decisions made during the 2026-05-12 backend planning session:
 | 12 | PDF render: server-side Puppeteer + Chrome in the same container. Reuses existing `buildOfferPdfHtml`. Pixel-diff CI gate against 10 baseline fixtures. | Q14 + final PDF decision |
 | 13 | PDF binary NOT stored — render on-demand on `GET /pdf`. User downloads. | Q8 |
 | 14 | No email/notifications | Q8 |
-| 15 | Wizard saves via explicit "Save" button — no per-keystroke autosave | Phase 8 lean MVP decision |
+| 15 | Calc: debounced auto-save (1s). Documents: explicit "Save as offer/agreement" (allocates number). Reconciled 2026-05-15. | 2026-05-15 |
 | 16 | 100-500 documents/month. Indexes required. Offset pagination, ~50/page. No full-text search. | Q12 |
 | 17 | No audit log in Phase 8. Just `created_by` + `updated_at`. | Q9 |
 | 18 | No automated backups in Phase 8 MVP — added in Phase 8.1 hardening pass. | Q11 |
