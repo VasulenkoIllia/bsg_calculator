@@ -330,11 +330,60 @@ load balancer when we split containers.
   `server/db/migrations/`. Reviewable as part of the PR.
 - One migration per concern: `0001_init.sql` creates all tables in
   dependency order; `0002_seed.sql` inserts the singleton sequence
-  row. Subsequent migrations are numbered chronologically.
+  row + seeds `document_number_sequence.next_doc_id = 7100001`.
+  Subsequent migrations are numbered chronologically.
 - No down-migrations (Drizzle does not auto-generate them). Rollback
   policy: restore from `pg_dump` backup.
 - Migrations run on container start via `npm run db:migrate` then
   `npm start` chained in the Docker entrypoint.
+
+### CREATE TABLE order in `0001_init.sql`
+
+Postgres validates FKs at CREATE time, so dependent tables must come
+last. Drizzle Kit infers this from the schema file imports; for our
+schema the order is:
+
+```sql
+-- Extensions first
+CREATE EXTENSION IF NOT EXISTS "citext";
+
+-- Tables in dependency order:
+CREATE TABLE users (...);                       -- 1
+CREATE TABLE refresh_tokens (...);              -- 2 → users
+CREATE TABLE companies (...);                   -- 3
+CREATE TABLE deals (...);                       -- 4 → companies
+CREATE TABLE calculator_configs (...);          -- 5 → users, companies, deals
+CREATE TABLE document_number_sequence (...);    -- 6
+CREATE TABLE documents (                        -- 7 → companies, deals, users, calc_configs
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- … all columns
+  source_document_id uuid NULL,                 -- self-FK added below
+  -- … all columns
+);
+CREATE TABLE hubspot_webhook_events (...);      -- 8 (no FKs)
+
+-- Self-FK added AFTER documents exists:
+ALTER TABLE documents
+  ADD CONSTRAINT documents_source_document_id_fkey
+    FOREIGN KEY (source_document_id) REFERENCES documents(id)
+    ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- All CHECK constraints (separate ALTER TABLE statements for clarity):
+ALTER TABLE documents
+  ADD CONSTRAINT documents_document_type_check
+    CHECK (document_type IN ('offer', 'agreement')),
+  ADD CONSTRAINT documents_source_xor_check
+    CHECK ((source_calculator_config_id IS NULL) <> (source_document_id IS NULL)),
+  ADD CONSTRAINT documents_document_number_format_check
+    CHECK (document_number ~ '^BSG-[0-9]{7}-[0-9]{6}$'),
+  ADD CONSTRAINT documents_hubspot_sync_state_check
+    CHECK (hubspot_sync_state IS NULL OR hubspot_sync_state IN ('not_synced','pending','synced','failed'));
+```
+
+Drizzle Kit emits this automatically when the TypeScript schema
+files use `references(() => ...)` callbacks correctly. The
+self-FK on documents is the only manual touchpoint — verify it
+lands in the generated SQL.
 
 ---
 

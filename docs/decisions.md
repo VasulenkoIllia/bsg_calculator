@@ -2994,3 +2994,117 @@ Use this file to record meaningful technical decisions for the project.
     decisions to a sprint plan (next commit).
   - Begin coding Sprint 1 (Foundation: Drizzle + users +
     refresh_tokens + auth) after user gives green light.
+
+### Decision: Phase 8 DB audit cleanup (pre-implementation)
+- Date: 2026-05-15
+- Context:
+  - User raised concern before coding starts: "мене хвилює аудит
+    бази даних правильність структур і чи сама база оптимізована
+    і швидка" — DB audit needed before writing migrations.
+  - Ran `database-reviewer` agent on all 8 documented tables +
+    indexes + concurrency patterns.
+  - Audit confirmed CORRECT: text+CHECK over enum (evolvability),
+    citext for email/login (case-insensitive without LOWER()
+    wrapping), `text` not `varchar(N)` (no storage difference, CHECK
+    is more expressive), `timestamptz` everywhere, atomic numbering
+    via UPDATE … RETURNING (gap-free, rolls back with TX, NOT
+    Postgres SEQUENCE), HubSpot raw JSONB WITHOUT GIN (no documented
+    query searches inside), 3-query approach over LATERAL JOIN for
+    listings (parallel, predictable latency, no PG memory pressure).
+  - Audit surfaced 6 explicit doc-level fixes needed before code:
+- Decisions / fixes applied:
+
+  **A. Timestamp defaults — all auto-managed columns get
+  `NOT NULL DEFAULT now()`**
+  - `companies.created_at`, `companies.updated_at`,
+    `companies.last_synced_at` — now all `NOT NULL DEFAULT now()`.
+  - Same for `deals.{created_at, updated_at, last_synced_at}`.
+  - Same for `calculator_configs.{created_at, updated_at}`.
+  - Previously the prose was ambiguous (just `timestamptz`) which
+    would generate nullable columns in Drizzle — every INSERT path
+    would have had to set them manually. Defaults eliminate the
+    bug class.
+
+  **B. UUID PK defaults — `DEFAULT gen_random_uuid()` everywhere**
+  - All `id` columns on `companies`, `deals`, `calculator_configs`,
+    `documents`, `users`, `refresh_tokens`, `hubspot_webhook_events`
+    explicitly default to `gen_random_uuid()` (Postgres built-in,
+    no extension needed at PG 13+).
+  - Removes risk of any INSERT path emitting a nil UUID.
+
+  **C. Full FK matrix with ON DELETE / ON UPDATE on every FK**
+  - Added §3.2 to phase_08_backend_plan.md with the authoritative
+    11-row FK matrix. Key policies:
+      `documents.hubspot_company_id → companies` = RESTRICT (cannot
+      orphan a business document), CASCADE on update (HubSpot ID
+      re-keys propagate).
+      `documents.hubspot_deal_id → deals` = SET NULL (doc survives
+      a deal deletion).
+      `documents.source_document_id → documents` = self-FK,
+      RESTRICT (cannot delete a template that has clones).
+      `documents.source_calculator_config_id → calc_configs` =
+      SET NULL (calc deletion preserves the immutable doc).
+      `documents.created_by → users` = RESTRICT (cannot delete a
+      user who authored documents).
+      `deals.hubspot_company_id → companies` = RESTRICT, UPDATE
+      CASCADE.
+      `refresh_tokens.user_id → users` = CASCADE (delete user
+      revokes sessions).
+      `calculator_configs.*` FKs to companies/deals = SET NULL on
+      delete (calcs can survive in a degraded state); to users =
+      RESTRICT (authorship preserved).
+  - Without these explicit policies Drizzle defaults to
+    `ON DELETE NO ACTION` which would let webhook deletes leave
+    orphaned FKs.
+
+  **D. Self-FK on `documents.source_document_id` as separate ALTER**
+  - Postgres cannot validate a self-FK during CREATE TABLE.
+    Drizzle Kit emits the ALTER as a follow-up statement. Pattern
+    documented in §3.2 and `backend_conventions.md` §10.
+
+  **E. Covering INCLUDE indexes for the listings query**
+  - `deals.(hubspot_company_id, hubspot_created_at DESC)`
+    INCLUDE (`name`, `stage`, `amount`, `currency`).
+  - `documents.(hubspot_company_id, document_type, created_at DESC)`
+    INCLUDE (`document_number`).
+  - `calculator_configs.hubspot_company_id` INCLUDE (`id`, `name`,
+    `updated_at`).
+  - Combined with the 3-query approach for `GET /listings/companies`,
+    these turn the listing endpoint into index-only scans —
+    realistic latency 30ms at 50 companies / page.
+
+  **F. Missing FK index: `documents.created_by`,
+  `calculator_configs.last_edited_by`, `documents.source_*_id`**
+  - Each FK column needs its own index for fast delete-RESTRICT
+    checks. Added to the documents and calculator_configs index
+    lists. Source-id indexes are partial (`WHERE … IS NOT NULL`)
+    since most rows have only one source set.
+
+  **G. Refresh-token grace window updates `last_used_at`**
+  - Previously the grace-window branch returned a new access token
+    but didn't bump `last_used_at`, leaving the active-sessions
+    view stale. Fixed in §9.
+- Alternatives considered:
+  - Surrogate-only FKs (FK to `companies.id` uuid, not natural
+    key): rejected. Natural-key FK matches HubSpot semantics, and
+    `ON UPDATE CASCADE` handles re-key. Two more JOIN steps per
+    listing query would have been needed for the surrogate path.
+  - Postgres `SEQUENCE` for numbering: rejected. Sequences don't
+    roll back on TX abort — failed INSERT would leave a gap. Our
+    requirement is gap-free. The `document_number_sequence` table
+    is the right pattern.
+  - GIN on `hubspot_raw` JSONB: rejected. No documented query
+    searches inside. Maintenance cost on every upsert ≠ zero.
+  - `pg_trgm` for HubSpot name search: rejected. Prefix-only
+    autocomplete (text_pattern_ops B-tree) suffices at 5000
+    companies. Reconsider when mid-string search is requested.
+  - Materialized view for listings: rejected. Refresh complexity
+    on every doc INSERT / calc PATCH / deal upsert; no benefit
+    over indexed queries at our volume.
+- Consequences:
+  - All 6 audit blockers closed. Drizzle migration files can be
+    written verbatim from §3 of phase_08_backend_plan.md.
+  - Phase 8 implementation can start with no further DB design
+    work.
+- Follow-up actions:
+  - Start Sprint 1 (Foundation) on branch `phase-8-foundation`.

@@ -165,11 +165,11 @@ to absorb multi-tab races (see §11.6).
 | Column | Type | Notes |
 |---|---|---|
 | `id` | uuid PK DEFAULT gen_random_uuid() | |
-| `user_id` | uuid NOT NULL FK → `users.id` ON DELETE CASCADE | |
+| `user_id` | uuid NOT NULL FK → `users.id` ON DELETE CASCADE ON UPDATE CASCADE | Deleting a user revokes all their sessions. |
 | `token_hash` | text UNIQUE NOT NULL | SHA-256 of raw token (never store raw). |
 | `expires_at` | timestamptz NOT NULL | 30 days from creation. |
 | `revoked_at` | timestamptz NULL | NULL = valid. Set during rotation. |
-| `last_used_at` | timestamptz NULL | Set on each `/auth/refresh` hit using this token. Powers the "active sessions" view (Phase 9). |
+| `last_used_at` | timestamptz NULL | Set on each `/auth/refresh` hit using this token (INCLUDING the 10s grace-window branch). Powers the "active sessions" view (Phase 9). |
 | `created_at` | timestamptz NOT NULL DEFAULT now() | |
 
 Indexes:
@@ -186,8 +186,8 @@ rationale and the inspection scripts used.
 
 | Column | Type | Notes |
 |---|---|---|
-| `id` | uuid PK | Internal ID. |
-| `hubspot_company_id` | text UNIQUE NOT NULL | HubSpot `hs_object_id`. Stable across renames. |
+| `id` | uuid PK DEFAULT gen_random_uuid() | Internal ID. |
+| `hubspot_company_id` | text UNIQUE NOT NULL | HubSpot `hs_object_id`. Stable across renames. Natural key — FK targets in `deals`, `documents`, `calculator_configs` reference THIS column (not `id`). |
 | `name` | text NOT NULL | HubSpot `name`. BSG convention: `(A) <agent>` / `(M) <merchant>`. |
 | `company_type` | text NULL | HubSpot `company_type` enum. Values: `referring_partner`, `direct_client`, `aggregating_merchant`. NULL on records sales has not categorised yet. |
 | `segment_type` | text NULL | HubSpot `segment_type` enum. Values: `Master_referring_partner`, `Direct_Merchant`, `Aggregating_Merchant`. **Confirmed NULL on the merchant we inspected** — column MUST allow NULL. |
@@ -196,12 +196,15 @@ rationale and the inspection scripts used.
 | `hubspot_created_at` | timestamptz NOT NULL | HubSpot `createdate`. |
 | `hubspot_modified_at` | timestamptz NOT NULL | HubSpot `hs_lastmodifieddate`. Drives incremental sync. |
 | `hubspot_raw` | jsonb NOT NULL | Full HubSpot payload (all 263 properties) at last sync. Anything not in a named column above is read from here. |
-| `last_synced_at` | timestamptz NOT NULL | When we last refetched this row from HubSpot. |
-| `created_at` | timestamptz | First time we saw this company in our DB. |
-| `updated_at` | timestamptz | |
+| `last_synced_at` | timestamptz NOT NULL DEFAULT now() | When we last refetched this row from HubSpot. |
+| `created_at` | timestamptz NOT NULL DEFAULT now() | First time we saw this company in our DB. |
+| `updated_at` | timestamptz NOT NULL DEFAULT now() | Application-managed on every UPDATE. |
+
+`id` defaults to `gen_random_uuid()` (Postgres built-in; no extension
+needed in PG 13+). Same convention on every uuid PK in this schema.
 
 Indexes:
-- `hubspot_company_id` (unique)
+- `hubspot_company_id` UNIQUE (B-tree, also acts as the FK target)
 - `name` text_pattern_ops — for prefix-search autocomplete
 - `(company_type, name)` — for "agents only" / "merchants only" filters
 - `hubspot_modified_at` — for incremental-sync queries
@@ -214,9 +217,9 @@ the column-by-column rationale.
 
 | Column | Type | Notes |
 |---|---|---|
-| `id` | uuid PK | Internal ID. |
-| `hubspot_deal_id` | text UNIQUE NOT NULL | HubSpot `hs_object_id`. |
-| `hubspot_company_id` | text NOT NULL FK → `companies.hubspot_company_id` | HubSpot `hs_primary_associated_company`. Single FK — every BSG deal has one primary company. |
+| `id` | uuid PK DEFAULT gen_random_uuid() | Internal ID. |
+| `hubspot_deal_id` | text UNIQUE NOT NULL | HubSpot `hs_object_id`. Natural key — FK targets in `documents`, `calculator_configs` reference THIS column. |
+| `hubspot_company_id` | text NOT NULL FK → `companies.hubspot_company_id` ON DELETE RESTRICT ON UPDATE CASCADE | HubSpot `hs_primary_associated_company`. Single FK — every BSG deal has one primary company. RESTRICT on delete: cannot delete a company while deals reference it; webhook handler must triage. |
 | `name` | text NOT NULL | HubSpot `dealname`. |
 | `stage` | text NULL | HubSpot `dealstage` (stage id; resolve to label via cached pipeline list). |
 | `pipeline_id` | text NULL | HubSpot `pipeline` (currently always `default` = Gateway sales). |
@@ -228,14 +231,14 @@ the column-by-column rationale.
 | `hubspot_created_at` | timestamptz NOT NULL | HubSpot `createdate`. |
 | `hubspot_modified_at` | timestamptz NOT NULL | HubSpot `hs_lastmodifieddate`. Incremental sync trigger. |
 | `hubspot_raw` | jsonb NOT NULL | Full HubSpot payload (all 237 properties), including all pricing / KYB / business context fields that we deliberately do NOT extract — see field-mapping doc §2 for the rationale. |
-| `last_synced_at` | timestamptz NOT NULL | |
-| `created_at` | timestamptz | |
-| `updated_at` | timestamptz | |
+| `last_synced_at` | timestamptz NOT NULL DEFAULT now() | |
+| `created_at` | timestamptz NOT NULL DEFAULT now() | |
+| `updated_at` | timestamptz NOT NULL DEFAULT now() | Application-managed on every UPDATE. |
 
 Indexes:
-- `hubspot_deal_id` (unique)
+- `hubspot_deal_id` UNIQUE (B-tree, also acts as the FK target)
 - `hubspot_company_id` — for "deals for this company" listing
-- `(hubspot_company_id, hubspot_created_at DESC)` — for paginated company→deals view
+- `(hubspot_company_id, hubspot_created_at DESC)` INCLUDE (`name`, `stage`, `amount`, `currency`) — covering index for the listings query, eliminates heap fetch
 - `stage` — for stage-filtered listings
 - `hubspot_modified_at` — for incremental-sync queries
 
@@ -255,24 +258,28 @@ functional model" for the full rationale.
 
 | Column | Type | Notes |
 |---|---|---|
-| `id` | uuid PK | Used in `/calc/:id` URL. |
+| `id` | uuid PK DEFAULT gen_random_uuid() | Used in `/calc/:id` URL. |
 | `name` | text NULL | Operator label (e.g. "Acme deal — CH-tier draft v2"). NULL → backend renders as "Untitled calculator · 2026-05-15". |
-| `hubspot_company_id` | text NULL FK → `companies.hubspot_company_id` | Optional during early drafting. Required before "Save as offer/agreement". |
-| `hubspot_deal_id` | text NULL FK → `deals.hubspot_deal_id` | Optional. |
+| `hubspot_company_id` | text NULL FK → `companies.hubspot_company_id` ON DELETE SET NULL ON UPDATE CASCADE | Optional during early drafting. Required before "Save as offer/agreement". |
+| `hubspot_deal_id` | text NULL FK → `deals.hubspot_deal_id` ON DELETE SET NULL ON UPDATE CASCADE | Optional. |
 | `payload` | jsonb NOT NULL | Full `DocumentTemplatePayload`-like state (calculator inputs + computed derived state). |
-| `created_at` | timestamptz NOT NULL | |
-| `created_by` | uuid FK → `users.id` NOT NULL | |
-| `updated_at` | timestamptz NOT NULL | |
-| `last_edited_by` | uuid FK → `users.id` NOT NULL | Updated on every save. |
+| `created_at` | timestamptz NOT NULL DEFAULT now() | |
+| `created_by` | uuid NOT NULL FK → `users.id` ON DELETE RESTRICT ON UPDATE CASCADE | |
+| `updated_at` | timestamptz NOT NULL DEFAULT now() | Application-managed on every UPDATE. |
+| `last_edited_by` | uuid NOT NULL FK → `users.id` ON DELETE RESTRICT ON UPDATE CASCADE | Updated on every save. |
 
 Indexes:
-- `hubspot_company_id` — for "calcs for this company" in the listing
+- `hubspot_company_id` — for "calcs for this company" in the listing (INCLUDE `id`, `name`, `updated_at` for covering scans)
 - `hubspot_deal_id` — for "calcs for this deal"
 - `(created_by, updated_at DESC)` — for "my recent calcs" filter (Phase 9)
+- `last_edited_by` — required for FK delete checks
 - `updated_at DESC` — default sort
 
 Mutation policy: UPDATE freely allowed. DELETE allowed (operator can
-prune their own drafts). No FK cascades from `documents.source_calculator_config_id` — that FK keeps the lineage pointer but its NULL-ability means deleting a calc does NOT delete derived documents.
+prune their own drafts). FK from `documents.source_calculator_config_id`
+is `ON DELETE SET NULL` — deleting a calc nulls the source pointer on
+derived documents but does NOT delete those documents (they have
+their own number + immutable history).
 
 ### `documents` (immutable offers + agreements — REVISED 2026-05-15)
 
@@ -286,14 +293,14 @@ configs moved to their own table.
 
 | Column | Type | Notes |
 |---|---|---|
-| `id` | uuid PK | Stable. Internal use only — public URLs use `document_number`. |
+| `id` | uuid PK DEFAULT gen_random_uuid() | Stable. Internal use only — public URLs use `document_number`. |
 | `document_number` | text UNIQUE NOT NULL | `BSG-<7digit>-<6digit>` (§6). Generated atomically inside the create TX. |
 | `document_type` | text NOT NULL CHECK IN (`offer`, `agreement`) | |
-| `hubspot_company_id` | text NOT NULL FK → `companies.hubspot_company_id` | **Mandatory.** Document is always for a known HubSpot company. |
-| `hubspot_deal_id` | text NULL FK → `deals.hubspot_deal_id` | Optional — operator can generate a document for a company without a specific deal (pre-sales scenarios). |
+| `hubspot_company_id` | text NOT NULL FK → `companies.hubspot_company_id` ON DELETE RESTRICT ON UPDATE CASCADE | **Mandatory.** Document is always for a known HubSpot company. RESTRICT on delete: a document is a permanent business record; webhook delete must triage rather than orphan the FK. |
+| `hubspot_deal_id` | text NULL FK → `deals.hubspot_deal_id` ON DELETE SET NULL ON UPDATE CASCADE | Optional — operator can generate a document for a company without a specific deal. SET NULL on delete: keeps the document; deal context is informational. |
 | `payload` | jsonb NOT NULL | Frozen `DocumentTemplatePayload` snapshot at save time. See §3.1. |
-| `source_calculator_config_id` | uuid NULL FK → `calculator_configs.id` | The calc this document was generated from. NULL if cloned from another document (then `source_document_id` is set). |
-| `source_document_id` | uuid NULL FK → `documents.id` | The template document this was cloned from. NULL if generated fresh from a calc. |
+| `source_calculator_config_id` | uuid NULL FK → `calculator_configs.id` ON DELETE SET NULL ON UPDATE CASCADE | The calc this document was generated from. NULL if cloned from another document. SET NULL on delete preserves the document; lineage pointer is lost. |
+| `source_document_id` | uuid NULL FK → `documents.id` ON DELETE RESTRICT ON UPDATE CASCADE | The template document this was cloned from. **Self-referential FK** — must be added as a separate `ALTER TABLE` after the CREATE (see §3.2). |
 | `note_addendum` | text NULL | Operator's free-text addendum to the HubSpot note (Phase 9 includes this in the note body). |
 | `hubspot_sync_state` | text NULL | `not_synced` / `pending` / `synced` / `failed`. NULL in Phase 8 — Phase 9 populates. |
 | `hubspot_links` | jsonb NULL | `{ companyNoteId, dealNoteId? }` populated by Phase 9 sync. |
@@ -301,7 +308,7 @@ configs moved to their own table.
 | `last_sync_at` | timestamptz NULL | When sync last succeeded. Phase 9. |
 | `last_sync_error` | text NULL | Last sync error message. Phase 9. |
 | `created_at` | timestamptz NOT NULL DEFAULT now() | Immutable. |
-| `created_by` | uuid NOT NULL FK → `users.id` | Immutable. |
+| `created_by` | uuid NOT NULL FK → `users.id` ON DELETE RESTRICT ON UPDATE CASCADE | Immutable. RESTRICT prevents deleting a user who created documents. |
 
 Note the absence of `updated_at`, `confirmed_at`, `confirmed_by`,
 `status`, `name`, `parent_document_id` (renamed to `source_document_id`).
@@ -338,12 +345,15 @@ in Phase 8.5 hardening.
 
 #### Indexes
 
-- `document_number` (unique)
+- `document_number` UNIQUE (B-tree)
 - `hubspot_company_id` — for "all documents for this company"
-- `(hubspot_company_id, document_type, created_at DESC)` — for "latest offer per company"
+- `(hubspot_company_id, document_type, created_at DESC)` INCLUDE (`document_number`) — covering index for the listings query
 - `hubspot_deal_id` — for "documents for this deal"
 - `(document_type, created_at DESC)` — for type-filtered listings
 - `created_at DESC` — default sort
+- `created_by` — required for FK delete checks against `users`
+- `source_calculator_config_id` partial WHERE `source_calculator_config_id IS NOT NULL` — for "documents generated from calc X"
+- `source_document_id` partial WHERE `source_document_id IS NOT NULL` — for "clones of document X"
 
 #### Immutability enforcement
 
@@ -361,6 +371,55 @@ exists). Implementation deferred to Phase 8.5 hardening.
 | `documents.payload` (`document_type='agreement'`) | `DocumentTemplatePayload` with `documentScope = "offerAndAgreement"` | same |
 
 Zod validators on the API endpoints validate shape on write.
+
+### 3.2 Foreign-key matrix + self-FK pattern (NEW 2026-05-15)
+
+Single authoritative table of ALL FK cascade policies. The DB
+reviewer flagged that defaults (`NO ACTION ON DELETE / UPDATE`) would
+leak orphans on company-delete webhook events; explicit policies
+prevent that.
+
+| From → To | ON DELETE | ON UPDATE | Rationale |
+|---|---|---|---|
+| `refresh_tokens.user_id` → `users.id` | CASCADE | CASCADE | Deleting a user invalidates all sessions. |
+| `deals.hubspot_company_id` → `companies.hubspot_company_id` | RESTRICT | CASCADE | Cannot lose a deal's company FK. Webhook delete must triage first. Re-key of company propagates. |
+| `calculator_configs.hubspot_company_id` → `companies.hubspot_company_id` | SET NULL | CASCADE | Calc drafts can survive a company deletion in a degraded state. |
+| `calculator_configs.hubspot_deal_id` → `deals.hubspot_deal_id` | SET NULL | CASCADE | Same — deal pointer is informational on a calc. |
+| `calculator_configs.created_by` → `users.id` | RESTRICT | CASCADE | Authorship preserved; cannot delete a user with calcs. |
+| `calculator_configs.last_edited_by` → `users.id` | RESTRICT | CASCADE | Same. |
+| `documents.hubspot_company_id` → `companies.hubspot_company_id` | RESTRICT | CASCADE | Documents are permanent records — cannot orphan. |
+| `documents.hubspot_deal_id` → `deals.hubspot_deal_id` | SET NULL | CASCADE | Document survives a deal deletion. |
+| `documents.source_calculator_config_id` → `calculator_configs.id` | SET NULL | CASCADE | Deleting the calc breaks lineage pointer but preserves the immutable doc. |
+| `documents.source_document_id` → `documents.id` | RESTRICT | CASCADE | Cannot delete a document that templated another. |
+| `documents.created_by` → `users.id` | RESTRICT | CASCADE | Authorship preserved. |
+
+#### Self-FK pattern for `documents.source_document_id`
+
+Postgres cannot validate a self-referential FK during the CREATE
+TABLE statement because the table does not yet exist as a target.
+Drizzle Kit handles this by emitting the constraint as a separate
+ALTER TABLE after the CREATE. The generated migration looks like:
+
+```sql
+CREATE TABLE documents (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_number text UNIQUE NOT NULL,
+  -- … all other columns
+  source_document_id uuid NULL,
+  -- … all other columns
+);
+
+-- After the CREATE, the self-FK is added:
+ALTER TABLE documents
+  ADD CONSTRAINT documents_source_document_id_fkey
+    FOREIGN KEY (source_document_id) REFERENCES documents(id)
+    ON DELETE RESTRICT ON UPDATE CASCADE;
+```
+
+In the Drizzle TypeScript schema file (`server/db/schema/documents.ts`),
+the self-reference uses the standard `references(() => documents.id)`
+callback form — Drizzle Kit recognises the cycle and emits the
+separated ALTER automatically.
 
 ### `document_number_sequence`
 
@@ -1095,13 +1154,17 @@ if (recentlyRevoked) {
   // 10s window: still issue an access token, but do NOT issue a
   // new refresh token. The first refresh call (which already
   // revoked this token) has the live refresh token.
+  // BUMP last_used_at so the active-sessions view stays accurate.
+  await db.update(refreshTokens).set({ lastUsedAt: now }).where(eq(refreshTokens.id, row.id));
   return res.json({ accessToken: signAccess(row.userId) });
 }
 
 // fresh refresh: rotate
 await db.transaction(async tx => {
-  await tx.update(refreshTokens).set({ revokedAt: now }).where(...);
-  await tx.insert(refreshTokens).values({ /* new */ });
+  await tx.update(refreshTokens)
+    .set({ revokedAt: now, lastUsedAt: now })   // bump on the outgoing row too
+    .where(eq(refreshTokens.id, row.id));
+  await tx.insert(refreshTokens).values({ /* new, lastUsedAt: now */ });
 });
 return res.json({ accessToken: ..., /* + Set-Cookie new refresh */ });
 ```
