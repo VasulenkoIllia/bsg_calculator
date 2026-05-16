@@ -10,8 +10,6 @@ export interface Zone6OfferSummaryProps {
   offerSummaryText: string;
   offerSummaryActionMessage: string | null;
   onCopy: () => void;
-  onExportPdf: () => void;
-  onPrint: () => void;
   onOpenWizard?: () => void;
   /**
    * Persist the current calculator state to the backend
@@ -31,8 +29,6 @@ export function Zone6OfferSummary({
   offerSummaryText,
   offerSummaryActionMessage,
   onCopy,
-  onExportPdf,
-  onPrint,
   onOpenWizard,
   onSaveCalculator
 }: Zone6OfferSummaryProps) {
@@ -67,7 +63,8 @@ export function Zone6OfferSummary({
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <h3 className="text-lg font-bold text-slate-900">Export Actions</h3>
           <p className="mt-1 text-sm text-slate-600">
-            Copy the summary, open print dialog, or export via "Save as PDF".
+            Save the draft to the backend, open the wizard for a full
+            offer/agreement, or copy the summary text.
           </p>
           <div className="mt-3 flex flex-wrap gap-3">
             {onSaveCalculator ? (
@@ -94,20 +91,6 @@ export function Zone6OfferSummary({
               className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
             >
               Copy to Clipboard
-            </button>
-            <button
-              type="button"
-              onClick={onExportPdf}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-            >
-              Export to PDF
-            </button>
-            <button
-              type="button"
-              onClick={onPrint}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-            >
-              Print
             </button>
           </div>
           {offerSummaryActionMessage ? (

@@ -11,13 +11,11 @@ import {
   Zone3PricingConfiguration,
   Zone4OtherFeesAndLimits,
   Zone5ProfitabilityCalculations,
-  Zone6OfferSummary,
-  escapeHtml
+  Zone6OfferSummary
 } from "../components/calculator/index.js";
 import { extractCalculatorSnapshot } from "../components/calculator/snapshotShape.js";
 import { SaveCalculatorModal } from "../components/SaveCalculatorModal.js";
 import { useCalculator } from "../contexts/CalculatorContext.js";
-import { printHtmlViaIframe } from "../lib/printHtmlViaIframe.js";
 
 export function CalculatorPage() {
   const navigate = useNavigate();
@@ -116,36 +114,11 @@ export function CalculatorPage() {
     }
   };
 
-  const openOfferSummaryPrintView = (mode: "pdf" | "print") => {
-    const html = `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>BSG Offer Summary</title>
-  <style>
-    :root { color-scheme: light; }
-    body { margin: 0; padding: 24px; font-family: Menlo, Monaco, Consolas, "Liberation Mono", monospace; background: #f8fafc; color: #0f172a; }
-    pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.55; border: 1px solid #cbd5e1; background: #ffffff; border-radius: 12px; padding: 16px; }
-  </style>
-</head>
-<body>
-  <pre>${escapeHtml(offerSummaryText)}</pre>
-</body>
-</html>`;
-
-    const ok = printHtmlViaIframe(html);
-    if (!ok) {
-      calc.setOfferSummaryActionMessage(
-        "Could not open the print dialog in this environment."
-      );
-      return;
-    }
-
-    calc.setOfferSummaryActionMessage(
-      mode === "pdf" ? 'Print dialog opened. Choose "Save as PDF" to export.' : "Print dialog opened."
-    );
-  };
+  // Note: the "Export to PDF" / "Print" inline iframe-print path was
+  // removed from Zone 6 Export Actions on 2026-05-17 — Sprint 4
+  // (Documents + PDF render) will replace it with a backend-driven
+  // Puppeteer pipeline. The Offer Summary Preview textarea remains
+  // available below for manual copy/paste in the meantime.
 
   return (
     <>
@@ -350,8 +323,6 @@ export function CalculatorPage() {
         offerSummaryText={offerSummaryText}
         offerSummaryActionMessage={calc.offerSummaryActionMessage}
         onCopy={handleCopyOfferSummary}
-        onExportPdf={() => openOfferSummaryPrintView("pdf")}
-        onPrint={() => openOfferSummaryPrintView("print")}
         onOpenWizard={() => navigate("/wizard")}
         onSaveCalculator={() => setSaveOpen(true)}
       />
