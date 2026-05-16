@@ -13,7 +13,7 @@
  * every `toPublic()` call with this helper instead.
  */
 
-import { ZodError, type ZodTypeAny, type z } from "zod";
+import { type ZodTypeAny, type z } from "zod";
 import { InternalError } from "./errors";
 import { logger } from "../middleware/logger";
 
@@ -24,6 +24,12 @@ import { logger } from "../middleware/logger";
  * `context` becomes the leading log label — pass something
  * recognisable like "companies.toPublic" so the failure points at
  * the projection function.
+ *
+ * IMPORTANT: pass a freshly-constructed projection object, NOT a
+ * raw DB row. The `data` parameter is included verbatim in the
+ * error log on failure; a raw row with a 20KB `hubspot_raw` JSONB
+ * would flood the log. The toPublic() pattern (build a plain
+ * object explicitly) keeps this safe.
  */
 export function parseDtoOrInternalError<Schema extends ZodTypeAny>(
   schema: Schema,
@@ -50,5 +56,3 @@ export function parseDtoOrInternalError<Schema extends ZodTypeAny>(
     `Response DTO mismatch in ${context}: ${summary}`
   );
 }
-
-export { ZodError };
