@@ -78,7 +78,13 @@ beforeEach(async () => {
   // our UUID-PK schema but harmless). Add new tables here as the
   // schema grows.
   await dbModule.db.execute(
-    sql`TRUNCATE TABLE calculator_configs, deals, companies, refresh_tokens, users RESTART IDENTITY CASCADE`
+    sql`TRUNCATE TABLE documents, calculator_configs, deals, companies, refresh_tokens, users RESTART IDENTITY CASCADE`
+  );
+  // Reset numbering sequence — TRUNCATE on documents doesn't touch
+  // the sequence row. Set to the seed value so each test file starts
+  // from BSG-7100001.
+  await dbModule.db.execute(
+    sql`UPDATE document_number_sequence SET next_value = 7100001 WHERE id = '00000000-0000-0000-0000-000000000001'`
   );
 });
 

@@ -3576,3 +3576,149 @@ Use this file to record meaningful technical decisions for the project.
     add `PATCH /api/v1/calculator-configs/:id` (partial-merge) and
     the frontend can add a debounce wrapper around it without
     breaking existing CRUD callers.
+
+### Decision: Pre-Sprint 4 — Documents UX + payload shape + template flow
+- Date: 2026-05-17
+- Context:
+  - Sprint 4 ships the documents + PDF module. Before writing the
+    migration, locked three UX questions that touch the schema (Q2)
+    and the wizard wiring (Q1, Q3).
+- Decision:
+  - **Q1 — Wizard "Save as document" lives ONLY on the last step**.
+    The 7-step wizard runs to completion (Header → Acquirer fees →
+    Volumes → ... → Parties & Signatures). On Step 7, depending on
+    Document Type (offer / agreement / offer_and_agreement), the
+    appropriate "Save" button(s) appear. Clicking opens AddendumModal
+    → optional addendum text → POST /api/v1/documents → redirect
+    to /documents/:number.
+    Rejected alternatives:
+      - Per-step "Save & close": would require a tristate payload
+        (complete vs draft vs invalid) — explosion in validation
+        rules with no business benefit, the wizard takes ~3 min and
+        operators run it end-to-end anyway.
+      - "Generate Document" button in the wizard header: invites
+        accidental clicks mid-edit and decouples save from final
+        review.
+  - **Q2 — documents.payload = CalculatorSnapshotPayload + wizard-
+    specific meta in ONE JSONB blob**.
+    Shape:
+
+        {
+          // mirror of CalculatorSnapshotPayload (calculator-configs payload)
+          schemaVersion: 1,
+          calculatorType, payinVolume, ..., clientNotes,
+          // wizard-specific additions (Step 1: header meta; Step 7: parties)
+          header: { dateIssued, validityDays, contactPerson, ... },
+          parties: {
+            merchant: { legalName, regNumber, address, ... },
+            bsg: { entity, signatory, ... }
+          },
+          signatures: { merchantSignatoryName, bsgSignatoryName }
+        }
+
+    Rationale:
+      - The existing src/components/document-wizard PDF builder
+        already consumes this combined shape. Splitting would create
+        a join cost at render time for zero modeling benefit.
+      - PDF render is read-only against payload — JSON shape mismatch
+        would surface immediately in PDF QA, not silently corrupt data.
+      - "Use as template" can extract the calc slice (via
+        extractCalculatorSnapshot on the payload directly) without
+        re-fetching the calculator-config.
+    Rejected alternatives:
+      - Calc snapshot + parties/signatures as separate columns:
+        rejected. JSONB lets us evolve the schema (e.g. Phase 9 might
+        add `localised_translations`) without migrations.
+      - Pre-rendered HTML: rejected. Editing or re-styling existing
+        docs requires re-rendering anyway; storing source-of-truth
+        as data + rendering on demand is the standard pattern.
+  - **Q3 — "Use as template" redirects to /calc/:newConfigId**, not
+    /wizard. The button on /documents/:number does:
+      1. POST /api/v1/documents/:number/use-as-template
+      2. Backend extracts the calc slice from documents.payload,
+         creates a new calculator_configs row (company_id +
+         hubspot_deal_id inherited from source doc), returns
+         { configId, redirectUrl: "/calc/:configId" }
+      3. Frontend navigates.
+    The operator then iterates on the calc, and if they want to
+    produce a NEW document, opens the wizard from there as usual.
+    Rejected:
+      - Direct redirect to /wizard?seed=<docId>: rejected. Would
+        mean a document → wizard → document cycle without a clear
+        intermediate state — confusing the "what am I editing"
+        mental model. Calc-as-intermediate is the cleaner break.
+- Alternatives considered (cross-cutting):
+  - "Save as draft" intermediate state on documents: rejected.
+    Documents are immutable artefacts (an offer that's been sent to
+    a client doesn't get edited; it gets superseded). Drafts live
+    in calculator_configs.
+  - Allowing documents.calculator_config_id NOT NULL: rejected. A
+    document MAY originate from a config (Flow A) but doesn't HAVE
+    to — Flow C ("direct clone from existing document") creates a
+    doc without ever touching a config row.
+- Consequences:
+  - Sprint 4 SQL migration 0003_documents.sql locked:
+
+        documents (
+          id              UUID PK DEFAULT gen_random_uuid(),
+          number          TEXT NOT NULL UNIQUE,    -- BSG-7100024 format
+          company_id      UUID NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+          hubspot_deal_id TEXT NULL REFERENCES deals(hubspot_deal_id) ON DELETE SET NULL,
+          calculator_config_id UUID NULL REFERENCES calculator_configs(id) ON DELETE SET NULL,
+          scope           TEXT NOT NULL CHECK (scope IN ('offer','agreement','offer_and_agreement')),
+          payload         JSONB NOT NULL,
+          addendum        TEXT,
+          hubspot_sync_state TEXT NOT NULL DEFAULT 'not_synced'
+            CHECK (hubspot_sync_state IN ('not_synced','synced','failed')),
+          hubspot_note_id TEXT,
+          created_by_user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+          created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+
+        document_number_sequence (
+          id INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),  -- singleton
+          next_value INT NOT NULL DEFAULT 7100001
+        );
+
+    FK on company DELETE = RESTRICT (operator must archive the doc
+    before removing the company; CASCADE would silently destroy
+    legal-record artefacts).
+    FK on deal DELETE = SET NULL (doc survives a deal deletion; the
+    deal column just nulls out).
+    FK on calculator_config DELETE = SET NULL (deleting a saved
+    calculator-config doesn't invalidate the document; the link is
+    informational).
+  - Sprint 4 endpoint surface:
+      - POST   /api/v1/documents               (Flow A from configId,
+                                                Flow B from /use-as-template,
+                                                Flow C from direct body)
+      - GET    /api/v1/documents/:number
+      - POST   /api/v1/documents/:number/use-as-template → new
+                                                calculator-config + redirect
+      - GET    /api/v1/documents?…filters     (cursor pagination)
+      - GET    /api/v1/documents/:number/pdf?download=true
+                                                (Puppeteer-streamed)
+      - GET    /api/v1/numbering/peek
+      - POST   /api/v1/documents/:number/sync → 501 stub (Phase 9)
+  - Sprint 4 frontend:
+      - AddendumModal (opens on wizard Step 7's Save buttons).
+      - DocumentsListPage at /documents.
+      - DocumentViewPage at /documents/:number (read-only render,
+        Download PDF button, Use as Template button).
+      - Wizard Step 7 gets one new section: "Save buttons" (per
+        scope: 1, 2, or 3 buttons depending on Document Type).
+- Follow-up actions:
+  - Sprint 4.A migration MUST seed `document_number_sequence` with
+    a single row (id=1, next_value=7100001) — see decisions.md
+    "DOCUMENT_NUMBER_START=7100001".
+  - Numbering allocation MUST use `UPDATE ... RETURNING` inside the
+    POST /documents transaction so concurrent saves can't collide.
+    Integration test required: spawn 2 parallel POSTs against the
+    same company/deal, assert distinct numbers.
+  - PDF render MUST be stream-only (no /tmp files, no DB cache).
+    Buffer flows: Puppeteer Buffer → HTTP response.
+  - Phase 9 (HubSpot Note write-back) will populate
+    `documents.hubspot_note_id` + flip `hubspot_sync_state` to
+    `synced`. Sprint 4 keeps the stub returning 501 so the schema
+    is ready when Phase 9 lands.

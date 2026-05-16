@@ -34,3 +34,13 @@ export const db = drizzle(pool, { schema });
 
 export type Database = typeof db;
 export type Schema = typeof schema;
+
+/**
+ * Generic "database OR open transaction" — repositories that can run
+ * inside either context type their `tx` argument as this. Drizzle's
+ * `Database` and `PgTransaction<...>` share the same Select/Insert/
+ * Update/Delete/execute surface so the runtime is identical; we just
+ * need a type that accepts both. `Parameters<...>[0]` extracts the
+ * transaction callback's first arg type, which is the TX handle.
+ */
+export type DbOrTx = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];

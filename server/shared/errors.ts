@@ -121,6 +121,21 @@ export class DbUnavailableError extends AppError {
   }
 }
 
+/**
+ * 501 — a feature whose endpoint exists in the router but whose
+ * implementation has not yet shipped (e.g. POST /documents/:number/sync
+ * during Sprint 4, before Phase 9 wires HubSpot Note write-back).
+ *
+ * Distinct from 404 (route doesn't exist) so the frontend can render
+ * "Coming soon" copy rather than "Not found".
+ */
+export class NotImplementedError extends AppError {
+  constructor(message = "This endpoint is not yet implemented.") {
+    super(501, "NOT_IMPLEMENTED", message);
+    this.name = "NotImplementedError";
+  }
+}
+
 // Type guard used by the error-handler middleware.
 export function isAppError(err: unknown): err is AppError {
   return err instanceof AppError;

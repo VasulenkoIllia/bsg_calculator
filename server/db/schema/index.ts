@@ -12,3 +12,4 @@ export * from "./refresh-tokens";
 export * from "./companies";
 export * from "./deals";
 export * from "./calculator-configs";
+export * from "./documents";
