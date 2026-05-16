@@ -15,6 +15,7 @@
 
 import { useInfiniteQuery, type InfiniteData } from "@tanstack/react-query";
 import * as companiesApi from "../api/companies.js";
+import { ApiError } from "../api/client.js";
 import type { CursorPage, PublicCompany } from "../api/types.js";
 
 export interface UseCompaniesOptions {
@@ -27,9 +28,11 @@ export interface UseCompaniesOptions {
 export interface UseCompaniesResult {
   items: PublicCompany[];
   isLoading: boolean;
+  /** True while a background refetch is in flight (vs initial isLoading). */
   isFetching: boolean;
   isError: boolean;
-  error: unknown;
+  /** Typed as ApiError so callers can branch on `error.code` directly. */
+  error: ApiError | null;
   hasNextPage: boolean;
   fetchNextPage: () => void;
   isFetchingNextPage: boolean;
@@ -50,7 +53,7 @@ export function useCompanies({ q, limit }: UseCompaniesOptions = {}): UseCompani
 
   const query = useInfiniteQuery<
     CursorPage<PublicCompany>,
-    Error,
+    ApiError,
     InfiniteData<CursorPage<PublicCompany>, string | undefined>,
     unknown[],
     string | undefined

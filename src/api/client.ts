@@ -18,10 +18,28 @@
 import axios, {
   AxiosError,
   AxiosHeaders,
-  type AxiosInstance,
-  type InternalAxiosRequestConfig
+  type AxiosInstance
 } from "axios";
 import type { ApiErrorEnvelope, RefreshResponse } from "./types.js";
+
+// ─── Axios config augmentation ────────────────────────────────────
+// `_isRefresh` marks the internal /auth/refresh call so the response
+// interceptor doesn't recursively try to refresh-on-401 it. `_retry`
+// marks a request that's already been replayed once after a refresh,
+// preventing an infinite retry loop if the replay itself 401s.
+//
+// We declare these as first-class optional properties on the public
+// `AxiosRequestConfig` (which `InternalAxiosRequestConfig` extends).
+// Adding the augmentation on the base interface means both the
+// call-site (`axios.post(..., { _isRefresh: true })`) and the
+// interceptor's `err.config._isRefresh` read are statically typed
+// without `as unknown as` double-casts.
+declare module "axios" {
+  export interface AxiosRequestConfig {
+    _isRefresh?: boolean;
+    _retry?: boolean;
+  }
+}
 
 // ─── Access-token store (module-level, in-memory) ─────────────────
 // AuthContext is the source of truth for "am I logged in"; it
@@ -46,6 +64,13 @@ export function getAccessToken(): string | null {
  * Thrown from any api/*.ts call when the backend returns 4xx/5xx.
  * Keeps the structured envelope (`code`, `message`, `details`) +
  * the HTTP `status` so UI code can branch on either.
+ *
+ * SECURITY: `details` is `unknown` because the backend may send
+ * arbitrary diagnostic context (Zod issue lists, validation paths,
+ * etc.). NEVER render `details` directly into the DOM — pass through
+ * a strict whitelist of fields you know are safe. Never feed it to
+ * `dangerouslySetInnerHTML`. Future Sprint 5+ may add request-context
+ * data here that we don't want surfaced to end users.
  */
 export class ApiError extends Error {
   readonly code: string;
@@ -93,27 +118,41 @@ let refreshInFlight: Promise<string> | null = null;
 async function refreshOnce(client: AxiosInstance): Promise<string> {
   if (refreshInFlight) return refreshInFlight;
 
-  refreshInFlight = (async () => {
-    try {
-      // No Authorization header on refresh — the cookie is the credential.
-      const { data } = await client.post<RefreshResponse>(
-        "/auth/refresh",
-        null,
-        {
-          // Tag the request so the response interceptor doesn't try
-          // to refresh-on-401 the refresh call itself (infinite loop).
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          _isRefresh: true
-        } as unknown as InternalAxiosRequestConfig
-      );
-      setAccessToken(data.accessToken);
-      return data.accessToken;
-    } finally {
+  // Build the inner promise WITHOUT a finally that mutates the
+  // module-level singleton. Earlier versions nulled `refreshInFlight`
+  // inside the IIFE's `finally`, which created a micro-race: between
+  // the moment the inner promise rejected and the moment its
+  // continuation callbacks ran, a concurrent caller could observe
+  // `refreshInFlight === null` and start a SECOND refresh — exactly
+  // what the single-flight is meant to prevent.
+  const promise = (async () => {
+    // No Authorization header on refresh — the cookie is the credential.
+    // `_isRefresh` is augmented onto InternalAxiosRequestConfig above.
+    const { data } = await client.post<RefreshResponse>("/auth/refresh", null, {
+      _isRefresh: true
+    });
+    setAccessToken(data.accessToken);
+    return data.accessToken;
+  })();
+  refreshInFlight = promise;
+
+  // Schedule the singleton release. `.then(cleanup, cleanup)` queues
+  // the cleanup behind any `.then` / `.catch` handlers callers have
+  // already attached, eliminating the race window. Both branches use
+  // the same handler so the cleanup chain ALWAYS resolves with
+  // undefined — never re-throws — which means no orphan unhandled
+  // rejection if the inner promise rejects and no caller is awaiting
+  // it yet (e.g. the boot-time refresh on cold load).
+  //
+  // The `=== promise` guard protects against a later refresh's promise
+  // being clobbered if this cleanup fires after the slot was re-occupied.
+  const releaseSingleton = (): void => {
+    if (refreshInFlight === promise) {
       refreshInFlight = null;
     }
-  })();
-
-  return refreshInFlight;
+  };
+  void promise.then(releaseSingleton, releaseSingleton);
+  return promise;
 }
 
 // ─── Build the singleton client ───────────────────────────────────
@@ -157,9 +196,9 @@ export function createApiClient(): AxiosInstance {
   instance.interceptors.response.use(
     response => response,
     async (err: AxiosError<ApiErrorEnvelope>) => {
-      const originalConfig = err.config as
-        | (InternalAxiosRequestConfig & { _retry?: boolean; _isRefresh?: boolean })
-        | undefined;
+      // `_retry` / `_isRefresh` are augmented onto InternalAxiosRequestConfig
+      // above so no cast is needed here.
+      const originalConfig = err.config;
       const status = err.response?.status ?? 0;
       const envelope = err.response?.data?.error;
 
@@ -202,8 +241,15 @@ export function createApiClient(): AxiosInstance {
           // ORIGINAL 401 (not the refresh error) — UI shouldn't see
           // a misleading "refresh failed" when the real story is
           // "your session expired".
+          //
+          // Log only structured fields (code + status) rather than the
+          // raw error object — protects against future cases where
+          // ApiError.details might carry sensitive request context.
           // eslint-disable-next-line no-console
-          console.warn("[api/client] refresh-on-401 failed", refreshErr);
+          console.warn("[api/client] refresh-on-401 failed", {
+            code: refreshErr instanceof ApiError ? refreshErr.code : "UNKNOWN",
+            status: refreshErr instanceof ApiError ? refreshErr.status : 0
+          });
         }
       }
 

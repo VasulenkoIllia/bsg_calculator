@@ -10,10 +10,11 @@
 
 import { useInfiniteQuery, useQuery, type InfiniteData } from "@tanstack/react-query";
 import * as companiesApi from "../api/companies.js";
+import { ApiError } from "../api/client.js";
 import type { CursorPage, PublicCompany, PublicDeal } from "../api/types.js";
 
 export function useCompany(companyId: string | undefined) {
-  return useQuery<PublicCompany, Error>({
+  return useQuery<PublicCompany, ApiError>({
     queryKey: ["companies", "get", companyId],
     enabled: typeof companyId === "string" && companyId.length > 0,
     queryFn: () => companiesApi.getCompany(companyId!)
@@ -24,7 +25,8 @@ export interface UseCompanyDealsResult {
   items: PublicDeal[];
   isLoading: boolean;
   isError: boolean;
-  error: unknown;
+  /** Typed as ApiError so callers can branch on `error.code` directly. */
+  error: ApiError | null;
   hasNextPage: boolean;
   fetchNextPage: () => void;
   isFetchingNextPage: boolean;
@@ -33,7 +35,7 @@ export interface UseCompanyDealsResult {
 export function useCompanyDeals(companyId: string | undefined): UseCompanyDealsResult {
   const query = useInfiniteQuery<
     CursorPage<PublicDeal>,
-    Error,
+    ApiError,
     InfiniteData<CursorPage<PublicDeal>, string | undefined>,
     unknown[],
     string | undefined
