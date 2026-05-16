@@ -78,7 +78,7 @@ beforeEach(async () => {
   // our UUID-PK schema but harmless). Add new tables here as the
   // schema grows.
   await dbModule.db.execute(
-    sql`TRUNCATE TABLE deals, companies, refresh_tokens, users RESTART IDENTITY CASCADE`
+    sql`TRUNCATE TABLE calculator_configs, deals, companies, refresh_tokens, users RESTART IDENTITY CASCADE`
   );
 });
 
