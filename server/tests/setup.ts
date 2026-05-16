@@ -76,8 +76,11 @@ beforeAll(async () => {
 beforeEach(async () => {
   // TRUNCATE in dependency order; CASCADE handles any FKs we don't
   // explicitly list. RESTART IDENTITY resets serials (not used by
-  // our UUID-PK schema but harmless).
-  await dbModule.db.execute(sql`TRUNCATE TABLE refresh_tokens, users RESTART IDENTITY CASCADE`);
+  // our UUID-PK schema but harmless). Add new tables here as the
+  // schema grows.
+  await dbModule.db.execute(
+    sql`TRUNCATE TABLE deals, companies, refresh_tokens, users RESTART IDENTITY CASCADE`
+  );
 });
 
 afterAll(async () => {
