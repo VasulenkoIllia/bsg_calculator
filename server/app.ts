@@ -30,6 +30,7 @@ import { authRouter } from "./modules/auth/auth.routes";
 import { companiesRouter } from "./modules/companies/companies.routes";
 import { dealsRouter } from "./modules/deals/deals.routes";
 import { healthRouter } from "./modules/health/health.routes";
+import { hubspotRouter } from "./modules/hubspot/hubspot.routes";
 import { usersRouter } from "./modules/users/users.routes";
 
 export function createApp(): express.Express {
@@ -97,8 +98,9 @@ export function createApp(): express.Express {
   app.use("/api/v1/users", usersRouter);
   app.use("/api/v1/companies", companiesRouter);
   app.use("/api/v1/deals", dealsRouter);
+  app.use("/api/v1/hubspot", hubspotRouter);
   // Future sprints: calculator-configs, documents, listings,
-  //                  hubspot/webhooks, pdf.
+  //                  hubspot/webhooks (Sprint 5), pdf.
 
   // 8. 404 catch-all + 9. Error envelope — must be last.
   app.use(notFoundHandler);

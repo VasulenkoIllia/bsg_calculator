@@ -128,3 +128,20 @@ export async function getCompanyByHubspotId(hubspotCompanyId: string): Promise<C
   if (!row) throw new NotFoundError("Company");
   return toPublic(row);
 }
+
+/**
+ * Cross-module helper: cheap "does this hubspot_company_id exist in
+ * our cache?" check. Returns the row or undefined — NEVER throws.
+ *
+ * Used by:
+ *   - hubspot-backfill (deal loop) to skip orphan deals
+ *   - deals.service (TTL refresh) to apply the same fallback policy
+ *
+ * Going through the service rather than letting callers reach into
+ * the repository keeps backend_conventions.md §1 happy.
+ */
+export async function loadCompanyByHubspotIdOrNull(
+  hubspotCompanyId: string
+): Promise<Company | undefined> {
+  return findCompanyByHubspotId(hubspotCompanyId);
+}

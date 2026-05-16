@@ -1,14 +1,13 @@
 /**
- * HTTP controllers for the deals module.
+ * HTTP controllers for the deals module — thin Zod-validate +
+ * dispatch-to-service adapters.
  */
 
 import type { Request, Response } from "express";
 import { decodeCursor } from "../../shared/pagination";
 import { parseUuidParam } from "../../shared/uuid-param";
 import { listDealsQuerySchema } from "./deals.schemas";
-import { getDeal, searchDeals } from "./deals.service";
-import { findCompanyByHubspotId } from "../companies/companies.repository";
-import { NotFoundError } from "../../shared/errors";
+import { getDeal, searchDeals, searchDealsByCompanyUuid } from "./deals.service";
 
 export async function listController(req: Request, res: Response): Promise<void> {
   const query = listDealsQuerySchema.parse(req.query);
@@ -31,30 +30,22 @@ export async function getController(req: Request, res: Response): Promise<void> 
 /**
  * Mounted on the companies router at /api/v1/companies/:id/deals.
  *
- * URL `:id` is the company's INTERNAL uuid. We resolve it to the
- * natural key (`hubspot_company_id`) and reuse the searchDeals
- * filter.
+ * URL `:id` is the company's INTERNAL uuid. We delegate the uuid →
+ * hubspot_company_id resolution + 404 handling to
+ * `deals.service.searchDealsByCompanyUuid`, keeping the controller
+ * thin per backend_conventions.md §1.
  */
 export async function dealsByCompanyController(
   req: Request,
   res: Response
 ): Promise<void> {
-  const id = parseUuidParam(req, "id");
-  // Fetch the company first (via the companies repository to avoid
-  // a duplicate service helper). Throw 404 if the operator hit a
-  // non-existent uuid.
-  const { findCompanyById } = await import("../companies/companies.repository");
-  const company = await findCompanyById(id);
-  if (!company) throw new NotFoundError("Company");
-
+  const companyUuid = parseUuidParam(req, "id");
   const query = listDealsQuerySchema.parse(req.query);
-  const page = await searchDeals({
+  const page = await searchDealsByCompanyUuid(companyUuid, {
     stage: query.stage,
-    hubspotCompanyId: company.hubspotCompanyId,
     businessVertical: query.businessVertical,
     cursor: decodeCursor(query.cursor),
     limit: query.limit
   });
   res.status(200).json(page);
-  void findCompanyByHubspotId; // imported for explicit consumer reference
 }
