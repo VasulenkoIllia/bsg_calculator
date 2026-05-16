@@ -158,16 +158,6 @@ export function CalculatorPage() {
         </div>
       ) : null}
 
-      <div className="mb-3 flex justify-end">
-        <button
-          type="button"
-          onClick={() => setSaveOpen(true)}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500"
-        >
-          Save calculator…
-        </button>
-      </div>
-
       <HardcodedConstantsPanel
         visible={calc.showHardcodedConstants}
         groups={calc.hardcodedConstantGroups}
@@ -363,6 +353,7 @@ export function CalculatorPage() {
         onExportPdf={() => openOfferSummaryPrintView("pdf")}
         onPrint={() => openOfferSummaryPrintView("print")}
         onOpenWizard={() => navigate("/wizard")}
+        onSaveCalculator={() => setSaveOpen(true)}
       />
 
       {snapshot ? (

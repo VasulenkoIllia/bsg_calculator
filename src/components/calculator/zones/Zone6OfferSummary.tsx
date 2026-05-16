@@ -13,6 +13,13 @@ export interface Zone6OfferSummaryProps {
   onExportPdf: () => void;
   onPrint: () => void;
   onOpenWizard?: () => void;
+  /**
+   * Persist the current calculator state to the backend
+   * (POST /api/v1/calculator-configs via SaveCalculatorModal). Optional
+   * because the calculator can run without a backend (legacy / offline
+   * use); when the prop is omitted the button is hidden.
+   */
+  onSaveCalculator?: () => void;
 }
 
 export function Zone6OfferSummary({
@@ -26,7 +33,8 @@ export function Zone6OfferSummary({
   onCopy,
   onExportPdf,
   onPrint,
-  onOpenWizard
+  onOpenWizard,
+  onSaveCalculator
 }: Zone6OfferSummaryProps) {
   return (
     <ZoneSection
@@ -62,6 +70,15 @@ export function Zone6OfferSummary({
             Copy the summary, open print dialog, or export via "Save as PDF".
           </p>
           <div className="mt-3 flex flex-wrap gap-3">
+            {onSaveCalculator ? (
+              <button
+                type="button"
+                onClick={onSaveCalculator}
+                className="rounded-xl border border-emerald-500 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
+              >
+                Save calculator
+              </button>
+            ) : null}
             {onOpenWizard ? (
               <button
                 type="button"
