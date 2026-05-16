@@ -4,7 +4,7 @@ import { renderApp } from "./renderApp.js";
 
 describe("App core flow", () => {
   it("hides hardcoded constants by default and toggles them from top control", async () => {
-    const { user } = renderApp();
+    const { user } = await renderApp();
 
     expect(
       screen.queryByRole("heading", { name: "Hardcoded Calculation Constants" })
@@ -36,7 +36,7 @@ describe("App core flow", () => {
   });
 
   it("shows auto average transaction fields in input blocks as readonly", async () => {
-    const { user } = renderApp();
+    const { user } = await renderApp();
 
     const payinAverage = screen.getByLabelText("Average Transaction (€) - Auto");
     expect(payinAverage).toHaveAttribute("readonly");
@@ -51,7 +51,7 @@ describe("App core flow", () => {
   });
 
   it("formats number input with commas and decimal point on blur", async () => {
-    const { user } = renderApp();
+    const { user } = await renderApp();
 
     const payinVolumeInput = screen.getByLabelText("Monthly Payin Volume (€)");
     expect(payinVolumeInput).toHaveValue("1,000,000");
@@ -65,7 +65,7 @@ describe("App core flow", () => {
   });
 
   it("normalizes decimal comma input across numeric fields", async () => {
-    const { user } = renderApp();
+    const { user } = await renderApp();
 
     const payinVolumeInput = screen.getByLabelText("Monthly Payin Volume (€)");
     await user.click(payinVolumeInput);
@@ -104,7 +104,7 @@ describe("App core flow", () => {
   });
 
   it("applies zone defaults and resets editable values from the top controls", async () => {
-    const { user } = renderApp();
+    const { user } = await renderApp();
 
     expect(screen.getByRole("checkbox", { name: "Payin" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "Payout" })).not.toBeChecked();
@@ -172,7 +172,7 @@ describe("App core flow", () => {
   });
 
   it("shows split formulas under each split input and recalculates on split changes", async () => {
-    const { user } = renderApp();
+    const { user } = await renderApp();
 
     expect(
       screen.getByText(
@@ -230,13 +230,13 @@ describe("App core flow", () => {
     ).toBeInTheDocument();
   });
 
-  it("does not show spec-ambiguity red markers after resolved decisions", () => {
-    renderApp();
+  it("does not show spec-ambiguity red markers after resolved decisions", async () => {
+    await renderApp();
     expect(screen.queryByText(/Питання по специфікації:/)).not.toBeInTheDocument();
   });
 
   it("does not render derived metrics sections", async () => {
-    const { user } = renderApp();
+    const { user } = await renderApp();
 
     expect(screen.queryByText("Derived Metrics: Payin")).not.toBeInTheDocument();
     expect(screen.queryByText("Calculation Details")).not.toBeInTheDocument();
@@ -248,7 +248,7 @@ describe("App core flow", () => {
   });
 
   it("adds end-of-zone navigation controls from zone 1 onward", async () => {
-    const { user } = renderApp();
+    const { user } = await renderApp();
 
     expect(screen.getAllByRole("button", { name: /Back to start/ })).toHaveLength(6);
     expect(
@@ -295,7 +295,7 @@ describe("App core flow", () => {
   });
 
   it("allows collapsing and expanding zones for compact view", async () => {
-    const { user } = renderApp();
+    const { user } = await renderApp();
 
     await user.click(screen.getByRole("button", { name: "Collapse Zone 0: Calculator Type" }));
     expect(screen.queryByRole("checkbox", { name: "Payin" })).not.toBeInTheDocument();

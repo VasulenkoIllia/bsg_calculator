@@ -1,34 +1,20 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import { userEvent } from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import App from "../App.js";
-
-function renderAtPath(path: string) {
-  window.history.pushState({}, "", path);
-  const user = userEvent.setup();
-  return { user, ...render(<App />) };
-}
+import { screen, waitFor } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { renderApp } from "./renderApp.js";
 
 describe("App routing", () => {
-  beforeEach(() => {
-    window.history.replaceState({}, "", "/calculator");
-  });
-
-  afterEach(() => {
-    window.history.replaceState({}, "", "/calculator");
-  });
-
-  it("redirects from / to /calculator", async () => {
-    renderAtPath("/");
+  it("redirects from / to /companies", async () => {
+    // Sprint 2.8.C: companies became the default landing page; / now
+    // redirects there instead of /calculator.
+    await renderApp("/");
 
     await waitFor(() => {
-      expect(window.location.pathname).toBe("/calculator");
+      expect(window.location.pathname).toBe("/companies");
     });
-    expect(screen.getByRole("heading", { name: "Zone 0: Calculator Type" })).toBeInTheDocument();
   });
 
-  it("renders CalculatorPage at /calculator", () => {
-    renderAtPath("/calculator");
+  it("renders CalculatorPage at /calculator", async () => {
+    await renderApp("/calculator");
 
     expect(screen.getByRole("heading", { name: "Zone 0: Calculator Type" })).toBeInTheDocument();
     expect(
@@ -36,8 +22,8 @@ describe("App routing", () => {
     ).toBe("page");
   });
 
-  it("renders WizardPage at /wizard with default scope = offer", () => {
-    renderAtPath("/wizard");
+  it("renders WizardPage at /wizard with default scope = offer", async () => {
+    await renderApp("/wizard");
 
     expect(screen.getByRole("heading", { name: "Contract Wizard" })).toBeInTheDocument();
     expect(screen.getByLabelText("Document Type")).toHaveValue("offer");
@@ -46,32 +32,26 @@ describe("App routing", () => {
     ).toBe("page");
   });
 
-  it("seeds WizardPage state from URL params (source, scope, step)", () => {
-    renderAtPath(
-      "/wizard?source=manualBlank&scope=offerAndAgreement&step=7"
-    );
+  it("seeds WizardPage state from URL params (source, scope, step)", async () => {
+    await renderApp("/wizard?source=manualBlank&scope=offerAndAgreement&step=7");
 
-    // Step 7 is rendered (Parties & Signatures heading visible).
     expect(
       screen.getByRole("heading", { name: /Parties & Signatures/ })
     ).toBeInTheDocument();
-    // Manual (blank) source mode is the active tile.
     const manualBlankBtn = screen.getByRole("button", { name: "Manual (blank)" });
     expect(manualBlankBtn.className).toMatch(/bg-blue-50/);
-    // URL itself confirms scope was kept after sync.
     expect(window.location.search).toContain("scope=offerAndAgreement");
   });
 
-  it("ignores invalid URL params and falls back to defaults", () => {
-    renderAtPath("/wizard?source=bogus&scope=invalid&step=99");
+  it("ignores invalid URL params and falls back to defaults", async () => {
+    await renderApp("/wizard?source=bogus&scope=invalid&step=99");
 
-    // Defaults applied silently.
     expect(screen.getByLabelText("Document Type")).toHaveValue("offer");
     expect(screen.getByRole("heading", { name: "Step 1. Header / Meta" })).toBeInTheDocument();
   });
 
-  it("renders 404 page for unknown route", () => {
-    renderAtPath("/totally-unknown-route");
+  it("renders 404 page for unknown route", async () => {
+    await renderApp("/totally-unknown-route");
 
     expect(screen.getByRole("heading", { name: "Page not found" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open Calculator" })).toBeInTheDocument();
@@ -79,7 +59,7 @@ describe("App routing", () => {
   });
 
   it("changing Document Type updates URL scope param", async () => {
-    const { user } = renderAtPath("/wizard");
+    const { user } = await renderApp("/wizard");
 
     expect(window.location.search).toContain("scope=offer");
 

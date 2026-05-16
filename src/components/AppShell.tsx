@@ -1,7 +1,12 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext.js";
 import { CalculatorHeader } from "./calculator/index.js";
 
 const TABS: Array<{ to: string; label: string }> = [
+  // Companies first — it's the natural entry now that the backend
+  // is wired up (operators usually start "open a company" → then
+  // open calculator / wizard from there).
+  { to: "/companies", label: "Companies" },
   { to: "/calculator", label: "Calculator" },
   { to: "/wizard", label: "Contract Wizard & PDF" }
 ];
@@ -34,10 +39,42 @@ function WorkspaceTabs() {
   );
 }
 
+/**
+ * Top-right identity strip: signed-in name + logout. Lives in AppShell
+ * because every authenticated route needs it; the LoginPage has its
+ * own layout and doesn't mount AppShell.
+ */
+function IdentityStrip() {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  if (!user) return null;
+
+  const handleLogout = async (): Promise<void> => {
+    await logout();
+    navigate("/login", { replace: true });
+  };
+
+  return (
+    <div className="mb-4 flex items-center justify-end gap-3 text-xs text-slate-500">
+      <span>
+        Signed in as <strong className="text-slate-700">{user.displayName}</strong>
+      </span>
+      <button
+        type="button"
+        onClick={handleLogout}
+        className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:border-slate-400 hover:bg-slate-50"
+      >
+        Sign out
+      </button>
+    </div>
+  );
+}
+
 export function AppShell() {
   return (
     <main className="min-h-screen">
       <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8 md:py-10">
+        <IdentityStrip />
         <CalculatorHeader />
         <WorkspaceTabs />
         <Outlet />

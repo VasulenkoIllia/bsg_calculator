@@ -4,7 +4,7 @@ import { renderApp } from "./renderApp.js";
 
 describe("Zone 3 and Zone 4", () => {
   it("renders zone 3 pricing configuration with formula breakdowns", async () => {
-    const { user } = renderApp();
+    const { user } = await renderApp();
 
     await user.click(screen.getByRole("button", { name: "Show constants & formulas" }));
 
@@ -74,7 +74,7 @@ describe("Zone 3 and Zone 4", () => {
   });
 
   it("renders zone 4 controls and recalculates fee impacts", async () => {
-    const { user } = renderApp();
+    const { user } = await renderApp();
 
     await user.click(screen.getByRole("button", { name: "Show constants & formulas" }));
 
