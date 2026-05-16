@@ -57,32 +57,33 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
   const [state, setState] = useState<AuthState>({ user: null, isBooting: true });
 
   // ─── Cold-boot refresh ──────────────────────────────────────────
-  // Runs ONCE on mount. If the user has a valid refresh cookie we
-  // upgrade it into an access token + load their profile. If not
-  // (no cookie / expired / revoked), we silently land on logged-out
-  // state — the router will show /login.
+  // Runs ONCE per "fresh" page load. If the user has a valid refresh
+  // cookie we upgrade it into an access token + load their profile.
+  // If not (no cookie / expired / revoked), we silently land on
+  // logged-out state — the router will show /login.
   //
-  // The `bootedRef` latch is critical under React 19 StrictMode in
-  // dev: StrictMode double-invokes effects (mount → cleanup → mount).
-  // Without the latch, dev mode fires TWO /auth/refresh requests on
-  // every page load — the second one consumes the freshly-rotated
-  // refresh token and may even race past the 10s grace window on a
-  // slow dev server, spuriously failing the cold boot. The ref
-  // survives StrictMode's synchronous remount, so the second invocation
-  // is a no-op. Production builds never double-mount, so this is a
-  // pure dev-correctness fix.
+  // The `bootedRef` latch survives React 19 StrictMode's
+  // mount→cleanup→remount cycle so dev doesn't fire two parallel
+  // /auth/refresh calls on every page load.
+  //
+  // CRITICAL: we do NOT use a `cancelled` flag inside the IIFE.
+  // StrictMode's cleanup runs SYNCHRONOUSLY between mount and remount,
+  // but the latch blocks the remount from re-entering the effect.
+  // Adding a `cancelled` flag here would mean the only invocation
+  // ever made (the first mount's IIFE) sees `cancelled = true` from
+  // the StrictMode cleanup and skips its setState — leaving the UI
+  // stuck on "Loading session…" forever. (Regression from F.2; the
+  // fix is to trust that setState on an unmounted component is a
+  // no-op + non-fatal in React 19.)
   const bootedRef = useRef(false);
   useEffect(() => {
     if (bootedRef.current) return;
     bootedRef.current = true;
-    let cancelled = false;
     (async () => {
       try {
         const { accessToken } = await authApi.refresh();
-        if (cancelled) return;
         setAccessToken(accessToken);
         const user = await authApi.me();
-        if (cancelled) return;
         setState({ user, isBooting: false });
       } catch (err) {
         // 401 from refresh is the normal "not logged in" path —
@@ -96,12 +97,9 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
             status: err instanceof ApiError ? err.status : 0
           });
         }
-        if (!cancelled) setState({ user: null, isBooting: false });
+        setState({ user: null, isBooting: false });
       }
     })();
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   // ─── Wire session-lost notification from the api client ─────────
