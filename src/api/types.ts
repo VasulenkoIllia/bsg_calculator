@@ -129,6 +129,32 @@ export interface PublicCalculatorConfig {
   updatedAt: string;
 }
 
+// ─── Documents ────────────────────────────────────────────────────
+/**
+ * Mirrors server/modules/documents/documents.schemas.ts
+ * :documentPublicSchema.
+ *
+ * `payload` is typed as `unknown` for the same reason as
+ * PublicCalculatorConfig — the backend stores it permissively and
+ * the UI hydrates via type-narrowing in the consumer (e.g. wizard
+ * template builder).
+ */
+export interface PublicDocument {
+  id: string;
+  number: string;
+  companyId: string;
+  hubspotDealId: string | null;
+  calculatorConfigId: string | null;
+  scope: "offer" | "agreement" | "offer_and_agreement";
+  payload: unknown;
+  addendum: string | null;
+  hubspotSyncState: "not_synced" | "synced" | "failed";
+  hubspotNoteId: string | null;
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── HubSpot ──────────────────────────────────────────────────────
 export interface HubspotPipeline {
   id: string;

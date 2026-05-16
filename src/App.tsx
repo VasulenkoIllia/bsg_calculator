@@ -23,6 +23,8 @@ import { CalculatorProvider } from "./contexts/CalculatorContext.js";
 import { CalculatorPage } from "./pages/CalculatorPage.js";
 import { CompaniesPage } from "./pages/CompaniesPage.js";
 import { CompanyDetailPage } from "./pages/CompanyDetailPage.js";
+import { DocumentsListPage } from "./pages/DocumentsListPage.js";
+import { DocumentViewPage } from "./pages/DocumentViewPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
 import { NotFoundPage } from "./pages/NotFoundPage.js";
 import { WizardPage } from "./pages/WizardPage.js";
@@ -48,6 +50,8 @@ export default function App() {
             <Route path="/" element={<Navigate to="/companies" replace />} />
             <Route path="/companies" element={<CompaniesPage />} />
             <Route path="/companies/:id" element={<CompanyDetailPage />} />
+            <Route path="/documents" element={<DocumentsListPage />} />
+            <Route path="/documents/:number" element={<DocumentViewPage />} />
             <Route path="/calculator" element={<CalculatorPage />} />
             <Route path="/wizard" element={<WizardPage />} />
             <Route path="*" element={<NotFoundPage />} />

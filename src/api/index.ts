@@ -27,6 +27,7 @@ export type {
   PublicCalculatorConfig,
   PublicCompany,
   PublicDeal,
+  PublicDocument,
   PublicUser,
   RefreshResponse
 } from "./types.js";
@@ -35,4 +36,5 @@ export * as auth from "./auth.js";
 export * as calculatorConfigs from "./calculator-configs.js";
 export * as companies from "./companies.js";
 export * as deals from "./deals.js";
+export * as documents from "./documents.js";
 export * as hubspot from "./hubspot.js";

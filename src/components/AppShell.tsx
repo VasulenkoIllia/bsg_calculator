@@ -7,6 +7,7 @@ const TABS: Array<{ to: string; label: string }> = [
   // is wired up (operators usually start "open a company" → then
   // open calculator / wizard from there).
   { to: "/companies", label: "Companies" },
+  { to: "/documents", label: "Documents" },
   { to: "/calculator", label: "Calculator" },
   { to: "/wizard", label: "Contract Wizard & PDF" }
 ];
