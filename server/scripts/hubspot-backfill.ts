@@ -13,16 +13,23 @@
  * is empty. See backendStartupBackfillIfEmpty.
  *
  * Order:
- *   1. Companies first (deals.hubspot_company_id has a FK).
- *   2. Then deals; mapper drops orphan deals where the company
- *      isn't in our cache.
+ *   1. cleanupNonMatching — drop existing rows that don't match the
+ *      active company_type filter (deals first due to FK RESTRICT).
+ *   2. backfillCompanies — paginate + upsert filtered companies.
+ *   3. backfillDeals — paginate + upsert ALL deals; resolves
+ *      company FK with primary-then-fallback policy.
+ *
+ * Failure semantics:
+ *   - Each pass is independently best-effort. If the deals pass
+ *     fails halfway, companies are already upserted; re-running
+ *     the script picks up where it left off (upsert is idempotent).
+ *   - Per-row errors are logged + counted but don't abort the loop.
  */
 
-import { ne, sql } from "drizzle-orm";
+import { eq, ne, sql } from "drizzle-orm";
 import { env } from "../config/env";
 import { db, pool } from "../db/client";
 import { companies as companiesTable } from "../db/schema";
-import { findCompanyByHubspotId } from "../modules/companies/companies.repository";
 import { upsertCompany } from "../modules/companies/companies.repository";
 import { upsertDeal } from "../modules/deals/deals.repository";
 import { hubspot } from "../modules/hubspot/hubspot.client";
@@ -34,7 +41,7 @@ import {
 import type { HubspotListResponse } from "../modules/hubspot/hubspot.types";
 import { logger } from "../middleware/logger";
 
-const PAGE_SIZE = 100;
+const PAGE_SIZE = Number(process.env.HUBSPOT_BACKFILL_PAGE_SIZE ?? 100);
 
 interface BackfillStats {
   /** Active company_type filter (empty = no filter / pull all). */
@@ -46,144 +53,184 @@ interface BackfillStats {
   durationMs: number;
 }
 
-export async function runBackfill(): Promise<BackfillStats> {
-  if (!hubspot.isConfigured()) {
-    throw new Error(
-      "HUBSPOT_API_TOKEN is not set. Add it to .env before running backfill."
-    );
+// ────────────────────────────────────────────────────────────────────
+// Pass 1: cleanup
+// ────────────────────────────────────────────────────────────────────
+
+interface CleanupResult {
+  companiesDeleted: number;
+  dealsDeleted: number;
+}
+
+/**
+ * Remove existing rows that don't match the active company_type
+ * filter. Deals first (FK RESTRICT requires that order).
+ * No-op when the filter is empty.
+ */
+async function cleanupNonMatching(filter: string): Promise<CleanupResult> {
+  if (filter.length === 0) {
+    return { companiesDeleted: 0, dealsDeleted: 0 };
   }
 
-  const started = Date.now();
-  const filter = env.HUBSPOT_COMPANY_TYPE_FILTER.trim();
-  const stats: BackfillStats = {
-    companyTypeFilter: filter,
-    cleanup: { companiesDeleted: 0, dealsDeleted: 0 },
-    companies: { fetched: 0, upserted: 0, skipped: 0 },
-    deals: { fetched: 0, upserted: 0, skipped: 0 },
-    durationMs: 0
-  };
+  logger.info({ filter }, "[hubspot:backfill] cleanup pass — removing non-matching rows");
 
-  // ─── Cleanup pass ────────────────────────────────────────────────
-  // If a filter is active, drop any existing rows that no longer
-  // match it. Deals first (FK RESTRICT → must be deleted before
-  // their parent company). Without this pass the DB would slowly
-  // accumulate stale "wrong-type" rows from previous loose runs.
-  if (filter.length > 0) {
-    logger.info({ filter }, "[hubspot:backfill] cleanup pass — removing non-matching rows");
+  // Step 1: delete deals whose company is about to be removed.
+  const orphanedDealsResult = await db.execute(sql`
+    DELETE FROM deals
+    WHERE hubspot_company_id IN (
+      SELECT hubspot_company_id FROM companies
+      WHERE company_type IS DISTINCT FROM ${filter}
+    )
+    RETURNING hubspot_deal_id
+  `);
+  const dealsDeleted = orphanedDealsResult.rowCount ?? 0;
 
-    // Delete deals whose company is about to be removed.
-    const orphanedDealsResult = await db.execute(sql`
-      DELETE FROM deals
-      WHERE hubspot_company_id IN (
-        SELECT hubspot_company_id FROM companies
-        WHERE company_type IS DISTINCT FROM ${filter}
-      )
-      RETURNING hubspot_deal_id
-    `);
-    stats.cleanup.dealsDeleted = orphanedDealsResult.rowCount ?? 0;
+  // Step 2: delete non-matching companies (covers explicit non-match).
+  const removedCompanies = await db
+    .delete(companiesTable)
+    .where(ne(companiesTable.companyType, filter))
+    .returning({ id: companiesTable.id });
+  let companiesDeleted = removedCompanies.length;
 
-    // Then delete non-matching companies themselves.
-    const removedCompanies = await db
-      .delete(companiesTable)
-      .where(ne(companiesTable.companyType, filter))
-      .returning({ id: companiesTable.id });
-    stats.cleanup.companiesDeleted = removedCompanies.length;
+  // Step 3: also remove records with NULL company_type — ne() ignores NULLs.
+  const removedNullType = await db.execute(sql`
+    DELETE FROM companies WHERE company_type IS NULL RETURNING id
+  `);
+  companiesDeleted += removedNullType.rowCount ?? 0;
 
-    // Also handle the NULL case (records with no company_type) —
-    // ne() on a NULLABLE column doesn't match NULLs, so be explicit.
-    const removedNullType = await db.execute(sql`
-      DELETE FROM companies WHERE company_type IS NULL RETURNING id
-    `);
-    stats.cleanup.companiesDeleted += removedNullType.rowCount ?? 0;
+  logger.info({ companiesDeleted, dealsDeleted }, "[hubspot:backfill] cleanup pass complete");
+  return { companiesDeleted, dealsDeleted };
+}
 
-    logger.info(
-      { ...stats.cleanup },
-      "[hubspot:backfill] cleanup pass complete"
-    );
-  }
+// ────────────────────────────────────────────────────────────────────
+// Pass 2: companies
+// ────────────────────────────────────────────────────────────────────
 
-  // ─── Companies pass ──────────────────────────────────────────────
+interface PassResult {
+  fetched: number;
+  upserted: number;
+  skipped: number;
+}
+
+/**
+ * Paginate companies (filtered by company_type when configured) and
+ * upsert each. Mapper drops rows missing required fields (name,
+ * timestamps); upsert failures are caught + counted.
+ */
+async function backfillCompanies(filter: string): Promise<PassResult> {
   logger.info(
     { filter: filter || "(none — pulling all)" },
     "[hubspot:backfill] companies pass starting"
   );
-  let cursor: string | undefined = undefined;
+  const result: PassResult = { fetched: 0, upserted: 0, skipped: 0 };
+
+  let cursor: string | undefined;
   do {
     const page: HubspotListResponse =
       filter.length > 0
         ? await hubspot.searchCompaniesByType(filter, cursor, PAGE_SIZE)
         : await hubspot.listCompanies(cursor, PAGE_SIZE);
-    stats.companies.fetched += page.results.length;
+    result.fetched += page.results.length;
+
     for (const obj of page.results) {
       const row = mapHubspotCompanyToRow(obj);
       if (!row) {
-        stats.companies.skipped += 1;
+        result.skipped += 1;
         continue;
       }
       try {
         await upsertCompany(row);
-        stats.companies.upserted += 1;
+        result.upserted += 1;
       } catch (err) {
-        stats.companies.skipped += 1;
+        result.skipped += 1;
         logger.warn(
-          {
-            hubspotCompanyId: row.hubspotCompanyId,
-            err: (err as Error).message
-          },
+          { hubspotCompanyId: row.hubspotCompanyId, err: (err as Error).message },
           "[hubspot:backfill] company upsert failed"
         );
       }
     }
-    if (stats.companies.fetched % 500 === 0 || !page.paging?.next?.after) {
-      logger.info(
-        {
-          fetched: stats.companies.fetched,
-          upserted: stats.companies.upserted,
-          skipped: stats.companies.skipped
-        },
-        "[hubspot:backfill] companies progress"
-      );
+
+    if (result.fetched % 500 === 0 || !page.paging?.next?.after) {
+      logger.info({ ...result }, "[hubspot:backfill] companies progress");
     }
     cursor = page.paging?.next?.after;
   } while (cursor);
+
+  logger.info({ ...result }, "[hubspot:backfill] companies pass complete");
+  return result;
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Pass 3: deals
+// ────────────────────────────────────────────────────────────────────
+
+/**
+ * Build an in-memory Set of every hubspot_company_id currently in
+ * our DB. Used by the deals loop to resolve FK candidates in O(1)
+ * instead of issuing one SELECT per deal.
+ *
+ * The set is loaded once at the start of the deals pass — companies
+ * inserted DURING the deals pass aren't included, which is fine
+ * because companies pass already ran to completion before us.
+ */
+async function loadKnownCompanyIds(): Promise<Set<string>> {
+  const rows = await db
+    .select({ id: companiesTable.hubspotCompanyId })
+    .from(companiesTable);
+  return new Set(rows.map(r => r.id));
+}
+
+/**
+ * Resolve the company FK for a deal. Iterates the ordered candidate
+ * list (primary first) and picks the first id present in the
+ * `knownCompanyIds` set. Returns `null` for orphan deals.
+ *
+ * When a non-primary candidate is chosen, the caller logs a warn so
+ * BSG sales can spot deals where the primary-association in HubSpot
+ * UI is wrong (e.g. set to an Agent instead of the Merchant).
+ */
+function resolveDealCompanyFromSet(
+  candidates: string[],
+  knownCompanyIds: Set<string>
+): string | null {
+  for (const candidate of candidates) {
+    if (knownCompanyIds.has(candidate)) return candidate;
+  }
+  return null;
+}
+
+/**
+ * Paginate ALL deals and upsert each. Company FK resolved against an
+ * in-memory Set of known company ids (loaded once up-front) so we
+ * avoid an N+1 query pattern.
+ */
+async function backfillDeals(): Promise<PassResult> {
+  logger.info("[hubspot:backfill] deals pass starting");
+  const result: PassResult = { fetched: 0, upserted: 0, skipped: 0 };
+
+  const knownCompanyIds = await loadKnownCompanyIds();
   logger.info(
-    {
-      fetched: stats.companies.fetched,
-      upserted: stats.companies.upserted,
-      skipped: stats.companies.skipped
-    },
-    "[hubspot:backfill] companies pass complete"
+    { knownCompanies: knownCompanyIds.size },
+    "[hubspot:backfill] deals pass: pre-loaded known company ids"
   );
 
-  // ─── Deals next ──────────────────────────────────────────────────
-  logger.info("[hubspot:backfill] deals pass starting");
-  cursor = undefined;
+  let cursor: string | undefined;
   do {
     const page = await hubspot.listDeals(cursor, PAGE_SIZE);
-    stats.deals.fetched += page.results.length;
+    result.fetched += page.results.length;
+
     for (const obj of page.results) {
       const row = mapHubspotDealToRow(obj);
       if (!row) {
-        stats.deals.skipped += 1;
+        result.skipped += 1;
         continue;
       }
 
-      // Smart company resolution: HubSpot's primary association may
-      // point at an Agent that's been filtered out of our DB.
-      // Iterate ALL candidate company IDs (primary first, then
-      // secondary) and pick the first that exists locally.
       const candidates = extractDealCompanyCandidates(obj);
-      let chosenCompanyId: string | null = null;
-      for (const candidate of candidates) {
-        const exists = await findCompanyByHubspotId(candidate);
-        if (exists) {
-          chosenCompanyId = candidate;
-          break;
-        }
-      }
+      const chosenCompanyId = resolveDealCompanyFromSet(candidates, knownCompanyIds);
 
       if (!chosenCompanyId) {
-        stats.deals.skipped += 1;
+        result.skipped += 1;
         logger.warn(
           { hubspotDealId: row.hubspotDealId, candidates },
           "[hubspot:backfill] deal skipped: no associated company present in DB"
@@ -191,9 +238,6 @@ export async function runBackfill(): Promise<BackfillStats> {
         continue;
       }
 
-      // If the chosen company is NOT the primary, log a warn so
-      // BSG sales can spot deals where primary-association points
-      // at an Agent and re-assign in the HubSpot UI.
       if (chosenCompanyId !== candidates[0]) {
         logger.warn(
           {
@@ -207,57 +251,79 @@ export async function runBackfill(): Promise<BackfillStats> {
         );
       }
 
-      // Override the company id on the row before upsert.
       row.hubspotCompanyId = chosenCompanyId;
 
       try {
         await upsertDeal(row);
-        stats.deals.upserted += 1;
+        result.upserted += 1;
       } catch (err) {
-        stats.deals.skipped += 1;
+        result.skipped += 1;
         logger.warn(
           { hubspotDealId: row.hubspotDealId, err: (err as Error).message },
           "[hubspot:backfill] deal upsert failed"
         );
       }
     }
-    if (stats.deals.fetched % 500 === 0 || !page.paging?.next?.after) {
-      logger.info(
-        {
-          fetched: stats.deals.fetched,
-          upserted: stats.deals.upserted,
-          skipped: stats.deals.skipped
-        },
-        "[hubspot:backfill] deals progress"
-      );
+
+    if (result.fetched % 500 === 0 || !page.paging?.next?.after) {
+      logger.info({ ...result }, "[hubspot:backfill] deals progress");
     }
     cursor = page.paging?.next?.after;
   } while (cursor);
-  logger.info(
-    {
-      fetched: stats.deals.fetched,
-      upserted: stats.deals.upserted,
-      skipped: stats.deals.skipped
-    },
-    "[hubspot:backfill] deals pass complete"
-  );
 
-  stats.durationMs = Date.now() - started;
-  return stats;
+  logger.info({ ...result }, "[hubspot:backfill] deals pass complete");
+  return result;
 }
 
+// ────────────────────────────────────────────────────────────────────
+// Orchestrator
+// ────────────────────────────────────────────────────────────────────
+
+export async function runBackfill(): Promise<BackfillStats> {
+  if (!hubspot.isConfigured()) {
+    throw new Error(
+      "HUBSPOT_API_TOKEN is not set. Add it to .env before running backfill."
+    );
+  }
+
+  const started = Date.now();
+  const filter = env.HUBSPOT_COMPANY_TYPE_FILTER.trim();
+
+  const cleanup = await cleanupNonMatching(filter);
+  const companies = await backfillCompanies(filter);
+  const deals = await backfillDeals();
+
+  return {
+    companyTypeFilter: filter,
+    cleanup,
+    companies,
+    deals,
+    durationMs: Date.now() - started
+  };
+}
+
+// Export private helpers for unit-testing.
+export const __internals = {
+  cleanupNonMatching,
+  backfillCompanies,
+  backfillDeals,
+  resolveDealCompanyFromSet,
+  loadKnownCompanyIds
+};
+
+// ────────────────────────────────────────────────────────────────────
+// Server-startup hook
+// ────────────────────────────────────────────────────────────────────
+
 /**
- * Server-startup hook (called from server/index.ts).
- *
  * Conditions for auto-run:
  *   - HUBSPOT_AUTO_BACKFILL env var is `true`
  *   - HUBSPOT_API_TOKEN is configured
  *   - The companies table has zero rows
  *
  * Non-blocking — kicked off via setImmediate so /health responds
- * immediately and the operator can observe progress in pino logs.
- * If backfill fails the server stays up (degraded — operator gets
- * empty listings until they run the script manually).
+ * immediately. If backfill fails the server stays up (degraded
+ * mode — operator gets empty listings until manual re-run).
  */
 export async function backendStartupBackfillIfEmpty(): Promise<void> {
   if (process.env.HUBSPOT_AUTO_BACKFILL !== "true") return;
@@ -276,18 +342,28 @@ export async function backendStartupBackfillIfEmpty(): Promise<void> {
   }
 
   logger.info("[hubspot:backfill] companies table empty — auto-run starting in background");
-  setImmediate(async () => {
-    try {
-      const stats = await runBackfill();
-      logger.info({ stats }, "[hubspot:backfill] auto-run complete");
-    } catch (err) {
-      logger.error({ err: (err as Error).message }, "[hubspot:backfill] auto-run failed");
-    }
+  setImmediate(() => {
+    void (async () => {
+      try {
+        const stats = await runBackfill();
+        logger.info({ stats }, "[hubspot:backfill] auto-run complete");
+      } catch (err) {
+        logger.error(
+          { err: (err as Error).message },
+          "[hubspot:backfill] auto-run failed"
+        );
+      }
+    })();
   });
-  void companiesTable; // silence unused-import warning if any
 }
 
-// ─── CLI entrypoint ─────────────────────────────────────────────────
+// Suppress unused-import warning when companiesTable isn't otherwise
+// referenced in the run code path (the test harness imports it).
+void eq;
+
+// ────────────────────────────────────────────────────────────────────
+// CLI entrypoint
+// ────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
   try {
@@ -302,7 +378,7 @@ async function main(): Promise<void> {
 }
 
 // Only run when executed directly (tsx scripts/.../hubspot-backfill.ts),
-// NOT when imported by server/index.ts.
+// NOT when imported by server/index.ts or tests.
 const isMain =
   process.argv[1]?.endsWith("hubspot-backfill.ts") ||
   process.argv[1]?.endsWith("hubspot-backfill.js");
