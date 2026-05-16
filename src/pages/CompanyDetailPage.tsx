@@ -16,14 +16,7 @@ import { Link, useParams } from "react-router-dom";
 import { ApiError } from "../api/client.js";
 import { useCompany, useCompanyDeals } from "../hooks/useCompany.js";
 import type { PublicDeal } from "../api/types.js";
-
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString();
-  } catch {
-    return iso;
-  }
-}
+import { formatDate } from "../shared/format.js";
 
 function formatAmount(deal: PublicDeal): string {
   if (!deal.amount) return "—";

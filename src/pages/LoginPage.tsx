@@ -31,14 +31,37 @@ const loginFormSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginFormSchema>;
 
+/**
+ * Read `state.from` set by PrivateRoute and return a safe path-relative
+ * URL, or fall back to /companies.
+ *
+ * Defends against three classes of redirect abuse, even though
+ * PrivateRoute is the only writer today:
+ *   - non-string types → ignored
+ *   - empty string → falls through to default (would no-op navigate)
+ *   - protocol-relative URLs like `//evil.com` → rejected (could be
+ *     interpreted as cross-origin in some browser quirks)
+ *   - paths not starting with `/` → rejected (`navigate("javascript:…")`
+ *     does NOT execute in BrowserRouter because react-router uses
+ *     history.pushState, not location.href= — but defending explicitly
+ *     guards against any future imperative redirect that bypasses
+ *     the BrowserRouter sanitisation)
+ */
+function resolveSafeFromPath(state: unknown): string {
+  if (state === null || typeof state !== "object") return "/companies";
+  const raw = (state as { from?: unknown }).from;
+  if (typeof raw !== "string") return "/companies";
+  if (raw.length === 0) return "/companies";
+  if (!raw.startsWith("/")) return "/companies";
+  if (raw.startsWith("//")) return "/companies";
+  return raw;
+}
+
 export function LoginPage() {
   const { user, isBooting, login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const fromPath =
-    (location.state as { from?: string } | null)?.from && typeof (location.state as { from?: string }).from === "string"
-      ? (location.state as { from?: string }).from!
-      : "/companies";
+  const fromPath = resolveSafeFromPath(location.state);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginFormSchema),

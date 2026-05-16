@@ -44,7 +44,13 @@ function renderPage() {
 }
 
 beforeEach(() => {
-  vi.spyOn(companiesApi, "listCompanies").mockReset();
+  // restoreAllMocks resets ALL spies installed in prior tests back to
+  // their original implementations. Earlier this hook called
+  // `mockReset()` on a freshly-installed spy, which left the spy
+  // attached but without an implementation — a subsequent test that
+  // forgot to set up its own mock would crash inside the hook with
+  // an `undefined.items` read. Restore is strictly stronger.
+  vi.restoreAllMocks();
 });
 
 afterEach(() => {

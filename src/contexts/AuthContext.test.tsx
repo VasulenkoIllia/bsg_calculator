@@ -151,6 +151,40 @@ describe("AuthContext — login + logout", () => {
   });
 });
 
+describe("AuthContext — session lost from api/client", () => {
+  it("clears state when the registered session-lost handler fires", async () => {
+    // Capture the handler that AuthProvider's mount effect registers
+    // by spying on setSessionLostHandler. The first non-null call is
+    // the provider's; the cleanup will set it to null on unmount.
+    let registered: (() => void) | null = null;
+    const setSpy = vi
+      .spyOn(clientModule, "setSessionLostHandler")
+      .mockImplementation(cb => {
+        if (cb) registered = cb;
+      });
+
+    // Boot to a logged-in state so we have something to clear.
+    vi.spyOn(authApi, "refresh").mockResolvedValue({ accessToken: "boot" });
+    vi.spyOn(authApi, "me").mockResolvedValue(fixtureUser);
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => {
+      expect(result.current.user).toEqual(fixtureUser);
+    });
+    expect(setSpy).toHaveBeenCalled();
+    expect(registered).not.toBeNull();
+
+    // Fire the captured handler from outside React's event system,
+    // matching what api/client.ts does after a failed refresh-on-401.
+    await act(async () => {
+      registered!();
+    });
+
+    expect(result.current.user).toBeNull();
+    expect(clientModule.getAccessToken()).toBeNull();
+  });
+});
+
 describe("AuthContext — wrong usage", () => {
   it("useAuth() outside provider throws a clear error", () => {
     const err = vi.spyOn(console, "error").mockImplementation(() => {});

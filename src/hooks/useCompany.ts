@@ -8,6 +8,7 @@
  *     more likely to grow than the company metadata)
  */
 
+import { useMemo } from "react";
 import { useInfiniteQuery, useQuery, type InfiniteData } from "@tanstack/react-query";
 import * as companiesApi from "../api/companies.js";
 import { ApiError } from "../api/client.js";
@@ -48,8 +49,11 @@ export function useCompanyDeals(companyId: string | undefined): UseCompanyDealsR
     getNextPageParam: lastPage => lastPage.nextCursor ?? undefined
   });
 
-  const items =
-    query.data?.pages.flatMap((page: CursorPage<PublicDeal>) => page.items) ?? [];
+  // Memoised — see useCompanies for rationale.
+  const items = useMemo(
+    () => query.data?.pages.flatMap(page => page.items) ?? [],
+    [query.data]
+  );
 
   return {
     items,

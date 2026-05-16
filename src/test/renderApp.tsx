@@ -4,7 +4,7 @@ import { userEvent } from "@testing-library/user-event";
 import { vi } from "vitest";
 import App from "../App.js";
 import * as authApi from "../api/auth.js";
-import { setAccessToken } from "../api/client.js";
+import { setAccessToken, setSessionLostHandler } from "../api/client.js";
 import { AuthProvider } from "../contexts/AuthContext.js";
 
 /**
@@ -46,6 +46,12 @@ export async function renderApp(initialPath: string = "/calculator") {
     isActive: true
   });
   setAccessToken("test-token");
+  // Drop any session-lost handler left over from a previous test's
+  // AuthProvider mount. Without this reset, a stale handler closing
+  // over an unmounted provider could fire on the next render and
+  // corrupt the new provider's state — or, more commonly, silently
+  // overwrite a fresh handler's clear-effect.
+  setSessionLostHandler(null);
 
   // App.tsx uses BrowserRouter (no `basename`), so seeding the URL
   // via the real History API is the lightweight way to choose where

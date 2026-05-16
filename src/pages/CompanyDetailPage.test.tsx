@@ -63,8 +63,8 @@ function renderAt(id: string) {
 }
 
 beforeEach(() => {
-  vi.spyOn(companiesApi, "getCompany").mockReset();
-  vi.spyOn(companiesApi, "listCompanyDeals").mockReset();
+  // See CompaniesPage.test.tsx — restoreAllMocks is the safer pattern.
+  vi.restoreAllMocks();
 });
 
 afterEach(() => {

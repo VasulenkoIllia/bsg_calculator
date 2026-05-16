@@ -50,8 +50,15 @@ function IdentityStrip() {
   if (!user) return null;
 
   const handleLogout = async (): Promise<void> => {
-    await logout();
-    navigate("/login", { replace: true });
+    // try/finally guarantees the redirect fires even if `logout()`
+    // ever rejects (it doesn't today — AuthContext.logout has its own
+    // catch-and-clear — but the contract decoupling protects against
+    // a future refactor that lets the rejection escape).
+    try {
+      await logout();
+    } finally {
+      navigate("/login", { replace: true });
+    }
   };
 
   return (

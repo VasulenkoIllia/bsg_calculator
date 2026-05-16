@@ -13,10 +13,19 @@
  * have to reduce over `data.pages` themselves.
  */
 
+import { useMemo } from "react";
 import { useInfiniteQuery, type InfiniteData } from "@tanstack/react-query";
 import * as companiesApi from "../api/companies.js";
 import { ApiError } from "../api/client.js";
 import type { CursorPage, PublicCompany } from "../api/types.js";
+
+/**
+ * Minimum length for a search query to actually hit the backend. The
+ * server's Zod schema enforces `q.min(2)` so anything shorter would
+ * return 422; we normalise to `undefined` (no filter) instead.
+ * Exported so the test suite + any future direct caller stays in sync.
+ */
+export const COMPANIES_SEARCH_MIN_LENGTH = 2;
 
 export interface UseCompaniesOptions {
   /** Trimmed substring search; pass undefined / "" for no filter. */
@@ -39,17 +48,23 @@ export interface UseCompaniesResult {
 }
 
 /**
- * Build a stable query key. Empty / whitespace-only `q` is normalised
- * to undefined so toggling the input between "" and "  " doesn't
- * thrash the query cache.
+ * Normalise a raw search input to the value the backend should see.
+ * Inputs below the min length are treated as "no filter" — the same
+ * threshold used for both the query key AND the fetched query, so
+ * one-keystroke typing doesn't pollute the cache with phantom entries
+ * that always return the unfiltered list.
  */
+function normaliseSearch(q: string | undefined): string | undefined {
+  const trimmed = q?.trim();
+  return trimmed && trimmed.length >= COMPANIES_SEARCH_MIN_LENGTH ? trimmed : undefined;
+}
+
 function buildKey(q: string | undefined, limit: number | undefined): unknown[] {
-  const normalisedQ = q?.trim() && q.trim().length > 0 ? q.trim() : undefined;
-  return ["companies", "list", { q: normalisedQ, limit }];
+  return ["companies", "list", { q: normaliseSearch(q), limit }];
 }
 
 export function useCompanies({ q, limit }: UseCompaniesOptions = {}): UseCompaniesResult {
-  const normalisedQ = q?.trim() && q.trim().length >= 2 ? q.trim() : undefined;
+  const normalisedQ = normaliseSearch(q);
 
   const query = useInfiniteQuery<
     CursorPage<PublicCompany>,
@@ -69,8 +84,14 @@ export function useCompanies({ q, limit }: UseCompaniesOptions = {}): UseCompani
     getNextPageParam: lastPage => lastPage.nextCursor ?? undefined
   });
 
-  const items =
-    query.data?.pages.flatMap((page: CursorPage<PublicCompany>) => page.items) ?? [];
+  // Memoised so consumers don't get a new array reference (and thus
+  // a re-render storm in any `useEffect([items])` they have) on every
+  // ancestor re-render. `query.data` is stable across renders while
+  // nothing changes, so this recomputes only on a successful fetch.
+  const items = useMemo(
+    () => query.data?.pages.flatMap(page => page.items) ?? [],
+    [query.data]
+  );
 
   return {
     items,

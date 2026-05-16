@@ -15,14 +15,7 @@ import { Link } from "react-router-dom";
 import { ApiError } from "../api/client.js";
 import { useCompanies } from "../hooks/useCompanies.js";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
-
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString();
-  } catch {
-    return iso;
-  }
-}
+import { formatDate } from "../shared/format.js";
 
 export function CompaniesPage() {
   const [search, setSearch] = useState("");
@@ -31,12 +24,18 @@ export function CompaniesPage() {
   const {
     items,
     isLoading,
+    isFetching,
     isError,
     error,
     hasNextPage,
     fetchNextPage,
     isFetchingNextPage
   } = useCompanies({ q: debouncedSearch });
+
+  // Background re-fetch indicator (e.g. when the user toggles back
+  // to the tab and the data has gone stale). Distinct from the
+  // initial-load row, which uses `isLoading`.
+  const isBackgroundRefetching = isFetching && !isLoading;
 
   return (
     <section className="space-y-4">
@@ -49,7 +48,7 @@ export function CompaniesPage() {
         </div>
         <label className="flex flex-col gap-1">
           <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Search
+            Search{isBackgroundRefetching ? <span className="ml-2 font-normal lowercase text-slate-400">· refreshing…</span> : null}
           </span>
           <input
             type="search"

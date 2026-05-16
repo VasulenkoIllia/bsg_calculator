@@ -212,6 +212,12 @@ describe("apiClient — error envelope mapping", () => {
   });
 
   it("falls back to NETWORK_ERROR when no envelope present", async () => {
+    // Install the throwing adapter via the same helper used by every
+    // other test so the afterEach cleanup applies uniformly. Passing
+    // an empty script lets the helper's default-fallthrough behaviour
+    // run, but we override the adapter immediately below with a
+    // throwing implementation.
+    installMockAdapter([]);
     apiClient.defaults.adapter = async () => {
       throw new Error("ECONNREFUSED");
     };
