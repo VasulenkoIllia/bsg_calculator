@@ -33,11 +33,11 @@ export type ListCompaniesQuery = z.infer<typeof listCompaniesQuerySchema>;
  * ~20kb each) — frontend never needs the full payload; if a feature
  * requires a field we promote it to a column.
  *
- * NOTE: this schema exists ONLY for type-inference. We do NOT
- * `.parse()` rows on the way out — projection happens manually in
- * `companies.service.toPublic()`. If you change the shape here you
- * must also update `toPublic()`. (Sprint 2.7 trade-off: cheaper than
- * forcing runtime validation on every list response.)
+ * The schema is `.parse()`d on every projection via
+ * `companies.service.toPublic()` (Sprint 2.7.F upgrade — was
+ * type-only before). Server-side projection bugs now surface as
+ * 500 INTERNAL_ERROR with detailed log instead of malformed JSON
+ * silently shipping to the frontend.
  */
 export const companyPublicSchema = z.object({
   id: z.string().uuid(),

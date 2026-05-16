@@ -3,8 +3,10 @@
  */
 
 import { env } from "../../config/env";
+import { parseDtoOrInternalError } from "../../shared/dto-parse";
 import { NotFoundError } from "../../shared/errors";
 import { buildPage, type PageResult } from "../../shared/build-page";
+import { scheduleTtlRefresh as runTtlRefresh } from "../../shared/ttl-refresh";
 import { logger } from "../../middleware/logger";
 import { getCompany, loadCompanyByHubspotIdOrNull } from "../companies/companies.service";
 import { hubspot } from "../hubspot/hubspot.client";
@@ -20,25 +22,29 @@ import {
   upsertDeal,
   type ListDealsArgs
 } from "./deals.repository";
-import type { DealPublic } from "./deals.schemas";
+import { dealPublicSchema, type DealPublic } from "./deals.schemas";
 
 function toPublic(row: Deal): DealPublic {
-  return {
-    id: row.id,
-    hubspotDealId: row.hubspotDealId,
-    hubspotCompanyId: row.hubspotCompanyId,
-    name: row.name,
-    stage: row.stage,
-    pipelineId: row.pipelineId,
-    amount: row.amount,
-    currency: row.currency,
-    clientLabel: row.clientLabel,
-    agentLabel: row.agentLabel,
-    businessVertical: row.businessVertical,
-    hubspotCreatedAt: row.hubspotCreatedAt.toISOString(),
-    hubspotModifiedAt: row.hubspotModifiedAt.toISOString(),
-    lastSyncedAt: row.lastSyncedAt.toISOString()
-  };
+  return parseDtoOrInternalError(
+    dealPublicSchema,
+    {
+      id: row.id,
+      hubspotDealId: row.hubspotDealId,
+      hubspotCompanyId: row.hubspotCompanyId,
+      name: row.name,
+      stage: row.stage,
+      pipelineId: row.pipelineId,
+      amount: row.amount,
+      currency: row.currency,
+      clientLabel: row.clientLabel,
+      agentLabel: row.agentLabel,
+      businessVertical: row.businessVertical,
+      hubspotCreatedAt: row.hubspotCreatedAt.toISOString(),
+      hubspotModifiedAt: row.hubspotModifiedAt.toISOString(),
+      lastSyncedAt: row.lastSyncedAt.toISOString()
+    },
+    "deals.toPublic"
+  );
 }
 
 export type DealListPage = PageResult<DealPublic>;
@@ -72,12 +78,8 @@ export async function getDeal(id: string): Promise<DealPublic> {
   const row = await findDealById(id);
   if (!row) throw new NotFoundError("Deal");
 
-  scheduleTtlRefresh(row).catch(err => {
-    logger.warn(
-      { hubspotDealId: row.hubspotDealId, err: (err as Error).message },
-      "[deals] TTL refresh failed"
-    );
-  });
+  // Fire-and-forget; helper logs background errors itself.
+  void scheduleTtlRefresh(row);
 
   return toPublic(row);
 }
@@ -121,23 +123,24 @@ export async function resolveDealCompany(
   return null;
 }
 
-/** Same TTL-refresh pattern as companies.service.scheduleTtlRefresh. */
+/**
+ * Same TTL pattern as companies.service.scheduleTtlRefresh, but with
+ * the deal→company fallback resolver inside the refresh callback to
+ * keep deals like WORLDFY OY (primary = filtered-out Agent, fallback
+ * = Merchant) from silently failing FK on refresh.
+ */
 export async function scheduleTtlRefresh(row: Deal): Promise<void> {
-  if (!hubspot.isConfigured()) return;
-  const ttlMs = env.HUBSPOT_SYNC_TTL_SECONDS * 1000;
-  if (ttlMs <= 0) return;
-  const ageMs = Date.now() - row.lastSyncedAt.getTime();
-  if (ageMs < ttlMs) return;
-
-  setImmediate(async () => {
-    try {
+  return runTtlRefresh({
+    lastSyncedAt: row.lastSyncedAt,
+    ttlMs: env.HUBSPOT_SYNC_TTL_SECONDS * 1000,
+    enabled: hubspot.isConfigured(),
+    logLabel: "[deals] TTL refresh",
+    logContext: { hubspotDealId: row.hubspotDealId },
+    refresh: async () => {
       const fresh = await hubspot.getDeal(row.hubspotDealId);
       const mapped = mapHubspotDealToRow(fresh);
       if (!mapped) return;
 
-      // Apply the same fallback policy as backfill so deals like
-      // WORLDFY OY (primary = filtered-out Agent, fallback =
-      // Merchant) don't silently fail FK on refresh.
       const resolved = await resolveDealCompany(fresh);
       if (!resolved) {
         logger.warn(
@@ -157,20 +160,7 @@ export async function scheduleTtlRefresh(row: Deal): Promise<void> {
         );
       }
       mapped.hubspotCompanyId = resolved.hubspotCompanyId;
-
       await upsertDeal(mapped);
-      logger.info(
-        { hubspotDealId: row.hubspotDealId, ageMs },
-        "[deals] TTL refresh: row refreshed"
-      );
-    } catch (err) {
-      logger.warn(
-        {
-          hubspotDealId: row.hubspotDealId,
-          err: (err as Error).message
-        },
-        "[deals] TTL refresh: HubSpot fetch failed"
-      );
     }
   });
 }

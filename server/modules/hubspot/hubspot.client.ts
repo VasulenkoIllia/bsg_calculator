@@ -16,16 +16,43 @@
  * `patchNote`, etc. — out of scope for Sprint 2.
  */
 
+import type { ZodTypeAny } from "zod";
 import { env } from "../../config/env";
 import { HubspotUnreachableError } from "../../shared/errors";
 import { logger } from "../../middleware/logger";
 import {
   COMPANY_PROPERTIES,
   DEAL_PROPERTIES,
+  hubspotListResponseSchema,
+  hubspotObjectSchema,
+  hubspotPipelinesResponseSchema,
   type HubspotListResponse,
   type HubspotObject,
   type HubspotPipelinesResponse
 } from "./hubspot.types";
+
+/**
+ * Soft-validate a HubSpot response against a Zod schema.
+ *
+ * Failure mode: LOG a warn with the issues + the offending payload
+ * snippet, then return the raw value cast as T. This gives us
+ * visibility on HubSpot schema drift WITHOUT crashing live traffic.
+ * Sprint 5+ can tighten to hard-fail once we have alerting.
+ */
+function softValidate<T>(raw: unknown, schema: ZodTypeAny, endpoint: string): T {
+  const result = schema.safeParse(raw);
+  if (result.success) return result.data as T;
+
+  logger.warn(
+    {
+      endpoint,
+      issues: result.error.issues.slice(0, 5), // truncate verbose errors
+      sample: JSON.stringify(raw).slice(0, 500)
+    },
+    "[hubspot] response shape drift detected — falling through to cast"
+  );
+  return raw as T;
+}
 
 interface RequestOptions {
   /** Number of retry attempts on 429. Default 3. */
@@ -58,9 +85,10 @@ class HubspotClient {
     after?: string,
     limit: number = 100
   ): Promise<HubspotListResponse> {
-    return this.get<HubspotListResponse>(
+    const raw = await this.get<unknown>(
       `/crm/v3/objects/companies?${this.buildListQuery(after, limit, COMPANY_PROPERTIES)}`
     );
+    return softValidate<HubspotListResponse>(raw, hubspotListResponseSchema, "listCompanies");
   }
 
   /**
@@ -75,7 +103,7 @@ class HubspotClient {
     after?: string,
     limit: number = 100
   ): Promise<HubspotListResponse> {
-    return this.post<HubspotListResponse>("/crm/v3/objects/companies/search", {
+    const raw = await this.post<unknown>("/crm/v3/objects/companies/search", {
       filterGroups: [
         {
           filters: [
@@ -91,14 +119,20 @@ class HubspotClient {
       limit,
       after
     });
+    return softValidate<HubspotListResponse>(
+      raw,
+      hubspotListResponseSchema,
+      "searchCompaniesByType"
+    );
   }
 
   async getCompany(id: string): Promise<HubspotObject> {
-    return this.get<HubspotObject>(
+    const raw = await this.get<unknown>(
       `/crm/v3/objects/companies/${encodeURIComponent(id)}?properties=${encodeURIComponent(
         COMPANY_PROPERTIES.join(",")
       )}`
     );
+    return softValidate<HubspotObject>(raw, hubspotObjectSchema, "getCompany");
   }
 
   // ─── Deals ───────────────────────────────────────────────────────
@@ -107,23 +141,30 @@ class HubspotClient {
     // associations=companies pulls hs_primary_associated_company info,
     // which deal.properties already returns — kept for the side effect
     // of giving us the typed `.associations.companies` array too.
-    return this.get<HubspotListResponse>(
+    const raw = await this.get<unknown>(
       `/crm/v3/objects/deals?${this.buildListQuery(after, limit, DEAL_PROPERTIES)}&associations=companies`
     );
+    return softValidate<HubspotListResponse>(raw, hubspotListResponseSchema, "listDeals");
   }
 
   async getDeal(id: string): Promise<HubspotObject> {
-    return this.get<HubspotObject>(
+    const raw = await this.get<unknown>(
       `/crm/v3/objects/deals/${encodeURIComponent(id)}?properties=${encodeURIComponent(
         DEAL_PROPERTIES.join(",")
       )}&associations=companies`
     );
+    return softValidate<HubspotObject>(raw, hubspotObjectSchema, "getDeal");
   }
 
   // ─── Pipelines ───────────────────────────────────────────────────
 
   async listPipelineStages(): Promise<HubspotPipelinesResponse> {
-    return this.get<HubspotPipelinesResponse>("/crm/v3/pipelines/deals");
+    const raw = await this.get<unknown>("/crm/v3/pipelines/deals");
+    return softValidate<HubspotPipelinesResponse>(
+      raw,
+      hubspotPipelinesResponseSchema,
+      "listPipelineStages"
+    );
   }
 
   // ─── Internals ───────────────────────────────────────────────────

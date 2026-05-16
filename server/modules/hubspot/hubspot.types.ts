@@ -1,43 +1,72 @@
 /**
- * HubSpot CRM v3 API response types.
+ * HubSpot CRM v3 API response types + Zod schemas.
  *
  * Reflects the actual shape returned by the BSG account's HubSpot
  * (validated via the `hubspot:one-company` / `hubspot:merchant-and-deal`
- * scripts on 2026-05-14/15). The full schema is much richer; we
- * capture only what we need + a permissive `properties` map for the
- * rest (everything lands in our `hubspot_raw` JSONB column).
+ * scripts on 2026-05-14/15). The schemas drive soft-validation in
+ * `hubspot.client.ts` — on shape drift we LOG and fall through to
+ * the cast (no breakage), so a HubSpot field rename produces a
+ * visible warn rather than silent undefined.
  */
 
+import { z } from "zod";
+
+// ─── Property values: HubSpot serialises ALL property values as
+// strings or nulls in v3 API (even amounts and booleans). Be strict
+// about the leaf type; permissive `.passthrough()` on the outer
+// object so unknown sibling fields don't break parsing.
+const propertyValueSchema = z.union([z.string(), z.null()]);
+
+export const hubspotAssociationsSchema = z
+  .object({
+    companies: z
+      .object({
+        results: z.array(z.object({ id: z.string(), type: z.string() }))
+      })
+      .optional(),
+    contacts: z
+      .object({
+        results: z.array(z.object({ id: z.string(), type: z.string() }))
+      })
+      .optional()
+  })
+  .passthrough();
+
+export const hubspotObjectSchema = z
+  .object({
+    id: z.string(),
+    properties: z.record(propertyValueSchema),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+    archived: z.boolean().optional(),
+    associations: hubspotAssociationsSchema.optional()
+  })
+  .passthrough();
+
+export const hubspotListResponseSchema = z
+  .object({
+    results: z.array(hubspotObjectSchema),
+    paging: z
+      .object({
+        next: z
+          .object({
+            after: z.string(),
+            link: z.string()
+          })
+          .optional()
+      })
+      .optional()
+  })
+  .passthrough();
+
 /** A single object — company or deal — as HubSpot returns it. */
-export interface HubspotObject {
-  id: string;
-  properties: Record<string, string | null>;
-  createdAt: string;
-  updatedAt: string;
-  archived?: boolean;
-  associations?: HubspotAssociations;
-}
+export type HubspotObject = z.infer<typeof hubspotObjectSchema>;
 
 /** Associations map keyed by associated-object type ("companies", "contacts"). */
-export interface HubspotAssociations {
-  companies?: {
-    results: Array<{ id: string; type: string }>;
-  };
-  contacts?: {
-    results: Array<{ id: string; type: string }>;
-  };
-}
+export type HubspotAssociations = z.infer<typeof hubspotAssociationsSchema>;
 
 /** Paginated list response. `paging.next` is absent on the last page. */
-export interface HubspotListResponse {
-  results: HubspotObject[];
-  paging?: {
-    next?: {
-      after: string;
-      link: string;
-    };
-  };
-}
+export type HubspotListResponse = z.infer<typeof hubspotListResponseSchema>;
 
 /**
  * The property names we explicitly request on each list/get call.
@@ -122,18 +151,30 @@ export const DEAL_PROPERTIES: readonly string[] = [
 ] as const;
 
 /** Pipeline + stages response from `/crm/v3/pipelines/deals`. */
-export interface HubspotPipelinesResponse {
-  results: Array<{
-    id: string;
-    label: string;
-    archived: boolean;
-    displayOrder: number;
-    stages: Array<{
-      id: string;
-      label: string;
-      displayOrder: number;
-      archived: boolean;
-      metadata: Record<string, string>;
-    }>;
-  }>;
-}
+export const hubspotPipelinesResponseSchema = z
+  .object({
+    results: z.array(
+      z
+        .object({
+          id: z.string(),
+          label: z.string(),
+          archived: z.boolean(),
+          displayOrder: z.number(),
+          stages: z.array(
+            z
+              .object({
+                id: z.string(),
+                label: z.string(),
+                displayOrder: z.number(),
+                archived: z.boolean(),
+                metadata: z.record(z.string())
+              })
+              .passthrough()
+          )
+        })
+        .passthrough()
+    )
+  })
+  .passthrough();
+
+export type HubspotPipelinesResponse = z.infer<typeof hubspotPipelinesResponseSchema>;

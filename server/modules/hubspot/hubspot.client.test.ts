@@ -169,3 +169,46 @@ describe("HubspotClient.isConfigured()", () => {
     expect(typeof first).toBe("boolean");
   });
 });
+
+describe("Response soft-validation", () => {
+  it("returns the response unchanged when shape matches the schema", async () => {
+    pushResponse({
+      status: 200,
+      body: {
+        results: [
+          {
+            id: "1",
+            properties: { name: "Test", company_type: null },
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z"
+          }
+        ],
+        paging: {}
+      }
+    });
+    const res = await hubspot.listCompanies();
+    expect(res.results[0].id).toBe("1");
+    expect(res.results[0].properties.name).toBe("Test");
+  });
+
+  it("falls through to cast (with warn log) when shape drifts", async () => {
+    // Simulate HubSpot returning a property as a number instead of string —
+    // soft-validate should log a warn but still return the value.
+    pushResponse({
+      status: 200,
+      body: {
+        results: [
+          {
+            id: "1",
+            properties: { amount: 12345 as unknown as string }, // number, not string
+            createdAt: "2026-01-01",
+            updatedAt: "2026-01-01"
+          }
+        ]
+      }
+    });
+    // Should not throw — soft-validate falls through.
+    const res = await hubspot.listCompanies();
+    expect(res.results[0].id).toBe("1");
+  });
+});

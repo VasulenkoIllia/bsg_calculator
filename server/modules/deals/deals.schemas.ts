@@ -24,8 +24,8 @@ export type ListDealsQuery = z.infer<typeof listDealsQuerySchema>;
 
 /**
  * Public-facing deal shape. Excludes `hubspot_raw` (~237 props per
- * row). Type-inference only — no runtime parse on the way out (see
- * companies.schemas.ts for the same note).
+ * row). Runtime-validated by `deals.service.toPublic()` via
+ * parseDtoOrInternalError (Sprint 2.7.F).
  *
  * `amount`: numeric(14,2) → JS string. Frontend MUST `parseFloat`
  * before arithmetic. Format guaranteed `"\d+(\.\d{1,2})?"`.

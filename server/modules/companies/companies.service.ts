@@ -12,9 +12,10 @@
  */
 
 import { env } from "../../config/env";
+import { parseDtoOrInternalError } from "../../shared/dto-parse";
 import { NotFoundError } from "../../shared/errors";
 import { buildPage, type PageResult } from "../../shared/build-page";
-import { logger } from "../../middleware/logger";
+import { scheduleTtlRefresh as runTtlRefresh } from "../../shared/ttl-refresh";
 import { hubspot } from "../hubspot/hubspot.client";
 import { mapHubspotCompanyToRow } from "../hubspot/hubspot.mapper";
 import type { Company } from "../../db/schema";
@@ -25,21 +26,25 @@ import {
   upsertCompany,
   type ListCompaniesArgs
 } from "./companies.repository";
-import type { CompanyPublic } from "./companies.schemas";
+import { companyPublicSchema, type CompanyPublic } from "./companies.schemas";
 
 function toPublic(row: Company): CompanyPublic {
-  return {
-    id: row.id,
-    hubspotCompanyId: row.hubspotCompanyId,
-    name: row.name,
-    companyType: row.companyType,
-    segmentType: row.segmentType,
-    lifecycleStage: row.lifecycleStage,
-    hsTaskLabel: row.hsTaskLabel,
-    hubspotCreatedAt: row.hubspotCreatedAt.toISOString(),
-    hubspotModifiedAt: row.hubspotModifiedAt.toISOString(),
-    lastSyncedAt: row.lastSyncedAt.toISOString()
-  };
+  return parseDtoOrInternalError(
+    companyPublicSchema,
+    {
+      id: row.id,
+      hubspotCompanyId: row.hubspotCompanyId,
+      name: row.name,
+      companyType: row.companyType,
+      segmentType: row.segmentType,
+      lifecycleStage: row.lifecycleStage,
+      hsTaskLabel: row.hsTaskLabel,
+      hubspotCreatedAt: row.hubspotCreatedAt.toISOString(),
+      hubspotModifiedAt: row.hubspotModifiedAt.toISOString(),
+      lastSyncedAt: row.lastSyncedAt.toISOString()
+    },
+    "companies.toPublic"
+  );
 }
 
 export type CompanyListPage = PageResult<CompanyPublic>;
@@ -60,12 +65,9 @@ export async function getCompany(id: string): Promise<CompanyPublic> {
   if (!row) throw new NotFoundError("Company");
 
   // TTL refresh — fire-and-forget background refetch when stale.
-  scheduleTtlRefresh(row).catch(err => {
-    logger.warn(
-      { hubspotCompanyId: row.hubspotCompanyId, err: (err as Error).message },
-      "[companies] TTL refresh failed"
-    );
-  });
+  // The helper never rejects: any background error is logged inside
+  // the setImmediate callback.
+  void scheduleTtlRefresh(row);
 
   return toPublic(row);
 }
@@ -73,36 +75,18 @@ export async function getCompany(id: string): Promise<CompanyPublic> {
 /**
  * If `last_synced_at` is older than the TTL, refetch from HubSpot
  * and upsert. Runs in background — caller never awaits.
- *
- * Public so deals.service can call it transitively when an operator
- * pulls a deal whose company is also stale.
  */
 export async function scheduleTtlRefresh(row: Company): Promise<void> {
-  if (!hubspot.isConfigured()) return; // dev / test without token
-  const ttlMs = env.HUBSPOT_SYNC_TTL_SECONDS * 1000;
-  if (ttlMs <= 0) return;
-  const ageMs = Date.now() - row.lastSyncedAt.getTime();
-  if (ageMs < ttlMs) return;
-
-  setImmediate(async () => {
-    try {
+  return runTtlRefresh({
+    lastSyncedAt: row.lastSyncedAt,
+    ttlMs: env.HUBSPOT_SYNC_TTL_SECONDS * 1000,
+    enabled: hubspot.isConfigured(),
+    logLabel: "[companies] TTL refresh",
+    logContext: { hubspotCompanyId: row.hubspotCompanyId },
+    refresh: async () => {
       const fresh = await hubspot.getCompany(row.hubspotCompanyId);
       const mapped = mapHubspotCompanyToRow(fresh);
-      if (mapped) {
-        await upsertCompany(mapped);
-        logger.info(
-          { hubspotCompanyId: row.hubspotCompanyId, ageMs },
-          "[companies] TTL refresh: row refreshed"
-        );
-      }
-    } catch (err) {
-      logger.warn(
-        {
-          hubspotCompanyId: row.hubspotCompanyId,
-          err: (err as Error).message
-        },
-        "[companies] TTL refresh: HubSpot fetch failed"
-      );
+      if (mapped) await upsertCompany(mapped);
     }
   });
 }
