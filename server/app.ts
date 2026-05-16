@@ -27,6 +27,8 @@ import { apiLimiter } from "./middleware/rate-limit";
 import { requestId } from "./middleware/request-id";
 import { requestLogger } from "./middleware/logger";
 import { authRouter } from "./modules/auth/auth.routes";
+import { companiesRouter } from "./modules/companies/companies.routes";
+import { dealsRouter } from "./modules/deals/deals.routes";
 import { healthRouter } from "./modules/health/health.routes";
 import { usersRouter } from "./modules/users/users.routes";
 
@@ -93,8 +95,10 @@ export function createApp(): express.Express {
   // /api/v1/* mounts:
   app.use("/api/v1/auth", authRouter);
   app.use("/api/v1/users", usersRouter);
-  // Future sprints: companies, deals, calculator-configs,
-  //                  documents, listings, hubspot, pdf.
+  app.use("/api/v1/companies", companiesRouter);
+  app.use("/api/v1/deals", dealsRouter);
+  // Future sprints: calculator-configs, documents, listings,
+  //                  hubspot/webhooks, pdf.
 
   // 8. 404 catch-all + 9. Error envelope — must be last.
   app.use(notFoundHandler);
