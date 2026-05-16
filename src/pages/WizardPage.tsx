@@ -11,8 +11,21 @@ import {
 } from "../components/document-wizard/index.js";
 import type { DocumentTemplatePayload, WizardStep } from "../components/document-wizard/index.js";
 import type { DocumentScope } from "../components/document-wizard/legalDefaults.js";
+import { SaveDocumentModal } from "../components/SaveDocumentModal.js";
+import type * as documentsApi from "../api/documents.js";
 import { useCalculator } from "../contexts/CalculatorContext.js";
 import { printHtmlViaIframe } from "../lib/printHtmlViaIframe.js";
+
+/**
+ * Map the wizard's camelCase document scope to the backend's
+ * snake_case CHECK enum. Wizard doesn't have a standalone
+ * "agreement" mode (product decision — see buildOfferPdfHtml.ts
+ * comment) so only two values reach this function in practice.
+ */
+function toBackendScope(scope: DocumentScope): documentsApi.DocumentScope {
+  if (scope === "offerAndAgreement") return "offer_and_agreement";
+  return "offer";
+}
 
 type WizardSourceMode = "calculator" | "manualBlank" | "manualDefaults";
 
@@ -194,22 +207,57 @@ export function WizardPage() {
     setWizardActionMessage('Print dialog opened. Choose "Save as PDF" to export.');
   };
 
+  // Sprint 4.E: "Save document" — opens SaveDocumentModal on the
+  // last wizard step (Parties & Signatures, step 7). The modal
+  // collects company + optional deal + addendum and POSTs to
+  // /api/v1/documents. Backend allocates BSG-XXXXX atomically.
+  const [saveDocOpen, setSaveDocOpen] = useState(false);
+  const isLastStep = wizardStep === 7;
+
   return (
-    <DocumentWizardPanel
-      draft={wizardDraft}
-      onDraftChange={setWizardDraft}
-      sourceMode={wizardSourceMode}
-      onStartFromCalculator={handleWizardStartFromCalculator}
-      onStartFromManualBlank={handleWizardStartFromManualBlank}
-      onStartFromManualDefaults={handleWizardStartFromManualDefaults}
-      activeStep={wizardStep}
-      onStepChange={setWizardStep}
-      previewHtml={wizardPreviewHtml}
-      highlightVariables={wizardHighlightVariables}
-      onHighlightVariablesChange={setWizardHighlightVariables}
-      onGeneratePdf={handleWizardGeneratePdf}
-      onRefreshFromCalculator={handleWizardRefillFromCalculator}
-      actionMessage={wizardActionMessage}
-    />
+    <>
+      {isLastStep ? (
+        <div className="mb-4 flex flex-col gap-2 rounded-2xl border border-blue-200 bg-blue-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-blue-900">Ready to save?</h2>
+            <p className="mt-1 text-xs text-blue-800">
+              The backend will assign the next BSG-XXXXX number atomically. You
+              can attach the document to a company + optional deal.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSaveDocOpen(true)}
+            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
+          >
+            Save document…
+          </button>
+        </div>
+      ) : null}
+
+      <DocumentWizardPanel
+        draft={wizardDraft}
+        onDraftChange={setWizardDraft}
+        sourceMode={wizardSourceMode}
+        onStartFromCalculator={handleWizardStartFromCalculator}
+        onStartFromManualBlank={handleWizardStartFromManualBlank}
+        onStartFromManualDefaults={handleWizardStartFromManualDefaults}
+        activeStep={wizardStep}
+        onStepChange={setWizardStep}
+        previewHtml={wizardPreviewHtml}
+        highlightVariables={wizardHighlightVariables}
+        onHighlightVariablesChange={setWizardHighlightVariables}
+        onGeneratePdf={handleWizardGeneratePdf}
+        onRefreshFromCalculator={handleWizardRefillFromCalculator}
+        actionMessage={wizardActionMessage}
+      />
+
+      <SaveDocumentModal
+        open={saveDocOpen}
+        onClose={() => setSaveDocOpen(false)}
+        payload={wizardDraft as unknown as { schemaVersion?: number } & Record<string, unknown>}
+        scope={toBackendScope(wizardDraft.documentScope)}
+      />
+    </>
   );
 }
