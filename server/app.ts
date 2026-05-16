@@ -24,6 +24,7 @@ import { env, isDev } from "./config/env";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler";
 import { requestId } from "./middleware/request-id";
 import { requestLogger } from "./middleware/logger";
+import { authRouter } from "./modules/auth/auth.routes";
 import { healthRouter } from "./modules/health/health.routes";
 
 export function createApp(): express.Express {
@@ -65,8 +66,10 @@ export function createApp(): express.Express {
   // Docker / load balancers can ping without API versioning concerns.
   app.use(healthRouter);
 
-  // /api/v1/* mounts land in future commits (auth, users, companies,
-  // deals, calculator-configs, documents, listings, hubspot, pdf).
+  // /api/v1/* mounts:
+  app.use("/api/v1/auth", authRouter);
+  // Future sprints: users, companies, deals, calculator-configs,
+  //                  documents, listings, hubspot, pdf.
 
   // 8. 404 catch-all + 9. Error envelope — must be last.
   app.use(notFoundHandler);
