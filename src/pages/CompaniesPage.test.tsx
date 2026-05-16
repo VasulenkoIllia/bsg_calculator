@@ -55,7 +55,8 @@ describe("CompaniesPage", () => {
   it("renders a loading row, then the first page of companies", async () => {
     vi.spyOn(companiesApi, "listCompanies").mockResolvedValueOnce({
       items: [fixtureCompany({ id: "a", name: "Alpha" }), fixtureCompany({ id: "b", name: "Beta" })],
-      nextCursor: null
+      nextCursor: null,
+      limit: 25
     });
 
     renderPage();
@@ -71,7 +72,8 @@ describe("CompaniesPage", () => {
   it("renders empty-state copy when no items + no search", async () => {
     vi.spyOn(companiesApi, "listCompanies").mockResolvedValueOnce({
       items: [],
-      nextCursor: null
+      nextCursor: null,
+      limit: 25
     });
 
     renderPage();
@@ -96,7 +98,7 @@ describe("CompaniesPage", () => {
   it("debounces search input and re-queries with the trimmed q", async () => {
     const spy = vi
       .spyOn(companiesApi, "listCompanies")
-      .mockResolvedValue({ items: [fixtureCompany()], nextCursor: null });
+      .mockResolvedValue({ items: [fixtureCompany()], nextCursor: null, limit: 25 });
 
     renderPage();
 
@@ -124,11 +126,13 @@ describe("CompaniesPage", () => {
       .spyOn(companiesApi, "listCompanies")
       .mockResolvedValueOnce({
         items: [fixtureCompany({ id: "p1", name: "Page1" })],
-        nextCursor: "cursor-2"
+        nextCursor: "cursor-2",
+        limit: 25
       })
       .mockResolvedValueOnce({
         items: [fixtureCompany({ id: "p2", name: "Page2" })],
-        nextCursor: null
+        nextCursor: null,
+        limit: 25
       });
 
     renderPage();

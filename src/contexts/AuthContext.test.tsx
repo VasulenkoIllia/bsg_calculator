@@ -17,11 +17,11 @@ import * as authApi from "../api/auth.js";
 
 const fixtureUser = {
   id: "u-1",
+  email: "alice@bsg.test",
   login: "alice",
   displayName: "Alice",
-  role: "operator" as const,
-  active: true,
-  createdAt: "2026-05-01T00:00:00.000Z"
+  isAdmin: false,
+  isActive: true
 };
 
 function wrapper({ children }: { children: ReactNode }) {

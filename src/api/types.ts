@@ -27,13 +27,24 @@ export interface ApiErrorEnvelope {
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────
+/**
+ * Mirrors server/modules/auth/auth.schemas.ts:userPublicSchema 1:1.
+ *
+ * Drift risk: when the backend `userPublicSchema` grows a field,
+ * add it here in the SAME PR. The api client uses generic-cast (not
+ * runtime validation) so the type system is our only contract check.
+ *
+ * Historical: pre-2.8.F this interface declared `role/active/createdAt`,
+ * none of which the backend actually emits. UI happened to only read
+ * `displayName` so the mismatch was invisible — fixed in 2.8.F.
+ */
 export interface PublicUser {
   id: string;
-  login: string;
+  email: string;
+  login: string | null;
   displayName: string;
-  role: "admin" | "operator";
-  active: boolean;
-  createdAt: string; // ISO
+  isAdmin: boolean;
+  isActive: boolean;
 }
 
 export interface LoginRequest {
@@ -86,10 +97,15 @@ export interface PublicDeal {
 /**
  * Backend `shared/build-page.ts` envelope. The cursor is an opaque
  * base64 string — UI MUST pass it back verbatim on the next request.
+ *
+ * `limit` echoes the page size the server used. The UI doesn't read
+ * it today but it's part of the wire shape, so keeping it typed makes
+ * any future "showing N of …" indicator honest about its source.
  */
 export interface CursorPage<TItem> {
   items: TItem[];
   nextCursor: string | null;
+  limit: number;
 }
 
 // ─── HubSpot ──────────────────────────────────────────────────────

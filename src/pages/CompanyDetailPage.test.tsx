@@ -78,7 +78,8 @@ describe("CompanyDetailPage — header", () => {
     );
     vi.spyOn(companiesApi, "listCompanyDeals").mockResolvedValueOnce({
       items: [fixtureDeal({ name: "Phase 1 onboarding" })],
-      nextCursor: null
+      nextCursor: null,
+      limit: 25
     });
 
     renderAt("11111111-1111-1111-1111-111111111111");
@@ -98,7 +99,8 @@ describe("CompanyDetailPage — header", () => {
     );
     vi.spyOn(companiesApi, "listCompanyDeals").mockResolvedValueOnce({
       items: [],
-      nextCursor: null
+      nextCursor: null,
+      limit: 25
     });
 
     renderAt("missing-id");
@@ -114,7 +116,8 @@ describe("CompanyDetailPage — deals table", () => {
     vi.spyOn(companiesApi, "getCompany").mockResolvedValueOnce(fixtureCompany());
     vi.spyOn(companiesApi, "listCompanyDeals").mockResolvedValueOnce({
       items: [],
-      nextCursor: null
+      nextCursor: null,
+      limit: 25
     });
 
     renderAt("11111111-1111-1111-1111-111111111111");
@@ -130,11 +133,13 @@ describe("CompanyDetailPage — deals table", () => {
       .spyOn(companiesApi, "listCompanyDeals")
       .mockResolvedValueOnce({
         items: [fixtureDeal({ id: "d1", name: "Deal-One" })],
-        nextCursor: "deal-cursor-2"
+        nextCursor: "deal-cursor-2",
+        limit: 25
       })
       .mockResolvedValueOnce({
         items: [fixtureDeal({ id: "d2", name: "Deal-Two" })],
-        nextCursor: null
+        nextCursor: null,
+        limit: 25
       });
 
     renderAt("11111111-1111-1111-1111-111111111111");
@@ -162,7 +167,8 @@ describe("CompanyDetailPage — deals table", () => {
         fixtureDeal({ id: "d1", name: "WithMoney", amount: "1234", currency: "EUR" }),
         fixtureDeal({ id: "d2", name: "NoMoney", amount: null, currency: null })
       ],
-      nextCursor: null
+      nextCursor: null,
+      limit: 25
     });
 
     renderAt("11111111-1111-1111-1111-111111111111");

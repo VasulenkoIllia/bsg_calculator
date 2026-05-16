@@ -39,11 +39,11 @@ export async function renderApp(initialPath: string = "/calculator") {
   vi.spyOn(authApi, "refresh").mockResolvedValue({ accessToken: "test-token" });
   vi.spyOn(authApi, "me").mockResolvedValue({
     id: "test-user",
+    email: "tester@bsg.test",
     login: "tester",
     displayName: "Tester",
-    role: "operator",
-    active: true,
-    createdAt: "2026-05-01T00:00:00.000Z"
+    isAdmin: false,
+    isActive: true
   });
   setAccessToken("test-token");
 
