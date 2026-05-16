@@ -15,6 +15,7 @@ import { createApp } from "./app";
 import { env, isProd } from "./config/env";
 import { pool } from "./db/client";
 import { logger } from "./middleware/logger";
+import { backendStartupBackfillIfEmpty } from "./scripts/hubspot-backfill";
 
 const app = createApp();
 
@@ -27,6 +28,13 @@ const server = app.listen(env.PORT, () => {
     },
     `[${env.APP_NAME}] API listening`
   );
+
+  // Background: if HUBSPOT_AUTO_BACKFILL=true and companies table
+  // empty, paginate HubSpot once. /health responds normally during
+  // backfill — listings just return empty pages until done.
+  backendStartupBackfillIfEmpty().catch(err => {
+    logger.error({ err: (err as Error).message }, "[startup] auto-backfill hook threw");
+  });
 });
 
 // ─── Graceful shutdown ────────────────────────────────────────────

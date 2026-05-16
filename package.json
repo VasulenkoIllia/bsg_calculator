@@ -20,6 +20,7 @@
     "db:migrate": "tsx server/db/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "create-user": "tsx server/scripts/create-user.ts",
+    "hubspot:backfill": "tsx server/scripts/hubspot-backfill.ts",
     "hubspot:inspect": "tsx scripts/hubspot-inspect.ts",
     "hubspot:one-company": "tsx scripts/hubspot-one-company.ts",
     "hubspot:merchant-and-deal": "tsx scripts/hubspot-merchant-and-deal.ts",
