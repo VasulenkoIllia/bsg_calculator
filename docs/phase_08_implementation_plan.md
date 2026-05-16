@@ -251,34 +251,89 @@ forward.
 
 ## Sprint 3 — Calculator configs (~0.5 days)
 
-**Goal**: operator can save and resume calculator drafts.
+**Goal**: operator can save and resume calculator drafts. Save is
+**EXPLICIT** (no autosave) — operator tunes the calculator, verifies
+it, then clicks "Save" and chooses company+deal on the modal.
 
 ### Deliverables
 
 1. **Migration** — `0003_calculator_configs.sql`
-   - `calculator_configs` table per `phase_08_backend_plan.md` §3.
+   - `calculator_configs` table (per `phase_08_backend_plan.md` §3 +
+     the pre-Sprint-3 anchor decision in `decisions.md`):
+
+         id                  UUID PK DEFAULT gen_random_uuid()
+         company_id          UUID NOT NULL REFERENCES companies(id)
+                             ON DELETE CASCADE
+         hubspot_deal_id     TEXT NULL REFERENCES deals(hubspot_deal_id)
+                             ON DELETE SET NULL
+         title               TEXT NULL
+         payload             JSONB NOT NULL
+         created_by_user_id  UUID NOT NULL REFERENCES users(id)
+         created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+         updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+
+   - Indexes: `(company_id, hubspot_deal_id, created_at DESC)` —
+     supports the wizard Step 1 picker query
+     `WHERE company_id = $1 AND (deal_id IS NULL OR deal_id = $2)`.
+   - **No UNIQUE constraint** on (company_id, hubspot_deal_id) —
+     multiple drafts per deal are allowed (operator can keep what-if
+     versions side-by-side).
 
 2. **Calculator-configs module** (`server/modules/calculator-configs/`)
-   - `POST /api/v1/calculator-configs` (create)
-   - `GET /api/v1/calculator-configs/:id`
-   - `PATCH /api/v1/calculator-configs/:id` (FULL REPLACE of payload, not merge)
-   - `DELETE /api/v1/calculator-configs/:id` (hard delete)
-   - `GET /api/v1/calculator-configs?company_id=&deal_id=&created_by=` (list)
+   - `POST /api/v1/calculator-configs` (create new)
+     Body: `{ companyId, hubspotDealId?, title?, payload }`
+     Returns: `{ id, ...row }`
+   - `GET /api/v1/calculator-configs/:id` (load — used by wizard
+     Step 1 picker AND by /calc/:id legacy editor if it ever ships).
+   - `PUT /api/v1/calculator-configs/:id` (FULL REPLACE — used when
+     operator re-saves an existing config; idempotent overwrite).
+   - `DELETE /api/v1/calculator-configs/:id` (hard delete).
+   - `GET /api/v1/calculator-configs?companyId=&hubspotDealId=&showAll=` (list)
+     - Default (showAll=false): filter by `companyId` AND (`deal_id IS NULL OR deal_id = ?`).
+     - `showAll=true`: drop the deal filter, show every config for
+       that company. Used by the "Show all my configs" link in the
+       wizard picker.
+     - Returns `CursorPage<PublicCalculatorConfig>` (reuses Sprint
+       2.7's `shared/build-page.ts`).
+   - **No PATCH** (no autosave → no partial-update endpoint needed).
 
-3. **Auto-name helper**
-   - When `name` is NULL on create/save, frontend or backend
-     renders "Untitled · <company name> · <date>".
+3. **Auto-name helper** (frontend; backend stores NULL for empty)
+   - If operator leaves the title blank on save, frontend renders
+     "Untitled · ACME Trading · 17 May 14:32" client-side. Backend
+     stores actual NULL so future renames don't fight a stale name.
 
 4. **Validation**
-   - `payload` validated via Zod re-export of
-     `DocumentTemplatePayload` from the frontend types.
+   - `payload` validated via Zod schema mirroring frontend
+     `CalculatorSnapshotPayload` (from `src/components/calculator/snapshotShape.ts`).
+     Backend re-imports the type and adds runtime check.
+   - `companyId` MUST exist in `companies` (FK).
+   - `hubspotDealId` MUST belong to `companyId` if both provided
+     (cross-company configs rejected as `VALIDATION_FAILED`).
+
+5. **Frontend wire-up (in same Sprint 3)** — minimal save modal
+   - "Save calculator" button on the legacy `/calculator` page opens
+     a modal: title (optional) + company (typeahead) + deal
+     (filtered to selected company, optional).
+   - On submit: `POST /api/v1/calculator-configs`, toast on success,
+     close modal. Calculator state stays in-memory; no auto-redirect.
+   - `useCompanySearch()` hook reuses the listCompanies endpoint
+     with debounced `q` (300ms, min 2 chars — patterns from 2.8).
+   - **Wizard Step 1 picker lands in Sprint 6** (waits for documents
+     module). Sprint 3 only ships the save side.
 
 ### Acceptance criteria
 
 - Full CRUD works against live DB.
-- Updating `payload` with a malformed shape returns
-  `VALIDATION_FAILED` with Zod issues in `details`.
-- Integration tests: 15 cases (CRUD × happy/auth-fail/validation-fail).
+- Save modal in /calculator successfully POSTs and shows the new
+  config in `GET /calculator-configs?companyId=X`.
+- Wizard / document save NOT in scope — those are Sprint 4 + 6.
+- Updating with a malformed `payload` returns `VALIDATION_FAILED`
+  with Zod issues in `details`.
+- Cross-company `hubspotDealId` rejected.
+- Integration tests: 15 cases (CRUD × happy / auth-fail / validation-fail
+  / cross-company-deal / list-with-showAll / cursor pagination).
+- Frontend tests: save modal (3-4 cases incl. validation errors,
+  success toast).
 
 ---
 

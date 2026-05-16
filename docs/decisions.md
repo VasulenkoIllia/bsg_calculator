@@ -3490,3 +3490,89 @@ Use this file to record meaningful technical decisions for the project.
   - `docs/CODEMAPS/frontend.md` "Future Sprint touchpoints" section
     is now concrete: `<CalcConfigPage />`, `<CompanyDocumentsTab />`,
     `<WizardRedirectPage />`.
+
+### Decision: Calculator save UX — explicit save, no autosave
+- Date: 2026-05-17
+- Context:
+  - Original Phase 8 plan envisioned `/calc/:id` with debounced
+    (1s) PATCH autosave and a "Saved · Xs ago" indicator — typical
+    Google-Docs-style live persistence.
+  - User reviewed the wireframes for the two save flows
+    (calculator save + wizard Step 1 picker) and clarified the
+    intended operator workflow:
+    > "користувач налаштував калькулятор все перевірив і в кінці
+    >  він може зберегти його за потреби явно натисне і обире до
+    >  якої компанії чи діла зберегти"
+  - The mental model is "calculator is a scratchpad; you commit
+    it when you've finished iterating", NOT "every keystroke is
+    persisted".
+- Decision:
+  - **Calculator save is EXPLICIT**. Operator edits calculator
+    in-memory (existing CalculatorContext state), clicks "Save
+    calculator" → modal opens → operator picks company + optional
+    deal + optional title → `POST /api/v1/calculator-configs` →
+    toast confirms.
+  - **No debounced PATCH, no "Saved · Xs ago" indicator**.
+    Calculator state lives in `CalculatorContext` until explicit
+    save. Reload-without-save = lose changes (operator's responsibility).
+  - **Updating an existing config**: opening a saved config and
+    editing → clicking "Save" → PUT replaces the config's payload.
+    No special "save as new" — to fork, operator opens config and
+    clicks "Save as new" which prompts for new company/deal/title.
+  - **Multiple drafts per (company, deal) allowed**. The schema
+    has NO unique constraint on `(company_id, hubspot_deal_id)`.
+    Operator can keep `Q1-Optimistic` + `Q1-Pessimistic` side-by-
+    side. Wizard Step 1 picker lists them all (chronological).
+  - **Wizard Step 1 config picker**:
+      - Default scope: configs where `company_id = selectedCompany AND
+        (hubspot_deal_id IS NULL OR hubspot_deal_id = selectedDeal)`.
+      - "Show all my configs" link drops the deal filter → all
+        configs for that company.
+      - "Start blank" option = no seed, wizard launches with empty
+        state (existing behavior).
+- Alternatives considered:
+  - Debounced autosave: rejected per user feedback above. The
+    backend would still be simpler if added later — `PATCH
+    /calculator-configs/:id` could be added as a Sprint 3.5
+    addendum if the operator workflow evolves.
+  - Auto-create draft on first edit, attach later: rejected.
+    Would pollute the DB with abandoned drafts on every session
+    where the operator just wanted to do a quick what-if.
+  - Single config per (company, deal) with overwrite-on-save:
+    rejected. Operators legitimately compare scenarios; throwing
+    away history would force them to keep multiple browser tabs
+    open.
+- Consequences:
+  - Sprint 3 backend gains:
+      - `PUT /api/v1/calculator-configs/:id` instead of `PATCH`
+        (full replace, no partial-merge).
+      - `GET /api/v1/calculator-configs?companyId=…&hubspotDealId=…&showAll=…`
+        for the picker.
+      - No autosave debouncing logic on the frontend; just one
+        button + modal + `useMutation`.
+  - Sprint 3 frontend ships:
+      - "Save calculator" button on `/calculator` page header.
+      - `<SaveCalculatorModal />` with company typeahead (reuses
+        listCompanies endpoint) + deal selector filtered to
+        selected company + optional title.
+      - Toast on success/error.
+  - Sprint 4 (documents) is unaffected — document creation already
+    requires a configId from `POST /api/v1/documents`, which the
+    wizard will supply once Sprint 6 wires Step 1's picker.
+  - Sprint 6 wizard Step 1:
+      - Two new fields: "Attach to" (company + deal) and "Seed from
+        saved calculator" (radio: blank | pick config).
+      - Picker fetches via the Sprint 3 list endpoint.
+- Follow-up actions:
+  - Sprint 3 backend tests MUST cover the multi-draft case
+    (POST two configs with same company+deal → both persisted with
+    distinct ids).
+  - Sprint 3 frontend tests MUST cover the modal validation:
+    company REQUIRED, deal optional, title optional.
+  - `docs/phase_08_implementation_plan.md` Sprint 3 section has
+    been updated to reflect explicit-save model (no PATCH endpoint,
+    no autosave wiring).
+  - If operator feedback ever requests autosave, the backend can
+    add `PATCH /api/v1/calculator-configs/:id` (partial-merge) and
+    the frontend can add a debounce wrapper around it without
+    breaking existing CRUD callers.
