@@ -87,6 +87,11 @@ const EnvSchema = z.object({
   // every type. Default "direct_client" — see decisions.md ("Sprint 2
   // company-type filter") for rationale.
   HUBSPOT_COMPANY_TYPE_FILTER: z.string().default("direct_client"),
+  // Page size for the `npm run hubspot:backfill` HubSpot pagination
+  // calls. HubSpot max = 100. Lower if HubSpot rate-limits during a
+  // large initial pull (you'll get more sleep+retry rounds but each
+  // round consumes less of the per-10s budget).
+  HUBSPOT_BACKFILL_PAGE_SIZE: z.coerce.number().int().min(1).max(100).default(100),
 
   // PDF rendering (Puppeteer)
   PUPPETEER_EXECUTABLE_PATH: z.string().optional(),

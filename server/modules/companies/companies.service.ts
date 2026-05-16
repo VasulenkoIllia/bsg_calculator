@@ -13,7 +13,7 @@
 
 import { env } from "../../config/env";
 import { NotFoundError } from "../../shared/errors";
-import { encodeCursor } from "../../shared/pagination";
+import { buildPage, type PageResult } from "../../shared/build-page";
 import { logger } from "../../middleware/logger";
 import { hubspot } from "../hubspot/hubspot.client";
 import { mapHubspotCompanyToRow } from "../hubspot/hubspot.mapper";
@@ -42,32 +42,17 @@ function toPublic(row: Company): CompanyPublic {
   };
 }
 
-export interface CompanyListPage {
-  items: CompanyPublic[];
-  nextCursor: string | null;
-  limit: number;
-}
+export type CompanyListPage = PageResult<CompanyPublic>;
 
 export async function searchCompanies(args: ListCompaniesArgs): Promise<CompanyListPage> {
-  // Fetch limit+1 to see whether more rows exist beyond this page.
+  // Fetch limit+1 to detect whether more rows exist beyond this page;
+  // buildPage trims to `limit` and emits a cursor pointing at the
+  // last kept row. See shared/build-page.ts.
   const rows = await listCompanies({ ...args, limit: args.limit + 1 });
-  const hasMore = rows.length > args.limit;
-  const items = hasMore ? rows.slice(0, args.limit) : rows;
-
-  let nextCursor: string | null = null;
-  if (hasMore) {
-    const last = items[items.length - 1];
-    nextCursor = encodeCursor({
-      createdAt: last.createdAt.toISOString(),
-      id: last.id
-    });
-  }
-
-  return {
-    items: items.map(toPublic),
-    nextCursor,
-    limit: args.limit
-  };
+  return buildPage(rows, args.limit, toPublic, row => ({
+    createdAt: row.createdAt.toISOString(),
+    id: row.id
+  }));
 }
 
 export async function getCompany(id: string): Promise<CompanyPublic> {

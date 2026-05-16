@@ -22,6 +22,14 @@ export type ListDealsQuery = z.infer<typeof listDealsQuerySchema>;
 
 // ─── Response DTO ───────────────────────────────────────────────────
 
+/**
+ * Public-facing deal shape. Excludes `hubspot_raw` (~237 props per
+ * row). Type-inference only — no runtime parse on the way out (see
+ * companies.schemas.ts for the same note).
+ *
+ * `amount`: numeric(14,2) → JS string. Frontend MUST `parseFloat`
+ * before arithmetic. Format guaranteed `"\d+(\.\d{1,2})?"`.
+ */
 export const dealPublicSchema = z.object({
   id: z.string().uuid(),
   hubspotDealId: z.string(),
@@ -29,7 +37,7 @@ export const dealPublicSchema = z.object({
   name: z.string(),
   stage: z.string().nullable(),
   pipelineId: z.string().nullable(),
-  amount: z.string().nullable(), // numeric() serialises as string
+  amount: z.string().nullable(), // pg numeric() — string in JS
   currency: z.string().nullable(),
   clientLabel: z.string().nullable(),
   agentLabel: z.string().nullable(),

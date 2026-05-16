@@ -26,7 +26,7 @@
  *   - Per-row errors are logged + counted but don't abort the loop.
  */
 
-import { eq, ne, sql } from "drizzle-orm";
+import { ne, sql } from "drizzle-orm";
 import { env } from "../config/env";
 import { db, pool } from "../db/client";
 import { companies as companiesTable } from "../db/schema";
@@ -41,7 +41,7 @@ import {
 import type { HubspotListResponse } from "../modules/hubspot/hubspot.types";
 import { logger } from "../middleware/logger";
 
-const PAGE_SIZE = Number(process.env.HUBSPOT_BACKFILL_PAGE_SIZE ?? 100);
+const PAGE_SIZE = env.HUBSPOT_BACKFILL_PAGE_SIZE;
 
 interface BackfillStats {
   /** Active company_type filter (empty = no filter / pull all). */
@@ -356,10 +356,6 @@ export async function backendStartupBackfillIfEmpty(): Promise<void> {
     })();
   });
 }
-
-// Suppress unused-import warning when companiesTable isn't otherwise
-// referenced in the run code path (the test harness imports it).
-void eq;
 
 // ────────────────────────────────────────────────────────────────────
 // CLI entrypoint

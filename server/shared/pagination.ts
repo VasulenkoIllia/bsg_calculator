@@ -44,8 +44,7 @@ export function decodeCursor(raw: string | undefined): Cursor | null {
   }
 }
 
-/** Server clamps any requested limit to a sane ceiling. */
-export function clampLimit(requested: number, max = 50): number {
-  if (!Number.isFinite(requested) || requested < 1) return 1;
-  return Math.min(Math.floor(requested), max);
-}
+// clampLimit was removed 2026-05-16: Zod schemas already enforce
+// `.max(50)` on every list endpoint, so a runtime clamp is redundant.
+// If a non-Zod-validated input path ever appears, re-add this helper
+// here and import it explicitly.

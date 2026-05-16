@@ -11,15 +11,17 @@ import { z } from "zod";
 
 export const listCompaniesQuerySchema = z.object({
   // Substring search on companies.name via pg_trgm GIN index.
-  // Caps length to 200 chars — anything longer is suspicious.
-  q: z.string().min(1).max(200).optional(),
+  // Min 2 chars: pg_trgm operates on TRIGRAMS — single-character
+  // queries can't use the index and fall back to a sequential scan.
+  // Capped at 200 to defang DoS-by-huge-pattern.
+  q: z.string().min(2).max(200).optional(),
   // NOTE: a `companyType` filter used to live here. It was removed
   // once HUBSPOT_COMPANY_TYPE_FILTER restricted the DB to a single
   // type — runtime filter on `direct_client` was effectively a
   // no-op. If the storage filter is ever loosened, re-add this.
   // Opaque cursor — base64-encoded `{ createdAt, id }` (see shared/pagination.ts).
   cursor: z.string().max(500).optional(),
-  // Server clamps to min(requested, 50) regardless.
+  // Hard ceiling 50 — keeps query work bounded.
   limit: z.coerce.number().int().min(1).max(50).default(25)
 });
 export type ListCompaniesQuery = z.infer<typeof listCompaniesQuerySchema>;
@@ -30,6 +32,12 @@ export type ListCompaniesQuery = z.infer<typeof listCompaniesQuerySchema>;
  * Public-facing company shape. Excludes hubspot_raw (~260 props,
  * ~20kb each) — frontend never needs the full payload; if a feature
  * requires a field we promote it to a column.
+ *
+ * NOTE: this schema exists ONLY for type-inference. We do NOT
+ * `.parse()` rows on the way out — projection happens manually in
+ * `companies.service.toPublic()`. If you change the shape here you
+ * must also update `toPublic()`. (Sprint 2.7 trade-off: cheaper than
+ * forcing runtime validation on every list response.)
  */
 export const companyPublicSchema = z.object({
   id: z.string().uuid(),

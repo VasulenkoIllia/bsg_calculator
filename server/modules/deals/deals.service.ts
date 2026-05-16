@@ -4,7 +4,7 @@
 
 import { env } from "../../config/env";
 import { NotFoundError } from "../../shared/errors";
-import { encodeCursor } from "../../shared/pagination";
+import { buildPage, type PageResult } from "../../shared/build-page";
 import { logger } from "../../middleware/logger";
 import { getCompany, loadCompanyByHubspotIdOrNull } from "../companies/companies.service";
 import { hubspot } from "../hubspot/hubspot.client";
@@ -41,11 +41,7 @@ function toPublic(row: Deal): DealPublic {
   };
 }
 
-export interface DealListPage {
-  items: DealPublic[];
-  nextCursor: string | null;
-  limit: number;
-}
+export type DealListPage = PageResult<DealPublic>;
 
 /**
  * Resolve a company UUID → its `hubspot_company_id`, then list the
@@ -64,24 +60,12 @@ export async function searchDealsByCompanyUuid(
 }
 
 export async function searchDeals(args: ListDealsArgs): Promise<DealListPage> {
+  // Fetch limit+1 to detect a next-page; buildPage handles trimming.
   const rows = await listDeals({ ...args, limit: args.limit + 1 });
-  const hasMore = rows.length > args.limit;
-  const items = hasMore ? rows.slice(0, args.limit) : rows;
-
-  let nextCursor: string | null = null;
-  if (hasMore) {
-    const last = items[items.length - 1];
-    nextCursor = encodeCursor({
-      createdAt: last.createdAt.toISOString(),
-      id: last.id
-    });
-  }
-
-  return {
-    items: items.map(toPublic),
-    nextCursor,
-    limit: args.limit
-  };
+  return buildPage(rows, args.limit, toPublic, row => ({
+    createdAt: row.createdAt.toISOString(),
+    id: row.id
+  }));
 }
 
 export async function getDeal(id: string): Promise<DealPublic> {
