@@ -70,8 +70,14 @@ const EnvSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(32, {
     message: "JWT_REFRESH_SECRET must be at least 32 chars. Generate with `openssl rand -base64 48`."
   }),
-  JWT_ACCESS_EXPIRES: z.string().default("15m"),
-  JWT_REFRESH_EXPIRES: z.string().default("30d"),
+  JWT_ACCESS_EXPIRES: z
+    .string()
+    .regex(/^\d+[smhdw]$/, "must match format like '15m', '24h', '30d'")
+    .default("15m"),
+  JWT_REFRESH_EXPIRES: z
+    .string()
+    .regex(/^\d+[smhdw]$/, "must match format like '15m', '24h', '30d'")
+    .default("30d"),
   BCRYPT_COST: z.coerce.number().int().min(4).max(15).default(12),
 
   // CORS / frontend
@@ -92,6 +98,9 @@ const EnvSchema = z.object({
   // large initial pull (you'll get more sleep+retry rounds but each
   // round consumes less of the per-10s budget).
   HUBSPOT_BACKFILL_PAGE_SIZE: z.coerce.number().int().min(1).max(100).default(100),
+  // When true AND companies table is empty at server start, run
+  // hubspot:backfill in background. Production first-deploy default.
+  HUBSPOT_AUTO_BACKFILL: z.coerce.boolean().default(false),
 
   // PDF rendering (Puppeteer)
   PUPPETEER_EXECUTABLE_PATH: z.string().optional(),

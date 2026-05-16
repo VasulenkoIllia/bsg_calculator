@@ -104,6 +104,19 @@ describe("mapHubspotCompanyToRow", () => {
     const row = mapHubspotCompanyToRow(makeCompanyFixture({ createdate: epochMs }));
     expect(row?.hubspotCreatedAt?.toISOString()).toBe("2025-04-28T20:00:00.000Z");
   });
+
+  it("treats epoch `0` as missing timestamp (defense against 1970-01-01 surprise)", () => {
+    // HubSpot occasionally returns "0" for unset timestamp fields.
+    // Falling through would create rows with hubspotCreatedAt =
+    // 1970-01-01 — technically valid but operationally misleading.
+    const row = mapHubspotCompanyToRow(makeCompanyFixture({ createdate: "0" }));
+    expect(row).toBeNull();
+  });
+
+  it("treats negative numeric timestamps as missing", () => {
+    const row = mapHubspotCompanyToRow(makeCompanyFixture({ createdate: "-100" }));
+    expect(row).toBeNull();
+  });
 });
 
 describe("mapHubspotDealToRow", () => {

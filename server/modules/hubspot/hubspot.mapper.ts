@@ -110,18 +110,25 @@ export function mapHubspotDealToRow(obj: HubspotObject): NewDeal | null {
 /** HubSpot serialises timestamps as ISO strings or epoch-ms strings. */
 function parseTimestamp(raw: string | null | undefined): Date | null {
   if (!raw) return null;
-  // ISO format: "2026-04-17T16:02:14.684Z"
-  if (raw.includes("T") || raw.includes("-")) {
-    const d = new Date(raw);
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return null;
+
+  // Numeric epoch path FIRST — match optional sign + digits only.
+  // This separates "12345" / "-100" / "0" from ISO-like strings
+  // (which contain letters or dashes between digits).
+  if (/^-?\d+$/.test(trimmed)) {
+    const n = Number(trimmed);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    // HubSpot sometimes returns seconds, sometimes ms. Heuristic:
+    // anything below 1e12 is seconds (year ~2001), else ms.
+    const ms = n < 1e12 ? n * 1000 : n;
+    const d = new Date(ms);
     return Number.isNaN(d.getTime()) ? null : d;
   }
-  // Numeric epoch (ms or s)
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return null;
-  // HubSpot sometimes returns seconds, sometimes ms. Heuristic:
-  // anything below 1e12 is seconds (year ~2001), else ms.
-  const ms = n < 1e12 ? n * 1000 : n;
-  const d = new Date(ms);
+
+  // ISO format fall-through: "2026-04-17T16:02:14.684Z" or
+  // date-only "2026-04-17".
+  const d = new Date(trimmed);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 

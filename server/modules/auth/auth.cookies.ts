@@ -27,10 +27,18 @@ export const refreshCookieOptions: CookieOptions = {
   maxAge: 30 * 24 * 3600 * 1000
 };
 
-/** Extract the raw refresh cookie value or empty string. */
-export function readRefreshCookie(req: Request): string {
+/**
+ * Extract the raw refresh cookie value, or null if missing.
+ *
+ * Returning `null` (rather than `""`) makes the "missing cookie"
+ * branch impossible to miss at call sites — passing an empty string
+ * to `hashRefreshToken` would silently hash "" and DB-lookup it,
+ * which is a class of bug the explicit-null contract prevents.
+ */
+export function readRefreshCookie(req: Request): string | null {
   const cookies = req.cookies as Record<string, string | undefined> | undefined;
-  return cookies?.[REFRESH_COOKIE_NAME] ?? "";
+  const value = cookies?.[REFRESH_COOKIE_NAME];
+  return value && value.length > 0 ? value : null;
 }
 
 export { REFRESH_COOKIE_NAME, REFRESH_COOKIE_PATH };

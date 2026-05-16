@@ -10,6 +10,7 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { env } from "../config/env";
+import { logger } from "../middleware/logger";
 import * as schema from "./schema";
 
 const { Pool } = pg;
@@ -26,8 +27,7 @@ export const pool = new Pool({
 // In practice the most common cause is network blips against a
 // remote Postgres; the next acquire will reconnect.
 pool.on("error", err => {
-  // eslint-disable-next-line no-console
-  console.error("[db] idle client error:", err);
+  logger.error({ err: err.message, stack: err.stack }, "[db] idle client error");
 });
 
 export const db = drizzle(pool, { schema });

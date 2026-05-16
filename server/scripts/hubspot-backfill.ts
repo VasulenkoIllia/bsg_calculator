@@ -150,7 +150,9 @@ async function backfillCompanies(filter: string): Promise<PassResult> {
       }
     }
 
-    if (result.fetched % 500 === 0 || !page.paging?.next?.after) {
+    // Progress log every 500 rows. Skip when this is the last page;
+    // the "pass complete" log outside the loop carries the same data.
+    if (result.fetched % 500 === 0 && page.paging?.next?.after) {
       logger.info({ ...result }, "[hubspot:backfill] companies progress");
     }
     cursor = page.paging?.next?.after;
@@ -265,7 +267,9 @@ async function backfillDeals(): Promise<PassResult> {
       }
     }
 
-    if (result.fetched % 500 === 0 || !page.paging?.next?.after) {
+    // Progress log every 500 rows. Skip when this is the last page;
+    // the "pass complete" log outside the loop carries the same data.
+    if (result.fetched % 500 === 0 && page.paging?.next?.after) {
       logger.info({ ...result }, "[hubspot:backfill] deals progress");
     }
     cursor = page.paging?.next?.after;
@@ -326,7 +330,7 @@ export const __internals = {
  * mode — operator gets empty listings until manual re-run).
  */
 export async function backendStartupBackfillIfEmpty(): Promise<void> {
-  if (process.env.HUBSPOT_AUTO_BACKFILL !== "true") return;
+  if (!env.HUBSPOT_AUTO_BACKFILL) return;
   if (!hubspot.isConfigured()) {
     logger.warn(
       "[hubspot:backfill] HUBSPOT_AUTO_BACKFILL=true but no token configured — skipping"

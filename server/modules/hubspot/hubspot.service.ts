@@ -125,10 +125,20 @@ export async function getPipelines(): Promise<PipelinesResponse> {
   return inflight;
 }
 
-/** Force-clear the cache. Phase 5+: called by webhook handler. */
+/**
+ * Force-clear the cache. Phase 5+: called by webhook handler.
+ *
+ * Deliberately does NOT null out `inflight`. If a refresh is mid-flight
+ * (some other request is awaiting the HubSpot response), the finally
+ * block in `getPipelines` will:
+ *   1. Write fresh data into `cache` when the in-flight promise resolves.
+ *   2. Release the inflight slot.
+ * So any waiters get the newest values, AND the next request sees a
+ * fresh cache. Resetting inflight here would orphan those waiters AND
+ * allow a parallel duplicate HubSpot call.
+ */
 export function refreshPipelinesCache(): void {
   cache = null;
-  inflight = null;
 }
 
 export type { PipelineDTO, PipelineStageDTO, PipelinesResponse };

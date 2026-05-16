@@ -158,7 +158,13 @@ export async function refresh(refreshTokenRaw: string): Promise<RefreshOutcome> 
   }
 
   const now = new Date();
-  if (outcome.oldRow.expiresAt <= now) {
+  // Strict less-than: a token whose expiresAt equals NOW exactly is
+  // still considered valid for this microsecond. Closed interval
+  // [issuedAt, expiresAt]. Difference vs strict-after-expiry is
+  // sub-millisecond — picking `<` defends against the boundary case
+  // of a freshly-issued token where expiresAt could collide with now
+  // (e.g. test fixtures, clock skew).
+  if (outcome.oldRow.expiresAt < now) {
     throw new TokenInvalidError("Refresh token has expired.");
   }
 
