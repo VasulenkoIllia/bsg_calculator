@@ -3178,3 +3178,84 @@ Use this file to record meaningful technical decisions for the project.
     apply the same filter — only ack/upsert events for matching
     `company_type`. Otherwise an Agent could leak in via a
     webhook event between backfills.
+
+### Decision: Sprint 2.7 — audit-driven hardening cycle (A → I)
+- Date: 2026-05-16
+- Context:
+  - Phase 8 Sprints 1-2.6 delivered a working backend (auth +
+    companies + deals + HubSpot client + backfill). User then
+    asked for a full audit pass before Sprint 3 (Calculator
+    Configs) to clear technical debt while the surface area was
+    still small enough to refactor cheaply.
+  - The cycle ran four audit rounds (3× typescript-reviewer +
+    1× security-reviewer), closing every finding (HIGH/MED/LOW/
+    NICE-TO-HAVE/HARDENING) in nine numbered commits A-I. User
+    pattern: "фіксимо повністю всі проблеми" each round.
+  - Aggregate: ~25 findings closed across 9 commits, +~600 LOC
+    in helpers / refines / tests, -1 dead env var, 0 regressions
+    (128/128 server + 259/259 frontend stayed green throughout).
+- Decision:
+  - Treat the closed-loop "audit → fix → re-audit" as the
+    completion gate for each backend sprint going forward, NOT
+    only Sprint 2.x. The cost is ~½ day per sprint, the benefit
+    is that no LOW-severity finding compounds into a HIGH one
+    later when the file is harder to refactor.
+  - Commits A-I in detail:
+    - 2.7.A (2890b38): TTL fallback semantics + /pipelines
+      endpoint extracted from inline controller logic.
+    - 2.7.B (88f1bfc): Backfill decomposition (orchestrator /
+      page-fetch / mapper) + N+1 fix when deal misses its
+      primary company in cache.
+    - 2.7.C (23175cc): hubspot.client retry/backoff covered by
+      8 new unit tests (429, 5xx, network err, retry budget).
+    - 2.7.D (6756b03): NICE polish — buildPage() pagination
+      helper, q.min(2) on search, clampLimit removed.
+    - 2.7.E (6a804df): Thundering-herd guard on pipelines
+      cache + per-route rate-limit stacking + boundary test
+      for "exactly limit" requests.
+    - 2.7.F (d83282d): Extracted ttl-refresh + dto-parse +
+      hubspot soft-validate helpers (3 helpers, 0 duplication).
+    - 2.7.G (b4eedd2): Removed dead ZodError re-export.
+    - 2.7.H (a9ddcc9): 8 fixes from fresh review — race on
+      pipelines cache, expiry comparison, JWT regex, console →
+      logger, parseTimestamp negative-numeric path, cookie
+      null sentinel, env-gated auto-backfill, log dedup.
+    - 2.7.I (127f8be): 7 security-review fixes — TRUST_PROXY_HOPS
+      env, sameSite strict, pino redact paths, SSRF refine for
+      HUBSPOT_API_BASE_URL, webhook secret required in prod,
+      body limit 5mb → 1mb, removed unused JWT_REFRESH_SECRET.
+- Alternatives considered:
+  - "Fix only HIGH/MED, defer LOW to backlog": rejected at user
+    request. Rationale: LOW findings in a freshly-written module
+    almost always shrink the cost of the next refactor; deferring
+    them invites the "we'll get to it after Sprint X" trap.
+  - "Single big commit at the end": rejected. Each sub-commit
+    represents one re-audit, which makes the rationale traceable
+    and gives clean rollback boundaries if anything regresses.
+- Consequences:
+  - Backend enters Sprint 3 with: 0 EXPLOITABLE / 0 RISKY / 0
+    HARDENING security findings; typecheck:server clean; vite
+    build clean; 128 server + 259 frontend tests green.
+  - Shared helpers established: `shared/ttl-refresh.ts`,
+    `shared/dto-parse.ts`, `shared/build-page.ts`,
+    `shared/db-helpers.ts`. Sprint 3+ modules should reuse them
+    rather than re-implementing pagination / output-validation.
+  - Soft-validation pattern (Zod `safeParse` → log on drift,
+    fall through to cast) established for HubSpot responses;
+    same pattern recommended for any external API client.
+  - `JWT_REFRESH_SECRET` env var REMOVED — refresh tokens are
+    opaque random strings (SHA-256-hashed). If any docs / ops
+    scripts still reference it, they MUST be updated; the env
+    loader will silently ignore an unknown key.
+  - `TRUST_PROXY_HOPS` env var ADDED with default 1. Production
+    deploys MUST verify the value matches the real Traefik hop
+    count to avoid X-Forwarded-For spoofing of `req.ip`.
+- Follow-up actions:
+  - Sprint 3 (Calculator Configs): start on the same branch
+    with the helpers above as the reuse baseline.
+  - Sprint 5 (webhooks): the env validator now REQUIRES
+    `HUBSPOT_WEBHOOK_SECRET` in production. Ops must set a
+    secret before the next prod deploy even though the webhook
+    handler ships later — see env.ts superRefine.
+  - Codemap regenerated to reflect new shared helpers + the
+    nine modules under `server/`.
