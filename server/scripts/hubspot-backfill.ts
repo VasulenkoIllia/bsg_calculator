@@ -18,7 +18,8 @@
  *      isn't in our cache.
  */
 
-import { sql } from "drizzle-orm";
+import { ne, sql } from "drizzle-orm";
+import { env } from "../config/env";
 import { db, pool } from "../db/client";
 import { companies as companiesTable } from "../db/schema";
 import { upsertCompany } from "../modules/companies/companies.repository";
@@ -28,11 +29,16 @@ import {
   mapHubspotCompanyToRow,
   mapHubspotDealToRow
 } from "../modules/hubspot/hubspot.mapper";
+import type { HubspotListResponse } from "../modules/hubspot/hubspot.types";
 import { logger } from "../middleware/logger";
 
 const PAGE_SIZE = 100;
 
 interface BackfillStats {
+  /** Active company_type filter (empty = no filter / pull all). */
+  companyTypeFilter: string;
+  /** Cleanup pass: how many non-matching rows we deleted before pull. */
+  cleanup: { companiesDeleted: number; dealsDeleted: number };
   companies: { fetched: number; upserted: number; skipped: number };
   deals: { fetched: number; upserted: number; skipped: number };
   durationMs: number;
@@ -46,17 +52,65 @@ export async function runBackfill(): Promise<BackfillStats> {
   }
 
   const started = Date.now();
+  const filter = env.HUBSPOT_COMPANY_TYPE_FILTER.trim();
   const stats: BackfillStats = {
+    companyTypeFilter: filter,
+    cleanup: { companiesDeleted: 0, dealsDeleted: 0 },
     companies: { fetched: 0, upserted: 0, skipped: 0 },
     deals: { fetched: 0, upserted: 0, skipped: 0 },
     durationMs: 0
   };
 
-  // ─── Companies first ─────────────────────────────────────────────
-  logger.info("[hubspot:backfill] companies pass starting");
+  // ─── Cleanup pass ────────────────────────────────────────────────
+  // If a filter is active, drop any existing rows that no longer
+  // match it. Deals first (FK RESTRICT → must be deleted before
+  // their parent company). Without this pass the DB would slowly
+  // accumulate stale "wrong-type" rows from previous loose runs.
+  if (filter.length > 0) {
+    logger.info({ filter }, "[hubspot:backfill] cleanup pass — removing non-matching rows");
+
+    // Delete deals whose company is about to be removed.
+    const orphanedDealsResult = await db.execute(sql`
+      DELETE FROM deals
+      WHERE hubspot_company_id IN (
+        SELECT hubspot_company_id FROM companies
+        WHERE company_type IS DISTINCT FROM ${filter}
+      )
+      RETURNING hubspot_deal_id
+    `);
+    stats.cleanup.dealsDeleted = orphanedDealsResult.rowCount ?? 0;
+
+    // Then delete non-matching companies themselves.
+    const removedCompanies = await db
+      .delete(companiesTable)
+      .where(ne(companiesTable.companyType, filter))
+      .returning({ id: companiesTable.id });
+    stats.cleanup.companiesDeleted = removedCompanies.length;
+
+    // Also handle the NULL case (records with no company_type) —
+    // ne() on a NULLABLE column doesn't match NULLs, so be explicit.
+    const removedNullType = await db.execute(sql`
+      DELETE FROM companies WHERE company_type IS NULL RETURNING id
+    `);
+    stats.cleanup.companiesDeleted += removedNullType.rowCount ?? 0;
+
+    logger.info(
+      { ...stats.cleanup },
+      "[hubspot:backfill] cleanup pass complete"
+    );
+  }
+
+  // ─── Companies pass ──────────────────────────────────────────────
+  logger.info(
+    { filter: filter || "(none — pulling all)" },
+    "[hubspot:backfill] companies pass starting"
+  );
   let cursor: string | undefined = undefined;
   do {
-    const page = await hubspot.listCompanies(cursor, PAGE_SIZE);
+    const page: HubspotListResponse =
+      filter.length > 0
+        ? await hubspot.searchCompaniesByType(filter, cursor, PAGE_SIZE)
+        : await hubspot.listCompanies(cursor, PAGE_SIZE);
     stats.companies.fetched += page.results.length;
     for (const obj of page.results) {
       const row = mapHubspotCompanyToRow(obj);

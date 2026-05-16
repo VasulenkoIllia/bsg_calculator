@@ -53,6 +53,7 @@ class HubspotClient {
 
   // ─── Companies ───────────────────────────────────────────────────
 
+  /** Paginated list of ALL companies (no filter). */
   async listCompanies(
     after?: string,
     limit: number = 100
@@ -60,6 +61,36 @@ class HubspotClient {
     return this.get<HubspotListResponse>(
       `/crm/v3/objects/companies?${this.buildListQuery(after, limit, COMPANY_PROPERTIES)}`
     );
+  }
+
+  /**
+   * Filtered company search via HubSpot Search API.
+   *
+   * Used by backfill when HUBSPOT_COMPANY_TYPE_FILTER is set —
+   * server-side filter is more efficient than pulling all then
+   * dropping. See decisions.md → "Sprint 2 company-type filter".
+   */
+  async searchCompaniesByType(
+    companyType: string,
+    after?: string,
+    limit: number = 100
+  ): Promise<HubspotListResponse> {
+    return this.post<HubspotListResponse>("/crm/v3/objects/companies/search", {
+      filterGroups: [
+        {
+          filters: [
+            {
+              propertyName: "company_type",
+              operator: "EQ",
+              value: companyType
+            }
+          ]
+        }
+      ],
+      properties: COMPANY_PROPERTIES,
+      limit,
+      after
+    });
   }
 
   async getCompany(id: string): Promise<HubspotObject> {
@@ -109,7 +140,30 @@ class HubspotClient {
     return params.toString();
   }
 
+  /**
+   * POST wrapper — used by Search API endpoints. Same retry +
+   * timeout policy as GET. Body is JSON-serialised; HubSpot expects
+   * application/json content-type.
+   */
+  private async post<T>(
+    path: string,
+    body: unknown,
+    options: RequestOptions = {}
+  ): Promise<T> {
+    return this.request<T>(path, "POST", body, options);
+  }
+
   private async get<T>(path: string, options: RequestOptions = {}): Promise<T> {
+    return this.request<T>(path, "GET", undefined, options);
+  }
+
+  /** Internal — used by get() and post(). Holds the retry/backoff logic. */
+  private async request<T>(
+    path: string,
+    method: "GET" | "POST",
+    body: unknown,
+    options: RequestOptions = {}
+  ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
     const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -121,11 +175,12 @@ class HubspotClient {
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
         const response = await fetch(url, {
-          method: "GET",
+          method,
           headers: {
             Authorization: `Bearer ${this.token}`,
             "Content-Type": "application/json"
           },
+          body: body !== undefined ? JSON.stringify(body) : undefined,
           signal: controller.signal
         });
         clearTimeout(timer);

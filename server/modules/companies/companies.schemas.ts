@@ -13,10 +13,10 @@ export const listCompaniesQuerySchema = z.object({
   // Substring search on companies.name via pg_trgm GIN index.
   // Caps length to 200 chars — anything longer is suspicious.
   q: z.string().min(1).max(200).optional(),
-  // Agent/Merchant filter. Strings come from HubSpot's enum, which
-  // we keep loosely typed at the DB layer so new values don't break
-  // migrations.
-  companyType: z.enum(["referring_partner", "direct_client"]).optional(),
+  // NOTE: a `companyType` filter used to live here. It was removed
+  // once HUBSPOT_COMPANY_TYPE_FILTER restricted the DB to a single
+  // type — runtime filter on `direct_client` was effectively a
+  // no-op. If the storage filter is ever loosened, re-add this.
   // Opaque cursor — base64-encoded `{ createdAt, id }` (see shared/pagination.ts).
   cursor: z.string().max(500).optional(),
   // Server clamps to min(requested, 50) regardless.

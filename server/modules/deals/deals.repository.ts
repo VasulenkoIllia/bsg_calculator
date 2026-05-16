@@ -25,6 +25,7 @@ export async function findDealByHubspotId(hubspotDealId: string): Promise<Deal |
 export interface ListDealsArgs {
   stage?: string;
   hubspotCompanyId?: string;
+  businessVertical?: string;
   cursor: Cursor | null;
   limit: number;
 }
@@ -36,6 +37,9 @@ export async function listDeals(args: ListDealsArgs): Promise<Deal[]> {
   }
   if (args.hubspotCompanyId) {
     conditions.push(eq(deals.hubspotCompanyId, args.hubspotCompanyId));
+  }
+  if (args.businessVertical) {
+    conditions.push(eq(deals.businessVertical, args.businessVertical));
   }
   if (args.cursor) {
     conditions.push(

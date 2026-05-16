@@ -15,6 +15,7 @@ export async function listController(req: Request, res: Response): Promise<void>
   const page = await searchDeals({
     stage: query.stage,
     hubspotCompanyId: query.hubspotCompanyId,
+    businessVertical: query.businessVertical,
     cursor: decodeCursor(query.cursor),
     limit: query.limit
   });
@@ -50,6 +51,7 @@ export async function dealsByCompanyController(
   const page = await searchDeals({
     stage: query.stage,
     hubspotCompanyId: company.hubspotCompanyId,
+    businessVertical: query.businessVertical,
     cursor: decodeCursor(query.cursor),
     limit: query.limit
   });

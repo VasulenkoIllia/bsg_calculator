@@ -99,32 +99,23 @@ describe("GET /api/v1/companies — listing + search + filter", () => {
     expect(names).toEqual(["Acme Holdings", "Glacme Capital"]);
   });
 
-  it("filters by company_type", async () => {
+  it("ignores unknown query params (no companyType filter anymore)", async () => {
+    // companyType used to be a filter; it was removed once
+    // HUBSPOT_COMPANY_TYPE_FILTER restricted storage to a single
+    // type. Unknown params shouldn't 400 — Zod uses .parse() which
+    // accepts extra keys silently.
     const token = await setupAuth();
     await db.insert(companies).values([
-      companyFixture({ name: "Agent One", companyType: "referring_partner" }),
       companyFixture({ name: "Merchant One", companyType: "direct_client" }),
       companyFixture({ name: "Merchant Two", companyType: "direct_client" })
     ]);
 
     const res = await request(app)
-      .get("/api/v1/companies?companyType=direct_client")
+      .get("/api/v1/companies?companyType=anything")
       .set("Authorization", `Bearer ${token}`);
 
     expect(res.status).toBe(200);
     expect(res.body.items).toHaveLength(2);
-    expect(
-      res.body.items.every((c: { companyType: string }) => c.companyType === "direct_client")
-    ).toBe(true);
-  });
-
-  it("returns 400 on invalid companyType enum", async () => {
-    const token = await setupAuth();
-    const res = await request(app)
-      .get("/api/v1/companies?companyType=bogus")
-      .set("Authorization", `Bearer ${token}`);
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe("VALIDATION_FAILED");
   });
 
   it("paginates: requests limit=2, gets nextCursor, fetches next page", async () => {
@@ -256,6 +247,27 @@ describe("GET /api/v1/deals — listing + stage filter", () => {
     expect(res.status).toBe(200);
     expect(res.body.items).toHaveLength(1);
     expect(res.body.items[0].hubspotCompanyId).toBe(a.hubspotCompanyId);
+  });
+
+  it("filters by businessVertical", async () => {
+    const token = await setupAuth();
+    const [c] = await db.insert(companies).values(companyFixture()).returning();
+    await db.insert(deals).values([
+      dealFixture(c.hubspotCompanyId, { businessVertical: "iGaming / Betting" }),
+      dealFixture(c.hubspotCompanyId, { businessVertical: "Crypto / Web3" }),
+      dealFixture(c.hubspotCompanyId, { businessVertical: "iGaming / Betting" })
+    ]);
+
+    const res = await request(app)
+      .get("/api/v1/deals?businessVertical=iGaming%20%2F%20Betting")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(2);
+    expect(
+      res.body.items.every(
+        (d: { businessVertical: string }) => d.businessVertical === "iGaming / Betting"
+      )
+    ).toBe(true);
   });
 });
 

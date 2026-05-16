@@ -3108,3 +3108,73 @@ Use this file to record meaningful technical decisions for the project.
     work.
 - Follow-up actions:
   - Start Sprint 1 (Foundation) on branch `phase-8-foundation`.
+
+### Decision: Sprint 2 — restrict companies to `direct_client` only
+- Date: 2026-05-16
+- Context:
+  - First live backfill on 2026-05-16 pulled all 51 BSG HubSpot
+    companies (23 Clients, 23 Agents/referring partners, 2 NULL).
+  - User reviewed the data and clarified the scope:
+    > "мені цікавить тільки компані тайп Client — інші компанії
+    >  зараз мене не цікавлять. А діли всі тягнемо і даємо
+    >  можливість фільтрувати"
+  - Translation: only `company_type = direct_client` companies are
+    relevant to BSG's calculator/document workflow. Agents
+    (`referring_partner`) are referenced in deals via the free-text
+    `agent_label` field but never need their own row in our cache.
+    Deals stay unfiltered + filterable in UI.
+- Decision:
+  - Add env var `HUBSPOT_COMPANY_TYPE_FILTER`, default
+    `direct_client`. Empty string disables the filter.
+  - Backfill switches from `GET /crm/v3/objects/companies` (List)
+    to `POST /crm/v3/objects/companies/search` with
+    `filterGroups: [{ filters: [{ propertyName: "company_type",
+    operator: "EQ", value: <filter> }] }]` when a filter is set.
+    Server-side filtering is more efficient than pull-then-drop.
+  - **Cleanup pass** at the START of each backfill: DELETE deals
+    whose company is about to be removed, DELETE companies whose
+    `company_type` doesn't match the filter (including NULL).
+    Backfill becomes "make the DB match the filter contract".
+  - Deals: ALL deals still pulled. Deals whose
+    `hs_primary_associated_company` is an unfiltered company are
+    skipped via the existing FK-violation log path. Verified live:
+    8 HubSpot deals → 7 upserted, 1 skipped (referenced an agent
+    company that's no longer in our DB).
+  - Remove the now-redundant `companyType` filter from
+    `GET /api/v1/companies` API (every row is already
+    `direct_client`). Existing query param is ignored silently;
+    extra Zod params don't 400.
+  - Add `businessVertical` filter to deals API
+    (`GET /api/v1/deals?businessVertical=iGaming%20%2F%20Betting`).
+    Operator can now filter by vertical without writing custom SQL.
+- Alternatives considered:
+  - Client-side filter (pull all, drop in mapper): rejected.
+    Wastes API calls (~50% of fetches are throwaway) + complicates
+    "what changed?" logic when filter loosens.
+  - Hard-coded `direct_client` (no env var): rejected — having a
+    knob future-proofs the cache for "include aggregators only"
+    scenarios.
+  - Don't delete existing rows (just skip new ones): rejected.
+    DB would accumulate stale wrong-type rows across runs; backfill
+    should be the alignment operation.
+  - `ON DELETE CASCADE` on companies → deals FK: rejected. The
+    FK policy is `RESTRICT` for data-integrity reasons (a webhook-
+    delivered company.deletion event must NOT silently lose
+    documents). Backfill cleanup is an admin operation that knows
+    what it's doing and explicitly deletes deals first.
+- Consequences:
+  - DB schema unchanged. Only env config + backfill logic + a
+    single API filter change.
+  - Live test on real BSG tenant: 48 companies + 8 deals →
+    23 direct_client companies + 7 deals. Cleanup deleted
+    25 non-matching companies + 1 orphan deal.
+  - All 87 server tests still pass; 1 integration test re-purposed
+    from "filters by company_type" to "ignores unknown query
+    params" + 1 new test "filters by businessVertical".
+- Follow-up actions:
+  - bsg_hubspot_field_mapping.md updated with the storage-filter
+    section.
+  - When Sprint 5 (webhooks) ships, the webhook receiver MUST
+    apply the same filter — only ack/upsert events for matching
+    `company_type`. Otherwise an Agent could leak in via a
+    webhook event between backfills.

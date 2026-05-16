@@ -83,6 +83,10 @@ const EnvSchema = z.object({
   HUBSPOT_DEAL_PIPELINE_ID: z.string().optional(),
   HUBSPOT_SYNC_TTL_SECONDS: z.coerce.number().int().min(0).default(300),
   HUBSPOT_WEBHOOK_SECRET: z.string().optional(),
+  // Restrict which company_type values land in our DB. Empty = pull
+  // every type. Default "direct_client" — see decisions.md ("Sprint 2
+  // company-type filter") for rationale.
+  HUBSPOT_COMPANY_TYPE_FILTER: z.string().default("direct_client"),
 
   // PDF rendering (Puppeteer)
   PUPPETEER_EXECUTABLE_PATH: z.string().optional(),

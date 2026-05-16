@@ -13,7 +13,6 @@ export async function listController(req: Request, res: Response): Promise<void>
   const query = listCompaniesQuerySchema.parse(req.query);
   const page = await searchCompanies({
     q: query.q,
-    companyType: query.companyType,
     cursor: decodeCursor(query.cursor),
     limit: query.limit
   });

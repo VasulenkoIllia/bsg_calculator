@@ -1,7 +1,7 @@
 # BSG ↔ HubSpot Field Mapping
 
-Date: 2026-05-14
-Status: **Source of truth — validated against live BSG HubSpot 2026-05-14.**
+Date: 2026-05-14 (updated 2026-05-16: company-type filter)
+Status: **Source of truth — validated against live BSG HubSpot 2026-05-16.**
 Integration model: **Link-only** (BSG documents reference HubSpot
 deals; HubSpot does NOT pre-fill the calculator).
 
@@ -15,6 +15,32 @@ Used by:
 - **Operator UX** — the wizard's "pick a deal" picker queries our
   cached `deals` rows + falls back to HubSpot search for unfamiliar
   records.
+
+## ⭐ Storage filter (added 2026-05-16)
+
+We pull **ONLY companies with `company_type = direct_client`**
+(Merchants / Clients). Agents (`referring_partner`) are NOT cached
+because BSG never generates calculator outputs for them. The filter
+is driven by the `HUBSPOT_COMPANY_TYPE_FILTER` env var:
+
+```bash
+HUBSPOT_COMPANY_TYPE_FILTER=direct_client   # default — Merchants only
+HUBSPOT_COMPANY_TYPE_FILTER=                # pull every type
+```
+
+Mechanics:
+- Backfill calls HubSpot Search API
+  (`POST /crm/v3/objects/companies/search` with filter
+  `company_type EQ direct_client`) instead of the unfiltered List API.
+- Before each backfill: a cleanup pass DELETEs any rows in our DB
+  whose `company_type` doesn't match the filter (with associated
+  deals deleted first to satisfy the FK). Backfill is therefore the
+  alignment operation: after each run, the DB exactly reflects the
+  filter contract.
+- **All deals are still pulled.** Deals whose `hs_primary_associated_company`
+  references a non-Merchant (and thus isn't in our DB) are skipped
+  via the FK-violation log path. In practice this happens rarely
+  because BSG deals are always created for the Merchant company.
 
 ⚠️ **No calculator auto-hydration.** Earlier drafts of this document
 mapped HubSpot deal pricing fields (`forecasted_monthly_volume`,

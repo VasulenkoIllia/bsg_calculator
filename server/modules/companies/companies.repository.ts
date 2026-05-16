@@ -33,7 +33,6 @@ export async function findCompanyByHubspotId(
 
 export interface ListCompaniesArgs {
   q?: string;
-  companyType?: string;
   cursor: Cursor | null;
   limit: number;
 }
@@ -44,9 +43,6 @@ export async function listCompanies(args: ListCompaniesArgs): Promise<Company[]>
     // pg_trgm-backed substring search. ILIKE picks up the GIN index
     // when the predicate contains a literal-substring pattern.
     conditions.push(ilike(companies.name, `%${args.q}%`));
-  }
-  if (args.companyType) {
-    conditions.push(eq(companies.companyType, args.companyType));
   }
   if (args.cursor) {
     // Strict less-than on (createdAt, id) — keyset pagination.
