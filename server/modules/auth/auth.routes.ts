@@ -10,6 +10,7 @@
 
 import { Router } from "express";
 import { asyncHandler } from "../../shared/async-handler";
+import { loginLimiter, refreshLimiter } from "../../middleware/rate-limit";
 import { requireAuth } from "../../middleware/require-auth";
 import {
   loginController,
@@ -20,7 +21,10 @@ import {
 
 export const authRouter = Router();
 
-authRouter.post("/login", asyncHandler(loginController));
-authRouter.post("/refresh", asyncHandler(refreshController));
+// Per-route rate-limits stack on top of the API-wide 60/min in app.ts.
+// loginLimiter (5/min) is the credential-stuffing defence.
+// refreshLimiter (20/min) generously accommodates multi-tab refresh.
+authRouter.post("/login", loginLimiter, asyncHandler(loginController));
+authRouter.post("/refresh", refreshLimiter, asyncHandler(refreshController));
 authRouter.post("/logout", asyncHandler(logoutController));
 authRouter.get("/me", requireAuth(), asyncHandler(meController));
