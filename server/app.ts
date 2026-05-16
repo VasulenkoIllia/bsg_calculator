@@ -26,6 +26,7 @@ import { requestId } from "./middleware/request-id";
 import { requestLogger } from "./middleware/logger";
 import { authRouter } from "./modules/auth/auth.routes";
 import { healthRouter } from "./modules/health/health.routes";
+import { usersRouter } from "./modules/users/users.routes";
 
 export function createApp(): express.Express {
   const app = express();
@@ -68,7 +69,8 @@ export function createApp(): express.Express {
 
   // /api/v1/* mounts:
   app.use("/api/v1/auth", authRouter);
-  // Future sprints: users, companies, deals, calculator-configs,
+  app.use("/api/v1/users", usersRouter);
+  // Future sprints: companies, deals, calculator-configs,
   //                  documents, listings, hubspot, pdf.
 
   // 8. 404 catch-all + 9. Error envelope — must be last.
