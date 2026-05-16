@@ -9,27 +9,15 @@
  */
 
 import type { Request, Response } from "express";
-import { isProd } from "../../config/env";
-import { findUserById } from "./auth.repository";
+import {
+  REFRESH_COOKIE_NAME,
+  REFRESH_COOKIE_PATH,
+  readRefreshCookie,
+  refreshCookieOptions
+} from "./auth.cookies";
 import { loginRequestSchema, type LoginResponse } from "./auth.schemas";
-import { login, logout, refresh } from "./auth.service";
+import { loadActiveUserPublic, login, logout, refresh } from "./auth.service";
 import { TokenInvalidError } from "../../shared/errors";
-
-const REFRESH_COOKIE_NAME = "bsg_refresh";
-
-const refreshCookieOptions = {
-  httpOnly: true,
-  // SameSite=Lax allows top-level navigation cookies (so following a
-  // HubSpot note link to /documents/:number still authenticates) while
-  // blocking cross-site form posts that could trigger refresh.
-  sameSite: "lax" as const,
-  secure: isProd,                    // HTTPS-only in prod
-  path: "/api/v1/auth",              // cookie scoped to auth endpoints only
-  // 30 days expiry matches refresh token TTL. Strictly speaking the
-  // server is the source of truth; the cookie just needs to outlive
-  // the token by no margin.
-  maxAge: 30 * 24 * 3600 * 1000
-};
 
 /**
  * POST /api/v1/auth/login
@@ -55,6 +43,9 @@ export async function loginController(req: Request, res: Response): Promise<void
  */
 export async function refreshController(req: Request, res: Response): Promise<void> {
   const rawRefresh = readRefreshCookie(req);
+  if (!rawRefresh) {
+    throw new TokenInvalidError("Missing refresh cookie.");
+  }
   const outcome = await refresh(rawRefresh);
 
   if (outcome.kind === "rotated") {
@@ -73,11 +64,11 @@ export async function refreshController(req: Request, res: Response): Promise<vo
  * Side-effect: clears the cookie + revokes the row.
  */
 export async function logoutController(req: Request, res: Response): Promise<void> {
-  const rawRefresh = readRefreshCookieOrEmpty(req);
+  const rawRefresh = readRefreshCookie(req);
   if (rawRefresh) {
     await logout(rawRefresh);
   }
-  res.clearCookie(REFRESH_COOKIE_NAME, { path: refreshCookieOptions.path });
+  res.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
   res.status(204).end();
 }
 
@@ -94,33 +85,9 @@ export async function meController(req: Request, res: Response): Promise<void> {
     // Should never happen — require-auth runs before this.
     throw new TokenInvalidError();
   }
-  const user = await findUserById(req.user.id);
-  if (!user) {
-    throw new TokenInvalidError("Authenticated user no longer exists.");
-  }
-  res.status(200).json({
-    id: user.id,
-    email: user.email,
-    login: user.login,
-    displayName: user.displayName,
-    isAdmin: user.isAdmin,
-    isActive: user.isActive
-  });
+  // Goes through the service per backend_conventions.md §1.
+  const user = await loadActiveUserPublic(req.user.id);
+  res.status(200).json(user);
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────
-
-function readRefreshCookie(req: Request): string {
-  const raw = readRefreshCookieOrEmpty(req);
-  if (!raw) {
-    throw new TokenInvalidError("Missing refresh cookie.");
-  }
-  return raw;
-}
-
-function readRefreshCookieOrEmpty(req: Request): string {
-  // cookie-parser middleware populates `req.cookies`. The type from
-  // @types/cookie-parser augments Request.
-  const cookies = req.cookies as Record<string, string | undefined> | undefined;
-  return cookies?.[REFRESH_COOKIE_NAME] ?? "";
-}
+// Cookie read/write/options helpers live in ./auth.cookies.ts

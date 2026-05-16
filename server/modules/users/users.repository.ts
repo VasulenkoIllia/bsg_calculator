@@ -10,6 +10,7 @@
 import { desc, eq, or } from "drizzle-orm";
 import { db } from "../../db/client";
 import { users, type User } from "../../db/schema";
+import { expectSingle } from "../../shared/db-helpers";
 
 export async function listUsers(): Promise<User[]> {
   return db.select().from(users).orderBy(desc(users.createdAt));
@@ -43,10 +44,15 @@ export async function insertUser(input: {
   displayName: string;
   isAdmin: boolean;
 }): Promise<User> {
-  const [row] = await db.insert(users).values(input).returning();
-  return row;
+  const rows = await db.insert(users).values(input).returning();
+  return expectSingle(rows, "insertUser");
 }
 
+/**
+ * Update existing user. Returns undefined if no row matched `id`
+ * (so callers can surface a NotFoundError); throws InternalError
+ * if the row matched but `.returning()` came back empty.
+ */
 export async function updateUser(
   id: string,
   patch: Partial<Pick<User, "displayName" | "isActive" | "isAdmin">>
@@ -54,19 +60,19 @@ export async function updateUser(
   if (Object.keys(patch).length === 0) {
     return findUserById(id);
   }
-  const [row] = await db
+  const rows = await db
     .update(users)
     .set({ ...patch, updatedAt: new Date() })
     .where(eq(users.id, id))
     .returning();
-  return row;
+  return rows[0]; // legitimately empty when id doesn't exist
 }
 
 export async function updatePasswordHash(id: string, passwordHash: string): Promise<User | undefined> {
-  const [row] = await db
+  const rows = await db
     .update(users)
     .set({ passwordHash, updatedAt: new Date() })
     .where(eq(users.id, id))
     .returning();
-  return row;
+  return rows[0]; // legitimately empty when id doesn't exist
 }

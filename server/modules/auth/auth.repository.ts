@@ -9,6 +9,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { refreshTokens, users, type RefreshToken, type User } from "../../db/schema";
+import { expectSingle } from "../../shared/db-helpers";
 
 // ─── User lookups ──────────────────────────────────────────────────
 
@@ -42,7 +43,7 @@ export async function insertRefreshToken(input: {
   tokenHash: string;
   expiresAt: Date;
 }): Promise<RefreshToken> {
-  const [row] = await db
+  const rows = await db
     .insert(refreshTokens)
     .values({
       userId: input.userId,
@@ -51,7 +52,7 @@ export async function insertRefreshToken(input: {
       lastUsedAt: new Date()
     })
     .returning();
-  return row;
+  return expectSingle(rows, "insertRefreshToken");
 }
 
 /** Bump `last_used_at` on a refresh token (used in grace-window path). */
@@ -63,34 +64,62 @@ export async function touchRefreshToken(id: string): Promise<void> {
 }
 
 /**
- * Rotate: mark the old token revoked + insert a new one in a single
- * TX. Both rows get `last_used_at = now()` so the active-sessions
- * view stays accurate.
+ * Race-safe refresh rotation.
+ *
+ * Looks up the current refresh-token row inside a TX using
+ * `SELECT … FOR UPDATE`, so two concurrent rotations from different
+ * tabs serialise on the row lock. The second tab will see a token
+ * with `revoked_at` already set and the caller can apply the grace
+ * window logic.
+ *
+ * Returns a discriminated union so the caller (`auth.service.refresh`)
+ * knows exactly what happened without having to re-query.
  */
-export async function rotateRefreshToken(input: {
-  oldTokenId: string;
-  userId: string;
+export type RotationOutcome =
+  | { kind: "rotated"; oldRow: RefreshToken; newRow: RefreshToken }
+  | { kind: "alreadyRevoked"; oldRow: RefreshToken };
+
+export async function rotateRefreshTokenAtomically(input: {
+  tokenHash: string;
   newTokenHash: string;
   newExpiresAt: Date;
-}): Promise<RefreshToken> {
+}): Promise<RotationOutcome | null> {
   return db.transaction(async tx => {
+    // Lock the row for the duration of the TX. Drizzle wraps the
+    // SELECT in `.for("update")`; concurrent rotations queue.
+    const found = await tx
+      .select()
+      .from(refreshTokens)
+      .where(eq(refreshTokens.tokenHash, input.tokenHash))
+      .limit(1)
+      .for("update");
+    const row = found[0];
+    if (!row) return null;
+
+    // If already revoked, return without rotating — the caller
+    // decides whether the grace window applies.
+    if (row.revokedAt !== null) {
+      return { kind: "alreadyRevoked", oldRow: row };
+    }
+
     const now = new Date();
     await tx
       .update(refreshTokens)
       .set({ revokedAt: now, lastUsedAt: now })
-      .where(eq(refreshTokens.id, input.oldTokenId));
+      .where(eq(refreshTokens.id, row.id));
 
-    const [inserted] = await tx
+    const insertedRows = await tx
       .insert(refreshTokens)
       .values({
-        userId: input.userId,
+        userId: row.userId,
         tokenHash: input.newTokenHash,
         expiresAt: input.newExpiresAt,
         lastUsedAt: now
       })
       .returning();
+    const newRow = expectSingle(insertedRows, "rotateRefreshTokenAtomically.insert");
 
-    return inserted;
+    return { kind: "rotated", oldRow: row, newRow };
   });
 }
 

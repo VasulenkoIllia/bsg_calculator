@@ -3,6 +3,7 @@
  */
 
 import type { Request, Response } from "express";
+import { parseUuidParam } from "../../shared/uuid-param";
 import {
   createUser,
   getUser,
@@ -22,7 +23,8 @@ export async function listController(_req: Request, res: Response): Promise<void
 }
 
 export async function getController(req: Request, res: Response): Promise<void> {
-  const user = await getUser(req.params.id);
+  const id = parseUuidParam(req, "id");
+  const user = await getUser(id);
   res.status(200).json(user);
 }
 
@@ -33,13 +35,15 @@ export async function createController(req: Request, res: Response): Promise<voi
 }
 
 export async function patchController(req: Request, res: Response): Promise<void> {
+  const id = parseUuidParam(req, "id");
   const body = updateUserRequestSchema.parse(req.body);
-  const user = await patchUser(req.params.id, body);
+  const user = await patchUser(id, body);
   res.status(200).json(user);
 }
 
 export async function resetPasswordController(req: Request, res: Response): Promise<void> {
+  const id = parseUuidParam(req, "id");
   const body = resetPasswordRequestSchema.parse(req.body);
-  const user = await resetUserPassword(req.params.id, body.newPassword);
+  const user = await resetUserPassword(id, body.newPassword);
   res.status(200).json(user);
 }

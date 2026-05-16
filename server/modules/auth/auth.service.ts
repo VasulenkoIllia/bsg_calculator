@@ -19,13 +19,12 @@
  */
 
 import bcrypt from "bcrypt";
-import { env } from "../../config/env";
+import { REFRESH_GRACE_WINDOW_MS } from "../../config/constants";
 import {
   findUserByIdentifier,
   findUserById,
-  findRefreshTokenByHash,
   insertRefreshToken,
-  rotateRefreshToken,
+  rotateRefreshTokenAtomically,
   revokeRefreshToken,
   touchRefreshToken
 } from "./auth.repository";
@@ -43,9 +42,8 @@ import {
 import type { User } from "../../db/schema";
 import type { UserPublic } from "./auth.schemas";
 
-// Grace window — see header. Hard-coded; not an env knob because 10s
-// is a security boundary, not a config tuning value.
-const GRACE_WINDOW_MS = 10_000;
+// Grace window imported from config/constants.ts (single source of
+// truth, also used in tests).
 
 function toUserPublic(user: User): UserPublic {
   return {
@@ -56,6 +54,32 @@ function toUserPublic(user: User): UserPublic {
     isAdmin: user.isAdmin,
     isActive: user.isActive
   };
+}
+
+/**
+ * Load a user expected to be active. Single source of truth for the
+ * post-JWT-verify check used by `require-auth` middleware and the
+ * `/auth/me` endpoint.
+ *
+ * Throws:
+ *   - `TokenInvalidError` if the user row was deleted between token
+ *     issuance and the current request.
+ *   - `ForbiddenError`    if the user has been marked inactive.
+ */
+export async function loadActiveUser(userId: string): Promise<User> {
+  const user = await findUserById(userId);
+  if (!user) {
+    throw new TokenInvalidError("Token references a deleted user.");
+  }
+  if (!user.isActive) {
+    throw new ForbiddenError("Account is disabled.");
+  }
+  return user;
+}
+
+/** Public-shape variant of {@link loadActiveUser} for response bodies. */
+export async function loadActiveUserPublic(userId: string): Promise<UserPublic> {
+  return toUserPublic(await loadActiveUser(userId));
 }
 
 /**
@@ -117,31 +141,31 @@ export type RefreshOutcome =
  */
 export async function refresh(refreshTokenRaw: string): Promise<RefreshOutcome> {
   const tokenHash = hashRefreshToken(refreshTokenRaw);
-  const row = await findRefreshTokenByHash(tokenHash);
-  if (!row) {
+  const newRefreshRaw = generateRefreshTokenRaw();
+
+  // Atomic rotation: the repository locks the token row inside a TX
+  // (SELECT … FOR UPDATE), so concurrent rotations from different
+  // tabs serialise. Returns a discriminated outcome we react to
+  // below.
+  const outcome = await rotateRefreshTokenAtomically({
+    tokenHash,
+    newTokenHash: hashRefreshToken(newRefreshRaw),
+    newExpiresAt: refreshTokenExpiry()
+  });
+
+  if (outcome === null) {
     throw new TokenInvalidError("Refresh token not recognised.");
   }
 
   const now = new Date();
-  if (row.expiresAt <= now) {
+  if (outcome.oldRow.expiresAt <= now) {
     throw new TokenInvalidError("Refresh token has expired.");
   }
 
-  // Grace window: revoked within the last GRACE_WINDOW_MS is still ok.
-  const recentlyRevoked =
-    row.revokedAt !== null &&
-    now.getTime() - row.revokedAt.getTime() <= GRACE_WINDOW_MS;
-
-  if (row.revokedAt && !recentlyRevoked) {
-    // Permanently revoked. Token reuse after the grace window may
-    // indicate compromise; log handled by middleware.
-    throw new TokenInvalidError("Refresh token has been revoked.");
-  }
-
-  // Verify the user is still active. We re-fetch on every refresh
+  // Verify the user is still active. Re-fetch on every refresh
   // (cheap UUID-PK lookup) so a freshly disabled user can't keep
   // getting access tokens until their old refresh token expires.
-  const userRow = await findUserById(row.userId);
+  const userRow = await findUserById(outcome.oldRow.userId);
   if (!userRow) {
     throw new TokenInvalidError("Refresh token references a deleted user.");
   }
@@ -149,24 +173,25 @@ export async function refresh(refreshTokenRaw: string): Promise<RefreshOutcome> 
     throw new ForbiddenError("Account is disabled.");
   }
 
-  if (recentlyRevoked) {
-    // 10s grace path: bump last_used_at, return access token only.
-    await touchRefreshToken(row.id);
+  if (outcome.kind === "alreadyRevoked") {
+    // The token was revoked by an earlier rotation. Apply the 10s
+    // grace window: if recent, hand out an access token (the live
+    // refresh cookie is the one issued by the rotating tab) and
+    // bump last_used_at. Otherwise reject.
+    const recentlyRevoked =
+      outcome.oldRow.revokedAt !== null &&
+      now.getTime() - outcome.oldRow.revokedAt.getTime() <= REFRESH_GRACE_WINDOW_MS;
+    if (!recentlyRevoked) {
+      throw new TokenInvalidError("Refresh token has been revoked.");
+    }
+    await touchRefreshToken(outcome.oldRow.id);
     return {
       kind: "graced",
       accessToken: signAccessToken(userRow.id, userRow.isAdmin)
     };
   }
 
-  // Fresh rotation: revoke old + insert new in a TX.
-  const newRefreshRaw = generateRefreshTokenRaw();
-  await rotateRefreshToken({
-    oldTokenId: row.id,
-    userId: userRow.id,
-    newTokenHash: hashRefreshToken(newRefreshRaw),
-    newExpiresAt: refreshTokenExpiry()
-  });
-
+  // Fresh rotation succeeded inside the TX above.
   return {
     kind: "rotated",
     accessToken: signAccessToken(userRow.id, userRow.isAdmin),

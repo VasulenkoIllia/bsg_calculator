@@ -19,12 +19,8 @@ import {
   AccessTokenVerificationError,
   verifyAccessToken
 } from "../modules/auth/auth.tokens";
-import { findUserById } from "../modules/auth/auth.repository";
-import {
-  ForbiddenError,
-  TokenExpiredError,
-  TokenInvalidError
-} from "../shared/errors";
+import { loadActiveUser } from "../modules/auth/auth.service";
+import { TokenExpiredError, TokenInvalidError } from "../shared/errors";
 
 export function requireAuth() {
   return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
@@ -39,14 +35,9 @@ export function requireAuth() {
 
       // Re-fetch user for is_active check + email. Hot path, but the
       // PK lookup is sub-ms and we get correct behaviour when an
-      // admin disables a user mid-session.
-      const user = await findUserById(payload.sub);
-      if (!user) {
-        throw new TokenInvalidError("Token references a deleted user.");
-      }
-      if (!user.isActive) {
-        throw new ForbiddenError("Account is disabled.");
-      }
+      // admin disables a user mid-session. Goes through the service
+      // (NOT repository directly) per backend_conventions.md §1.
+      const user = await loadActiveUser(payload.sub);
 
       req.user = {
         id: user.id,

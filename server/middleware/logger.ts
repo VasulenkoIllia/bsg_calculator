@@ -9,7 +9,7 @@
  *   - HTTP request logging: one line per request, NEVER log body
  */
 
-import type { NextFunction, Request, Response } from "express";
+import type { Request } from "express";
 import pino from "pino";
 import pinoHttp from "pino-http";
 import { env, isDev } from "../config/env";
@@ -37,16 +37,18 @@ export const logger = pino({
 /**
  * Per-request HTTP logger.
  *
+ * Returns the pino-http middleware DIRECTLY (no wrapper) because
+ * pino-http already calls `next()` itself; double-calling is a
+ * subtle pattern violation that can confuse downstream middleware.
+ *
  * - Re-uses `req.id` from the request-id middleware (mounted BEFORE this).
  * - Attaches `req.log` as a child logger with `reqId` bound, so any
  *   downstream log line carries the correlation id.
  * - Logs ONE line per request with status + duration. The default
  *   pino-http serializer is conservative — it does NOT log body.
  */
-export function requestLogger() {
-  // pino-http appends a property of its own; we want it to be `req.log`
-  // on `Request`, matching our type augmentation.
-  const middleware = pinoHttp({
+export const requestLogger = () =>
+  pinoHttp({
     logger,
     genReqId: req => (req as Request).id, // re-use already-assigned id
     customLogLevel: (_req, res, err) => {
@@ -73,9 +75,3 @@ export function requestLogger() {
         }
       : false
   });
-
-  return (req: Request, res: Response, next: NextFunction): void => {
-    middleware(req, res);
-    next();
-  };
-}

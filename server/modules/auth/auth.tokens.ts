@@ -25,6 +25,11 @@ export interface AccessTokenPayload {
 export function signAccessToken(userId: string, isAdmin: boolean): string {
   const payload: AccessTokenPayload = { sub: userId, isAdmin };
   return jwt.sign(payload, env.JWT_ACCESS_SECRET, {
+    // jsonwebtoken's `expiresIn` is typed as a string-literal union
+    // (`"15m" | "1h" | ...`), so a plain `string` from env doesn't
+    // satisfy the type even though it's accepted at runtime. The
+    // env-loader Zod schema validates the format upstream; this cast
+    // bridges the type mismatch without losing safety.
     expiresIn: env.JWT_ACCESS_EXPIRES as jwt.SignOptions["expiresIn"],
     issuer: env.APP_NAME
   });
