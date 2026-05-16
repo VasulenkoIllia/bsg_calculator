@@ -22,7 +22,8 @@
     "create-user": "tsx server/scripts/create-user.ts",
     "hubspot:inspect": "tsx scripts/hubspot-inspect.ts",
     "hubspot:one-company": "tsx scripts/hubspot-one-company.ts",
-    "hubspot:merchant-and-deal": "tsx scripts/hubspot-merchant-and-deal.ts"
+    "hubspot:merchant-and-deal": "tsx scripts/hubspot-merchant-and-deal.ts",
+    "hubspot:enums": "tsx scripts/hubspot-enums.ts"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",
