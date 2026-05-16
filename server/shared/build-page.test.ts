@@ -59,4 +59,19 @@ describe("buildPage", () => {
     expect(page.items).toEqual([]);
     expect(page.nextCursor).toBeNull();
   });
+
+  it("boundary: rows.length === limit → no cursor (caller fetched exactly limit, not limit+1)", () => {
+    // Callers MUST fetch `limit + 1` rows to enable next-page detection.
+    // If a caller forgets and fetches exactly `limit`, we should not
+    // falsely emit a cursor pointing nowhere. With hasMore = (limit > limit) = false,
+    // the function correctly returns nextCursor: null. This pins that contract.
+    const rows: Row[] = Array.from({ length: 3 }, (_, i) => ({
+      id: `r${i}`,
+      createdAt: new Date(2026, 0, 3 - i),
+      name: `R${i}`
+    }));
+    const page = buildPage(rows, 3, toPublic, toCursor);
+    expect(page.items).toHaveLength(3);
+    expect(page.nextCursor).toBeNull();
+  });
 });

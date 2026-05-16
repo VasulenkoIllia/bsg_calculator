@@ -72,3 +72,17 @@ export const apiLimiter = buildLimiter({
   max: 60,
   message: "Too many requests. Please slow down."
 });
+
+/**
+ * HubSpot proxy limiter for endpoints that hit the upstream HubSpot
+ * API (with caching). Tighter than the general apiLimiter because
+ * a cache miss + a misbehaving client could otherwise exhaust the
+ * HubSpot rate-limit budget (100 req / 10s on a Private App).
+ *
+ * Applied to /api/v1/hubspot/pipelines + future
+ * /api/v1/hubspot/refresh.
+ */
+export const hubspotProxyLimiter = buildLimiter({
+  max: 10,
+  message: "Too many HubSpot proxy requests. Slow down."
+});

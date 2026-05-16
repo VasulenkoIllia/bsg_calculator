@@ -47,6 +47,11 @@ interface PipelinesCacheEntry {
 }
 
 let cache: PipelinesCacheEntry | null = null;
+// In-flight refresh promise — guards against thundering herd when
+// the cache expires and N concurrent requests would otherwise fire
+// N parallel HubSpot calls. The second-through-Nth request awaits
+// the first request's promise instead.
+let inflight: Promise<PipelinesResponse> | null = null;
 
 function projectToDto(raw: HubspotPipelinesResponse): PipelinesResponse {
   const pipelines: PipelineDTO[] = raw.results
@@ -82,26 +87,48 @@ function projectToDto(raw: HubspotPipelinesResponse): PipelinesResponse {
 /**
  * Returns the pipeline list. Hits HubSpot on first call + when the
  * cache TTL expires; otherwise serves from memory.
+ *
+ * Thundering-herd safe: if N concurrent requests arrive when the
+ * cache is stale, only ONE HubSpot request fires. The rest await
+ * the same in-flight promise.
  */
 export async function getPipelines(): Promise<PipelinesResponse> {
   const now = Date.now();
   if (cache && cache.expiresAt > now) {
     return cache.data;
   }
+  // Cache miss / expired. If a refresh is already in flight from a
+  // concurrent request, ride along on the same promise.
+  if (inflight) return inflight;
 
-  const raw = await hubspot.listPipelineStages();
-  const data = projectToDto(raw);
-  cache = { data, expiresAt: now + CACHE_TTL_MS };
-  logger.info(
-    { pipelineCount: data.pipelines.length, stageCount: Object.keys(data.stageLabels).length },
-    "[hubspot] pipelines cache refreshed"
-  );
-  return data;
+  inflight = (async () => {
+    try {
+      const raw = await hubspot.listPipelineStages();
+      const data = projectToDto(raw);
+      cache = { data, expiresAt: Date.now() + CACHE_TTL_MS };
+      logger.info(
+        {
+          pipelineCount: data.pipelines.length,
+          stageCount: Object.keys(data.stageLabels).length
+        },
+        "[hubspot] pipelines cache refreshed"
+      );
+      return data;
+    } finally {
+      // Release the in-flight slot whether we succeeded or threw —
+      // a subsequent request after a failure should retry, not be
+      // stuck waiting on a permanently-rejected promise.
+      inflight = null;
+    }
+  })();
+
+  return inflight;
 }
 
 /** Force-clear the cache. Phase 5+: called by webhook handler. */
 export function refreshPipelinesCache(): void {
   cache = null;
+  inflight = null;
 }
 
 export type { PipelineDTO, PipelineStageDTO, PipelinesResponse };
