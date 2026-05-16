@@ -33,6 +33,7 @@ import { dealsRouter } from "./modules/deals/deals.routes";
 import { documentsRouter, numberingRouter } from "./modules/documents/documents.routes";
 import { healthRouter } from "./modules/health/health.routes";
 import { hubspotRouter } from "./modules/hubspot/hubspot.routes";
+import { pdfRouter } from "./modules/pdf/pdf.routes";
 import { usersRouter } from "./modules/users/users.routes";
 
 export function createApp(): express.Express {
@@ -111,8 +112,9 @@ export function createApp(): express.Express {
   app.use("/api/v1/hubspot", hubspotRouter);
   app.use("/api/v1/calculator-configs", calculatorConfigsRouter);
   app.use("/api/v1/documents", documentsRouter);
+  app.use("/api/v1/documents", pdfRouter); // mounts /:number/pdf
   app.use("/api/v1/numbering", numberingRouter);
-  // Future sprints: listings, hubspot/webhooks (Sprint 5), pdf (Sprint 4.C).
+  // Future sprints: listings, hubspot/webhooks (Sprint 5).
 
   // 8. 404 catch-all + 9. Error envelope — must be last.
   app.use(notFoundHandler);

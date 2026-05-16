@@ -15,6 +15,7 @@ import { createApp } from "./app";
 import { env, isProd } from "./config/env";
 import { pool } from "./db/client";
 import { logger } from "./middleware/logger";
+import { shutdownBrowserPool } from "./modules/pdf/browser-pool";
 import { backendStartupBackfillIfEmpty } from "./scripts/hubspot-backfill";
 
 const app = createApp();
@@ -57,6 +58,13 @@ async function shutdown(signal: string): Promise<void> {
       resolve();
     });
   });
+
+  // Close the Puppeteer browser (if any was launched).
+  try {
+    await shutdownBrowserPool();
+  } catch (err) {
+    logger.error({ err }, "error closing Puppeteer browser");
+  }
 
   // Drain DB pool.
   try {
