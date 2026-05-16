@@ -13,5 +13,10 @@
     "noEmitOnError": true,
     "jsx": "react-jsx"
   },
-  "include": ["src/**/*", "server/**/*", "vite.config.ts"]
+  "include": ["src/**/*", "vite.config.ts"],
+  // server/** is checked by tsconfig.server.json (Bundler resolution,
+  // no `.js` extensions). Including it here would generate spurious
+  // TS2835 errors because the schema files use bare extensionless
+  // imports that NodeNext rejects.
+  "exclude": ["server/**", "scripts/**", "dist/**", "node_modules/**"]
 }
