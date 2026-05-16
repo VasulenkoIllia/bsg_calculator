@@ -83,6 +83,19 @@ export function LoginPage() {
   const isSubmitting = form.formState.isSubmitting;
   const rootError = form.formState.errors.root?.message;
 
+  // Suppress the form during the cold-boot window. Without this guard,
+  // a user with a valid refresh cookie who deep-links to /login sees
+  // the login form for one frame before the AuthProvider's effect
+  // redirects them — flicker that the previous test suite did not
+  // catch because it only asserted post-redirect state.
+  if (isBooting) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-sm text-slate-500">
+        Loading session…
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
       <form

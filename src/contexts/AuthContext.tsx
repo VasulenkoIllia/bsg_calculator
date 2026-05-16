@@ -23,6 +23,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactElement,
   type ReactNode
@@ -60,7 +61,20 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
   // upgrade it into an access token + load their profile. If not
   // (no cookie / expired / revoked), we silently land on logged-out
   // state — the router will show /login.
+  //
+  // The `bootedRef` latch is critical under React 19 StrictMode in
+  // dev: StrictMode double-invokes effects (mount → cleanup → mount).
+  // Without the latch, dev mode fires TWO /auth/refresh requests on
+  // every page load — the second one consumes the freshly-rotated
+  // refresh token and may even race past the 10s grace window on a
+  // slow dev server, spuriously failing the cold boot. The ref
+  // survives StrictMode's synchronous remount, so the second invocation
+  // is a no-op. Production builds never double-mount, so this is a
+  // pure dev-correctness fix.
+  const bootedRef = useRef(false);
   useEffect(() => {
+    if (bootedRef.current) return;
+    bootedRef.current = true;
     let cancelled = false;
     (async () => {
       try {
@@ -73,10 +87,14 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
       } catch (err) {
         // 401 from refresh is the normal "not logged in" path —
         // don't log it as an error. Anything else is unexpected
-        // and worth surfacing in dev.
+        // and worth surfacing in dev (logged with code+status only,
+        // not the full error object, to avoid potential field leakage).
         if (!(err instanceof ApiError && err.isUnauthenticated)) {
           // eslint-disable-next-line no-console
-          console.warn("[auth] cold-boot refresh failed unexpectedly", err);
+          console.warn("[auth] cold-boot refresh failed unexpectedly", {
+            code: err instanceof ApiError ? err.code : "UNKNOWN",
+            status: err instanceof ApiError ? err.status : 0
+          });
         }
         if (!cancelled) setState({ user: null, isBooting: false });
       }
