@@ -12,6 +12,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:server": "vitest run --config vitest.server.config.ts",
+    "test:server:watch": "vitest --config vitest.server.config.ts",
     "start": "tsx server/index.ts",
     "typecheck:server": "tsc -p tsconfig.server.json --noEmit",
     "db:generate": "drizzle-kit generate",
