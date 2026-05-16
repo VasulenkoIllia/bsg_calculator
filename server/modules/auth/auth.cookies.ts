@@ -14,10 +14,13 @@ import { REFRESH_COOKIE_NAME, REFRESH_COOKIE_PATH } from "../../config/constants
 /** Refresh-token cookie attributes. */
 export const refreshCookieOptions: CookieOptions = {
   httpOnly: true,
-  // SameSite=Lax allows top-level navigation cookies (so following a
-  // HubSpot Note link to /documents/:number still authenticates) while
-  // blocking cross-site form posts that could trigger refresh.
-  sameSite: "lax",
+  // SameSite=Strict: the cookie is only sent on same-site requests.
+  // Safe because the cookie is path-scoped to /api/v1/auth — top-level
+  // navigations (e.g. clicking a HubSpot Note link into our SPA) don't
+  // include this path, so "lax" gave us no practical benefit while
+  // leaving a wider cross-site surface. The SPA's bootstrap call to
+  // /api/v1/auth/refresh is same-origin XHR and is unaffected by strict.
+  sameSite: "strict",
   // HTTPS-only in prod (set by Traefik). Allowed in dev for localhost.
   secure: isProd,
   path: REFRESH_COOKIE_PATH,

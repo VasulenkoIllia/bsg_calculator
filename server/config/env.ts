@@ -53,6 +53,16 @@ const EnvSchema = z.object({
   APP_DOMAIN: z.string().default("bsg.workflo.space"),
   PORT: z.coerce.number().int().min(1).max(65535).default(8080),
   TZ: z.string().default("Europe/Kyiv"),
+  // Number of trusted reverse-proxy hops in front of the API.
+  //   1 = Traefik directly in front of Express (default, our deploy).
+  //   0 = no proxy (only safe when the API is reachable on a private
+  //       network and never sees client-supplied X-Forwarded-For).
+  // Express trusts the LAST N entries of X-Forwarded-For; an incorrect
+  // value lets a remote client spoof their IP, bypassing per-IP rate
+  // limits. If the topology ever changes (e.g. CloudFlare → Traefik →
+  // app), raise this to match the true hop count and ensure each hop
+  // either strips or replaces X-Forwarded-For at its trust boundary.
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(1),
 
   // Database
   DATABASE_URL: z.string().url(),
@@ -64,16 +74,18 @@ const EnvSchema = z.object({
   DB_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
 
   // Auth — JWT + bcrypt
+  // Only JWT_ACCESS_SECRET is needed: access tokens are JWTs, refresh
+  // tokens are opaque (random + SHA-256-hashed in DB). The legacy
+  // JWT_REFRESH_SECRET was removed in Sprint 2.7.I — see decisions.md.
   JWT_ACCESS_SECRET: z.string().min(32, {
     message: "JWT_ACCESS_SECRET must be at least 32 chars. Generate with `openssl rand -base64 48`."
-  }),
-  JWT_REFRESH_SECRET: z.string().min(32, {
-    message: "JWT_REFRESH_SECRET must be at least 32 chars. Generate with `openssl rand -base64 48`."
   }),
   JWT_ACCESS_EXPIRES: z
     .string()
     .regex(/^\d+[smhdw]$/, "must match format like '15m', '24h', '30d'")
     .default("15m"),
+  // Refresh token TTL — opaque token (not a JWT); the value is consumed
+  // by auth.service when inserting refresh_tokens.expires_at.
   JWT_REFRESH_EXPIRES: z
     .string()
     .regex(/^\d+[smhdw]$/, "must match format like '15m', '24h', '30d'")
@@ -115,6 +127,39 @@ const EnvSchema = z.object({
   // Logging
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
   LOG_HTTP_REQUESTS: z.coerce.boolean().default(true)
+}).superRefine((data, ctx) => {
+  // ─── Cross-field production hardening ────────────────────────────
+  // In dev/test we allow loose values for fast iteration. In prod we
+  // tighten the rules below so a misconfigured deploy crash-loops at
+  // boot rather than silently exposing an attack surface.
+  if (data.NODE_ENV !== "production") return;
+
+  // SSRF guard: only the canonical HubSpot endpoint may be hit in
+  // prod. If the env is ever overwritten (compromise, fat-fingered
+  // deploy), refuse to boot rather than emit requests with HubSpot
+  // bearer tokens to an attacker-controlled host.
+  if (data.HUBSPOT_API_BASE_URL !== "https://api.hubapi.com") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["HUBSPOT_API_BASE_URL"],
+      message:
+        'must be exactly "https://api.hubapi.com" in production (SSRF guard for HubSpot Private App tokens).'
+    });
+  }
+
+  // Webhook HMAC secret is required in prod so the future Sprint 5
+  // /api/v1/hubspot/webhooks endpoint can verify incoming events.
+  // Operators can set a placeholder value before Sprint 5 ships —
+  // having any non-empty secret is enough to satisfy this gate, and
+  // the webhook handler itself will refuse mismatched signatures.
+  if (!data.HUBSPOT_WEBHOOK_SECRET || data.HUBSPOT_WEBHOOK_SECRET.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["HUBSPOT_WEBHOOK_SECRET"],
+      message:
+        "must be set in production (HMAC SHA-256 secret for HubSpot webhook signature verification)."
+    });
+  }
 });
 
 // Parse + freeze. Parse throws ZodError on invalid input which we

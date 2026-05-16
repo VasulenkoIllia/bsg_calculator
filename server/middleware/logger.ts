@@ -14,6 +14,41 @@ import pino from "pino";
 import pinoHttp from "pino-http";
 import { env, isDev } from "../config/env";
 
+/**
+ * Keys we never want to see in logs. pino's `redact` walks the
+ * log object using the provided paths and replaces matches with
+ * `[Redacted]`. Both root keys (e.g. `password`) and one-level
+ * nested keys (e.g. `req.headers.authorization`) are covered.
+ *
+ * If a request handler ever logs an error that wraps a token or a
+ * cookie value, the redact pass catches it before it hits stdout.
+ */
+const REDACT_PATHS = [
+  // Top-level keys commonly attached to log payloads.
+  "password",
+  "newPassword",
+  "currentPassword",
+  "token",
+  "accessToken",
+  "refreshToken",
+  "refreshTokenRaw",
+  "authorization",
+  "cookie",
+  // Wildcards: any nested object whose property is one of these.
+  "*.password",
+  "*.token",
+  "*.accessToken",
+  "*.refreshToken",
+  "*.refreshTokenRaw",
+  "*.authorization",
+  "*.cookie",
+  // Headers attached by pino-http's default req serializer.
+  "req.headers.authorization",
+  "req.headers.cookie",
+  "headers.authorization",
+  "headers.cookie"
+];
+
 export const logger = pino({
   level: env.LOG_LEVEL,
   // Pretty-print in dev for readability; JSON in prod for log
@@ -31,7 +66,11 @@ export const logger = pino({
   base: {
     app: env.APP_NAME
   },
-  timestamp: pino.stdTimeFunctions.isoTime
+  timestamp: pino.stdTimeFunctions.isoTime,
+  redact: {
+    paths: REDACT_PATHS,
+    censor: "[Redacted]"
+  }
 });
 
 /**

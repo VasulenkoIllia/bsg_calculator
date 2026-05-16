@@ -38,8 +38,14 @@ export function createApp(): express.Express {
 
   // 1. Trust proxy — Traefik / Coolify set X-Forwarded-{Proto,For}.
   //    Required for `req.protocol === "https"` and rate-limit key
-  //    extraction.
-  app.set("trust proxy", 1);
+  //    extraction (express-rate-limit derives the per-IP key from
+  //    `req.ip`, which honours this setting).
+  //
+  //    The hop count MUST match the real number of trusted proxies in
+  //    front of the app — see env.ts → TRUST_PROXY_HOPS for the full
+  //    rationale. A wrong value lets a client spoof X-Forwarded-For
+  //    and bypass per-IP rate limits.
+  app.set("trust proxy", env.TRUST_PROXY_HOPS);
 
   // 1a. Security headers via helmet.
   //     - contentSecurityPolicy disabled here: prod serves the SPA's
@@ -56,10 +62,12 @@ export function createApp(): express.Express {
     })
   );
 
-  // 2. JSON body parser — limit to 5MB (DocumentTemplatePayload is
-  //    ~20KB; a generous cap absorbs future schema growth without
-  //    enabling DoS-by-huge-body).
-  app.use(express.json({ limit: "5mb" }));
+  // 2. JSON body parser — limit to 1MB.
+  //    DocumentTemplatePayload is ~20KB; 1MB leaves 50× headroom for
+  //    schema growth while shrinking the DoS-by-huge-body window
+  //    versus the original 5MB cap. Raise only if a legitimate
+  //    payload starts approaching this size.
+  app.use(express.json({ limit: "1mb" }));
 
   // 3. Cookie parser for the refresh-token httpOnly cookie. The
   //    raw value is opaque to us; we just hash and compare against

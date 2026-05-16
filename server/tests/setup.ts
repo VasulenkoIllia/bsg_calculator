@@ -34,12 +34,11 @@ const TEST_DB_URL = `postgres://bsg:bsg_dev_password@localhost:5433/${TEST_DB_NA
 process.env.DATABASE_URL = TEST_DB_URL;
 process.env.DB_NAME = TEST_DB_NAME;
 
-// Generate fixed JWT secrets for tests so signed tokens are stable
-// across runs (NEVER reuse these in production).
+// Generate a fixed JWT access secret for tests so signed tokens are
+// stable across runs (NEVER reuse this in production). Refresh tokens
+// are opaque random strings — no secret required.
 process.env.JWT_ACCESS_SECRET =
   process.env.JWT_ACCESS_SECRET ?? "test_access_secret_at_least_32_chars_long_xxxx";
-process.env.JWT_REFRESH_SECRET =
-  process.env.JWT_REFRESH_SECRET ?? "test_refresh_secret_at_least_32_chars_long_xx";
 
 // ─── 2. Ensure test database exists ───────────────────────────────
 async function ensureTestDatabase(): Promise<void> {

@@ -194,9 +194,8 @@ const Env = z.object({
   DB_POOL_MAX: z.coerce.number().int().min(1).default(10),
 
   JWT_ACCESS_SECRET: z.string().min(32),
-  JWT_REFRESH_SECRET: z.string().min(32),
   JWT_ACCESS_EXPIRES: z.string().default("15m"),
-  JWT_REFRESH_EXPIRES: z.string().default("30d"),
+  JWT_REFRESH_EXPIRES: z.string().default("30d"),  // refresh tokens are opaque, no secret needed
   BCRYPT_COST: z.coerce.number().int().min(4).max(15).default(12),
 
   FRONTEND_ORIGIN: z.string().url().default("http://localhost:5173"),
