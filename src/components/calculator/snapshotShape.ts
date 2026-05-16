@@ -94,6 +94,11 @@ export interface CalculatorSnapshotPayload {
   contractSummarySettings: ContractSummarySettings;
 
   // Zone 6 free-form notes — persisted because they drive offer copy.
+  // The frontend textarea has no maxLength; when Sprint 3 wires this
+  // through POST /calculator-snapshots the backend Zod schema MUST
+  // add `.max(4000)` (or similar) to defend against an outsized POST
+  // body. The Express body parser is already capped at 1MB but a
+  // per-field cap also keeps DB storage predictable.
   clientNotes: string;
 }
 

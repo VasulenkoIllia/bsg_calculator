@@ -16,6 +16,13 @@ interface ImportMetaEnv {
    * by Vite's dev proxy or same-origin in prod). Set this only if
    * the SPA needs to talk to a backend at a different origin (e.g.
    * a staging API while developing locally).
+   *
+   * ⚠️ DO NOT point this at a cross-origin URL in dev. The refresh
+   * cookie has `SameSite=Strict`, so it will never be sent across
+   * origins — the SPA will get into a 401 → refresh-fail → 401 loop.
+   * Stick with the default (Vite proxy forwards `/api/*` → backend:8080
+   * with the same effective origin) unless you're certain you need
+   * an absolute URL and you've adjusted the cookie scope accordingly.
    */
   readonly VITE_API_BASE_URL?: string;
 }

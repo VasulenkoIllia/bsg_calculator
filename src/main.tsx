@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App.js";
 import { AuthProvider } from "./contexts/AuthContext.js";
+import { QUERY_GC_TIME_MS, QUERY_STALE_TIME_MS } from "./shared/constants.js";
 import "./index.css";
 
 /**
@@ -25,8 +26,8 @@ import "./index.css";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 30_000,
-      gcTime: 5 * 60_000,
+      staleTime: QUERY_STALE_TIME_MS,
+      gcTime: QUERY_GC_TIME_MS,
       retry: 1,
       refetchOnWindowFocus: false
     }

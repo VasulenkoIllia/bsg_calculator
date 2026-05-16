@@ -97,6 +97,14 @@ export class ApiError extends Error {
  * can notify it after a failed refresh (e.g. revoked session) — then
  * the context can drop client-side state + redirect to /login.
  *
+ * Single-slot by design: calling `setSessionLostHandler(cb)` REPLACES
+ * any previously registered handler. We have exactly one AuthProvider
+ * per tab, so a single slot suffices. If a future "broadcast logout
+ * to every open tab" feature lands (BroadcastChannel + tab sync),
+ * replace this with a subscribers Set + dispatch loop. The tests
+ * `setSessionLostHandler(null)` on every reset to drop stale closures
+ * from unmounted providers.
+ *
  * Passing the callback through a setter avoids a circular dependency
  * between this file and `contexts/AuthContext.tsx`.
  */

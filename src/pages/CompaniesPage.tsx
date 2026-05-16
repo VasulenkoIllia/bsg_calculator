@@ -13,13 +13,15 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api/client.js";
+import { LoadMoreButton } from "../components/LoadMoreButton.js";
 import { useCompanies } from "../hooks/useCompanies.js";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
+import { SEARCH_DEBOUNCE_MS } from "../shared/constants.js";
 import { formatDate } from "../shared/format.js";
 
 export function CompaniesPage() {
   const [search, setSearch] = useState("");
-  const debouncedSearch = useDebouncedValue(search, 300);
+  const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
 
   const {
     items,
@@ -119,18 +121,11 @@ export function CompaniesPage() {
         </table>
       </div>
 
-      {hasNextPage ? (
-        <div className="flex justify-center">
-          <button
-            type="button"
-            onClick={() => fetchNextPage()}
-            disabled={isFetchingNextPage}
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isFetchingNextPage ? "Loading…" : "Load more"}
-          </button>
-        </div>
-      ) : null}
+      <LoadMoreButton
+        hasNextPage={hasNextPage}
+        isFetchingNextPage={isFetchingNextPage}
+        fetchNextPage={fetchNextPage}
+      />
     </section>
   );
 }

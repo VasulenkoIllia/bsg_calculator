@@ -1,9 +1,12 @@
 /**
  * Barrel for the api/ layer.
  *
- * Convention: components and hooks import from `~/api` (or
- * `../../api` depending on the file) — never reach inside specific
- * files. This gives us one chokepoint for renaming endpoints.
+ * Convention (2.8.F.5): hooks should prefer DIRECT imports from
+ * `../api/companies.js` (better tree-shaking, simpler grep). The
+ * namespace re-exports below remain so call sites that prefer
+ * `api.companies.listCompanies(...)` still work — pick one style and
+ * stay consistent within a feature. The error envelope + `ApiError`
+ * class always come from this barrel.
  */
 
 export {

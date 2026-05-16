@@ -14,6 +14,7 @@
 
 import { Link, useParams } from "react-router-dom";
 import { ApiError } from "../api/client.js";
+import { LoadMoreButton } from "../components/LoadMoreButton.js";
 import { useCompany, useCompanyDeals } from "../hooks/useCompany.js";
 import type { PublicDeal } from "../api/types.js";
 import { formatDate } from "../shared/format.js";
@@ -147,18 +148,12 @@ export function CompanyDetailPage() {
         </table>
       </div>
 
-      {deals.hasNextPage ? (
-        <div className="flex justify-center">
-          <button
-            type="button"
-            onClick={() => deals.fetchNextPage()}
-            disabled={deals.isFetchingNextPage}
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {deals.isFetchingNextPage ? "Loading…" : "Load more deals"}
-          </button>
-        </div>
-      ) : null}
+      <LoadMoreButton
+        hasNextPage={deals.hasNextPage}
+        isFetchingNextPage={deals.isFetchingNextPage}
+        fetchNextPage={deals.fetchNextPage}
+        label="Load more deals"
+      />
     </section>
   );
 }
