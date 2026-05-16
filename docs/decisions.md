@@ -3388,3 +3388,105 @@ Use this file to record meaningful technical decisions for the project.
   - Production deploys MUST manually clean any users with the
     pre-F.1 phantom `role` column reference if any external code
     consumes /auth/me — none does today.
+
+### Decision: Pre-Sprint 3 — Calculator config + Document anchors + UX shape
+- Date: 2026-05-17
+- Context:
+  - After Sprint 2.8 the SPA validated the auth + companies + deals
+    flow against the backend, but every downstream entity (calculator
+    configs, documents) still had open architectural questions about
+    HOW they hang off the company/deal hierarchy. Locking these now
+    avoids the much-more-expensive refactor that would follow a
+    Sprint 3 schema commit.
+  - User reviewed an ASCII wireframe of the future
+    `/companies/:id` page (Overview / Deals / Documents tabs) plus
+    the operator journey (login → company → calc → doc) and chose
+    one option per axis: A2, B2, C1, D3.
+- Decision:
+  - **A2 — Documents anchor: `company_id NOT NULL` + `hubspot_deal_id NULLABLE`**.
+    Every document belongs to a company. Optionally also belongs to a
+    deal. Schema:
+
+        documents.company_id        UUID NOT NULL REFERENCES companies(id)
+        documents.hubspot_deal_id   TEXT NULL REFERENCES deals(hubspot_deal_id)
+
+    The Documents tab on `/companies/:id` lists ALL the company's
+    documents and renders the Deal column when present, falling back
+    to "—" for company-level docs. Standalone offers (e.g. a generic
+    proposal without a tracked deal) are first-class.
+  - **B2 — Calculator configs anchor: same shape as Documents**.
+
+        calculator_configs.company_id      UUID NOT NULL REFERENCES companies(id)
+        calculator_configs.hubspot_deal_id TEXT NULL REFERENCES deals(hubspot_deal_id)
+
+    Symmetric with documents so the "save calc as offer" flow can
+    just carry both ids through verbatim. A "create new calc for
+    this deal" button on a deal row in `/companies/:id` pre-fills
+    `hubspot_deal_id`; the global "+ New calculation" button on
+    the company header leaves it null.
+  - **C1 — Listing UX: tabs on detail page, NOT hierarchical accordion**.
+    Keep Sprint 2.8's flat CompaniesPage table. Extend
+    CompanyDetailPage with three tabs:
+      - Overview (current header dl)
+      - Deals (current deals table)
+      - Documents (NEW — Sprint 6 wiring; backend lands in Sprint 4)
+    The original Sprint 6 spec called for a hierarchical accordion on
+    `/listings`. Rejected because:
+      (a) tabs are simpler to paginate (each tab uses its own
+          useInfiniteQuery)
+      (b) the accordion conflated three different cursor streams
+          (companies, deals, docs) onto one page, fighting React Query
+      (c) tabs match the mental model "this company has Deals AND
+          Documents" rather than "Documents are nested inside Deals"
+  - **D3 — `/wizard` becomes a thin shim that creates a blank config
+    and redirects to `/calc/:newConfigId`**. Sprint 6 will rewrite
+    WizardPage's mount handler:
+
+        // current
+        renders the wizard with local state
+
+        // post-Sprint 6
+        POST /calculator-configs { companyId: null, ... blank seed }
+          → newConfigId
+          → navigate(`/calc/${newConfigId}`, { replace: true })
+
+    Loses the "manual blank" deep-link convenience of today but
+    consolidates into one pipeline (single source of truth for
+    autosave + persistence). Tests for `?source=manualBlank` URL
+    params can be deleted along with the manual wizard state.
+- Alternatives considered:
+  - A3 (document MUST have a deal): rejected. BSG's sales flow
+    sometimes produces an offer before a HubSpot deal exists — the
+    deal is created later when the offer is accepted.
+  - B3 (config MUST have a deal): same rejection for the same reason.
+  - C2 (hierarchical accordion): rejected, see above.
+  - D2 (delete /wizard): rejected. Existing tests + bookmarks still
+    reference /wizard; a redirect preserves them without dual logic.
+- Consequences:
+  - Sprint 3 SQL migration schema is now locked:
+      - `calculator_configs.company_id UUID NOT NULL`
+      - `calculator_configs.hubspot_deal_id TEXT NULL`
+      - FK ON DELETE: company → CASCADE (drop configs when company
+        is removed), deal → SET NULL (configs survive a deal
+        deletion, the deal column just nulls out).
+  - Sprint 4 SQL migration schema:
+      - `documents.company_id UUID NOT NULL`
+      - `documents.hubspot_deal_id TEXT NULL`
+      - FK ON DELETE: company → RESTRICT (cannot delete a company
+        with documents — operator must archive), deal → SET NULL.
+  - Sprint 6 frontend work:
+      - Add Tabs primitive (Sprint 6 — first form library decision
+        carry-over from F.5 NICE-TO-HAVE deferred).
+      - `/companies/:id` consumes useCompany + useCompanyDeals +
+        useCompanyDocuments (last is Sprint 4 hook).
+      - `/wizard` route gets a tiny "creating draft…" splash before
+        the redirect.
+- Follow-up actions:
+  - Sprint 3 starts on the `implement-backend` branch with the locked
+    schema. Drizzle migration generated as `0003_calculator_configs.sql`.
+  - Sprint 4 starts after 3 lands; migration `0004_documents.sql`
+    references calculator_configs FK (numbering sequence already
+    set up in Sprint 1 according to phase_08_backend_plan §3).
+  - `docs/CODEMAPS/frontend.md` "Future Sprint touchpoints" section
+    is now concrete: `<CalcConfigPage />`, `<CompanyDocumentsTab />`,
+    `<WizardRedirectPage />`.
