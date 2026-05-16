@@ -6,7 +6,11 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { mapHubspotCompanyToRow, mapHubspotDealToRow } from "./hubspot.mapper";
+import {
+  extractDealCompanyCandidates,
+  mapHubspotCompanyToRow,
+  mapHubspotDealToRow
+} from "./hubspot.mapper";
 import type { HubspotObject } from "./hubspot.types";
 
 function makeCompanyFixture(overrides: Partial<HubspotObject["properties"]> = {}): HubspotObject {
@@ -154,5 +158,65 @@ describe("mapHubspotDealToRow", () => {
     });
     // Verify they're NOT in the named columns of NewDeal type.
     expect(row).not.toHaveProperty("forecastedMonthlyVolume");
+  });
+});
+
+describe("extractDealCompanyCandidates", () => {
+  it("returns primary first, then unlabeled secondary associations", () => {
+    // Real-world WORLDFY OY case: primary = agent, secondary = merchant.
+    const obj = makeDealFixture({ hs_primary_associated_company: "agent-id" });
+    obj.associations = {
+      companies: {
+        results: [
+          { id: "agent-id", type: "deal_to_company" },
+          { id: "agent-id", type: "deal_to_company_unlabeled" },
+          { id: "merchant-id", type: "deal_to_company_unlabeled" }
+        ]
+      }
+    };
+
+    expect(extractDealCompanyCandidates(obj)).toEqual(["agent-id", "merchant-id"]);
+  });
+
+  it("deduplicates ids that appear multiple times", () => {
+    const obj = makeDealFixture({ hs_primary_associated_company: "X" });
+    obj.associations = {
+      companies: {
+        results: [
+          { id: "X", type: "deal_to_company" },
+          { id: "X", type: "deal_to_company_unlabeled" }
+        ]
+      }
+    };
+    expect(extractDealCompanyCandidates(obj)).toEqual(["X"]);
+  });
+
+  it("works when primary is missing and only secondary associations exist", () => {
+    const obj = makeDealFixture({ hs_primary_associated_company: null });
+    obj.associations = {
+      companies: { results: [{ id: "fallback-id", type: "deal_to_company_unlabeled" }] }
+    };
+    expect(extractDealCompanyCandidates(obj)).toEqual(["fallback-id"]);
+  });
+
+  it("returns empty array when neither primary nor associations are present", () => {
+    const obj = makeDealFixture({ hs_primary_associated_company: null });
+    obj.associations = undefined;
+    expect(extractDealCompanyCandidates(obj)).toEqual([]);
+  });
+
+  it("primary first even if it's also listed in associations", () => {
+    const obj = makeDealFixture({ hs_primary_associated_company: "B" });
+    obj.associations = {
+      companies: {
+        results: [
+          { id: "A", type: "deal_to_company_unlabeled" },
+          { id: "B", type: "deal_to_company" },
+          { id: "C", type: "deal_to_company_unlabeled" }
+        ]
+      }
+    };
+    // Primary B leads, then A and C in HubSpot's order.
+    expect(extractDealCompanyCandidates(obj)).toEqual(["B", "A", "C"]);
   });
 });

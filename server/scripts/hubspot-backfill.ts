@@ -22,10 +22,12 @@ import { ne, sql } from "drizzle-orm";
 import { env } from "../config/env";
 import { db, pool } from "../db/client";
 import { companies as companiesTable } from "../db/schema";
+import { findCompanyByHubspotId } from "../modules/companies/companies.repository";
 import { upsertCompany } from "../modules/companies/companies.repository";
 import { upsertDeal } from "../modules/deals/deals.repository";
 import { hubspot } from "../modules/hubspot/hubspot.client";
 import {
+  extractDealCompanyCandidates,
   mapHubspotCompanyToRow,
   mapHubspotDealToRow
 } from "../modules/hubspot/hubspot.mapper";
@@ -165,25 +167,58 @@ export async function runBackfill(): Promise<BackfillStats> {
         stats.deals.skipped += 1;
         continue;
       }
+
+      // Smart company resolution: HubSpot's primary association may
+      // point at an Agent that's been filtered out of our DB.
+      // Iterate ALL candidate company IDs (primary first, then
+      // secondary) and pick the first that exists locally.
+      const candidates = extractDealCompanyCandidates(obj);
+      let chosenCompanyId: string | null = null;
+      for (const candidate of candidates) {
+        const exists = await findCompanyByHubspotId(candidate);
+        if (exists) {
+          chosenCompanyId = candidate;
+          break;
+        }
+      }
+
+      if (!chosenCompanyId) {
+        stats.deals.skipped += 1;
+        logger.warn(
+          { hubspotDealId: row.hubspotDealId, candidates },
+          "[hubspot:backfill] deal skipped: no associated company present in DB"
+        );
+        continue;
+      }
+
+      // If the chosen company is NOT the primary, log a warn so
+      // BSG sales can spot deals where primary-association points
+      // at an Agent and re-assign in the HubSpot UI.
+      if (chosenCompanyId !== candidates[0]) {
+        logger.warn(
+          {
+            hubspotDealId: row.hubspotDealId,
+            dealName: row.name,
+            primaryCompany: candidates[0],
+            chosenCompany: chosenCompanyId,
+            allCandidates: candidates
+          },
+          "[hubspot:backfill] deal: primary-association is filtered out, using fallback. Sales should fix primary in HubSpot."
+        );
+      }
+
+      // Override the company id on the row before upsert.
+      row.hubspotCompanyId = chosenCompanyId;
+
       try {
         await upsertDeal(row);
         stats.deals.upserted += 1;
       } catch (err) {
         stats.deals.skipped += 1;
-        const message = (err as Error).message;
-        // FK violation (deal references a company we don't have) =>
-        // orphan deal in HubSpot. Log + count as skip.
-        if (message.includes("foreign key constraint")) {
-          logger.warn(
-            { hubspotDealId: row.hubspotDealId, hubspotCompanyId: row.hubspotCompanyId },
-            "[hubspot:backfill] deal upsert: company FK missing, skipped"
-          );
-        } else {
-          logger.warn(
-            { hubspotDealId: row.hubspotDealId, err: message },
-            "[hubspot:backfill] deal upsert failed"
-          );
-        }
+        logger.warn(
+          { hubspotDealId: row.hubspotDealId, err: (err as Error).message },
+          "[hubspot:backfill] deal upsert failed"
+        );
       }
     }
     if (stats.deals.fetched % 500 === 0 || !page.paging?.next?.after) {

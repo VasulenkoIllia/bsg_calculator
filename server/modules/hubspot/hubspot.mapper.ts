@@ -131,3 +131,40 @@ function nullableString(raw: string | null | undefined): string | null {
   const trimmed = raw.trim();
   return trimmed.length === 0 ? null : trimmed;
 }
+
+/**
+ * Extract ALL candidate company IDs a deal is associated with, in
+ * priority order (primary first, then any other associations).
+ *
+ * Used by the backfill to fall back from a primary that's been
+ * filtered out (e.g. an Agent company) to a secondary that's in
+ * our cache (e.g. the Merchant). The associated-company-id list
+ * is returned in HubSpot's own order; deduplicated to keep the
+ * iteration cheap.
+ *
+ * Example real BSG case: deal "WORLDFY OY"
+ *   - hs_primary_associated_company → "(A) Waseem" (Agent, filtered out)
+ *   - associations.companies.results[1] → "(M) WORLDFY" (Merchant, kept)
+ *
+ * With this helper, backfill chooses the merchant id, logs a warn
+ * so BSG sales sees which deals need primary-association fixes in
+ * the HubSpot UI.
+ */
+export function extractDealCompanyCandidates(obj: HubspotObject): string[] {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  const push = (id: string | null | undefined): void => {
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    ordered.push(id);
+  };
+
+  // Primary first.
+  push(obj.properties.hs_primary_associated_company);
+  // Then every other association (HubSpot returns them in stable
+  // order; we preserve it).
+  for (const assoc of obj.associations?.companies?.results ?? []) {
+    push(assoc.id);
+  }
+  return ordered;
+}
