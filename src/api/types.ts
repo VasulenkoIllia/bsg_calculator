@@ -108,6 +108,27 @@ export interface CursorPage<TItem> {
   limit: number;
 }
 
+// ─── Calculator configs ──────────────────────────────────────────
+/**
+ * Mirrors server/modules/calculator-configs/calculator-configs.schemas.ts
+ * :calculatorConfigPublicSchema.
+ *
+ * `payload` is the persisted CalculatorSnapshotPayload — defined as
+ * `unknown` here because the backend stores it permissively and the
+ * UI hydrates via the existing `seedCalculatorStateFromSnapshot()`
+ * helper which has its own runtime checks.
+ */
+export interface PublicCalculatorConfig {
+  id: string;
+  companyId: string;
+  hubspotDealId: string | null;
+  title: string | null;
+  payload: unknown;
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── HubSpot ──────────────────────────────────────────────────────
 export interface HubspotPipeline {
   id: string;

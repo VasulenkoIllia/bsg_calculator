@@ -24,6 +24,7 @@ export type {
   HubspotPipelineStage,
   LoginRequest,
   LoginResponse,
+  PublicCalculatorConfig,
   PublicCompany,
   PublicDeal,
   PublicUser,
@@ -31,6 +32,7 @@ export type {
 } from "./types.js";
 
 export * as auth from "./auth.js";
+export * as calculatorConfigs from "./calculator-configs.js";
 export * as companies from "./companies.js";
 export * as deals from "./deals.js";
 export * as hubspot from "./hubspot.js";

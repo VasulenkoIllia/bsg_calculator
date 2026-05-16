@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { buildOfferSummaryText } from "../domain/calculator/index.js";
 import {
   CalculatorActionsPanel,
@@ -14,12 +14,30 @@ import {
   Zone6OfferSummary,
   escapeHtml
 } from "../components/calculator/index.js";
+import { extractCalculatorSnapshot } from "../components/calculator/snapshotShape.js";
+import { SaveCalculatorModal } from "../components/SaveCalculatorModal.js";
 import { useCalculator } from "../contexts/CalculatorContext.js";
 import { printHtmlViaIframe } from "../lib/printHtmlViaIframe.js";
 
 export function CalculatorPage() {
   const navigate = useNavigate();
   const calc = useCalculator();
+
+  // Save modal — gathers (company, optional deal, optional title) and
+  // POSTs the snapshot to /api/v1/calculator-configs. Sprint 3.B.
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [savedToast, setSavedToast] = useState<string | null>(null);
+
+  // Capture the snapshot LAZILY when the modal opens — extracting on
+  // every render would clone the whole calculator state needlessly.
+  // We pass a stable reference into the modal; the modal owns its
+  // own form state until "Save".
+  const snapshot = useMemo(
+    () => (saveOpen ? extractCalculatorSnapshot(calc) : null),
+    // calc is stable across renders for our purposes — re-extracting
+    // when saveOpen flips is enough.
+    [saveOpen, calc]
+  );
 
   const offerSummaryText = useMemo(
     () =>
@@ -131,6 +149,25 @@ export function CalculatorPage() {
 
   return (
     <>
+      {savedToast ? (
+        <div
+          role="status"
+          className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800"
+        >
+          {savedToast}
+        </div>
+      ) : null}
+
+      <div className="mb-3 flex justify-end">
+        <button
+          type="button"
+          onClick={() => setSaveOpen(true)}
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500"
+        >
+          Save calculator…
+        </button>
+      </div>
+
       <HardcodedConstantsPanel
         visible={calc.showHardcodedConstants}
         groups={calc.hardcodedConstantGroups}
@@ -327,6 +364,19 @@ export function CalculatorPage() {
         onPrint={() => openOfferSummaryPrintView("print")}
         onOpenWizard={() => navigate("/wizard")}
       />
+
+      {snapshot ? (
+        <SaveCalculatorModal
+          open={saveOpen}
+          onClose={() => setSaveOpen(false)}
+          payload={snapshot as unknown as { schemaVersion: number } & Record<string, unknown>}
+          onSaved={() => {
+            setSavedToast("Calculator saved.");
+            // Auto-dismiss the toast after 4s so it doesn't linger.
+            setTimeout(() => setSavedToast(null), 4000);
+          }}
+        />
+      ) : null}
     </>
   );
 }

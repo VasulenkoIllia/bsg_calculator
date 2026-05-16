@@ -28,13 +28,14 @@ import { z } from "zod";
  * CalculatorSnapshotPayload type. If business rules ever need to be
  * enforced at the API boundary, replace this with a strict mirror.
  *
- * NOTE: we still enforce `version: number` because that one field is
- * how the backend would detect "this row was saved by an older
+ * NOTE: we still enforce `schemaVersion: number` (matches the
+ * frontend's `extractCalculatorSnapshot` output) because that field
+ * is how the backend would detect "this row was saved by an older
  * frontend version" if we ever ship migration logic. Cheap insurance.
  */
 const payloadSchema = z
   .object({
-    version: z.number().int().positive()
+    schemaVersion: z.number().int().positive()
   })
   .passthrough();
 

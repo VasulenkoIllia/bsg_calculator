@@ -55,7 +55,7 @@ function dealFixture(
   };
 }
 
-const samplePayload = { version: 1, calculatorType: { kind: "card" }, _note: "test" };
+const samplePayload = { schemaVersion: 1, calculatorType: { kind: "card" }, _note: "test" };
 
 async function setupAuth(): Promise<string> {
   await createTestUser({ email: "op@bsg.test", password: "password12345" });
@@ -145,7 +145,7 @@ describe("POST /api/v1/calculator-configs", () => {
     expect(res.body.error.code).toBe("VALIDATION_FAILED");
   });
 
-  it("rejects 422 when payload lacks `version`", async () => {
+  it("rejects 422 when payload lacks `schemaVersion`", async () => {
     const token = await setupAuth();
     const [company] = await db.insert(companies).values(companyFixture()).returning();
     const res = await request(app)
@@ -222,7 +222,7 @@ describe("GET /api/v1/calculator-configs/:id", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.id).toBe(create.body.id);
-    expect(res.body.payload).toMatchObject({ version: 1 });
+    expect(res.body.payload).toMatchObject({ schemaVersion: 1 });
   });
 });
 
