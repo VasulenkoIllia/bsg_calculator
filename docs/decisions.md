@@ -3259,3 +3259,132 @@ Use this file to record meaningful technical decisions for the project.
     handler ships later — see env.ts superRefine.
   - Codemap regenerated to reflect new shared helpers + the
     nine modules under `server/`.
+
+### Decision: Sprint 2.8 — frontend integration layer (A → E)
+- Date: 2026-05-16
+- Context:
+  - After Sprint 2.7 the backend was complete (auth, companies,
+    deals, HubSpot reads). A manual probe showed the SPA had ZERO
+    network calls into it — `src/lib/` had `printHtmlViaIframe.ts`,
+    `src/contexts/` had only `CalculatorContext.tsx`, no
+    `fetch`/`axios` anywhere in `src/`. The backend was running in
+    a vacuum.
+  - Rather than continue to Sprint 3 (Calculator Configs) and grow
+    the contract surface before frontend ever validated it, we did
+    the wire-up first. That moved part of the original Sprint 6
+    frontend work earlier; the rest (calc page + document view page)
+    waits for Sprint 3 + Sprint 4 backend to ship.
+- Decision:
+  - **Stack**: axios singleton + interceptors, TanStack Query v5 for
+    server state (useInfiniteQuery for cursor pagination), react-
+    hook-form + zod for forms (reuses backend Zod schemas where
+    possible), in-memory access-token storage (NEVER localStorage).
+  - **Vite dev proxy**: `/api/* → http://localhost:8080` with
+    `changeOrigin: true`. Prod serves SPA + API from the same
+    Express, so the proxy is dev-only.
+  - **Routing**: `/` redirects to `/companies` (the natural workflow
+    entry), all routes except `/login` sit behind `<PrivateRoute />`
+    which gates on the AuthContext's `isBooting / user` state.
+  - **Five commits A → E** delivered:
+    - 2.8.A (6b9c7a4): API client + types + axios interceptors —
+      `src/api/{client,types,auth,companies,deals,hubspot,index}.ts`
+      + 8 unit tests covering Bearer attach, refresh-on-401,
+      single-flight refresh, session-lost callback, envelope
+      mapping. Vite proxy added.
+    - 2.8.B (4b63755): AuthProvider + QueryClientProvider —
+      `src/contexts/AuthContext.tsx` cold-boots via /auth/refresh,
+      hydrates user via /auth/me, exposes `login/logout` actions +
+      `user/isBooting` state. main.tsx wraps the app.
+    - 2.8.C (fe3e27b): LoginPage + PrivateRoute + route reorg.
+      react-hook-form + zod schema mirroring backend
+      loginRequestSchema. Error envelope mapped to human messages
+      per `code`. AppShell extended with IdentityStrip (signed-in
+      name + Sign out) + a Companies workspace tab. Existing
+      calculator/wizard tests updated to async `renderApp()`.
+    - 2.8.D (5f8042e): CompaniesPage with debounced search +
+      cursor pagination. `useCompanies` (useInfiniteQuery) +
+      `useDebouncedValue` hooks. 5 integration tests covering
+      loading / empty / error / debounced search / Load more.
+    - 2.8.E (c5778fe): CompanyDetailPage — company header + deals
+      table with the same pagination tail. `useCompany` (useQuery)
+      + `useCompanyDeals` (useInfiniteQuery) hooks. 5 tests
+      including amount formatting edge cases.
+  - **Sprint 2.8.F (audit closure, A → E in F.1 → F.5)** — after
+    a triple-agent audit (TypeScript reviewer + security reviewer
+    + code reviewer in parallel) we closed 34 findings across
+    5 sub-commits:
+    - F.1 (769e5fb): CRITICAL — `PublicUser` interface diverged
+      from backend `userPublicSchema` on every field except `id`
+      and `displayName` (declared `role/active/createdAt`; wire
+      has `email/isAdmin/isActive`). Updated types + every test
+      fixture. `CursorPage<T>` gained the `limit` field the
+      backend always emits.
+    - F.2 (cad13ac): HIGH — StrictMode-safe cold boot via
+      `useRef` latch (was firing two /auth/refresh calls per dev
+      page load); LoginPage `isBooting` guard to suppress the
+      form-flash on direct /login deep-link.
+    - F.3 (79c1060): HIGH — axios module augmentation for
+      `_isRefresh`/`_retry` (no more `as unknown as` double
+      casts); refresh single-flight race fixed by moving the
+      singleton release to `.then(cleanup, cleanup)` so it queues
+      behind callers' continuations; `useInfiniteQuery<…, Error,
+      …>` typed as `ApiError` so `error.code` is reachable
+      without runtime `instanceof`.
+    - F.4 (2ebcdaf): 11 MED — `useMemo` for flattened items,
+      `normaliseSearch` helper unifying buildKey + query
+      threshold, LoginPage `resolveSafeFromPath` with path-
+      relative guard, AppShell `handleLogout` try/finally,
+      isFetching background indicator, shared `formatDate`
+      helper, `vi.restoreAllMocks` test pattern, session-lost
+      handler test, renderApp cleanup.
+    - F.5 (06810f8): 16 LOW + nice-to-have — PrivateRoute test
+      (3 cases), AppShell IdentityStrip test (2 cases),
+      `<LoadMoreButton />` extracted, `src/shared/constants.ts`
+      (`QUERY_STALE_TIME_MS`, `QUERY_GC_TIME_MS`,
+      `SEARCH_DEBOUNCE_MS`), vite-env.d.ts cross-origin warning,
+      ApiError.details security JSDoc, setSessionLostHandler
+      single-slot doc, snapshotShape.ts clientNotes
+      Sprint-3-Zod-cap reminder.
+- Alternatives considered:
+  - Keep Sprint 3 backend first: rejected. Adding another module
+    before the frontend layer existed risked growing API contracts
+    that would never get exercised until much later.
+  - Use SWR instead of TanStack Query: rejected. TanStack's
+    `useInfiniteQuery` with `getNextPageParam` mapped cleanly to
+    our cursor pagination; SWR's pagination story is less ergonomic.
+  - Store access token in `localStorage`: rejected. XSS would yield
+    an instantly-stealable long-lived credential. Module memory +
+    httpOnly refresh cookie is the standard pattern.
+  - Validate API responses with Zod at the frontend boundary
+    (mirroring backend schemas): deferred. The cost (a `.parse()`
+    call per response, plus duplicating every schema in `src/api/`)
+    isn't justified at the current scale, and the F.1 finding shows
+    that drift is catchable by careful TypeScript review. Revisit
+    when more endpoints exist or when shared zod-schemas refactor
+    lands.
+- Consequences:
+  - 5 (A-E) + 5 (F.1-F.5) = 10 commits between `92a4649` (drizzle
+    audit fix) and `06810f8`.
+  - Frontend baseline now includes: `src/api/` (8 files), `src/
+    contexts/AuthContext.tsx`, `src/hooks/` (3 hooks), `src/pages/
+    {LoginPage,CompaniesPage,CompanyDetailPage}`, `src/components/
+    {PrivateRoute,LoadMoreButton}`, `src/shared/{format,constants}`.
+  - Frontend tests: 227 (203 pre-2.8 + 8 client + 7 auth + 6 login
+    + 5 companies + 5 detail + 3 PrivateRoute + 2 AppShell — minus
+    re-counted overlaps after the worktree exclusion fix).
+  - Backend unchanged for 2.8; new env var TRUST_PROXY_HOPS still
+    holds; npm audit 0.
+- Follow-up actions:
+  - Sprint 3 (Calculator Configs) will piggyback on the patterns
+    established here: `src/api/calculator-configs.ts`,
+    `src/hooks/useCalculatorConfigs.ts`, `<CalcConfigPage />`
+    reusing `<LoadMoreButton />` + `formatDate` + the search
+    debounce pattern.
+  - Sprint 6 (original "Frontend integration" plan) is partially
+    DONE — auth + listings already shipped. Remaining scope: calc
+    page (/calc/:id), document view (/documents/:number), wizard
+    URL-driven hydration. Will fold into the corresponding sprint
+    (Sprint 3 wires calc page; Sprint 4 wires document view).
+  - Production deploys MUST manually clean any users with the
+    pre-F.1 phantom `role` column reference if any external code
+    consumes /auth/me — none does today.
