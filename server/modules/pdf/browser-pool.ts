@@ -115,15 +115,15 @@ export async function acquireBrowser(): Promise<Browser> {
   }
 
   if (!launchInFlight) {
-    launchInFlight = launch().finally(() => {
-      // Cleared inside the .then handler below; finally only nulls
-      // the in-flight slot AFTER state is set. Errors propagate to
-      // callers AND clear the slot so retry works.
-    });
+    launchInFlight = launch();
   }
   try {
     state = await launchInFlight;
   } finally {
+    // Whether the launch succeeded or threw, the in-flight slot is
+    // released. On success, `state` is set; subsequent acquires
+    // short-circuit at the top. On failure, the next acquire will
+    // try `launch()` again — auto-retry without manual reset.
     launchInFlight = null;
   }
   state.renderCount += 1;

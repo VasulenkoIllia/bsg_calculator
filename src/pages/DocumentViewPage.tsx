@@ -20,7 +20,7 @@ import * as documentsApi from "../api/documents.js";
 import { buildOfferPdfHtml } from "../components/document-wizard/index.js";
 import type { DocumentTemplatePayload } from "../components/document-wizard/index.js";
 import { useDocument } from "../hooks/useDocuments.js";
-import { formatDate } from "../shared/format.js";
+import { formatDate, formatScopeLabel } from "../shared/format.js";
 
 /**
  * Best-effort runtime check that `payload` carries a wizard-style
@@ -57,18 +57,6 @@ function asWizardPayload(payload: unknown): DocumentTemplatePayload | null {
   return p as unknown as DocumentTemplatePayload;
 }
 
-function scopeLabel(scope: string): string {
-  switch (scope) {
-    case "offer":
-      return "Offer";
-    case "agreement":
-      return "Agreement";
-    case "offer_and_agreement":
-      return "Offer + Agreement";
-    default:
-      return scope;
-  }
-}
 
 export function DocumentViewPage() {
   const { number } = useParams<{ number: string }>();
@@ -92,19 +80,17 @@ export function DocumentViewPage() {
     }
   }
 
-  function handleDownloadPdf(): void {
-    if (!number) return;
-    // Open in a new tab so the user doesn't lose the document view.
-    // The Authorization header isn't automatically attached for
-    // window.open() — backend requires Bearer. Sprint 4.E will
-    // either:
-    //   (a) Use a one-time signed download URL (?token=xxx)
-    //   (b) Fetch the blob via axios + create a temp Blob URL
-    //
-    // For now, open the URL; the backend returns 501 (no template
-    // module yet) and the user sees that response.
-    window.open(`/api/v1/documents/${number}/pdf?download=true`, "_blank");
-  }
+  // Download PDF is intentionally disabled until Sprint 4.E.2 ships
+  // both the shared server-side template module AND a Bearer-aware
+  // download flow (either signed-URL `?token=xxx` or axios arraybuffer
+  // + Blob URL). The earlier `window.open()` approach was broken twice
+  // over: (a) no Authorization header → 401, (b) backend returned 501
+  // even after auth because the template module doesn't exist yet.
+  // Until then we render the button as disabled with a helpful tooltip
+  // — the inline iframe preview below is the canonical way to see the
+  // document right now.
+  const pdfDownloadDisabledReason =
+    "PDF download lands in Sprint 4.E.2. Use the preview below for now.";
 
   if (docQuery.isLoading) {
     return <p className="text-sm text-slate-500">Loading document…</p>;
@@ -132,7 +118,7 @@ export function DocumentViewPage() {
       <div className="rounded-2xl border border-slate-200 bg-white p-6">
         <header className="space-y-1">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            {scopeLabel(doc.scope)}
+            {formatScopeLabel(doc.scope)}
           </p>
           <h1 className="font-mono text-xl font-semibold text-slate-900">
             {doc.number}
@@ -146,14 +132,16 @@ export function DocumentViewPage() {
           </div>
         ) : null}
 
-        <div className="mt-5 flex flex-wrap gap-3">
+        <div className="mt-5 flex flex-wrap items-center gap-3">
           <button
             type="button"
-            onClick={handleDownloadPdf}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500"
+            disabled
+            title={pdfDownloadDisabledReason}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Download PDF
           </button>
+          <span className="text-xs text-slate-500">{pdfDownloadDisabledReason}</span>
           <button
             type="button"
             onClick={handleUseAsTemplate}
@@ -261,9 +249,13 @@ function DocumentPreviewSection({
           title={`Document ${number} preview`}
           srcDoc={previewHtml}
           // Sandbox keeps any styles inside the iframe from leaking
-          // into the SPA. We don't allow scripts because our generated
-          // HTML never includes any.
+          // into the SPA. Empty sandbox is the most restrictive mode
+          // (no scripts, no forms, no popups, no same-origin access).
+          // `allow=""` explicitly disables every Permissions Policy
+          // feature (camera, microphone, geolocation, etc.) as
+          // defence-in-depth.
           sandbox=""
+          allow=""
           className="h-[780px] w-full bg-white"
         />
       </div>

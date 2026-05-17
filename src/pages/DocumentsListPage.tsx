@@ -14,21 +14,8 @@ import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
 import { useCompanySearch } from "../hooks/useCompanySearch.js";
 import { useDocuments } from "../hooks/useDocuments.js";
 import { SEARCH_DEBOUNCE_MS } from "../shared/constants.js";
-import { formatDate } from "../shared/format.js";
+import { formatDate, formatScopeLabel } from "../shared/format.js";
 import type { PublicCompany } from "../api/types.js";
-
-function scopeLabel(scope: string): string {
-  switch (scope) {
-    case "offer":
-      return "Offer";
-    case "agreement":
-      return "Agreement";
-    case "offer_and_agreement":
-      return "Offer + Agreement";
-    default:
-      return scope;
-  }
-}
 
 /**
  * Inline company typeahead used as a filter chip. Renders a "× clear"
@@ -216,7 +203,7 @@ export function DocumentsListPage() {
                     {doc.number}
                   </Link>
                 </td>
-                <td className="px-4 py-3 text-slate-700">{scopeLabel(doc.scope)}</td>
+                <td className="px-4 py-3 text-slate-700">{formatScopeLabel(doc.scope)}</td>
                 <td className="px-4 py-3 text-slate-500">
                   {doc.hubspotSyncState === "not_synced" ? (
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">

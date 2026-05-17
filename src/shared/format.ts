@@ -25,3 +25,24 @@ export function formatDate(iso: string): string {
     return iso;
   }
 }
+
+/**
+ * Human-friendly label for the backend's documents.scope enum.
+ *
+ * Backend values: 'offer' | 'agreement' | 'offer_and_agreement'.
+ * Frontend renders them across DocumentsListPage, DocumentViewPage,
+ * and (eventually) Sprint 6's documents tab — centralised here so
+ * the labels stay consistent.
+ */
+export function formatScopeLabel(scope: string): string {
+  switch (scope) {
+    case "offer":
+      return "Offer";
+    case "agreement":
+      return "Agreement";
+    case "offer_and_agreement":
+      return "Offer + Agreement";
+    default:
+      return scope;
+  }
+}

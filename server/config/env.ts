@@ -51,6 +51,14 @@ const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   APP_NAME: z.string().default("bsg-calculator"),
   APP_DOMAIN: z.string().default("bsg.workflo.space"),
+  /**
+   * Public URL the SPA is served from. Used by Phase 9 HubSpot Note
+   * write-back to embed a clickable link to the document
+   * (e.g. https://bsg.workflo.space/documents/BSG-7100024-874808).
+   * Development default points at the Vite dev server.
+   * Production MUST set this to the real https origin.
+   */
+  APP_PUBLIC_URL: z.string().url().default("http://localhost:5173"),
   PORT: z.coerce.number().int().min(1).max(65535).default(8080),
   TZ: z.string().default("Europe/Kyiv"),
   // Number of trusted reverse-proxy hops in front of the API.
@@ -158,6 +166,22 @@ const EnvSchema = z.object({
       path: ["HUBSPOT_WEBHOOK_SECRET"],
       message:
         "must be set in production (HMAC SHA-256 secret for HubSpot webhook signature verification)."
+    });
+  }
+
+  // APP_PUBLIC_URL drives the document-link inserted into HubSpot
+  // Notes (Phase 9). The dev default points at localhost; in prod
+  // it MUST be the real https origin or the Notes BSG operators see
+  // in HubSpot would link to localhost from the wrong machine.
+  if (
+    data.APP_PUBLIC_URL.startsWith("http://localhost") ||
+    data.APP_PUBLIC_URL.startsWith("http://127.")
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["APP_PUBLIC_URL"],
+      message:
+        "must be a public https URL in production (HubSpot Notes will embed it as a clickable link)."
     });
   }
 });

@@ -86,15 +86,14 @@ export async function peekNumberController(
 /**
  * Sprint 4 stub for the Phase 9 HubSpot Note write-back. Returns 501
  * so the frontend can ship the sync-trigger UI without crashing —
- * Phase 9 swaps in the real implementation.
+ * Phase 9 swaps in the real implementation. `_req` / `_res` naming
+ * acknowledges the unused parameters without the awkward `void`
+ * suppression idiom.
  */
-export async function syncController(req: Request, res: Response): Promise<void> {
-  // 501 with a structured message so the frontend can render
-  // "Coming soon" UX. The number param is validated by the route
-  // regex but we don't load the doc here — pointless before there's
-  // an implementation.
-  void req;
-  void res;
+export async function syncController(
+  _req: Request,
+  _res: Response
+): Promise<void> {
   throw new NotImplementedError(
     "HubSpot sync is not yet enabled. Will ship in Phase 9."
   );
