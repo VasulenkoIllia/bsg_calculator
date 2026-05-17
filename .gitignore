@@ -25,3 +25,8 @@ pnpm-debug.log*
 .env.local
 .env.*.local
 .claude/
+
+# Visual-diff transient run output — gold files in tests/visual-diff-gold/
+# ARE committed and reviewed. Per-run rendered PNGs + diff overlays are
+# not (they regenerate every `npm run visual-diff`).
+tests/visual-diff-output/

@@ -3976,3 +3976,77 @@ Use this file to record meaningful technical decisions for the project.
   - **HubSpot Private App webhook setup** — documented in
     `docs/hubspot_api_reference.md` (URL + secret + subscription
     list) so the operator can finish the connection at deploy time.
+
+### Decision: Sprint 5.5 — Visual-diff harness (frontend vs. backend PDF)
+- Date: 2026-05-17
+- Context:
+  - User asked the load-bearing question: "are the two PDF
+    rendering paths (frontend wizard 'Generate PDF' vs. backend
+    `GET /api/v1/documents/:number/pdf`) producing byte-for-byte
+    equivalent output for the same payload?" Until Sprint 5.5
+    nothing checked this — Sprint 4.E.2 shared the HTML builder
+    but the render engines differ (browser-native print pipeline
+    vs. Puppeteer `page.pdf()`).
+- Decision:
+  - Build an automated visual-diff harness
+    (`scripts/visual-diff/index.ts`). It uses Puppeteer for both
+    renders with two different settings configs that approximate
+    the two production paths:
+      - **backend**  — exact production `renderHtmlToPdf()` with
+        `preferCSSPageSize: true` + explicit margins
+      - **frontend simulated** — `page.pdf({ format: "A4",
+        printBackground: true })` with no preferCSSPageSize/margin,
+        approximating window.print() → Save as PDF defaults
+  - Compares per-page via `pixelmatch` after `pdftoppm` rasterisation
+    at 100 DPI. Threshold 0.5% pixel drift per page.
+  - Two fixtures land: `offer-only` (2 pages) and
+    `offer-and-agreement` (12 pages — bundle scope with the MSA
+    appendix).
+- **Result**:
+  - All pages within budget by a 200× margin.
+    - Offer-only: 19 px diff / 967k (0.002%) per page.
+    - Bundle: 14–26 px diff / 967k (≤0.003%) per page.
+  - The handful of differing pixels are anti-aliasing artifacts
+    from `pdftoppm` rounding adjacent renders of the same A4
+    geometry at different sub-pixel positions. Not visible to a
+    human eye.
+  - PDF byte sizes are within 4–25 bytes of each other (PDF
+    metadata only; the content streams are identical).
+  - **Conclusion**: backend and frontend PDF paths produce
+    visually equivalent output, with backend being the canonical
+    reference because it's deterministic across browsers.
+- Caveats documented (in `scripts/visual-diff/README.md` and the
+  operator-facing `docs/hubspot_api_reference.md` workflow notes):
+  - Users on Safari/Firefox may see slightly different output
+    (kerning, page-break heuristics). Recommend "Download PDF"
+    button on `/documents/:number` for any contract delivered to a
+    counterparty.
+  - If the user enables "Headers and footers" in the browser print
+    dialog, their browser injects URL + timestamp on each page.
+    Backend output never has this.
+  - Browser version drift (user on a much older Chrome than
+    Puppeteer's bundled one) — not testable in CI.
+- Alternatives considered:
+  - Drop the frontend "Generate PDF" button entirely, force
+    everyone through backend Download. Rejected — the wizard's
+    in-browser print is a useful "preview-before-save" affordance,
+    especially during pricing iteration.
+  - Use Playwright on three browsers (Chrome / Safari / Firefox)
+    in CI. Deferred — adds ~30s to every CI run for marginal
+    coverage given the dominant operator browser is Chrome.
+  - Bytewise PDF diff. Rejected — PDF metadata (creation date,
+    object IDs) always differs even when content matches; pixel
+    diff is a more honest signal.
+- Consequences:
+  - `npm run visual-diff` is the CI gate going forward. Any template
+    change requires regenerating gold files via
+    `npm run visual-diff:gold` and reviewing the diff in code
+    review.
+  - `tests/visual-diff-gold/` is committed; `tests/visual-diff-output/`
+    is gitignored.
+  - Sprint 8 (hardening) can extend this with Playwright multi-
+    browser support if real-world variation reports come in.
+- Follow-up actions:
+  - Wire `npm run visual-diff` into the `verify` script once the
+    backend dev DB is part of CI. For now operators run it locally
+    when touching the PDF template.
