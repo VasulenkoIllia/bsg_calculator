@@ -28,6 +28,7 @@ export function PreviewStep({
   onHighlightVariablesChange,
   onBack,
   onGeneratePdf,
+  generatePdfPending,
   onSaveDocument,
   saveDisabledReason
 }: {
@@ -37,6 +38,11 @@ export function PreviewStep({
   onHighlightVariablesChange: (next: boolean) => void;
   onBack: () => void;
   onGeneratePdf: () => void;
+  /**
+   * Sprint 6.0: backend PDF preview is in-flight. Button disables +
+   * label switches to "Preparing PDF…" until the Blob arrives.
+   */
+  generatePdfPending?: boolean;
   /**
    * Sprint 4.E: opens SaveDocumentModal so the operator can persist
    * the wizard output as a backend document (BSG-XXXXXXX-YYYYYY).
@@ -106,9 +112,10 @@ export function PreviewStep({
         <button
           type="button"
           onClick={onGeneratePdf}
-          className="rounded-xl border border-blue-300 bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+          disabled={generatePdfPending}
+          className="rounded-xl border border-blue-300 bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Generate PDF
+          {generatePdfPending ? "Preparing PDF…" : "Generate PDF"}
         </button>
         {onSaveDocument ? (
           <>

@@ -14,10 +14,11 @@ import type { DocumentTemplatePayload, WizardStep } from "../components/document
 import type { DocumentScope } from "../components/document-wizard/legalDefaults.js";
 import { SaveDocumentModal } from "../components/SaveDocumentModal.js";
 import { WizardBackendBar } from "../components/WizardBackendBar.js";
+import { ApiError } from "../api/client.js";
 import * as documentsApi from "../api/documents.js";
+import { renderPdfPreview, triggerPdfDownload } from "../api/pdf.js";
 import type { PublicCompany } from "../api/types.js";
 import { useCalculator } from "../contexts/CalculatorContext.js";
-import { printHtmlViaIframe } from "../lib/printHtmlViaIframe.js";
 
 /**
  * Map the wizard's camelCase document scope to the backend's
@@ -154,11 +155,16 @@ export function WizardPage() {
     setWizardStep(current => clampStepToScope(wizardDraft.documentScope, current));
   }, [wizardDraft.documentScope]);
 
+  // Sprint 6.0: only the on-screen iframe preview is rendered
+  // client-side now (with the `highlightVariables` toggle so the
+  // operator can see which fields are user-filled vs. defaults).
+  // The "Generate PDF" download path goes through the backend
+  // `/api/v1/pdf/preview` Puppeteer pipeline — no more
+  // browser-native window.print() with its per-browser variance.
   const wizardPreviewHtml = useMemo(
     () => buildOfferPdfHtml(wizardDraft, { highlightVariables: wizardHighlightVariables }),
     [wizardDraft, wizardHighlightVariables]
   );
-  const wizardPdfHtml = useMemo(() => buildOfferPdfHtml(wizardDraft), [wizardDraft]);
 
   useEffect(() => {
     setWizardActionMessage(null);
@@ -201,13 +207,38 @@ export function WizardPage() {
     setWizardActionMessage("Wizard source switched to manual defaults mode.");
   };
 
-  const handleWizardGeneratePdf = () => {
-    const ok = printHtmlViaIframe(wizardPdfHtml);
-    if (!ok) {
-      setWizardActionMessage("Could not open the print dialog in this environment.");
-      return;
+  // Sprint 6.0: "Generate PDF" routes through the backend
+  // `POST /api/v1/pdf/preview` endpoint instead of the previous
+  // browser-native window.print() → Save as PDF path. Same render
+  // engine (Puppeteer Chromium) as the saved-document Download PDF —
+  // no Safari/Firefox variability, no print-dialog options to
+  // worry about, no browser-injected headers/footers.
+  const [wizardPdfPending, setWizardPdfPending] = useState(false);
+
+  const handleWizardGeneratePdf = async () => {
+    setWizardPdfPending(true);
+    setWizardActionMessage(null);
+    try {
+      const blob = await renderPdfPreview(wizardDraft);
+      // Use the current Document Number as the filename when it
+      // looks like a real BSG-XXXXXXX-YYYYYY (i.e. the numbering
+      // peek has resolved with a company). Fall back to a generic
+      // "preview" otherwise so the file doesn't carry the
+      // placeholder XXXXXX or DRAFT prefix into the user's downloads.
+      const docNumber = wizardDraft.header.documentNumber;
+      const looksFinal = /^BSG-\d{7}-[0-9A-Z]{6}$/i.test(docNumber);
+      const filename = looksFinal ? `${docNumber}.pdf` : "preview.pdf";
+      triggerPdfDownload(blob, filename);
+      setWizardActionMessage("PDF generated and downloaded.");
+    } catch (err) {
+      const msg =
+        err instanceof ApiError
+          ? err.message
+          : "Could not generate PDF. Check the wizard draft is complete.";
+      setWizardActionMessage(msg);
+    } finally {
+      setWizardPdfPending(false);
     }
-    setWizardActionMessage('Print dialog opened. Choose "Save as PDF" to export.');
   };
 
   // Sprint 4.E (revised 2026-05-17): "Save document" target is
@@ -293,6 +324,7 @@ export function WizardPage() {
         highlightVariables={wizardHighlightVariables}
         onHighlightVariablesChange={setWizardHighlightVariables}
         onGeneratePdf={handleWizardGeneratePdf}
+        generatePdfPending={wizardPdfPending}
         onRefreshFromCalculator={handleWizardRefillFromCalculator}
         actionMessage={wizardActionMessage}
         headerStepBeforeContent={

@@ -29,6 +29,13 @@ export interface DocumentWizardPanelProps {
   highlightVariables: boolean;
   onHighlightVariablesChange: (next: boolean) => void;
   onGeneratePdf: () => void;
+  /**
+   * Sprint 6.0: when true, the "Generate PDF" button on the Preview
+   * step shows a "Preparing PDF…" label and is disabled — the backend
+   * Puppeteer render takes ~1-3s, this prevents double-clicks and
+   * gives the operator a clear in-flight signal.
+   */
+  generatePdfPending?: boolean;
   onRefreshFromCalculator: () => void;
   actionMessage: string | null;
   /**
@@ -63,6 +70,7 @@ export function DocumentWizardPanel({
   highlightVariables,
   onHighlightVariablesChange,
   onGeneratePdf,
+  generatePdfPending,
   onRefreshFromCalculator,
   actionMessage,
   headerStepBeforeContent,
@@ -197,6 +205,7 @@ export function DocumentWizardPanel({
             onHighlightVariablesChange={onHighlightVariablesChange}
             onBack={goPrev}
             onGeneratePdf={onGeneratePdf}
+            generatePdfPending={generatePdfPending}
             onSaveDocument={onSaveDocument}
             saveDisabledReason={saveDisabledReason}
           />

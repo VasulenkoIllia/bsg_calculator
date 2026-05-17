@@ -41,6 +41,61 @@ async function setupDocAndAuth(): Promise<{ token: string; number: string }> {
   return { token, number: res.body.number };
 }
 
+describe("POST /api/v1/pdf/preview (Sprint 6.0)", () => {
+  it("requires auth", async () => {
+    const res = await request(app).post("/api/v1/pdf/preview").send({});
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 400 when body is missing or payload key absent", async () => {
+    await createTestUser({ email: "pdf@bsg.test", password: "password12345" });
+    const token = await loginAs("pdf@bsg.test", "password12345");
+    const res = await request(app)
+      .post("/api/v1/pdf/preview")
+      .set("Authorization", `Bearer ${token}`)
+      .send({});
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("VALIDATION_FAILED");
+  });
+
+  it("returns 400 when payload lacks DocumentTemplatePayload shape", async () => {
+    // Same shape-guard as GET /:number/pdf — fails BEFORE Puppeteer
+    // pool is touched so the test runs cleanly even with Chromium
+    // disabled in NODE_ENV=test.
+    await createTestUser({ email: "pdf@bsg.test", password: "password12345" });
+    const token = await loginAs("pdf@bsg.test", "password12345");
+    const res = await request(app)
+      .post("/api/v1/pdf/preview")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ payload: { wrong: "shape" } });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("VALIDATION_FAILED");
+    expect(res.body.error.message).toMatch(/payload not in DocumentTemplatePayload shape/i);
+  });
+
+  it("returns 400 when payload has null nested keys (Sprint 5.F.2 null-guard)", async () => {
+    // typeof null === "object" — the Sprint 5.F.2 fix to isWizardPayload
+    // explicitly rejects null nested fields, ensuring the error surface
+    // is the right shape (400 VALIDATION_FAILED, not a confusing 500
+    // from buildOfferPdfHtml dereferencing a null).
+    await createTestUser({ email: "pdf@bsg.test", password: "password12345" });
+    const token = await loginAs("pdf@bsg.test", "password12345");
+    const res = await request(app)
+      .post("/api/v1/pdf/preview")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        payload: {
+          documentScope: "offer",
+          header: null,
+          layout: null,
+          agreementParties: null
+        }
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("VALIDATION_FAILED");
+  });
+});
+
 describe("GET /api/v1/documents/:number/pdf", () => {
   it("requires auth", async () => {
     const res = await request(app).get("/api/v1/documents/BSG-7100001-512587/pdf");

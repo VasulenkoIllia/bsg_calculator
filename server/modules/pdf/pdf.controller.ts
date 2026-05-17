@@ -1,17 +1,16 @@
 /**
- * GET /api/v1/documents/:number/pdf — stream a rendered PDF.
+ * Two PDF render endpoints share the Puppeteer pipeline:
  *
- * Pipeline:
- *   1. Validate the URL :number against the BSG-XXXXXXX-YYYYYY regex.
- *   2. Load the document by number (404 if missing).
- *   3. Shape-check the persisted payload — surface 422 if it doesn't
- *      match DocumentTemplatePayload (e.g. legacy / calc-only saves).
- *   4. Server-side render via `buildOfferPdfHtml` (shared with the
- *      wizard's Preview iframe; included from tsconfig.server.json
- *      since Sprint 4.E.2).
- *   5. Puppeteer renders → Buffer.
- *   6. Stream to client with Content-Disposition controlled by
- *      `?download=true`.
+ *   - GET  /api/v1/documents/:number/pdf  → saved document (DB lookup)
+ *   - POST /api/v1/pdf/preview            → wizard "Generate PDF" path,
+ *                                           takes payload, no DB save
+ *
+ * Sprint 6.0 added /pdf/preview so the wizard no longer relies on
+ * browser-native window.print() → Save as PDF (which used the user's
+ * own browser PDF engine, introducing Safari/Firefox variability per
+ * the Sprint 5.5 caveats). Both endpoints feed the SAME
+ * buildOfferPdfHtml + renderHtmlToPdf pipeline → single render engine
+ * across the app.
  */
 
 import type { Request, Response } from "express";
@@ -144,5 +143,73 @@ export async function downloadPdfController(
   // it) or a downstream consumer. Use `private, max-age=300` — 5 min
   // browser cache for the same Bearer.
   res.setHeader("Cache-Control", "private, max-age=300");
+  res.status(200).end(buffer);
+}
+
+/**
+ * POST /api/v1/pdf/preview — render a PDF directly from a payload,
+ * with NO DB save. Used by the wizard's "Generate PDF" button so the
+ * operator can export the in-progress draft before committing it to
+ * a numbered document. Same Puppeteer pipeline as
+ * GET /:number/pdf — guarantees byte-equivalent output between the
+ * "preview the draft" path and the "download the saved doc" path.
+ *
+ * Body: `{ payload: DocumentTemplatePayload }`. The payload is
+ * validated through `isWizardPayload` first; a malformed body
+ * surfaces as 400 before any Puppeteer call.
+ *
+ * Returns: `application/pdf` stream, Content-Disposition: inline so
+ * the browser shows it in-tab by default. The frontend wraps the
+ * response in a Blob URL + hidden anchor click for the "download"
+ * affordance (same pattern as the DocumentViewPage handler).
+ *
+ * NO `:number` in the URL → no Content-Disposition filename concern
+ * (we hardcode `preview.pdf`). The endpoint is auth-gated via
+ * pdfRouter's `requireAuth()` so an unauthenticated caller can't
+ * burn the Puppeteer pool.
+ */
+export async function previewPdfController(
+  req: Request,
+  res: Response
+): Promise<void> {
+  const payload: unknown = (req.body as Record<string, unknown> | undefined)?.payload;
+
+  if (!isWizardPayload(payload)) {
+    throw new ValidationError(
+      [{ path: ["payload"], message: "payload not in DocumentTemplatePayload shape" }],
+      "Cannot render — payload not in DocumentTemplatePayload shape"
+    );
+  }
+
+  let html: string;
+  try {
+    html = buildOfferPdfHtml(payload);
+  } catch (err) {
+    logger.warn(
+      { err: (err as Error).message },
+      "[pdf:preview] buildOfferPdfHtml threw — payload likely incomplete"
+    );
+    throw new ValidationError(
+      [
+        {
+          path: ["payload"],
+          message: `buildOfferPdfHtml failed: ${(err as Error).message}`
+        }
+      ],
+      "PDF render preparation failed"
+    );
+  }
+
+  const buffer = await renderHtmlToPdf(html);
+
+  res.setHeader("Content-Type", "application/pdf");
+  // Hardcoded filename — there's no BSG number yet (this endpoint is
+  // pre-save). The frontend overrides the saved filename on the
+  // download anchor anyway.
+  res.setHeader("Content-Disposition", `inline; filename="preview.pdf"`);
+  res.setHeader("Content-Length", buffer.length.toString());
+  // No cache: previews are render-on-demand and depend on the live
+  // wizard draft. Caching would defeat the iteration UX.
+  res.setHeader("Cache-Control", "no-store");
   res.status(200).end(buffer);
 }
