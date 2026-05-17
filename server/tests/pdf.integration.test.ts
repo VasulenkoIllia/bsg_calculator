@@ -1,11 +1,12 @@
 /**
  * Integration tests for GET /api/v1/documents/:number/pdf.
  *
- * Sprint 4.C interim — Puppeteer can't run in the test env (the
- * pool's NODE_ENV=test guard throws). These tests verify the
- * controller layer: 404 / auth / NotImplemented stub / oversized HTML
- * rejection. The actual Puppeteer rendering is exercised manually
- * during dev and via the (future) E2E Playwright job.
+ * Sprint 4.E.2 made this endpoint actually render via the shared
+ * `buildOfferPdfHtml` builder. Puppeteer itself is still disabled
+ * in tests (NODE_ENV=test trips the browser-pool guard), so we only
+ * verify the CONTROLLER LOGIC — input validation, shape checks,
+ * downstream call routing. The Puppeteer render is exercised manually
+ * during dev and via the future E2E Playwright job.
  */
 
 import { describe, expect, it } from "vitest";
@@ -33,7 +34,12 @@ function companyFixture(overrides: Partial<NewCompany> = {}): NewCompany {
   };
 }
 
-const samplePayload = { schemaVersion: 1, header: { documentNumber: "BSG-7100001" } };
+/**
+ * Minimal payload that does NOT match the wizard's
+ * DocumentTemplatePayload shape — triggers the 422 path in the
+ * controller before any Puppeteer call.
+ */
+const minimalPayload = { schemaVersion: 1, header: { documentNumber: "BSG-7100001" } };
 
 async function setupDocAndAuth(): Promise<{ token: string; number: string }> {
   await createTestUser({ email: "pdf@bsg.test", password: "password12345" });
@@ -42,22 +48,22 @@ async function setupDocAndAuth(): Promise<{ token: string; number: string }> {
   const res = await request(app)
     .post("/api/v1/documents")
     .set("Authorization", `Bearer ${token}`)
-    .send({ companyId: company.id, scope: "offer", payload: samplePayload });
+    .send({ companyId: company.id, scope: "offer", payload: minimalPayload });
   return { token, number: res.body.number };
 }
 
 describe("GET /api/v1/documents/:number/pdf", () => {
   it("requires auth", async () => {
-    const res = await request(app).get("/api/v1/documents/BSG-7100001/pdf");
+    const res = await request(app).get("/api/v1/documents/BSG-7100001-512587/pdf");
     expect(res.status).toBe(401);
   });
 
   it("returns 400 VALIDATION_FAILED for a malformed number (regex pre-check)", async () => {
     await createTestUser({ email: "pdf@bsg.test", password: "password12345" });
     const token = await loginAs("pdf@bsg.test", "password12345");
-    // BSG-9999999 (no suffix) is now rejected by the URL pattern
-    // BEFORE the DB lookup — defends Content-Disposition from CRLF
-    // injection on inputs that bypass the lookup.
+    // BSG-9999999 (no suffix) rejected by the URL pattern BEFORE the
+    // DB lookup — defends Content-Disposition from CRLF injection on
+    // inputs that could in some edge case bypass the lookup.
     const res = await request(app)
       .get("/api/v1/documents/BSG-9999999/pdf")
       .set("Authorization", `Bearer ${token}`);
@@ -74,32 +80,17 @@ describe("GET /api/v1/documents/:number/pdf", () => {
     expect(res.status).toBe(404);
   });
 
-  it("returns 501 NOT_IMPLEMENTED when no renderedHtml is provided (Sprint 4.E pending)", async () => {
+  it("returns 422 VALIDATION_FAILED when payload lacks wizard shape", async () => {
+    // The shape-check guard intercepts BEFORE the Puppeteer pool is
+    // touched, so this test runs cleanly even though Chromium is
+    // disabled in NODE_ENV=test. minimalPayload above is the smoking
+    // gun — it only carries schemaVersion + header.
     const { token, number } = await setupDocAndAuth();
     const res = await request(app)
       .get(`/api/v1/documents/${number}/pdf`)
       .set("Authorization", `Bearer ${token}`);
-    expect(res.status).toBe(501);
-    expect(res.body.error.code).toBe("NOT_IMPLEMENTED");
-    expect(res.body.error.message).toMatch(/Sprint 4\.E/i);
-  });
-
-  it("rejects oversized renderedHtml input via large query string", async () => {
-    const { token, number } = await setupDocAndAuth();
-    // ~10kb of `x` — well below our 2MB cap so it reaches the
-    // ValidationError branch ONLY if the cap shrinks. Today the
-    // request hits NotImplementedError instead because the 2MB
-    // check is only consulted after the dev-only `renderedHtml`
-    // path branches. Test the contract: with a renderedHtml param
-    // present, the body is processed.
-    const html = "<html><body>tiny</body></html>";
-    const res = await request(app)
-      .get(`/api/v1/documents/${number}/pdf?renderedHtml=${encodeURIComponent(html)}`)
-      .set("Authorization", `Bearer ${token}`);
-    // Sprint 4.C: Puppeteer disabled in tests → returns 500 from the
-    // pool guard. Sprint 4.E: real rendering will return 200 + PDF
-    // bytes. Both outcomes are non-501, which is what this test
-    // really documents.
-    expect(res.status).not.toBe(501);
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("VALIDATION_FAILED");
+    expect(res.body.error.message).toMatch(/payload not in DocumentTemplatePayload shape/i);
   });
 });

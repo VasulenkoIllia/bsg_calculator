@@ -71,8 +71,8 @@ describe("DocumentViewPage — preview path", () => {
   });
 });
 
-describe("DocumentViewPage — disabled Download PDF", () => {
-  it("renders Download PDF as disabled with the Sprint 4.E.2 hint", async () => {
+describe("DocumentViewPage — Download PDF", () => {
+  it("renders Download PDF as enabled (Sprint 4.E.2 wired the real flow)", async () => {
     vi.spyOn(documentsApi, "getDocumentByNumber").mockResolvedValueOnce(
       fixtureDocument()
     );
@@ -81,8 +81,7 @@ describe("DocumentViewPage — disabled Download PDF", () => {
 
     await waitFor(() => {
       const btn = screen.getByRole("button", { name: /download pdf/i });
-      expect(btn).toBeDisabled();
-      expect(screen.getByText(/Sprint 4\.E\.2/i)).toBeInTheDocument();
+      expect(btn).toBeEnabled();
     });
   });
 });

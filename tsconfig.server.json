@@ -10,15 +10,18 @@
   //   - `src/shared/**` — escapeHtml + any Node-safe utilities.
   //   - `src/components/calculator/{snapshotShape,derivedSummaryShape}.ts`
   //     — backend payload contracts.
-  //   - `src/components/document-wizard/wizard/layoutHelpers.ts`
-  //   - `src/components/document-wizard/types.ts` — DocumentTemplatePayload
-  //     shape (interfaces only, no runtime).
+  //   - `src/components/document-wizard/**` — buildOfferPdfHtml +
+  //     agreementPdf + offerPdf + pdf-kit. Pure-string HTML builder
+  //     consumed by server/modules/pdf/pdf.controller.ts to render
+  //     documents via Puppeteer. NO React imports anywhere — all
+  //     files in this tree are Node-safe by design.
   //
   // Run:
   //   npx tsc -p tsconfig.server.json --noEmit
   //
-  // The PDF builder (`buildOfferPdfHtml.ts`, `offerPdf/sections/*`,
-  // `agreementPdf/*`) is added when Phase 8.4 wires Puppeteer.
+  // Sprint 4.E.2 (2026-05-17): expanded document-wizard glob from
+  // just-types to the full module so the server can call
+  // `buildOfferPdfHtml(payload)` directly.
   // ────────────────────────────────────────────────────────────────
   "compilerOptions": {
     "target": "ES2022",
@@ -47,8 +50,18 @@
     "src/shared/**/*.ts",
     "src/components/calculator/snapshotShape.ts",
     "src/components/calculator/derivedSummaryShape.ts",
+    // Document-wizard subset that the PDF builder needs. We include
+    // ONLY the pure-string HTML files — DocumentWizardPanel.tsx and
+    // wizard/** are React, intentionally left out so the server tree
+    // doesn't accidentally drag in any UI deps.
+    "src/components/document-wizard/buildOfferPdfHtml.ts",
+    "src/components/document-wizard/buildPdfUiKitHtml.ts",
+    "src/components/document-wizard/legalDefaults.ts",
+    "src/components/document-wizard/types.ts",
     "src/components/document-wizard/wizard/layoutHelpers.ts",
-    "src/components/document-wizard/types.ts"
+    "src/components/document-wizard/offerPdf/**/*.ts",
+    "src/components/document-wizard/agreementPdf/**/*.ts",
+    "src/components/document-wizard/pdf-kit/**/*.ts"
   ],
   "exclude": ["**/*.test.ts", "**/*.test.tsx", "**/node_modules/**"]
 }

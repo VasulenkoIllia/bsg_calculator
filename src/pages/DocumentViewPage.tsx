@@ -15,7 +15,7 @@
 
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ApiError } from "../api/client.js";
+import { ApiError, apiClient } from "../api/client.js";
 import * as documentsApi from "../api/documents.js";
 import { buildOfferPdfHtml } from "../components/document-wizard/index.js";
 import type { DocumentTemplatePayload } from "../components/document-wizard/index.js";
@@ -80,17 +80,47 @@ export function DocumentViewPage() {
     }
   }
 
-  // Download PDF is intentionally disabled until Sprint 4.E.2 ships
-  // both the shared server-side template module AND a Bearer-aware
-  // download flow (either signed-URL `?token=xxx` or axios arraybuffer
-  // + Blob URL). The earlier `window.open()` approach was broken twice
-  // over: (a) no Authorization header → 401, (b) backend returned 501
-  // even after auth because the template module doesn't exist yet.
-  // Until then we render the button as disabled with a helpful tooltip
-  // — the inline iframe preview below is the canonical way to see the
-  // document right now.
-  const pdfDownloadDisabledReason =
-    "PDF download lands in Sprint 4.E.2. Use the preview below for now.";
+  // PDF download via axios arraybuffer + Blob URL. The earlier
+  // `window.open()` approach didn't attach the Bearer header, which
+  // requireAuth needs. axios pipes the response through our existing
+  // interceptors (refresh-on-401, ApiError envelope), then we wrap
+  // the Buffer in a Blob URL and trigger a hidden-anchor click for
+  // the actual download. The Blob URL is revoked on the next tick
+  // so it doesn't leak.
+  const [pdfPending, setPdfPending] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
+  async function handleDownloadPdf(): Promise<void> {
+    if (!number) return;
+    setPdfPending(true);
+    setPdfError(null);
+    try {
+      const res = await apiClient.get<ArrayBuffer>(
+        `/documents/${number}/pdf?download=true`,
+        { responseType: "arraybuffer" }
+      );
+      const blob = new Blob([res.data], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${number}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      // Defer revoke so the browser has time to start the download.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setPdfError(err.message);
+      } else {
+        // eslint-disable-next-line no-console
+        console.error("[DocumentViewPage] PDF download unexpected", err);
+        setPdfError("Failed to download PDF.");
+      }
+    } finally {
+      setPdfPending(false);
+    }
+  }
 
   if (docQuery.isLoading) {
     return <p className="text-sm text-slate-500">Loading document…</p>;
@@ -135,13 +165,12 @@ export function DocumentViewPage() {
         <div className="mt-5 flex flex-wrap items-center gap-3">
           <button
             type="button"
-            disabled
-            title={pdfDownloadDisabledReason}
+            onClick={handleDownloadPdf}
+            disabled={pdfPending}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Download PDF
+            {pdfPending ? "Preparing PDF…" : "Download PDF"}
           </button>
-          <span className="text-xs text-slate-500">{pdfDownloadDisabledReason}</span>
           <button
             type="button"
             onClick={handleUseAsTemplate}
@@ -151,6 +180,12 @@ export function DocumentViewPage() {
             {templatePending ? "Creating draft…" : "Use as Template"}
           </button>
         </div>
+
+        {pdfError ? (
+          <p role="alert" className="mt-3 text-sm text-red-700">
+            {pdfError}
+          </p>
+        ) : null}
 
         {templateError ? (
           <p role="alert" className="mt-3 text-sm text-red-700">

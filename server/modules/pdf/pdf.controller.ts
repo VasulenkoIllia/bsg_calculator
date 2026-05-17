@@ -2,35 +2,23 @@
  * GET /api/v1/documents/:number/pdf — stream a rendered PDF.
  *
  * Pipeline:
- *   1. Load the document by number (404 if missing).
- *   2. Frontend's `buildOfferPdfHtml` runs server-side via shared
- *      TypeScript transpilation — `documents.payload` is expected to
- *      be a `DocumentTemplatePayload` shape (wizard SaveButton emits
- *      that shape in Sprint 4.E).
- *   3. Puppeteer renders → Buffer.
- *   4. Stream to client with Content-Disposition controlled by
+ *   1. Validate the URL :number against the BSG-XXXXXXX-YYYYYY regex.
+ *   2. Load the document by number (404 if missing).
+ *   3. Shape-check the persisted payload — surface 422 if it doesn't
+ *      match DocumentTemplatePayload (e.g. legacy / calc-only saves).
+ *   4. Server-side render via `buildOfferPdfHtml` (shared with the
+ *      wizard's Preview iframe; included from tsconfig.server.json
+ *      since Sprint 4.E.2).
+ *   5. Puppeteer renders → Buffer.
+ *   6. Stream to client with Content-Disposition controlled by
  *      `?download=true`.
- *
- * Sprint 4.C limitation: the PDF builder lives in `src/components/
- * document-wizard/` — that path is compiled with the frontend tsconfig
- * (NodeNext, .js suffix). We can't import it directly from server/
- * yet without a build-time bundle step. As an interim, this endpoint
- * accepts pre-rendered HTML via the `?renderedHtml=` query (FOR
- * INTERNAL TESTING ONLY) — production wiring lands in Sprint 4.E
- * along with a shared `src/document-templates/` package.
- *
- * Returns 422 when the payload shape can't be rendered (so the
- * frontend can show "render failed — re-save to fix").
  */
 
 import type { Request, Response } from "express";
-import { isProd } from "../../config/env";
+import { buildOfferPdfHtml } from "../../../src/components/document-wizard/buildOfferPdfHtml";
+import type { DocumentTemplatePayload } from "../../../src/components/document-wizard/types";
 import { logger } from "../../middleware/logger";
-import {
-  ForbiddenError,
-  NotImplementedError,
-  ValidationError
-} from "../../shared/errors";
+import { ValidationError } from "../../shared/errors";
 import { getRawDocumentByNumber } from "../documents/documents.service";
 import { renderHtmlToPdf } from "./pdf.service";
 
@@ -38,7 +26,7 @@ import { renderHtmlToPdf } from "./pdf.service";
  * Format check for the BSG-XXXXXXX-YYYYYY document number passed via
  * the URL. Two layers of defence:
  *   1. The DB lookup further down returns 404 for any non-matching
- *      string, which is the primary guard.
+ *      string — primary guard.
  *   2. This regex check, run BEFORE the lookup, defends the
  *      Content-Disposition filename header from CRLF / quote
  *      injection on inputs that could in some routing edge case
@@ -46,6 +34,25 @@ import { renderHtmlToPdf } from "./pdf.service";
  *      `getRawDocumentByNumber`).
  */
 const DOCUMENT_NUMBER_PATTERN = /^BSG-\d{7}-[0-9A-Z]{6}$/i;
+
+/**
+ * Best-effort runtime check that the persisted payload is a wizard-
+ * style DocumentTemplatePayload. Same logic as the frontend's
+ * `asWizardPayload` in DocumentViewPage — the four MUST-HAVE top-
+ * level keys that `buildOfferPdfHtml` dereferences are checked. A
+ * deeper-shape mismatch surfaces as a thrown error from
+ * `buildOfferPdfHtml`, which the caller turns into a 422.
+ */
+function isWizardPayload(payload: unknown): payload is DocumentTemplatePayload {
+  if (!payload || typeof payload !== "object") return false;
+  const p = payload as Record<string, unknown>;
+  return (
+    typeof p.documentScope === "string" &&
+    typeof p.header === "object" &&
+    typeof p.layout === "object" &&
+    typeof p.agreementParties === "object"
+  );
+}
 
 export async function downloadPdfController(
   req: Request,
@@ -62,58 +69,47 @@ export async function downloadPdfController(
 
   const doc = await getRawDocumentByNumber(number);
 
-  // Sprint 4.C interim — the PDF builder isn't shared between server
-  // and src/. Until Sprint 4.E.2 ships the shared template module,
-  // expose a debug-friendly NOT_IMPLEMENTED so callers see why.
-  //
-  // The plumbing (acquireBrowser → renderHtmlToPdf → stream) is
-  // fully wired. Once the shared template module exists, this
-  // controller will swap to:
-  //
-  //   const html = buildOfferPdfHtml(doc.payload as DocumentTemplatePayload);
-  //   const buffer = await renderHtmlToPdf(html);
-  //
-  // and the NotImplementedError below disappears.
-  const renderedHtml = typeof req.query.renderedHtml === "string"
-    ? req.query.renderedHtml
-    : undefined;
-
-  if (!renderedHtml) {
+  if (!isWizardPayload(doc.payload)) {
     logger.warn(
       { number, payloadKeys: Object.keys((doc.payload as Record<string, unknown>) ?? {}) },
-      "[pdf] no server-side template builder yet — Sprint 4.E.2 pending"
+      "[pdf] payload doesn't match DocumentTemplatePayload shape — cannot render"
     );
-    throw new NotImplementedError(
-      "PDF rendering requires Sprint 4.E.2 (shared template module). " +
-        "Pass `?renderedHtml=<encoded>` for development testing only."
-    );
-  }
-
-  // SECURITY: the renderedHtml path is a Sprint 4.C development
-  // hatch — it feeds arbitrary HTML into a Puppeteer Chromium running
-  // with --no-sandbox, which (for an authenticated operator) could be
-  // chained into SSRF / file:// probes / metadata-endpoint reads. The
-  // hatch MUST be disabled in production. The compile-time `isProd`
-  // guard below also defends test environments because tests set
-  // NODE_ENV=test and never go through this path.
-  if (isProd) {
-    throw new ForbiddenError(
-      "Inline HTML render is a development-only path; Sprint 4.E.2 will ship the production renderer."
-    );
-  }
-
-  if (renderedHtml.length > 2_000_000) {
-    // Cap absurdly-large HTML payloads so a bug somewhere doesn't
-    // OOM the renderer. (Note: query-string length is also limited
-    // by Node's HTTP parser to ~16KB, so this cap only fires if the
-    // path is ever moved to the POST body.)
     throw new ValidationError(
-      [{ path: ["renderedHtml"], message: "rendered HTML exceeds 2MB cap" }],
-      "Render input too large"
+      [
+        {
+          path: ["payload"],
+          message: "Document payload doesn't match wizard shape"
+        }
+      ],
+      "Cannot render — payload not in DocumentTemplatePayload shape"
     );
   }
 
-  const buffer = await renderHtmlToPdf(renderedHtml);
+  // Build the HTML server-side using the SAME builder the wizard's
+  // Preview iframe uses (shared via tsconfig.server.json glob since
+  // Sprint 4.E.2). Wrapped in try/catch so a deeper-shape mismatch
+  // (e.g. payload.layout missing a sub-field the builder dereferences)
+  // surfaces as 422, not an unhandled 500.
+  let html: string;
+  try {
+    html = buildOfferPdfHtml(doc.payload);
+  } catch (err) {
+    logger.warn(
+      { number, err: (err as Error).message },
+      "[pdf] buildOfferPdfHtml threw — payload likely incomplete"
+    );
+    throw new ValidationError(
+      [
+        {
+          path: ["payload"],
+          message: `buildOfferPdfHtml failed: ${(err as Error).message}`
+        }
+      ],
+      "PDF render preparation failed"
+    );
+  }
+
+  const buffer = await renderHtmlToPdf(html);
 
   // `number` already passed the regex check above, so safe to use in
   // Content-Disposition without further escaping.
