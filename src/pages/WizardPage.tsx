@@ -12,7 +12,9 @@ import {
 import type { DocumentTemplatePayload, WizardStep } from "../components/document-wizard/index.js";
 import type { DocumentScope } from "../components/document-wizard/legalDefaults.js";
 import { SaveDocumentModal } from "../components/SaveDocumentModal.js";
+import { WizardBackendBar } from "../components/WizardBackendBar.js";
 import type * as documentsApi from "../api/documents.js";
+import type { PublicCompany } from "../api/types.js";
 import { useCalculator } from "../contexts/CalculatorContext.js";
 import { printHtmlViaIframe } from "../lib/printHtmlViaIframe.js";
 
@@ -207,33 +209,33 @@ export function WizardPage() {
     setWizardActionMessage('Print dialog opened. Choose "Save as PDF" to export.');
   };
 
-  // Sprint 4.E: "Save document" — opens SaveDocumentModal on the
-  // last wizard step (Parties & Signatures, step 7). The modal
-  // collects company + optional deal + addendum and POSTs to
-  // /api/v1/documents. Backend allocates BSG-XXXXX atomically.
+  // Sprint 4.E (revised 2026-05-17): "Save document" target is
+  // picked UP FRONT (top bar) so the operator commits to a company
+  // before spending 3 minutes filling the wizard. The Save button
+  // lives in WizardBackendBar — visible on every step, disabled
+  // until a company is picked. The modal only collects the addendum.
+  const [selectedCompany, setSelectedCompany] = useState<PublicCompany | null>(null);
+  const [selectedDealId, setSelectedDealId] = useState<string>("");
   const [saveDocOpen, setSaveDocOpen] = useState(false);
-  const isLastStep = wizardStep === 7;
+
+  const backendScope = toBackendScope(wizardDraft.documentScope);
+  const scopeLabel =
+    backendScope === "offer"
+      ? "Offer"
+      : backendScope === "agreement"
+        ? "Agreement"
+        : "Offer + Agreement";
 
   return (
     <>
-      {isLastStep ? (
-        <div className="mb-4 flex flex-col gap-2 rounded-2xl border border-blue-200 bg-blue-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-blue-900">Ready to save?</h2>
-            <p className="mt-1 text-xs text-blue-800">
-              The backend will assign the next BSG-XXXXX number atomically. You
-              can attach the document to a company + optional deal.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setSaveDocOpen(true)}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
-          >
-            Save document…
-          </button>
-        </div>
-      ) : null}
+      <WizardBackendBar
+        selectedCompany={selectedCompany}
+        onCompanyChange={setSelectedCompany}
+        selectedDealId={selectedDealId}
+        onDealIdChange={setSelectedDealId}
+        scopeLabel={scopeLabel}
+        onOpenSaveDialog={() => setSaveDocOpen(true)}
+      />
 
       <DocumentWizardPanel
         draft={wizardDraft}
@@ -252,12 +254,17 @@ export function WizardPage() {
         actionMessage={wizardActionMessage}
       />
 
-      <SaveDocumentModal
-        open={saveDocOpen}
-        onClose={() => setSaveDocOpen(false)}
-        payload={wizardDraft as unknown as { schemaVersion?: number } & Record<string, unknown>}
-        scope={toBackendScope(wizardDraft.documentScope)}
-      />
+      {selectedCompany ? (
+        <SaveDocumentModal
+          open={saveDocOpen}
+          onClose={() => setSaveDocOpen(false)}
+          companyId={selectedCompany.id}
+          hubspotDealId={selectedDealId}
+          companyName={selectedCompany.name}
+          payload={wizardDraft as unknown as { schemaVersion?: number } & Record<string, unknown>}
+          scope={backendScope}
+        />
+      ) : null}
     </>
   );
 }
