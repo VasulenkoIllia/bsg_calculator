@@ -60,18 +60,26 @@ export async function useAsTemplateController(
 }
 
 /**
- * GET /api/v1/numbering/peek — preview the next BSG-XXXXX without
- * advancing the sequence. Wizard uses this to show "Document Number:
- * BSG-7100024 (assigned when saved)" on Step 1.
+ * GET /api/v1/numbering/peek[?hubspotCompanyId=…] — preview the next
+ * BSG-<seq>-<suffix> without advancing the sequence. Wizard uses this
+ * to show "Document Number: BSG-7100024-874808" on Step 1 (Header).
  *
- * Note: two near-simultaneous peeks return the SAME number; the real
- * allocation happens inside POST /documents and may be different.
+ * When `hubspotCompanyId` is omitted, the suffix is rendered as
+ * `XXXXXX` so the wizard can show a partial preview before the
+ * operator picks a company.
+ *
+ * Note: two near-simultaneous peeks return the SAME seq; the real
+ * allocation happens inside POST /documents and may be different
+ * if another save lands in between.
  */
 export async function peekNumberController(
-  _req: Request,
+  req: Request,
   res: Response
 ): Promise<void> {
-  const next = await peekNextNumber(db);
+  const raw = req.query.hubspotCompanyId;
+  const hubspotCompanyId =
+    typeof raw === "string" && raw.length > 0 && raw.length <= 64 ? raw : undefined;
+  const next = await peekNextNumber(db, hubspotCompanyId);
   res.status(200).json({ next });
 }
 

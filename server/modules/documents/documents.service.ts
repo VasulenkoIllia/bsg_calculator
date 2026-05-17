@@ -11,11 +11,12 @@
  * this file only deals with database state.
  */
 
+import { eq } from "drizzle-orm";
 import { db } from "../../db/client";
 import { parseDtoOrInternalError } from "../../shared/dto-parse";
 import { buildPage, type PageResult } from "../../shared/build-page";
 import { NotFoundError, ValidationError } from "../../shared/errors";
-import type { Document } from "../../db/schema";
+import { companies, type Document } from "../../db/schema";
 import { dealBelongsToCompany } from "../calculator-configs/calculator-configs.repository";
 import { insertCalculatorConfig } from "../calculator-configs/calculator-configs.repository";
 import {
@@ -123,7 +124,24 @@ export async function createDocument(
       }
     }
 
-    const number = await allocateNextNumber(tx);
+    // Look up the company's HubSpot id — required to build the
+    // BSG-<seq>-<suffix> document number where suffix = last 6 chars
+    // of hubspot_company_id. Inside the same TX so a non-existent
+    // companyId fails the document INSERT FK too (defence in depth).
+    const companyRow = await tx
+      .select({ hubspotCompanyId: companies.hubspotCompanyId })
+      .from(companies)
+      .where(eq(companies.id, body.companyId))
+      .limit(1);
+    const hubspotCompanyId = companyRow[0]?.hubspotCompanyId;
+    if (!hubspotCompanyId) {
+      throw new ValidationError(
+        [{ path: ["companyId"], message: "Company not found" }],
+        "Unknown companyId"
+      );
+    }
+
+    const number = await allocateNextNumber(tx, hubspotCompanyId);
     const inserted = await insertDocumentWithNumber(tx, {
       number,
       companyId: body.companyId,

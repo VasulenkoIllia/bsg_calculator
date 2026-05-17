@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { HeaderMetaStep } from "./wizard/steps/HeaderMetaStep.js";
 import { OtherFeesStep } from "./wizard/steps/OtherFeesStep.js";
 import { PartiesStep } from "./wizard/steps/PartiesStep.js";
@@ -30,6 +31,13 @@ export interface DocumentWizardPanelProps {
   onGeneratePdf: () => void;
   onRefreshFromCalculator: () => void;
   actionMessage: string | null;
+  /**
+   * Optional content rendered INSIDE Step 1 above HeaderMetaStep.
+   * Used by WizardPage to inject the backend-save target picker
+   * (company + deal + save button) so it lives next to Document
+   * Number / Document Type instead of as a standalone panel.
+   */
+  headerStepBeforeContent?: ReactNode;
 }
 
 export function DocumentWizardPanel({
@@ -46,7 +54,8 @@ export function DocumentWizardPanel({
   onHighlightVariablesChange,
   onGeneratePdf,
   onRefreshFromCalculator,
-  actionMessage
+  actionMessage,
+  headerStepBeforeContent
 }: DocumentWizardPanelProps) {
   const scope = draft.documentScope;
   const goNext = () => onStepChange(nextStep(scope, activeStep));
@@ -108,14 +117,17 @@ export function DocumentWizardPanel({
         <Stepper activeStep={activeStep} scope={scope} onStepChange={onStepChange} />
 
         {activeStep === 1 ? (
-          <HeaderMetaStep
-            draft={draft}
-            onDraftChange={onDraftChange}
-            onRefreshFromCalculator={onRefreshFromCalculator}
-            onContinueToNext={goNext}
-            onContinueToPreview={() => onStepChange(6)}
-            nextStepLabel={nextLabelFromCurrent}
-          />
+          <>
+            {headerStepBeforeContent}
+            <HeaderMetaStep
+              draft={draft}
+              onDraftChange={onDraftChange}
+              onRefreshFromCalculator={onRefreshFromCalculator}
+              onContinueToNext={goNext}
+              onContinueToPreview={() => onStepChange(6)}
+              nextStepLabel={nextLabelFromCurrent}
+            />
+          </>
         ) : null}
 
         {activeStep === 2 ? (

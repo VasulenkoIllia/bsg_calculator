@@ -1,27 +1,17 @@
 /**
- * Wizard backend bar — visible on every wizard step.
+ * Wizard backend bar — picks the document's target company + deal.
  *
- * Holds the "where does this document belong + what number will it
- * get" controls that operators need to choose UPFRONT, before they
- * spend 3 minutes filling the wizard. Moved out of the wizard step
- * tree on 2026-05-17 (Sprint 4.E revision) so:
- *   - Company / Deal picker lives at the top of /wizard from Step 1.
- *   - Document Number preview shows the BSG-XXXXX that will be
- *     allocated on save (via GET /numbering/peek). Real allocation
- *     happens inside the POST /documents TX and may differ if
- *     another save lands first — the preview is a hint, not a promise.
- *   - "Save document" button is the single explicit action that
- *     persists the wizard draft. Disabled until a company is picked.
+ * Rendered INSIDE Step 1 (Header / Meta) on /wizard so the operator
+ * commits to a save target before touching pricing. Once a company
+ * is picked, the wizard's Document Number field (in HeaderMetaStep)
+ * gets refreshed with the backend's BSG-<seq>-<companyTail6> preview.
  *
- * The bar is parent-controlled: every input value + setter is passed
- * in. WizardPage owns the state so the values survive step changes
- * (Wizard internals never re-mount this component on step navigation).
+ * Save button lives here too — disabled until a company is picked.
+ * The actual save happens via SaveDocumentModal (parent state).
  */
 
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "../api/client.js";
-import * as documentsApi from "../api/documents.js";
 import { useCompanyDeals } from "../hooks/useCompany.js";
 import { useCompanySearch } from "../hooks/useCompanySearch.js";
 import type { PublicCompany } from "../api/types.js";
@@ -31,7 +21,6 @@ export interface WizardBackendBarProps {
   onCompanyChange: (company: PublicCompany | null) => void;
   selectedDealId: string;
   onDealIdChange: (dealId: string) => void;
-  scopeLabel: string;
   onOpenSaveDialog: () => void;
 }
 
@@ -40,20 +29,11 @@ export function WizardBackendBar({
   onCompanyChange,
   selectedDealId,
   onDealIdChange,
-  scopeLabel,
   onOpenSaveDialog
 }: WizardBackendBarProps) {
   const [companyQuery, setCompanyQuery] = useState("");
   const companySearch = useCompanySearch(companyQuery);
   const dealsQuery = useCompanyDeals(selectedCompany?.id);
-
-  // Preview the next BSG-XXXXX number. Refetched on focus so a
-  // recently-saved document by another tab pushes the preview forward.
-  const numberPeek = useQuery({
-    queryKey: ["numbering", "peek"],
-    queryFn: () => documentsApi.peekNextNumber(),
-    staleTime: 10_000
-  });
 
   // Clear the deal selection when the company changes — a deal of
   // company A can never belong to company B (backend would 422).
@@ -62,22 +42,22 @@ export function WizardBackendBar({
   }, [selectedCompany?.id, onDealIdChange]);
 
   return (
-    <section className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4">
-      <header className="flex items-start justify-between">
+    <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+      <header className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-blue-900">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-900">
             Backend save target
-          </h2>
+          </p>
           <p className="mt-1 text-xs text-blue-800">
-            Pick the company (and optional deal) up-front; the
-            document number is reserved by the backend on save.
+            Pick the company first — the Document Number above updates
+            with the actual BSG-XXXXXXX-YYYYYY that will be reserved on save.
           </p>
         </div>
         <button
           type="button"
           onClick={onOpenSaveDialog}
           disabled={!selectedCompany}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="shrink-0 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           title={
             selectedCompany
               ? "Save the current wizard draft as a backend document"
@@ -88,9 +68,9 @@ export function WizardBackendBar({
         </button>
       </header>
 
-      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
         {/* Company picker */}
-        <div className="lg:col-span-2">
+        <div>
           <span className="block text-xs font-semibold uppercase tracking-wide text-blue-900">
             Company *
           </span>
@@ -181,26 +161,7 @@ export function WizardBackendBar({
             </select>
           )}
         </div>
-
-        {/* Number preview */}
-        <div>
-          <span className="block text-xs font-semibold uppercase tracking-wide text-blue-900">
-            Document Number
-          </span>
-          <div className="mt-1 rounded-lg border border-blue-200 bg-white px-3 py-2 font-mono text-sm font-semibold text-blue-900">
-            {numberPeek.isLoading ? (
-              <span className="text-slate-400">…</span>
-            ) : numberPeek.isError ? (
-              <span className="text-red-600">unavailable</span>
-            ) : (
-              numberPeek.data?.next ?? "—"
-            )}
-          </div>
-          <p className="mt-1 text-[10px] uppercase tracking-wide text-blue-700/70">
-            Reserved on save · scope: {scopeLabel}
-          </p>
-        </div>
       </div>
-    </section>
+    </div>
   );
 }

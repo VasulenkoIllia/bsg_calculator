@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   DocumentWizardPanel,
   buildDocumentHeaderMetaFromCalculator,
@@ -13,7 +14,7 @@ import type { DocumentTemplatePayload, WizardStep } from "../components/document
 import type { DocumentScope } from "../components/document-wizard/legalDefaults.js";
 import { SaveDocumentModal } from "../components/SaveDocumentModal.js";
 import { WizardBackendBar } from "../components/WizardBackendBar.js";
-import type * as documentsApi from "../api/documents.js";
+import * as documentsApi from "../api/documents.js";
 import type { PublicCompany } from "../api/types.js";
 import { useCalculator } from "../contexts/CalculatorContext.js";
 import { printHtmlViaIframe } from "../lib/printHtmlViaIframe.js";
@@ -210,33 +211,53 @@ export function WizardPage() {
   };
 
   // Sprint 4.E (revised 2026-05-17): "Save document" target is
-  // picked UP FRONT (top bar) so the operator commits to a company
-  // before spending 3 minutes filling the wizard. The Save button
-  // lives in WizardBackendBar — visible on every step, disabled
-  // until a company is picked. The modal only collects the addendum.
+  // picked on Step 1 (Header / Meta) next to Document Type +
+  // Document Number, so the operator sees the full BSG-XXXXXXX-YYYYYY
+  // preview before touching pricing. Save button is inside the bar
+  // (disabled until a company is picked). Modal only collects the
+  // addendum.
   const [selectedCompany, setSelectedCompany] = useState<PublicCompany | null>(null);
   const [selectedDealId, setSelectedDealId] = useState<string>("");
   const [saveDocOpen, setSaveDocOpen] = useState(false);
 
   const backendScope = toBackendScope(wizardDraft.documentScope);
-  const scopeLabel =
-    backendScope === "offer"
-      ? "Offer"
-      : backendScope === "agreement"
-        ? "Agreement"
-        : "Offer + Agreement";
+
+  // Live BSG-<seq>-<suffix> preview from the backend. When no company
+  // is picked, the backend returns "BSG-7100024-XXXXXX" so the
+  // operator visually sees that the suffix waits on company choice.
+  // staleTime 10s keeps the seq fresh against other tabs without
+  // hammering the endpoint.
+  const numberPeek = useQuery({
+    queryKey: ["numbering", "peek", selectedCompany?.hubspotCompanyId ?? null],
+    queryFn: () =>
+      documentsApi.peekNextNumber(
+        selectedCompany
+          ? { hubspotCompanyId: selectedCompany.hubspotCompanyId }
+          : undefined
+      ),
+    staleTime: 10_000
+  });
+
+  // Push the peek result into the wizard's documentNumber field so
+  // Step 1's input shows the live BSG-XXXXXXX-YYYYYY rather than the
+  // legacy BSG-DRAFT-XXXXX placeholder. We only overwrite when the
+  // current value still looks like a placeholder so a hand-edit by
+  // the operator isn't clobbered by the next peek refresh.
+  useEffect(() => {
+    const next = numberPeek.data?.next;
+    if (!next) return;
+    const current = wizardDraft.header.documentNumber;
+    const looksLikePlaceholder =
+      current.startsWith("BSG-DRAFT-") || current.startsWith("BSG-") === false || current.endsWith("XXXXXX") || current === next;
+    if (!looksLikePlaceholder && current.length > 0) return;
+    setWizardDraft(prev => ({
+      ...prev,
+      header: { ...prev.header, documentNumber: next }
+    }));
+  }, [numberPeek.data?.next]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>
-      <WizardBackendBar
-        selectedCompany={selectedCompany}
-        onCompanyChange={setSelectedCompany}
-        selectedDealId={selectedDealId}
-        onDealIdChange={setSelectedDealId}
-        scopeLabel={scopeLabel}
-        onOpenSaveDialog={() => setSaveDocOpen(true)}
-      />
-
       <DocumentWizardPanel
         draft={wizardDraft}
         onDraftChange={setWizardDraft}
@@ -252,6 +273,15 @@ export function WizardPage() {
         onGeneratePdf={handleWizardGeneratePdf}
         onRefreshFromCalculator={handleWizardRefillFromCalculator}
         actionMessage={wizardActionMessage}
+        headerStepBeforeContent={
+          <WizardBackendBar
+            selectedCompany={selectedCompany}
+            onCompanyChange={setSelectedCompany}
+            selectedDealId={selectedDealId}
+            onDealIdChange={setSelectedDealId}
+            onOpenSaveDialog={() => setSaveDocOpen(true)}
+          />
+        }
       />
 
       {selectedCompany ? (

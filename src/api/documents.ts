@@ -63,11 +63,20 @@ export async function useDocumentAsTemplate(
 }
 
 /**
- * GET /api/v1/numbering/peek — preview the next BSG-XXXXX. NOT the
- * eventual number — wizard saves under a TX-allocated number which
- * may differ if another save lands first.
+ * GET /api/v1/numbering/peek[?hubspotCompanyId=…] — preview the next
+ * BSG-<seq>-<suffix>. Without `hubspotCompanyId` the suffix is
+ * rendered as "XXXXXX" so the wizard can show a partial preview
+ * before the operator commits to a company.
+ *
+ * Two near-simultaneous peeks return the same seq; the real
+ * allocation happens inside POST /documents and MAY differ if
+ * another save lands first.
  */
-export async function peekNextNumber(): Promise<{ next: string }> {
-  const { data } = await apiClient.get<{ next: string }>("/numbering/peek");
+export async function peekNextNumber(
+  params?: { hubspotCompanyId?: string }
+): Promise<{ next: string }> {
+  const { data } = await apiClient.get<{ next: string }>("/numbering/peek", {
+    params: params?.hubspotCompanyId ? params : undefined
+  });
   return data;
 }

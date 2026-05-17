@@ -79,13 +79,22 @@ describe("GET /api/v1/numbering/peek", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns the seed value (BSG-7100001) before any documents are saved", async () => {
+  it("returns BSG-7100001-XXXXXX placeholder before any documents are saved", async () => {
     const token = await setupAuth();
     const res = await request(app)
       .get("/api/v1/numbering/peek")
       .set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ next: "BSG-7100001" });
+    expect(res.body).toEqual({ next: "BSG-7100001-XXXXXX" });
+  });
+
+  it("includes the company suffix when hubspotCompanyId query is provided", async () => {
+    const token = await setupAuth();
+    const res = await request(app)
+      .get("/api/v1/numbering/peek?hubspotCompanyId=426487875793")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.next).toBe("BSG-7100001-875793");
   });
 
   it("two consecutive peeks return the same number (peek doesn't advance)", async () => {
@@ -106,9 +115,12 @@ describe("POST /api/v1/documents", () => {
     expect(res.status).toBe(401);
   });
 
-  it("allocates the next BSG-XXXXX number and persists the doc", async () => {
+  it("allocates the next BSG-<seq>-<suffix> number and persists the doc", async () => {
     const token = await setupAuth();
-    const [company] = await db.insert(companies).values(companyFixture()).returning();
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "111122223333" }))
+      .returning();
 
     const res = await request(app)
       .post("/api/v1/documents")
@@ -120,7 +132,8 @@ describe("POST /api/v1/documents", () => {
       });
 
     expect(res.status).toBe(201);
-    expect(res.body.number).toBe("BSG-7100001");
+    // Suffix = last 6 chars of hubspotCompanyId.
+    expect(res.body.number).toBe("BSG-7100001-223333");
     expect(res.body.companyId).toBe(company.id);
     expect(res.body.scope).toBe("offer");
     expect(res.body.hubspotSyncState).toBe("not_synced");
@@ -150,7 +163,10 @@ describe("POST /api/v1/documents", () => {
 
   it("allocates SEQUENTIAL numbers across 3 consecutive saves", async () => {
     const token = await setupAuth();
-    const [company] = await db.insert(companies).values(companyFixture()).returning();
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "999999000000" }))
+      .returning();
 
     const numbers: string[] = [];
     for (let i = 0; i < 3; i++) {
@@ -160,7 +176,11 @@ describe("POST /api/v1/documents", () => {
         .send({ companyId: company.id, scope: "offer", payload: samplePayload });
       numbers.push(res.body.number);
     }
-    expect(numbers).toEqual(["BSG-7100001", "BSG-7100002", "BSG-7100003"]);
+    expect(numbers).toEqual([
+      "BSG-7100001-000000",
+      "BSG-7100002-000000",
+      "BSG-7100003-000000"
+    ]);
   });
 
   it("allocates DISTINCT numbers under concurrent saves (atomicity invariant)", async () => {
@@ -313,7 +333,10 @@ describe("GET /api/v1/documents — list + filters", () => {
 
   it("substring-search on number via ?q", async () => {
     const token = await setupAuth();
-    const [company] = await db.insert(companies).values(companyFixture()).returning();
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "555555111111" }))
+      .returning();
     await request(app)
       .post("/api/v1/documents")
       .set("Authorization", `Bearer ${token}`)
@@ -323,7 +346,7 @@ describe("GET /api/v1/documents — list + filters", () => {
       .get("/api/v1/documents?q=7100001")
       .set("Authorization", `Bearer ${token}`);
     expect(res.body.items).toHaveLength(1);
-    expect(res.body.items[0].number).toBe("BSG-7100001");
+    expect(res.body.items[0].number).toBe("BSG-7100001-111111");
   });
 });
 
@@ -386,14 +409,17 @@ describe("POST /api/v1/documents/:number/sync — Phase 9 stub", () => {
 describe("number allocation — TX rollback returns the number", () => {
   it("a failed INSERT rolls back the number, next save reuses it", async () => {
     const token = await setupAuth();
-    const [company] = await db.insert(companies).values(companyFixture()).returning();
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "777777222222" }))
+      .returning();
 
-    // First save grabs BSG-7100001.
+    // First save grabs BSG-7100001-222222.
     const first = await request(app)
       .post("/api/v1/documents")
       .set("Authorization", `Bearer ${token}`)
       .send({ companyId: company.id, scope: "offer", payload: samplePayload });
-    expect(first.body.number).toBe("BSG-7100001");
+    expect(first.body.number).toBe("BSG-7100001-222222");
 
     // A save with a bad calc reference triggers TX rollback BEFORE
     // the document INSERT — the number should NOT be consumed.
@@ -408,12 +434,12 @@ describe("number allocation — TX rollback returns the number", () => {
       });
     expect(failed.status).toBe(400);
 
-    // Next legitimate save should get BSG-7100002 (not 7100003).
+    // Next legitimate save should get BSG-7100002-222222 (not 7100003).
     const second = await request(app)
       .post("/api/v1/documents")
       .set("Authorization", `Bearer ${token}`)
       .send({ companyId: company.id, scope: "offer", payload: samplePayload });
-    expect(second.body.number).toBe("BSG-7100002");
+    expect(second.body.number).toBe("BSG-7100002-222222");
 
     // Sanity: only 2 documents in the DB.
     const rows = await db.select().from(documents);
