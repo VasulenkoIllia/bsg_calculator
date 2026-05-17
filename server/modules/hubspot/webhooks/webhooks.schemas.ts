@@ -33,14 +33,28 @@ export type SubscriptionType = z.infer<typeof subscriptionTypeSchema>;
  * don't care about (e.g. `attemptNumber`, `portalId`, `appId`) —
  * `.passthrough()` keeps them in the raw JSONB without forcing us
  * to model every shape.
+ *
+ * Sprint 5.F.2: `objectId` and `eventId` are now constrained to
+ * numeric strings (1–19 digits). HubSpot only ever sends numeric
+ * ids in either form (string or number). The strict validation is
+ * defence-in-depth against future processor code that builds upstream
+ * URLs from `objectId` — a non-numeric value would surface as a
+ * malformed payload (200 ack + drop) instead of slipping through to
+ * a hubspot.getCompany(...) call with a path segment we never expected.
  */
+const NUMERIC_ID = /^\d{1,19}$/;
+const numericIdField = z
+  .union([z.string(), z.number()])
+  .transform(v => String(v))
+  .refine(v => NUMERIC_ID.test(v), {
+    message: "must be a numeric HubSpot id (1–19 digits)"
+  });
+
 export const webhookEventSchema = z
   .object({
-    eventId: z.union([z.string(), z.number()]).transform(v => String(v)),
+    eventId: numericIdField,
     subscriptionType: subscriptionTypeSchema,
-    // `objectId` is a HubSpot id — sometimes number, sometimes string.
-    // Coerce to string for storage / comparison.
-    objectId: z.union([z.string(), z.number()]).transform(v => String(v)),
+    objectId: numericIdField,
     occurredAt: z.number().int().positive() // epoch ms
   })
   .passthrough();

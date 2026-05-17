@@ -15,6 +15,19 @@
  */
 
 import type { Request, Response } from "express";
+// ARCHITECTURE NOTE (Sprint 5.F.2 audit): the server imports the PDF
+// builder out of `src/components/document-wizard/` directly. The
+// "components/" path segment reads as React-UI even though the files
+// behind these specific imports are pure-string HTML builders with
+// no React deps (enforced by the tsconfig.server.json include glob —
+// only the `.ts` files in pdf-kit/, offerPdf/, agreementPdf/ are
+// pulled into the server tree). A cleaner home for these builders is
+// `src/shared/pdf-templates/`; the move is deferred to a dedicated
+// refactor (Sprint 5.F.4 / decisions.md) because relocating ~30
+// files would touch every wizard React import and we currently lack
+// E2E coverage to verify nothing broke. The visual-diff harness
+// would catch a regression in the OUTPUT, but a broken React state
+// hydration would need wizard E2E tests we haven't shipped yet.
 import { buildOfferPdfHtml } from "../../../src/components/document-wizard/buildOfferPdfHtml";
 import type { DocumentTemplatePayload } from "../../../src/components/document-wizard/types";
 import { logger } from "../../middleware/logger";
@@ -46,11 +59,17 @@ const DOCUMENT_NUMBER_PATTERN = /^BSG-\d{7}-[0-9A-Z]{6}$/i;
 function isWizardPayload(payload: unknown): payload is DocumentTemplatePayload {
   if (!payload || typeof payload !== "object") return false;
   const p = payload as Record<string, unknown>;
+  // `typeof null === "object"` in JS, so an explicit non-null check
+  // is required for each nested object key. Without it a payload
+  // like { documentScope:"offer", header:null, layout:null,
+  // agreementParties:null } would pass this guard and the deeper
+  // mismatch would surface as a thrown error inside buildOfferPdfHtml
+  // (still caught as 422, but the error message is more confusing).
   return (
     typeof p.documentScope === "string" &&
-    typeof p.header === "object" &&
-    typeof p.layout === "object" &&
-    typeof p.agreementParties === "object"
+    p.header !== null && typeof p.header === "object" &&
+    p.layout !== null && typeof p.layout === "object" &&
+    p.agreementParties !== null && typeof p.agreementParties === "object"
   );
 }
 

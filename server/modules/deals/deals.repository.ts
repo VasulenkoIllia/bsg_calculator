@@ -3,7 +3,7 @@
  */
 
 import { and, desc, eq, lt, or, sql } from "drizzle-orm";
-import { db } from "../../db/client";
+import { db, type DbOrTx } from "../../db/client";
 import { deals, type Deal, type NewDeal } from "../../db/schema";
 import { expectSingle } from "../../shared/db-helpers";
 import type { Cursor } from "../../shared/pagination";
@@ -61,6 +61,42 @@ export async function listDeals(args: ListDealsArgs): Promise<Deal[]> {
     .where(where)
     .orderBy(desc(deals.createdAt), desc(deals.id))
     .limit(args.limit);
+}
+
+/**
+ * Delete a single deal by HubSpot natural key. Returns the deleted
+ * row or undefined if no row matched. Accepts an optional transaction
+ * handle so it can compose with cascading deletes.
+ */
+export async function deleteDealByHubspotId(
+  hubspotDealId: string,
+  tx: DbOrTx = db
+): Promise<Deal | undefined> {
+  const rows = await tx
+    .delete(deals)
+    .where(eq(deals.hubspotDealId, hubspotDealId))
+    .returning();
+  return rows[0];
+}
+
+/**
+ * Delete ALL deals belonging to a company (by HubSpot company id).
+ * Used by the webhook processor on `company.deletion` events as the
+ * cascading first step before deleting the parent company — without
+ * this, the company DELETE would fail with FK violation (RESTRICT).
+ *
+ * Accepts an optional transaction handle so the caller can wrap this
+ * + the company delete in one atomic step.
+ */
+export async function deleteDealsByCompanyId(
+  hubspotCompanyId: string,
+  tx: DbOrTx = db
+): Promise<number> {
+  const rows = await tx
+    .delete(deals)
+    .where(eq(deals.hubspotCompanyId, hubspotCompanyId))
+    .returning({ id: deals.id });
+  return rows.length;
 }
 
 /** Upsert a deal row from the HubSpot mapper output. */

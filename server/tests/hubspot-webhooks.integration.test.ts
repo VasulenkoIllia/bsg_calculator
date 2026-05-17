@@ -24,14 +24,14 @@ import { db } from "../db/client";
 import {
   companies,
   deals,
-  hubspotWebhookEvents,
-  type NewCompany
+  hubspotWebhookEvents
 } from "../db/schema";
 import { env } from "../config/env";
 import { hubspot } from "../modules/hubspot/hubspot.client";
 import { HubspotUnreachableError, NotFoundError } from "../shared/errors";
 import { processWebhookBatch } from "../modules/hubspot/webhooks/webhooks.processor";
 import type { HubspotObject } from "../modules/hubspot/hubspot.types";
+import { companyFixture } from "./fixtures/company";
 import { app, createTestUser } from "./test-helpers";
 
 // ─── Helpers ──────────────────────────────────────────────────────
@@ -44,18 +44,6 @@ async function loginAs(email: string, password: string): Promise<string> {
     .send({ identifier: email, password });
   if (res.status !== 200) throw new Error(`loginAs failed: ${res.status}`);
   return res.body.accessToken;
-}
-
-function companyFixture(overrides: Partial<NewCompany> = {}): NewCompany {
-  return {
-    hubspotCompanyId: `hubspot-${Math.random().toString(36).slice(2)}`,
-    name: "Acme Holdings",
-    companyType: "direct_client",
-    hubspotCreatedAt: new Date("2026-01-01"),
-    hubspotModifiedAt: new Date("2026-01-01"),
-    hubspotRaw: {},
-    ...overrides
-  };
 }
 
 /**
@@ -161,7 +149,7 @@ describe("POST /api/v1/hubspot/webhooks — receiver", () => {
   it("rejects a tampered signature (403)", async () => {
     const body = [
       {
-        eventId: "evt-1",
+        eventId: "10000001",
         subscriptionType: "company.creation",
         objectId: "111",
         occurredAt: Date.now()
@@ -181,7 +169,7 @@ describe("POST /api/v1/hubspot/webhooks — receiver", () => {
   it("rejects a stale timestamp older than 5 minutes (403)", async () => {
     const body = [
       {
-        eventId: "evt-stale",
+        eventId: "10000002",
         subscriptionType: "company.creation",
         objectId: "222",
         occurredAt: Date.now()
@@ -201,13 +189,13 @@ describe("POST /api/v1/hubspot/webhooks — receiver", () => {
   it("accepts a valid signed payload and inserts pending rows (200)", async () => {
     const body = [
       {
-        eventId: "evt-creation",
+        eventId: "10000003",
         subscriptionType: "company.creation",
         objectId: "555",
         occurredAt: Date.now()
       },
       {
-        eventId: "evt-update",
+        eventId: "10000004",
         subscriptionType: "company.propertyChange",
         objectId: "555",
         occurredAt: Date.now()
@@ -224,7 +212,7 @@ describe("POST /api/v1/hubspot/webhooks — receiver", () => {
 
   it("dedupes a redelivered event (same hubspotEventId) — accepted=0, deduped=1", async () => {
     const evt = {
-      eventId: "evt-dup",
+      eventId: "10000005",
       subscriptionType: "company.creation",
       objectId: "777",
       occurredAt: Date.now()
@@ -241,11 +229,35 @@ describe("POST /api/v1/hubspot/webhooks — receiver", () => {
     expect(rows).toHaveLength(1);
   });
 
-  it("acks-and-drops a malformed payload shape (200 with malformed=true)", async () => {
+  it("acks-and-drops a malformed payload shape (200 with malformed=true + dropped count)", async () => {
     // HubSpot would never normally send this; if they ever change the
     // schema the receiver should LOG and ack so we don't fall into a
     // redelivery storm.
-    const body = [{ wrong: "shape" }];
+    const body = [{ wrong: "shape" }, { also: "wrong" }];
+    const res = await postSignedWebhook(body);
+    expect(res.status).toBe(200);
+    expect(res.body.malformed).toBe(true);
+    // Sprint 5.F.2.b: `dropped` now reflects the real array length
+    // instead of being hard-coded to 0.
+    expect(res.body.dropped).toBe(2);
+    expect(res.body.accepted).toBe(0);
+    const rows = await db.select().from(hubspotWebhookEvents);
+    expect(rows).toHaveLength(0);
+  });
+
+  it("acks-and-drops events with non-numeric objectId/eventId (Sprint 5.F.2 SSRF defence)", async () => {
+    // HubSpot ids are ALWAYS numeric. A non-numeric value reaching
+    // the processor would be passed into a URL path segment for
+    // hubspot.getCompany; the numericIdField regex catches it at
+    // the Zod boundary so the processor never sees it.
+    const body = [
+      {
+        eventId: "10000099",
+        subscriptionType: "company.creation",
+        objectId: "../injected/path",
+        occurredAt: Date.now()
+      }
+    ];
     const res = await postSignedWebhook(body);
     expect(res.status).toBe(200);
     expect(res.body.malformed).toBe(true);
@@ -258,7 +270,7 @@ describe("POST /api/v1/hubspot/webhooks — receiver", () => {
     // We log but don't 4xx — see receiver controller for rationale.
     const body = [
       {
-        eventId: "evt-contact",
+        eventId: "10000006",
         subscriptionType: "contact.creation",
         objectId: "999",
         occurredAt: Date.now()
@@ -267,6 +279,7 @@ describe("POST /api/v1/hubspot/webhooks — receiver", () => {
     const res = await postSignedWebhook(body);
     expect(res.status).toBe(200);
     expect(res.body.malformed).toBe(true);
+    expect(res.body.dropped).toBe(1);
   });
 });
 
@@ -544,6 +557,84 @@ describe("processWebhookBatch() — async event processing", () => {
     const [evt] = await db.select().from(hubspotWebhookEvents);
     expect(evt.outcome).toBe("upserted");
     expect((await db.select().from(deals)).length).toBe(1);
+  });
+
+  it("deal.propertyChange: refetches + upserts existing deal", async () => {
+    // Sprint 5.F.2.b: deal.propertyChange has the same fetch/map/upsert
+    // path as deal.creation but a different subscription string. This
+    // test guards against a future regression where a `subType`-switched
+    // branch starts treating propertyChange differently.
+    const [parent] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "HS-PC-1" }))
+      .returning();
+    await db.insert(deals).values({
+      hubspotDealId: "DEAL-PC-1",
+      hubspotCompanyId: parent.hubspotCompanyId,
+      name: "old-name",
+      hubspotCreatedAt: new Date(),
+      hubspotModifiedAt: new Date(),
+      hubspotRaw: {}
+    });
+    getDealSpy.mockResolvedValue(
+      hubspotDealObject("DEAL-PC-1", "HS-PC-1", { dealname: "new-name" })
+    );
+
+    await db.insert(hubspotWebhookEvents).values({
+      hubspotEventId: "evt-d-pc",
+      subscriptionType: "deal.propertyChange",
+      objectType: "deal",
+      hubspotObjectId: "DEAL-PC-1",
+      occurredAt: new Date(),
+      raw: {}
+    });
+
+    await processWebhookBatch();
+    const updated = await db
+      .select()
+      .from(deals)
+      .where(eq(deals.hubspotDealId, "DEAL-PC-1"));
+    expect(updated[0].name).toBe("new-name");
+    const [evt] = await db.select().from(hubspotWebhookEvents);
+    expect(evt.outcome).toBe("upserted");
+  });
+
+  it("deal.deletion: deletes the deal without touching the parent company", async () => {
+    // Sprint 5.F.2.b: deal.deletion was the only one of the 6
+    // subscription types with no processor coverage. This test asserts
+    // (a) the deal row is removed, (b) the parent company row is left
+    // alone, and (c) HubSpot is NOT contacted.
+    const [parent] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "HS-DD-1" }))
+      .returning();
+    await db.insert(deals).values({
+      hubspotDealId: "DEAL-DD-1",
+      hubspotCompanyId: parent.hubspotCompanyId,
+      name: "Doomed Deal",
+      hubspotCreatedAt: new Date(),
+      hubspotModifiedAt: new Date(),
+      hubspotRaw: {}
+    });
+
+    await db.insert(hubspotWebhookEvents).values({
+      hubspotEventId: "evt-d-del",
+      subscriptionType: "deal.deletion",
+      objectType: "deal",
+      hubspotObjectId: "DEAL-DD-1",
+      occurredAt: new Date(),
+      raw: {}
+    });
+
+    await processWebhookBatch();
+
+    expect(getDealSpy).not.toHaveBeenCalled();
+    expect((await db.select().from(deals)).length).toBe(0);
+    expect((await db.select().from(companies)).length).toBe(1);
+
+    const [evt] = await db.select().from(hubspotWebhookEvents);
+    expect(evt.status).toBe("processed");
+    expect(evt.outcome).toBe("deleted");
   });
 
   it("processes batch in occurredAt ASC order (oldest first)", async () => {

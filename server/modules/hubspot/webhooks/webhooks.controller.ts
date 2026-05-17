@@ -18,7 +18,10 @@ import { logger } from "../../../middleware/logger";
 import { TokenInvalidError } from "../../../shared/errors";
 import { hubspot } from "../hubspot.client";
 import { mapHubspotCompanyToRow } from "../hubspot.mapper";
-import { upsertCompany } from "../../companies/companies.repository";
+import {
+  findCompanyById,
+  upsertCompany
+} from "../../companies/companies.repository";
 import { insertEventIfNew } from "./webhooks.repository";
 import {
   webhookBodySchema,
@@ -40,7 +43,10 @@ function eventToRow(event: WebhookEvent, raw: unknown) {
     objectType,
     hubspotObjectId: event.objectId,
     occurredAt: new Date(event.occurredAt),
-    raw: raw as object
+    // Drizzle's jsonb column expects `unknown` (any JSON value); the
+    // previous `as object` cast was narrower than the column type AND
+    // would silently pass `null` since `typeof null === "object"`.
+    raw
   };
 }
 
@@ -58,11 +64,21 @@ export async function webhookReceiverController(
     // here is "HubSpot sent us a subscription we don't model". Log
     // and ack — they should not retry. Returning 400 would cause
     // HubSpot to redeliver on the same schedule.
+    // Compute how many events HubSpot tried to deliver in this batch
+    // so the response is honest about what we dropped. The body is
+    // expected to be a JSON array — count it if possible, otherwise
+    // surface `null` so the caller can distinguish "wrong shape at
+    // root" from "all N events were the wrong shape".
+    const droppedCount = Array.isArray(req.body) ? req.body.length : null;
     logger.warn(
-      { issues: parsed.error.issues.slice(0, 5) },
+      { issues: parsed.error.issues.slice(0, 5), droppedCount },
       "[hubspot:webhook] unrecognised payload shape — acking but skipping"
     );
-    res.status(200).json({ accepted: 0, dropped: 0, malformed: true });
+    res.status(200).json({
+      accepted: 0,
+      dropped: droppedCount,
+      malformed: true
+    });
     return;
   }
 
@@ -97,6 +113,17 @@ const refreshRequestSchema = z.object({
   companyIds: z.array(z.string().uuid()).min(1).max(20)
 });
 
+/**
+ * Manual operator resync — refetch each given company from HubSpot
+ * and upsert. Bearer-auth required, but there is NO per-resource
+ * ownership check: every authenticated user may refresh any company.
+ *
+ * Sprint 5.F.2: this is an INTENTIONAL design gap, consistent with
+ * the Sprint 2.8 decision to ship without RBAC. When admin/regular-
+ * user roles are introduced (Phase 9+), this endpoint should gate on
+ * the `admin` role before any per-resource check would even matter.
+ * Documented in `docs/decisions.md` → Sprint 5.F entry.
+ */
 export async function refreshController(req: Request, res: Response): Promise<void> {
   if (!req.user) throw new TokenInvalidError();
   const body = refreshRequestSchema.parse(req.body ?? {});
@@ -108,16 +135,12 @@ export async function refreshController(req: Request, res: Response): Promise<vo
   const ids = body.companyIds;
   for (const id of ids) {
     try {
-      // Look up our row to get its hubspotCompanyId.
-      const { companies } = await import("../../../db/schema");
-      const { db } = await import("../../../db/client");
-      const { eq } = await import("drizzle-orm");
-      const rows = await db
-        .select()
-        .from(companies)
-        .where(eq(companies.id, id))
-        .limit(1);
-      const row = rows[0];
+      // Sprint 5.F.2: route the lookup through the companies repo
+      // (single chokepoint for table access — previously this used
+      // dynamic `await import()` of schema/db/eq inside the loop,
+      // which both bypassed the repository boundary AND added module-
+      // resolution cost per iteration).
+      const row = await findCompanyById(id);
       if (!row) {
         failed += 1;
         continue;

@@ -27,16 +27,23 @@
  * queue — TODO in decisions.md.
  */
 
-import { eq } from "drizzle-orm";
 import { db } from "../../../db/client";
-import { companies, deals, type HubspotWebhookEvent } from "../../../db/schema";
+import { type HubspotWebhookEvent } from "../../../db/schema";
 import { env } from "../../../config/env";
 import { logger } from "../../../middleware/logger";
 import { HubspotUnreachableError, NotFoundError } from "../../../shared/errors";
 import { hubspot } from "../hubspot.client";
 import { mapHubspotCompanyToRow, mapHubspotDealToRow } from "../hubspot.mapper";
-import { upsertCompany } from "../../companies/companies.repository";
-import { upsertDeal } from "../../deals/deals.repository";
+import {
+  deleteCompanyByHubspotId,
+  findCompanyByHubspotId,
+  upsertCompany
+} from "../../companies/companies.repository";
+import {
+  deleteDealByHubspotId,
+  deleteDealsByCompanyId,
+  upsertDeal
+} from "../../deals/deals.repository";
 import {
   listPendingEvents,
   markFailed,
@@ -81,17 +88,14 @@ async function processOne(
     if (isCompany) {
       // Deals first because the FK is RESTRICT in our schema — the
       // company DELETE would fail with FK violation if any deal still
-      // pointed at it.
+      // pointed at it. Both deletes share one transaction so we never
+      // observe "deals gone, company survives".
       await db.transaction(async tx => {
-        await tx
-          .delete(deals)
-          .where(eq(deals.hubspotCompanyId, event.hubspotObjectId));
-        await tx
-          .delete(companies)
-          .where(eq(companies.hubspotCompanyId, event.hubspotObjectId));
+        await deleteDealsByCompanyId(event.hubspotObjectId, tx);
+        await deleteCompanyByHubspotId(event.hubspotObjectId, tx);
       });
     } else {
-      await db.delete(deals).where(eq(deals.hubspotDealId, event.hubspotObjectId));
+      await deleteDealByHubspotId(event.hubspotObjectId);
     }
     return "deleted";
   }
@@ -124,12 +128,8 @@ async function processOne(
       // Deal upsert requires the parent company to be in our cache.
       // If it isn't, skip the deal — the next company event for it
       // (or a manual refresh) will reconcile.
-      const parent = await db
-        .select({ id: companies.hubspotCompanyId })
-        .from(companies)
-        .where(eq(companies.hubspotCompanyId, row.hubspotCompanyId))
-        .limit(1);
-      if (parent.length === 0) {
+      const parent = await findCompanyByHubspotId(row.hubspotCompanyId);
+      if (!parent) {
         return "filtered_out";
       }
       await upsertDeal(row);
@@ -143,15 +143,11 @@ async function processOne(
       // Same TX guarantee as the explicit deletion path above.
       if (isCompany) {
         await db.transaction(async tx => {
-          await tx
-            .delete(deals)
-            .where(eq(deals.hubspotCompanyId, event.hubspotObjectId));
-          await tx
-            .delete(companies)
-            .where(eq(companies.hubspotCompanyId, event.hubspotObjectId));
+          await deleteDealsByCompanyId(event.hubspotObjectId, tx);
+          await deleteCompanyByHubspotId(event.hubspotObjectId, tx);
         });
       } else {
-        await db.delete(deals).where(eq(deals.hubspotDealId, event.hubspotObjectId));
+        await deleteDealByHubspotId(event.hubspotObjectId);
       }
       return "deleted";
     }

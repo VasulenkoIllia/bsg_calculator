@@ -12,7 +12,8 @@
 import { describe, expect, it } from "vitest";
 import request from "supertest";
 import { db } from "../db/client";
-import { companies, type NewCompany } from "../db/schema";
+import { companies } from "../db/schema";
+import { companyFixture } from "./fixtures/company";
 import { app, createTestUser } from "./test-helpers";
 
 async function loginAs(email: string, password: string): Promise<string> {
@@ -20,18 +21,6 @@ async function loginAs(email: string, password: string): Promise<string> {
     .post("/api/v1/auth/login")
     .send({ identifier: email, password });
   return res.body.accessToken;
-}
-
-function companyFixture(overrides: Partial<NewCompany> = {}): NewCompany {
-  return {
-    hubspotCompanyId: `hubspot-${Math.random().toString(36).slice(2)}`,
-    name: "Acme Holdings",
-    companyType: "direct_client",
-    hubspotCreatedAt: new Date("2026-01-01"),
-    hubspotModifiedAt: new Date("2026-01-01"),
-    hubspotRaw: {},
-    ...overrides
-  };
 }
 
 /**

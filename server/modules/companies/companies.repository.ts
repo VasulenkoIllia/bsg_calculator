@@ -10,7 +10,7 @@
  */
 
 import { and, desc, eq, ilike, lt, or, sql } from "drizzle-orm";
-import { db } from "../../db/client";
+import { db, type DbOrTx } from "../../db/client";
 import { companies, type Company, type NewCompany } from "../../db/schema";
 import { expectSingle } from "../../shared/db-helpers";
 import type { Cursor } from "../../shared/pagination";
@@ -93,4 +93,30 @@ export async function upsertCompany(row: NewCompany): Promise<Company> {
     })
     .returning();
   return expectSingle(rows, "upsertCompany");
+}
+
+/**
+ * Delete a company row by its HubSpot natural key.
+ *
+ * IMPORTANT: deals.hubspot_company_id has FK ON DELETE RESTRICT, so
+ * callers MUST delete the company's deals first (or wrap the two
+ * deletes in a transaction) — see deleteDealsByCompanyId in
+ * deals.repository.ts. This function is the single chokepoint for
+ * company deletion so any future event/cache invalidation hooks
+ * (Phase 9 outbound Note write-back) land here.
+ *
+ * Accepts an optional transaction handle so the caller can compose
+ * with the cascading deal delete inside one TX.
+ *
+ * Returns the deleted row, or undefined if no row matched.
+ */
+export async function deleteCompanyByHubspotId(
+  hubspotCompanyId: string,
+  tx: DbOrTx = db
+): Promise<Company | undefined> {
+  const rows = await tx
+    .delete(companies)
+    .where(eq(companies.hubspotCompanyId, hubspotCompanyId))
+    .returning();
+  return rows[0];
 }

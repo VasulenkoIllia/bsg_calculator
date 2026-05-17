@@ -36,6 +36,13 @@
       "when": 1779021498444,
       "tag": "0004_complex_squadron_sinister",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1779049489703,
+      "tag": "0005_strong_thor",
+      "breakpoints": true
     }
   ]
 }

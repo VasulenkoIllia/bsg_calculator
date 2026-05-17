@@ -13,9 +13,9 @@ import {
   calculatorConfigs,
   companies,
   deals,
-  type NewCompany,
   type NewDeal
 } from "../db/schema";
+import { companyFixture } from "./fixtures/company";
 import { app, createTestUser } from "./test-helpers";
 
 async function loginAs(email: string, password: string): Promise<string> {
@@ -24,18 +24,6 @@ async function loginAs(email: string, password: string): Promise<string> {
     .send({ identifier: email, password });
   if (res.status !== 200) throw new Error(`loginAs failed: ${res.status}`);
   return res.body.accessToken;
-}
-
-function companyFixture(overrides: Partial<NewCompany> = {}): NewCompany {
-  return {
-    hubspotCompanyId: `hubspot-${Math.random().toString(36).slice(2)}`,
-    name: "Acme Holdings",
-    companyType: "direct_client",
-    hubspotCreatedAt: new Date("2026-01-01"),
-    hubspotModifiedAt: new Date("2026-01-01"),
-    hubspotRaw: {},
-    ...overrides
-  };
 }
 
 function dealFixture(

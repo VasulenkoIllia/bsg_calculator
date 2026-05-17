@@ -68,10 +68,18 @@ export const hubspotWebhookEvents = pgTable(
   },
   table => ({
     // Worker's hot path: SELECT … WHERE status = 'pending'
-    // ORDER BY occurred_at LIMIT 50. Partial index is small
-    // (only pending rows; processed/failed are the majority).
+    // AND (attempts = 0 OR received_at + (attempts × 30s) ≤ now())
+    // ORDER BY occurred_at, id LIMIT 50.
+    //
+    // Sprint 5.F.2: the index now covers (occurredAt, receivedAt,
+    // attempts) so the planner can do an index-only scan that
+    // (a) filters pending rows via the partial predicate,
+    // (b) evaluates the backoff inequality without a heap re-check,
+    // and (c) returns rows in ORDER BY occurred_at order without a sort.
+    // Partial-only on pending — processed/failed rows are the long-tail
+    // majority and don't need this index.
     pendingIdx: index("hubspot_webhook_events_pending_idx")
-      .on(table.occurredAt)
+      .on(table.occurredAt, table.receivedAt, table.attempts)
       .where(sql`status = 'pending'`),
     // Operator dashboard: "recent events for company X". Cheap.
     objectIdx: index("hubspot_webhook_events_object_idx").on(
