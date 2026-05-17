@@ -3722,3 +3722,88 @@ Use this file to record meaningful technical decisions for the project.
     `documents.hubspot_note_id` + flip `hubspot_sync_state` to
     `synced`. Sprint 4 keeps the stub returning 501 so the schema
     is ready when Phase 9 lands.
+
+### Decision: Sprint 4 — documents + PDF module shipped (A → E.fix)
+- Date: 2026-05-17
+- Context:
+  - Pre-Sprint-4 locked decisions A2 + B2 + C1 + D3 (see earlier
+    record). Sprint 4 implemented the schema + module + UI plus
+    several post-smoke iterations driven by user feedback.
+  - 12 commits between `dd7b46a` and the F.4 doc sync.
+- Decision (high-level outcomes):
+  - **Document numbering format** = `BSG-<seq:07d>-<suffix:06d>`,
+    suffix = last 6 chars of `companies.hubspot_company_id`. Aligned
+    with `phase_08_backend_plan.md §6`. Sprint 4.A initially shipped
+    `BSG-<seq>` only and the F.1.0 round restored the suffix.
+  - **Atomic allocation** via `UPDATE document_number_sequence SET
+    next_value = next_value + 1 RETURNING next_value - 1` inside the
+    POST /documents transaction. Failed INSERT rolls back the
+    increment — no sequence gaps. Two tests cover this explicitly:
+    pre-allocation validation (calc-ref fail) AND in-TX failure
+    after allocation (unknown-company-UUID).
+  - **Frontend wizard backend bar** lives INSIDE Step 1 (Header /
+    Meta) and ONLY on that step. Save button lives ONLY on Preview
+    step. Two earlier UX revisions tried bar-on-every-step and
+    button-on-every-step; both were rolled back per user feedback
+    ("операт перевіряє все на Preview перед save").
+  - **Inline HTML preview** on `/documents/:number` uses the same
+    `buildOfferPdfHtml` the wizard's Preview step renders. Iframe
+    has `sandbox=""` + `allow=""` (no scripts, no permissions). The
+    `asWizardPayload` shape-check is shallow; deeper validation
+    surfaces as a thrown error inside `buildOfferPdfHtml` and is
+    caught/rendered as a fallback banner.
+  - **`?renderedHtml=` debug path** in pdf.controller is now
+    `isProd`-gated. Production rejects with 403 ForbiddenError. Dev
+    keeps it for manual rendering tests until Sprint 4.E.2 ships
+    the shared template module.
+  - **Document URL regex pre-check** (`/^BSG-\d{7}-[0-9A-Z]{6}$/i`)
+    rejects malformed numbers BEFORE the DB lookup. Defends
+    Content-Disposition `filename=` from CRLF injection on future
+    code paths that may bypass the DB validator.
+  - **LIKE metacharacter escape** in documents.repository: `q=%`
+    no longer matches every row.
+  - **`documents.updatedAt` `$onUpdate` hook** — Drizzle stamps
+    every UPDATE so Phase 9's `patchSyncState` doesn't leave the
+    column at the INSERT timestamp.
+  - **`APP_PUBLIC_URL` env var** (validated against localhost in
+    production) — set up now so Phase 9 has a clean place to read
+    "where do we point HubSpot Notes back to".
+  - **Shared `formatScopeLabel`** in `src/shared/format.ts` next to
+    `formatDate` — DocumentsListPage + DocumentViewPage use it.
+- Alternatives considered:
+  - Storing pre-rendered HTML in `documents.payload`: rejected per
+    pre-Sprint-4 lock (Q2 → B option). The current approach renders
+    on demand from a structured payload — supports re-styling without
+    re-saving documents.
+  - Per-step Save buttons: rejected. Operator must complete the
+    full wizard + preview before committing — single save trigger.
+  - Server-side Puppeteer PDF render in Sprint 4: BACKEND PLUMBING
+    SHIPPED but the `buildOfferPdfHtml` builder still lives only on
+    the frontend. Sprint 4.E.2 will extract a shared template module
+    so the server can call it. Until then, `Download PDF` is
+    explicitly disabled on the UI with a tooltip noting Sprint 4.E.2.
+- Consequences:
+  - Backend: +1 module (documents), +1 module (pdf), +1 migration
+    (0003), +1 error class (NotImplementedError), +1 env var
+    (APP_PUBLIC_URL). 183 server tests (was 146 pre-Sprint-4).
+  - Frontend: +3 pages (DocumentsListPage, DocumentViewPage),
+    +2 modals (SaveDocumentModal, WizardBackendBar), +1 hook
+    (useDocuments), +1 formatter (formatScopeLabel). 243 frontend
+    tests (was 211 pre-Sprint-4).
+  - 28 audit findings closed in F.1 (correctness — 1 BLOCKER + 9
+    SHOULD-FIX), F.2 (refactor + APP_PUBLIC_URL + iframe allow=""),
+    F.3 (test coverage). Zero open findings.
+- Follow-up actions:
+  - Sprint 4.E.2 (shared template module): pick approach (a) move
+    `src/components/document-wizard/buildOfferPdfHtml.ts` + deps to
+    `src/shared-templates/` and include in `tsconfig.server.json`,
+    OR (b) Vite library-mode build. Pre-commit comment in
+    `pdf.controller.ts` flags this for the implementing engineer.
+  - Sprint 5 (HubSpot webhooks): inbound only. Backend `documents`
+    schema already has `hubspot_sync_state` + `hubspot_note_id`
+    placeholders for Phase 9's outbound write-back.
+  - Phase 9 (HubSpot Note write-back): will use `APP_PUBLIC_URL +
+    "/documents/" + number` as the link payload. Env validator
+    enforces the URL is a real https origin in production.
+  - WizardBackendBar + SaveDocumentModal frontend tests deferred
+    to Sprint 6 polish (mirror SaveCalculatorModal pattern).

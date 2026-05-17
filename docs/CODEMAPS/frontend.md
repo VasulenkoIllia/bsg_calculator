@@ -1,6 +1,6 @@
 # Frontend (SPA) Codemap
 
-**Last Updated:** 2026-05-17 (post-Sprint 2.8.F)
+**Last Updated:** 2026-05-17 (post-Sprint 4.F)
 **Framework:** React 19 + Vite 6 + TypeScript (NodeNext modules)
 **Entry Point:** `src/main.tsx` → `src/App.tsx`
 **Router:** react-router-dom v7 (BrowserRouter)
@@ -21,26 +21,36 @@
 │  3. App / BrowserRouter                                          │
 ├─────────────────────────────────────────────────────────────────┤
 │  Routes (App.tsx)                                                │
-│  /login                       — public LoginPage                 │
+│  /login                          — public LoginPage              │
 │  PrivateRoute gate ↓                                             │
 │   CalculatorProvider + AppShell layout ↓                         │
-│    /            → /companies redirect                            │
-│    /companies   → CompaniesPage  (search + cursor pagination)    │
-│    /companies/:id → CompanyDetailPage (header + deals tab)       │
-│    /calculator  → CalculatorPage (legacy — pre-2.8)              │
-│    /wizard      → WizardPage (legacy — pre-2.8)                  │
-│    *            → NotFoundPage                                   │
+│    /                → /companies redirect                        │
+│    /companies       → CompaniesPage  (search + pagination)       │
+│    /companies/:id   → CompanyDetailPage (header + deals tab)     │
+│    /documents       → DocumentsListPage (company filter + search)│
+│    /documents/:num  → DocumentViewPage (inline iframe preview)   │
+│    /calculator      → CalculatorPage (+ SaveCalculatorModal)     │
+│    /wizard          → WizardPage (+ WizardBackendBar + Save)     │
+│    *                → NotFoundPage                               │
 ├─────────────────────────────────────────────────────────────────┤
 │  API Layer (src/api/)                                            │
 │  • client.ts — axios singleton, interceptors, ApiError           │
-│  • auth.ts / companies.ts / deals.ts / hubspot.ts (endpoints)    │
+│  • auth.ts / companies.ts / deals.ts / hubspot.ts                │
+│  • calculator-configs.ts / documents.ts                          │
 │  • types.ts — mirror of backend Zod public schemas               │
 │  • index.ts — barrel                                             │
 ├─────────────────────────────────────────────────────────────────┤
 │  Hooks (src/hooks/) — React Query + utility                      │
 │  • useCompanies — useInfiniteQuery + debounced q                 │
 │  • useCompany / useCompanyDeals — single + paginated             │
+│  • useDocuments — useInfiniteQuery + filters                     │
+│  • useCompanySearch — typeahead (capped at 10 items)             │
 │  • useDebouncedValue — generic debounce                          │
+├─────────────────────────────────────────────────────────────────┤
+│  Modals + bars (src/components/)                                 │
+│  • SaveCalculatorModal — calc → calculator-configs POST          │
+│  • SaveDocumentModal   — wizard → documents POST (addendum)      │
+│  • WizardBackendBar    — Step 1 company/deal picker, peek-driven │
 ├─────────────────────────────────────────────────────────────────┤
 │  UI primitives (src/components/)                                 │
 │  • AppShell — main layout with IdentityStrip + workspace tabs    │

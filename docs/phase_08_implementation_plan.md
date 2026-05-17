@@ -19,7 +19,7 @@ See also:
 
 ---
 
-## Status snapshot (2026-05-17)
+## Status snapshot (2026-05-17 post-Sprint 4.F)
 
 | Sprint | State | Commits |
 |---|---|---|
@@ -31,12 +31,15 @@ See also:
 | 2.7 wrap-up docs | ✅ DONE | 31cc088 |
 | 2.8. Frontend auth + listings (A → E) | ✅ DONE | 6b9c7a4..c5778fe |
 | 2.8.F. Frontend audit closure (F.1 → F.5) | ✅ DONE | 769e5fb..06810f8 |
-| 3. Calculator configs CRUD | ⏳ NEXT | — |
-| 4. Documents + PDF render | ⏳ Pending | — |
-| 5. HubSpot webhooks | ⏳ Pending | — |
-| 6. Frontend pieces (calc page + docs + wizard URL) | ⏳ Partial (auth + listings DONE in 2.8) | — |
+| 3. Calculator configs CRUD | ✅ DONE | e7acf6d, 91ff6ad |
+| 4. Documents + PDF render (A → E + UX revisions) | ✅ DONE | af719ba..444b338 |
+| 4.F. Sprint 4 audit closure (F.1 → F.3 + docs F.4) | ✅ DONE | 69d0e9a..0d26e8d |
+| 4.E.2. Server-side PDF (shared template module) | ⏳ NEXT | — |
+| 5. HubSpot webhooks (inbound) | ⏳ Pending | — |
+| 6. Frontend continuation (calc page hydration + wizard URL) | ⏳ Partial — listings + doc view + wizard save DONE | — |
 | 7. Docker + Deploy | ⏳ Pending | — |
-| 8. Hardening (optional) | ⏳ Pending | — |
+| 8. Hardening (optional, E2E + CSP) | ⏳ Pending | — |
+| 9. HubSpot Note write-back | ⏳ Phase-after-7 | — |
 
 ---
 

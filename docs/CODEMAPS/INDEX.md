@@ -1,6 +1,6 @@
 # Architecture Codemaps Index
 
-**Last Updated:** 2026-05-17 (post-Sprint 2.8.F)
+**Last Updated:** 2026-05-17 (post-Sprint 4.F)
 
 This directory contains architectural maps of the BSG Calculator codebase to help new developers onboard quickly.
 
@@ -73,17 +73,22 @@ This directory contains architectural maps of the BSG Calculator codebase to hel
 
 ---
 
-## Future Phases Roadmap
+## Sprints status
 
-| Phase | Focus | New Modules / Helpers | Codemap Updates |
-|-------|-------|----------------------|-----------------|
-| **Sprint 3** | Calculator Configs CRUD | `modules/calculator-configs/`, `src/api/calculator-configs.ts`, `<CalcConfigsPage />`, `<CalcEditorPage />` | server.md (new module), frontend.md (new page family) |
-| **Sprint 4** | Documents + PDF | `modules/documents/`, `modules/pdf/`, `<DocumentsPage />`, `<DocumentViewPage />` + wizard URL integration | server.md, frontend.md |
-| **Sprint 5** | HubSpot Webhooks | `modules/hubspot/webhooks.controller.ts` (HMAC verified) | server.md |
-| **Sprint 6** | Frontend final pieces | calc page hydration, document view + download, wizard URL-driven seeding | frontend.md |
-| **Sprint 7** | Docker + Deploy | docker-compose.yml, Coolify config | NEW deploy.md |
-| **Sprint 8** | Hardening (optional) | E2E Playwright, CSP, observability | — |
-| **Phase 9** | Admin UI | admin gates, batch ops | server.md + frontend.md |
+| Phase | State | Notes |
+|-------|-------|-------|
+| **Sprint 1** Foundation | ✅ DONE | auth, users, error envelope, base middleware |
+| **Sprint 2** HubSpot reads | ✅ DONE | companies + deals + pipelines + backfill |
+| **Sprint 2.7** Hardening cycle | ✅ DONE | 9 audit sub-commits A→I + 7 security findings |
+| **Sprint 2.8** Frontend auth + listings | ✅ DONE | + F.1→F.5 audit closure (34 findings) |
+| **Sprint 3** Calculator Configs CRUD | ✅ DONE | + SaveCalculatorModal flow |
+| **Sprint 4** Documents + PDF render | ✅ DONE | + F.1→F.4 audit closure (28 findings) |
+| **Sprint 4.E.2** Server-side PDF (shared template) | ⏳ NEXT | Move buildOfferPdfHtml to shared so Puppeteer can render server-side |
+| **Sprint 5** HubSpot webhooks (inbound) | ⏳ Pending | `modules/hubspot/webhooks.controller.ts` (HMAC verified) |
+| **Sprint 6** Frontend continuation | ⏳ Partial | `/calc/:id` hydration + wizard URL-driven seeding still needed |
+| **Sprint 7** Docker + Coolify Deploy | ⏳ Pending | docker-compose + Dockerfile + Coolify config |
+| **Sprint 8** Hardening (optional) | ⏳ Pending | E2E Playwright, CSP, observability |
+| **Phase 9** HubSpot Note write-back | ⏳ Post-deploy | `POST /crm/v3/objects/notes` with APP_PUBLIC_URL link |
 
 ---
 
