@@ -73,7 +73,22 @@ export function verifyHubspotSignature() {
     const rawBody = req.body.toString("utf8");
 
     // Source string per HubSpot v3 spec.
-    const uri = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
+    //
+    // SECURITY (Sprint 5.F.1): the URI MUST be reconstructed from a
+    // server-trusted constant, NOT from `req.protocol` / `req.get("host")`.
+    // Both of those derive from proxy headers (X-Forwarded-Proto,
+    // X-Forwarded-Host) when `trust proxy` is configured, which means
+    // an attacker on the same network segment as the trusted proxy
+    // could (in theory) flip the scheme/host the server uses to verify
+    // the HMAC and produce a mismatch on legitimate HubSpot traffic.
+    // Using `env.APP_PUBLIC_URL` (which is enforced as a real https
+    // origin in prod via the env validator) makes the source string
+    // independent of any request-header tampering.
+    //
+    // Note: the operator MUST register the exact same URL in the
+    // HubSpot Private App webhook settings — see
+    // docs/hubspot_api_reference.md §14.4 step 3.
+    const uri = `${env.APP_PUBLIC_URL.replace(/\/$/, "")}${req.originalUrl}`;
     const sourceString = `${req.method}${uri}${rawBody}${timestamp}`;
 
     const expected = crypto

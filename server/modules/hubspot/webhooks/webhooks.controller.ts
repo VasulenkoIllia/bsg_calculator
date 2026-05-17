@@ -84,10 +84,17 @@ export async function webhookReceiverController(
 }
 
 const refreshRequestSchema = z.object({
-  // Optional list of company UUIDs. Empty array / omitted → refresh
-  // ALL companies whose row exists in our DB (operator's "force
-  // resync" button on a future dashboard).
-  companyIds: z.array(z.string().uuid()).max(100).optional()
+  // List of company UUIDs to refetch + upsert from HubSpot.
+  // Sprint 5.F.1: cap reduced from 100 → 20 to defend the upstream
+  // HubSpot per-10s budget (100 req / 10s). Combined with the
+  // hubspotProxyLimiter (10 req/min/IP) this caps the per-IP load
+  // at 200 HubSpot calls/min, well inside the 600/min budget so
+  // operator refresh storms can't starve the webhook processor.
+  //
+  // Note: "refresh ALL" is intentionally NOT supported — the
+  // backfill script (`npm run hubspot:backfill`) is the right tool
+  // for that scenario and runs out-of-band of the request loop.
+  companyIds: z.array(z.string().uuid()).min(1).max(20)
 });
 
 export async function refreshController(req: Request, res: Response): Promise<void> {
@@ -98,7 +105,7 @@ export async function refreshController(req: Request, res: Response): Promise<vo
   // "Refreshed X companies, skipped Y" toast.
   let refreshed = 0;
   let failed = 0;
-  const ids = body.companyIds ?? [];
+  const ids = body.companyIds;
   for (const id of ids) {
     try {
       // Look up our row to get its hubspotCompanyId.

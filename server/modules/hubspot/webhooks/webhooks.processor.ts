@@ -72,17 +72,24 @@ async function processOne(
   const subType = event.subscriptionType;
 
   // Deletion: skip HubSpot fetch (object is gone), DELETE from our DB.
+  // Sprint 5.F.1: company deletion wraps both DELETE statements in a
+  // transaction so we never observe the intermediate state where
+  // deals are gone but the company row survives. Without the TX, a
+  // mid-statement process kill would leave that orphan window
+  // observable to readers until the next webhook retry.
   if (subType.endsWith(".deletion")) {
     if (isCompany) {
-      // Deals first via FK CASCADE (the FK is RESTRICT in our schema,
-      // so we need explicit deal deletion first to avoid FK errors
-      // when the company's last deal is still around).
-      await db
-        .delete(deals)
-        .where(eq(deals.hubspotCompanyId, event.hubspotObjectId));
-      await db
-        .delete(companies)
-        .where(eq(companies.hubspotCompanyId, event.hubspotObjectId));
+      // Deals first because the FK is RESTRICT in our schema — the
+      // company DELETE would fail with FK violation if any deal still
+      // pointed at it.
+      await db.transaction(async tx => {
+        await tx
+          .delete(deals)
+          .where(eq(deals.hubspotCompanyId, event.hubspotObjectId));
+        await tx
+          .delete(companies)
+          .where(eq(companies.hubspotCompanyId, event.hubspotObjectId));
+      });
     } else {
       await db.delete(deals).where(eq(deals.hubspotDealId, event.hubspotObjectId));
     }
@@ -133,13 +140,16 @@ async function processOne(
     // already deleted the object before we got around to fetching
     // it (race). Treat it as a delete.
     if (err instanceof NotFoundError) {
+      // Same TX guarantee as the explicit deletion path above.
       if (isCompany) {
-        await db
-          .delete(deals)
-          .where(eq(deals.hubspotCompanyId, event.hubspotObjectId));
-        await db
-          .delete(companies)
-          .where(eq(companies.hubspotCompanyId, event.hubspotObjectId));
+        await db.transaction(async tx => {
+          await tx
+            .delete(deals)
+            .where(eq(deals.hubspotCompanyId, event.hubspotObjectId));
+          await tx
+            .delete(companies)
+            .where(eq(companies.hubspotCompanyId, event.hubspotObjectId));
+        });
       } else {
         await db.delete(deals).where(eq(deals.hubspotDealId, event.hubspotObjectId));
       }
@@ -200,7 +210,48 @@ export async function processWebhookBatch(): Promise<{
   return { processed, failed };
 }
 
-let processorInterval: ReturnType<typeof setInterval> | null = null;
+// Sprint 5.F.1: self-rescheduling setTimeout replaces setInterval to
+// eliminate the re-entrancy race where a long-running batch (HubSpot
+// 502 storm hitting the 30s per-event fetch timeout × 50 events ≫
+// the 5s poll interval) could spawn an overlapping second batch that
+// would claim the same `pending` rows. With setTimeout the next tick
+// fires only AFTER the previous batch resolves — single-replica
+// processor stays serial without needing pg advisory locks.
+let processorTimeout: ReturnType<typeof setTimeout> | null = null;
+let processorRunning = false;
+let processorStopRequested = false;
+
+async function runBatchAndReschedule(): Promise<void> {
+  if (processorStopRequested) return;
+  if (processorRunning) {
+    // Defensive: should be impossible because the timer is set only
+    // in the finally block below. If we ever land here it means
+    // someone manually invoked the scheduler — log and skip.
+    logger.warn("[hubspot:webhook] re-entrant tick suppressed");
+    scheduleNextTick();
+    return;
+  }
+  processorRunning = true;
+  try {
+    await processWebhookBatch();
+  } catch (err) {
+    logger.error(
+      { err: (err as Error).message },
+      "[hubspot:webhook] processor batch threw — will retry next tick"
+    );
+  } finally {
+    processorRunning = false;
+    scheduleNextTick();
+  }
+}
+
+function scheduleNextTick(): void {
+  if (processorStopRequested) return;
+  processorTimeout = setTimeout(() => {
+    void runBatchAndReschedule();
+  }, POLL_INTERVAL_MS);
+  processorTimeout.unref?.();
+}
 
 /**
  * Start the polling loop. Called from server/index.ts on boot.
@@ -209,24 +260,19 @@ let processorInterval: ReturnType<typeof setInterval> | null = null;
  */
 export function startWebhookProcessor(): void {
   if (env.NODE_ENV === "test") return;
-  if (processorInterval) return;
-  logger.info({ pollMs: POLL_INTERVAL_MS, batchSize: BATCH_SIZE }, "[hubspot:webhook] starting processor loop");
-  processorInterval = setInterval(() => {
-    void processWebhookBatch().catch(err => {
-      logger.error(
-        { err: (err as Error).message },
-        "[hubspot:webhook] processor batch threw — will retry next tick"
-      );
-    });
-  }, POLL_INTERVAL_MS);
-  // Don't keep the event loop alive just for this — when the server
-  // shuts down via SIGTERM the interval is cleared anyway.
-  processorInterval.unref?.();
+  if (processorTimeout) return;
+  processorStopRequested = false;
+  logger.info(
+    { pollMs: POLL_INTERVAL_MS, batchSize: BATCH_SIZE },
+    "[hubspot:webhook] starting processor loop"
+  );
+  scheduleNextTick();
 }
 
 export function stopWebhookProcessor(): void {
-  if (processorInterval) {
-    clearInterval(processorInterval);
-    processorInterval = null;
+  processorStopRequested = true;
+  if (processorTimeout) {
+    clearTimeout(processorTimeout);
+    processorTimeout = null;
   }
 }

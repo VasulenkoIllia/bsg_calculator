@@ -7,13 +7,24 @@
  *   - PROCESSOR path (worker) — SELECT pending rows, UPDATE on complete.
  */
 
-import { and, asc, eq, lt, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "../../../db/client";
 import {
   hubspotWebhookEvents,
   type HubspotWebhookEvent,
   type NewHubspotWebhookEvent
 } from "../../../db/schema";
+
+/**
+ * Sprint 5.F.1: retry backoff base. A row that just failed becomes
+ * re-eligible after `attempts * BACKOFF_BASE_SECONDS` seconds since
+ * it was received — so 30s for the first retry, 60s for the second,
+ * 90s for the third. Coupled with MAX_ATTEMPTS=5 in the processor,
+ * a row that keeps failing exhausts its retry budget over about
+ * 5 + 4 + 3 + 2 + 1 = 15 backoff multiples (~7.5 minutes), which
+ * is the right ceiling for a transient HubSpot 5xx.
+ */
+const BACKOFF_BASE_SECONDS = 30;
 
 /**
  * Insert one event row. Returns the inserted row OR `undefined` when
@@ -36,29 +47,40 @@ export async function insertEventIfNew(
  * process older changes first. The worker calls this with a limit
  * (e.g. 50) every 5 seconds.
  *
- * `oldestProcessedBefore` is an optional cutoff used by the worker
- * to retry stuck rows: rows with `attempts > 0` but old enough that
- * the upstream error is probably transient become re-eligible after
- * the backoff window.
+ * Sprint 5.F.1: real exponential backoff (the docstring used to
+ * promise this but the WHERE clause didn't implement it — pre-5.F.1
+ * a failing row was re-eligible on every 5s tick, exhausting its
+ * 5-attempt budget in ~25 seconds). Now a row is eligible iff
+ *   attempts = 0
+ *   OR received_at + (attempts × 30 seconds) ≤ now()
+ * so a row that already failed twice waits a full minute before
+ * being re-picked, etc.
+ *
+ * NOTE: receivedAt is the original insert time, not the last-attempt
+ * time. As long as the worker stays serial (Sprint 5.F.1
+ * setTimeout-based scheduler), the (received_at + attempts × backoff)
+ * formula is monotonic and produces the intended cadence. If we ever
+ * parallelise the worker, this needs to migrate to a dedicated
+ * `last_attempt_at` column.
  */
 export async function listPendingEvents(args: {
   limit: number;
-  retryAfter?: Date;
 }): Promise<HubspotWebhookEvent[]> {
-  const cutoff = args.retryAfter ?? new Date();
   return db
     .select()
     .from(hubspotWebhookEvents)
     .where(
       and(
         eq(hubspotWebhookEvents.status, "pending"),
-        // For freshly-inserted rows (`attempts = 0`) the cutoff is now
-        // and they're always picked up. For retried rows, the cutoff
-        // prevents thrashing the upstream on a still-failing event.
-        lt(hubspotWebhookEvents.receivedAt, cutoff)
+        sql`(
+          ${hubspotWebhookEvents.attempts} = 0
+          OR ${hubspotWebhookEvents.receivedAt}
+             + (${hubspotWebhookEvents.attempts} * interval '${sql.raw(String(BACKOFF_BASE_SECONDS))} seconds')
+             <= now()
+        )`
       )
     )
-    .orderBy(asc(hubspotWebhookEvents.occurredAt))
+    .orderBy(asc(hubspotWebhookEvents.occurredAt), asc(hubspotWebhookEvents.id))
     .limit(args.limit);
 }
 

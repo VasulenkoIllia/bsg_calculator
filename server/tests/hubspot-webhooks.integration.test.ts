@@ -68,41 +68,41 @@ function companyFixture(overrides: Partial<NewCompany> = {}): NewCompany {
  *      application/json — `{"type":"Buffer","data":[…]}`. So we send
  *      the body as a plain string and bypass any re-encoding.
  *      Express.raw then captures the exact bytes we shipped.
- *   2. The middleware computes the URI as
- *      `${req.protocol}://${req.get("host")}${req.originalUrl}`.
- *      supertest binds to an ephemeral 127.0.0.1 port — overriding
- *      the Host header gives us a stable, signable hostname.
+ *   2. Sprint 5.F.1 hardened the URI in the middleware: it is now
+ *      computed from `env.APP_PUBLIC_URL` (a server-trusted constant)
+ *      instead of proxy-controlled `req.protocol` / `req.get("host")`.
+ *      The test helper therefore signs against the same constant.
+ *      In production the operator must register exactly the same URL
+ *      in the HubSpot Private App webhook settings.
  */
 function signWebhook(
   body: unknown,
-  opts: { host: string; ts?: number; path?: string } = { host: "test.local" }
+  opts: { ts?: number; path?: string } = {}
 ): {
   bodyString: string;
   signature: string;
   timestamp: string;
-  host: string;
 } {
   const bodyString = JSON.stringify(body);
   const ts = opts.ts ?? Date.now();
   const path = opts.path ?? WEBHOOK_PATH;
-  const uri = `http://${opts.host}${path}`;
+  const uri = `${env.APP_PUBLIC_URL.replace(/\/$/, "")}${path}`;
   const sourceString = `POST${uri}${bodyString}${ts}`;
   const signature = crypto
     .createHmac("sha256", env.HUBSPOT_WEBHOOK_SECRET ?? "")
     .update(sourceString)
     .digest("base64");
-  return { bodyString, signature, timestamp: String(ts), host: opts.host };
+  return { bodyString, signature, timestamp: String(ts) };
 }
 
 /**
  * Issue a fully-signed webhook POST. Encapsulates the supertest dance
- * for content-type + Host header consistency with the signature.
+ * for content-type consistency with the signature.
  */
-async function postSignedWebhook(body: unknown, host = "test.local") {
-  const { bodyString, signature, timestamp } = signWebhook(body, { host });
+async function postSignedWebhook(body: unknown) {
+  const { bodyString, signature, timestamp } = signWebhook(body);
   return request(app)
     .post(WEBHOOK_PATH)
-    .set("Host", host)
     .set("Content-Type", "application/json")
     .set("X-HubSpot-Signature-v3", signature)
     .set("X-HubSpot-Request-Timestamp", timestamp)
@@ -171,7 +171,6 @@ describe("POST /api/v1/hubspot/webhooks — receiver", () => {
     const tampered = crypto.randomBytes(32).toString("base64"); // unrelated 32B
     const res = await request(app)
       .post(WEBHOOK_PATH)
-      .set("Host", "test.local")
       .set("Content-Type", "application/json")
       .set("X-HubSpot-Signature-v3", tampered)
       .set("X-HubSpot-Request-Timestamp", timestamp)
@@ -189,13 +188,9 @@ describe("POST /api/v1/hubspot/webhooks — receiver", () => {
       }
     ];
     const sixMinutesAgo = Date.now() - 6 * 60 * 1000;
-    const { bodyString, signature, timestamp } = signWebhook(body, {
-      host: "test.local",
-      ts: sixMinutesAgo
-    });
+    const { bodyString, signature, timestamp } = signWebhook(body, { ts: sixMinutesAgo });
     const res = await request(app)
       .post(WEBHOOK_PATH)
-      .set("Host", "test.local")
       .set("Content-Type", "application/json")
       .set("X-HubSpot-Signature-v3", signature)
       .set("X-HubSpot-Request-Timestamp", timestamp)
@@ -457,12 +452,19 @@ describe("processWebhookBatch() — async event processing", () => {
     );
 
     // Seed with attempts=4 so the next failure (the 5th) exhausts.
+    // receivedAt is backdated 10 minutes so the Sprint 5.F.1 backoff
+    // window (attempts × 30s = 2 min) has already passed and
+    // listPendingEvents picks this row up. Without the backdate the
+    // row would not be eligible on this tick and the test would see
+    // status='pending' (correct under the new backoff, but not what
+    // this test wants to assert).
     await db.insert(hubspotWebhookEvents).values({
       hubspotEventId: "evt-c-burn",
       subscriptionType: "company.creation",
       objectType: "company",
       hubspotObjectId: "HS-7001",
-      occurredAt: new Date(),
+      occurredAt: new Date(Date.now() - 10 * 60 * 1000),
+      receivedAt: new Date(Date.now() - 10 * 60 * 1000),
       attempts: 4,
       raw: {}
     });
@@ -471,6 +473,33 @@ describe("processWebhookBatch() — async event processing", () => {
     const [evt] = await db.select().from(hubspotWebhookEvents);
     expect(evt.status).toBe("failed");
     expect(evt.lastError).toMatch(/upstream 500/);
+  });
+
+  it("retry backoff: a row that just failed isn't re-picked on the next tick", async () => {
+    // Sprint 5.F.1: a row with attempts=1 + recent receivedAt should
+    // NOT be eligible because (1 × 30s) hasn't elapsed yet.
+    getCompanySpy.mockResolvedValue(
+      hubspotCompanyObject("HS-BO-1", { name: "shouldnotmatter" })
+    );
+
+    await db.insert(hubspotWebhookEvents).values({
+      hubspotEventId: "evt-backoff",
+      subscriptionType: "company.creation",
+      objectType: "company",
+      hubspotObjectId: "HS-BO-1",
+      occurredAt: new Date(),
+      receivedAt: new Date(), // just received
+      attempts: 1, // first retry pending — needs 30s wait
+      raw: {}
+    });
+
+    const result = await processWebhookBatch();
+    expect(result.processed).toBe(0);
+    expect(getCompanySpy).not.toHaveBeenCalled();
+
+    const [evt] = await db.select().from(hubspotWebhookEvents);
+    expect(evt.status).toBe("pending");
+    expect(evt.attempts).toBe(1);
   });
 
   it("deal event: skips when parent company isn't in our cache (filtered_out)", async () => {
@@ -568,10 +597,10 @@ describe("POST /api/v1/hubspot/refresh — manual operator resync", () => {
     expect(res.status).toBe(401);
   });
 
-  it("400 on companyIds > 100", async () => {
+  it("400 on companyIds > 20 (Sprint 5.F.1 cap)", async () => {
     await createTestUser({ email: "op@bsg.test", password: "password12345" });
     const token = await loginAs("op@bsg.test", "password12345");
-    const tooMany = Array.from({ length: 101 }, () =>
+    const tooMany = Array.from({ length: 21 }, () =>
       "00000000-0000-4000-8000-000000000000"
     );
     const res = await request(app)
@@ -579,6 +608,21 @@ describe("POST /api/v1/hubspot/refresh — manual operator resync", () => {
       .set("Authorization", `Bearer ${token}`)
       .send({ companyIds: tooMany });
     expect(res.status).toBe(400);
+  });
+
+  it("400 on empty / missing companyIds (cap requires min 1)", async () => {
+    await createTestUser({ email: "op@bsg.test", password: "password12345" });
+    const token = await loginAs("op@bsg.test", "password12345");
+    const empty = await request(app)
+      .post("/api/v1/hubspot/refresh")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyIds: [] });
+    expect(empty.status).toBe(400);
+    const missing = await request(app)
+      .post("/api/v1/hubspot/refresh")
+      .set("Authorization", `Bearer ${token}`)
+      .send({});
+    expect(missing.status).toBe(400);
   });
 
   it("400 on a non-UUID id (Zod rejects before any HubSpot call)", async () => {

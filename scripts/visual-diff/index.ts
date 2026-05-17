@@ -104,7 +104,11 @@ async function renderFrontendSimulated(html: string): Promise<Buffer> {
   const page = await browser.newPage();
   try {
     await page.setViewport({ width: 1200, height: 1600 });
-    await page.setContent(html, { waitUntil: "networkidle0", timeout: 30_000 });
+    // `domcontentloaded` is the right value for setContent (HTML
+    // string, no remote assets). `networkidle0` is only valid for
+    // page.goto and is rejected at the type level by Puppeteer's
+    // SetContentWaitForOptions.
+    await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await page.emulateMediaType("print");
     // window.print() → Save as PDF in Chrome uses the browser's
     // default print options: no explicit margin, no
@@ -193,12 +197,16 @@ function cropPng(png: PNG, targetW: number, targetH: number): PNG {
  * differences, not rasterisation artefacts.
  */
 function diffPages(a: Buffer, b: Buffer, page: number): PageDiff {
-  let pngA = PNG.sync.read(a);
-  let pngB = PNG.sync.read(b);
-  const w = Math.min(pngA.width, pngB.width);
-  const h = Math.min(pngA.height, pngB.height);
-  pngA = cropPng(pngA, w, h);
-  pngB = cropPng(pngB, w, h);
+  // PNG.sync.read returns PNGWithMetadata (a structural superset of
+  // PNG); cropPng returns a plain PNG. We keep separate `read`/`cropped`
+  // bindings so a future reader can see the type transition explicitly
+  // rather than fighting the TS inference on reassignment.
+  const readA = PNG.sync.read(a);
+  const readB = PNG.sync.read(b);
+  const w = Math.min(readA.width, readB.width);
+  const h = Math.min(readA.height, readB.height);
+  const pngA = cropPng(readA, w, h);
+  const pngB = cropPng(readB, w, h);
   const diff = new PNG({ width: w, height: h });
   const total = w * h;
   const mismatched = pixelmatch(pngA.data, pngB.data, diff.data, w, h, {

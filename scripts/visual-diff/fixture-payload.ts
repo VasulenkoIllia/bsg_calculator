@@ -18,10 +18,13 @@
  * different times".
  */
 
-import {
-  buildDocumentTemplatePayloadManualDefaults,
-  type DocumentTemplatePayload
-} from "../../src/components/document-wizard";
+// Import directly from the deep modules (NOT the barrel
+// `document-wizard/index.ts`) so the server-side typecheck doesn't
+// transitively pull in React `.tsx` files — the barrel re-exports
+// the wizard's React components, which would fail under
+// tsconfig.server.json (no `--jsx`).
+import { buildDocumentTemplatePayloadManualDefaults } from "../../src/components/document-wizard/fromCalculator";
+import type { DocumentTemplatePayload } from "../../src/components/document-wizard/types";
 
 const FIXED_DOCUMENT_DATE = "2026-05-17";
 const FIXED_DOCUMENT_NUMBER_OFFER = "BSG-7100000-FIXTURE";
