@@ -34,8 +34,8 @@ See also:
 | 3. Calculator configs CRUD | ✅ DONE | e7acf6d, 91ff6ad |
 | 4. Documents + PDF render (A → E + UX revisions) | ✅ DONE | af719ba..444b338 |
 | 4.F. Sprint 4 audit closure (F.1 → F.3 + docs F.4) | ✅ DONE | 69d0e9a..0d26e8d |
-| 4.E.2. Server-side PDF (shared template module) | ⏳ NEXT | — |
-| 5. HubSpot webhooks (inbound) | ⏳ Pending | — |
+| 4.E.2. Server-side PDF (shared template module) | ✅ DONE | (bundled with Sprint 4.F) |
+| 5. HubSpot webhooks (inbound, A → E) | ✅ DONE | (this Sprint) |
 | 6. Frontend continuation (calc page hydration + wizard URL) | ⏳ Partial — listings + doc view + wizard save DONE | — |
 | 7. Docker + Deploy | ⏳ Pending | — |
 | 8. Hardening (optional, E2E + CSP) | ⏳ Pending | — |
@@ -51,11 +51,11 @@ Sprint 1 (Foundation)  ✅ ───┬──→ Sprint 2 (HubSpot reads) ✅ �
                               │   ┌─→ Sprint 2.8 (Frontend     │
                               │   │   auth + listings) ✅       │
                               │   │                              │
-                              ├──→ Sprint 3 (Calc configs) ⏳ ──┤
+                              ├──→ Sprint 3 (Calc configs) ✅ ──┤
                               │                                  │
-                              └──→ Sprint 4 (Documents + PDF)⏳─┤
+                              └──→ Sprint 4 (Documents + PDF)✅─┤
                                                                  ├──→ Sprint 6 (Calc/Doc UI) ──→ Sprint 7 (Docker + Deploy)
-                                  Sprint 5 (Webhooks) ⏳ ───────┘
+                                  Sprint 5 (Webhooks)    ✅ ───┘
 ```
 
 The original Sprint 6 (Frontend) was split: auth + listings already

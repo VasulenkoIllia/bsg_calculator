@@ -3807,3 +3807,172 @@ Use this file to record meaningful technical decisions for the project.
     enforces the URL is a real https origin in production.
   - WizardBackendBar + SaveDocumentModal frontend tests deferred
     to Sprint 6 polish (mirror SaveCalculatorModal pattern).
+
+### Decision: Pre-Sprint 5 — HubSpot webhooks scope + filter behaviour
+- Date: 2026-05-17
+- Context:
+  - Sprint 5 backend scope = inbound HubSpot webhooks. Phase 9 will
+    later add outbound Note write-back. Locking event-type coverage
+    + filter behaviour BEFORE writing the migration so the worker
+    + processor design knows what to expect.
+- Decision:
+  - **Event types covered** = `company.creation`, `company.propertyChange`,
+    `company.deletion`, `deal.creation`, `deal.propertyChange`,
+    `deal.deletion`. Full set; nothing deferred.
+    Deletion handling: incoming `deletion` event triggers a hard
+    DELETE on `companies` (or `deals`) by HubSpot natural key. FK
+    policies (already locked in earlier records): deals FK on
+    company.hubspotCompanyId is RESTRICT — but the webhook
+    processor runs the deletes IN ORDER: deals first, then their
+    company. The processor MUST handle `404` from HubSpot fetches
+    on deletion events (HubSpot's API returns 404 after the row is
+    gone) — treat 404 as "delete in our DB and ack".
+  - **Storage filter sync** = drop-on-event. Webhook processor
+    fetches the full object from HubSpot, checks `properties.company_type`
+    against `HUBSPOT_COMPANY_TYPE_FILTER`:
+      - If MATCH (e.g. `direct_client`) → upsert into `companies` row.
+      - If MISMATCH (e.g. Agent / NULL) → mark event as
+        `processed` with `outcome = 'filtered_out'`, do NOT upsert.
+      - The same backfill cleanup pass that runs at server startup
+        re-aligns the DB if the filter is ever loosened/tightened.
+    For deals: deals are saved as long as their parent company
+    passes the filter (the existing backfill skip path already
+    handles this case).
+  - **Async processing model** = receiver inserts a row into
+    `hubspot_webhook_events` and immediately returns 200. A worker
+    loop (`setInterval` every 5s in-process — single replica until
+    Sprint 7) polls pending rows, fetches the object from HubSpot,
+    runs the upsert/filter, marks the row as `processed` or
+    increments `attempts` + sets `last_error`. Idempotency via
+    UNIQUE on `hubspot_event_id` (HubSpot delivers each event a
+    handful of times; `ON CONFLICT DO NOTHING` makes the receiver
+    side trivially idempotent).
+- Alternatives considered:
+  - Synchronous processing (verify HMAC → fetch from HubSpot →
+    upsert in the request): rejected. HubSpot ack timeout is 30s;
+    a slow upstream HubSpot or a temporary rate-limit hit could
+    cascade into "HubSpot retries the event, we re-process, etc."
+    Async with idempotent insert is the standard pattern.
+  - Store all events even for non-matching companies: rejected for
+    DB hygiene. `outcome = 'filtered_out'` rows are still kept
+    (audit trail), they just don't touch `companies`/`deals`.
+  - Per-company-type webhook subscriptions in HubSpot: rejected.
+    HubSpot's webhook subscription model is global per Private App,
+    not filterable by company-type. Easier to filter at receive
+    time than to maintain N separate subscriptions.
+- Consequences:
+  - Sprint 5 schema: `hubspot_webhook_events` table with columns:
+      - `id` UUID PK
+      - `hubspot_event_id` TEXT NOT NULL UNIQUE (idempotency)
+      - `subscription_type` TEXT NOT NULL (company.creation, etc.)
+      - `object_type` TEXT NOT NULL ('company' | 'deal')
+      - `hubspot_object_id` TEXT NOT NULL (the company/deal id)
+      - `occurred_at` TIMESTAMPTZ NOT NULL (from event payload)
+      - `received_at` TIMESTAMPTZ DEFAULT now()
+      - `status` TEXT NOT NULL DEFAULT 'pending'
+        (CHECK: pending | processed | failed)
+      - `outcome` TEXT NULL (CHECK: upserted | deleted | filtered_out | null)
+      - `attempts` INT NOT NULL DEFAULT 0
+      - `last_error` TEXT NULL
+      - `processed_at` TIMESTAMPTZ NULL
+      - `raw` JSONB NOT NULL (the full event body for debugging)
+  - Index: partial index on `(status)` WHERE status = 'pending' —
+    the polling worker's hot path.
+  - Sprint 5 endpoint surface:
+      - POST `/api/v1/hubspot/webhooks` (HMAC-protected; rate-limited
+        via `webhookLimiter` 200/min/IP from Sprint 2.7)
+      - POST `/api/v1/hubspot/refresh` (auth-protected; manual sync
+        trigger for operators)
+  - New worker boot in `server/index.ts`: `startWebhookProcessor()`
+    after backfill hook. `setInterval(5000)` polling.
+- Follow-up actions:
+  - Sprint 5 implementation broken into A (migration + schema),
+    B (HMAC middleware + receiver), C (worker + processor),
+    D (refresh endpoint + integration tests), E (docs).
+  - HubSpot Private App webhook configuration → goes into
+    `docs/hubspot_api_reference.md` so a future operator can set
+    up webhooks without rediscovering the steps.
+  - Sprint 7 (Docker) needs to handle the worker's `setInterval` —
+    single-replica deploy is fine; multi-replica future would
+    need a row-lock or a Redis-backed queue. Note as TODO.
+
+### Decision: Sprint 5 — HubSpot webhooks shipped (A → E)
+- Date: 2026-05-17
+- Context:
+  - Pre-Sprint 5 locked the scope (all 6 event types, drop-on-event
+    filtering, async receiver + worker, idempotency via UNIQUE on
+    `hubspot_event_id`). This record captures what landed plus the
+    one architectural deviation we encountered during wiring.
+- Decision (what shipped):
+  - **Migration `0004_complex_squadron_sinister.sql`** — created
+    `hubspot_webhook_events` (12 columns + partial index on
+    `(status)` WHERE status='pending' + 3 CHECK constraints encoding
+    the status / outcome / object_type enums inline).
+  - **HMAC v3 middleware** (`server/middleware/verify-hubspot-signature.ts`).
+    Source string = `${method}${uri}${rawBody}${timestamp}`,
+    `crypto.timingSafeEqual`, 5-minute timestamp window.
+    Decoded raw body is re-parsed into `req.body` so downstream
+    handlers see the same JSON shape as every other endpoint.
+  - **Receiver + refresh routes** mounted as
+    `hubspotWebhooksRouter` inside the existing `hubspotRouter`:
+      - `POST /api/v1/hubspot/webhooks` — public (signature-auth),
+        `webhookLimiter` 200/min/IP, returns 200 even on shape
+        mismatch (logs + `malformed:true` so HubSpot doesn't retry).
+      - `POST /api/v1/hubspot/refresh` — Bearer-auth,
+        `hubspotProxyLimiter` 10/min/IP, max 100 ids.
+  - **Async processor** (`webhooks.processor.ts`) —
+    `setInterval(5000)` in-process, `BATCH_SIZE=50`,
+    `MAX_ATTEMPTS=5`. Skipped in `NODE_ENV=test` so the test suite
+    can drive it via `processWebhookBatch()` directly. Stop hook
+    runs before DB pool drain in `shutdown()`.
+  - **HubSpot 404 race protection** — a `creation`/`propertyChange`
+    event whose object has already been deleted in HubSpot
+    surfaces as `NotFoundError` from `hubspot.getCompany` /
+    `getDeal`. We catch it and treat as a delete (so the local
+    DB stays consistent without re-queuing the event forever).
+  - **Drop-on-event filter** — `passesCompanyTypeFilter()` enforces
+    `HUBSPOT_COMPANY_TYPE_FILTER` against `properties.company_type`.
+    Non-matching → outcome=`filtered_out`, no upsert.
+  - **Deal-without-parent** — if a deal event fires for a deal
+    whose parent company isn't in our cache, we mark it
+    `filtered_out` and skip — preventing a FK insert error. The
+    next company event for the parent (or a manual refresh) will
+    backfill the missing company; the deal will be picked up via
+    the future propertyChange or a backfill rerun.
+- Architectural deviation (from Pre-Sprint 5):
+  - **Raw body parser mount location** — Pre-Sprint 5 implied the
+    raw parser would be route-scoped inside the webhooks router.
+    In practice this didn't work: `app.use(express.json())` is
+    mounted globally in `app.ts` and consumes the body BEFORE the
+    route-level `express.raw` ever runs. Fix: mount `express.raw`
+    path-scoped at `/api/v1/hubspot/webhooks` BEFORE
+    `express.json()`. body-parser's `_body` sentinel makes the
+    second parser a no-op once the first has consumed the stream.
+- Test coverage:
+  - 22 integration tests in `server/tests/hubspot-webhooks.integration.test.ts`:
+      - Receiver: missing sig (403), tampered sig (403), stale ts
+        (403), valid payload (200 + DB row), dedup (200 with
+        deduped=1), malformed payload shape (200 with
+        malformed=true), unsupported subscription type
+        (200 with malformed=true).
+      - Processor: creation → upsert, propertyChange → upsert,
+        filtered_out (non-direct_client), deletion (no HubSpot
+        fetch + cascades to deals), HubSpot 404 race, transient
+        failure (attempts++), retry budget exhaustion
+        (`status='failed'`), deal-with-parent vs deal-without-parent,
+        `occurredAt` ASC ordering.
+      - Refresh: 401 unauth, 400 too-many ids, 400 non-UUID,
+        happy path (refetch + upsert), missing local row (counted
+        as failed).
+  - Full suite: 204 tests pass.
+- Follow-up actions / TODOs:
+  - **Sprint 7 (Docker)** — the `setInterval(5000)` worker is
+    single-replica safe. If we ever run >1 replica, swap to
+    pg advisory locks or a Redis-backed queue. Add to deployment
+    runbook in `docs/deployment.md` once Sprint 7 ships.
+  - **Operator UI** — `POST /api/v1/hubspot/refresh` has no UI
+    surface yet. Sprint 6+ may add a "Force resync" button on a
+    future Companies admin page.
+  - **HubSpot Private App webhook setup** — documented in
+    `docs/hubspot_api_reference.md` (URL + secret + subscription
+    list) so the operator can finish the connection at deploy time.

@@ -15,6 +15,10 @@ import { createApp } from "./app";
 import { env, isProd } from "./config/env";
 import { pool } from "./db/client";
 import { logger } from "./middleware/logger";
+import {
+  startWebhookProcessor,
+  stopWebhookProcessor
+} from "./modules/hubspot/webhooks/webhooks.processor";
 import { shutdownBrowserPool } from "./modules/pdf/browser-pool";
 import { backendStartupBackfillIfEmpty } from "./scripts/hubspot-backfill";
 
@@ -36,6 +40,11 @@ const server = app.listen(env.PORT, () => {
   backendStartupBackfillIfEmpty().catch(err => {
     logger.error({ err: (err as Error).message }, "[startup] auto-backfill hook threw");
   });
+
+  // Sprint 5: kick off the webhook-event processor loop. No-ops in
+  // NODE_ENV=test so the test suite can drive the processor by
+  // calling processWebhookBatch() directly (no rogue timers).
+  startWebhookProcessor();
 });
 
 // ─── Graceful shutdown ────────────────────────────────────────────
@@ -58,6 +67,15 @@ async function shutdown(signal: string): Promise<void> {
       resolve();
     });
   });
+
+  // Stop the webhook poller BEFORE draining the DB pool — otherwise
+  // an in-flight batch's query would hit a closed pool and surface a
+  // confusing error during shutdown.
+  try {
+    stopWebhookProcessor();
+  } catch (err) {
+    logger.error({ err }, "error stopping webhook processor");
+  }
 
   // Close the Puppeteer browser (if any was launched).
   try {

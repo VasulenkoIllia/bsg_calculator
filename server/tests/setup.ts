@@ -40,6 +40,12 @@ process.env.DB_NAME = TEST_DB_NAME;
 process.env.JWT_ACCESS_SECRET =
   process.env.JWT_ACCESS_SECRET ?? "test_access_secret_at_least_32_chars_long_xxxx";
 
+// Stable HubSpot webhook HMAC secret so the Sprint 5 signature-
+// verification middleware accepts requests signed with this same value
+// from the test helper. Production must set a real secret via env.
+process.env.HUBSPOT_WEBHOOK_SECRET =
+  process.env.HUBSPOT_WEBHOOK_SECRET ?? "test_hubspot_webhook_secret";
+
 // ─── 2. Ensure test database exists ───────────────────────────────
 async function ensureTestDatabase(): Promise<void> {
   const admin = new pg.Client({ connectionString: ADMIN_DB_URL });
@@ -78,7 +84,7 @@ beforeEach(async () => {
   // our UUID-PK schema but harmless). Add new tables here as the
   // schema grows.
   await dbModule.db.execute(
-    sql`TRUNCATE TABLE documents, calculator_configs, deals, companies, refresh_tokens, users RESTART IDENTITY CASCADE`
+    sql`TRUNCATE TABLE hubspot_webhook_events, documents, calculator_configs, deals, companies, refresh_tokens, users RESTART IDENTITY CASCADE`
   );
   // Reset numbering sequence — TRUNCATE on documents doesn't touch
   // the sequence row. Set to the seed value so each test file starts

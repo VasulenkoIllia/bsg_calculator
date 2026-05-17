@@ -116,10 +116,35 @@ All modules follow the **routes → controller → service → repository → sc
   Wraps `@hubspot/api-client`, caches auth token, handles rate limiting.
 - **Mapper (hubspot.mapper.ts):**  
   Transforms HubSpot property enums → internal `companyType`, `segmentType`, `lifecycleStage` fields.
-- **Service + Routes:**  
-  `POST /hubspot/sync` (admin only, Phase 9) — iterates HubSpot CRM and upserts all companies/deals.
+- **Routes (hubspot.routes.ts):**  
+  Mounts read-only `/pipelines` (Bearer-auth) PLUS the Sprint 5 webhooks subrouter.
 - **Backfill Script (scripts/hubspot-backfill.ts):**  
   On startup, if `HUBSPOT_AUTO_BACKFILL=true` and companies table is empty, the backfill runs in the background while `/health` responds normally.
+
+#### Sprint 5: Webhooks (`server/modules/hubspot/webhooks/`)
+- **webhooks.routes.ts** — two endpoints:
+  - `POST /api/v1/hubspot/webhooks` (public, HMAC v3 verified).
+  - `POST /api/v1/hubspot/refresh` (Bearer-auth, max 100 ids).
+- **webhooks.controller.ts** — receiver inserts events into
+  `hubspot_webhook_events` and returns 200 in <10ms; refresh
+  refetches by `companies.id` UUID and upserts.
+- **webhooks.processor.ts** — `setInterval(5000)` worker started by
+  `server/index.ts`. Picks up `status='pending'` rows ordered by
+  `occurred_at`, fan-outs to per-event upsert / filter / delete logic.
+  `MAX_ATTEMPTS=5` retry budget, then `status='failed'`.
+- **webhooks.schemas.ts** — Zod enum (`SUPPORTED_SUBSCRIPTION_TYPES`)
+  + `webhookBodySchema` (array; min 1). Unknown subscription types
+  are logged and dropped (200 with `malformed:true`) — never 4xx,
+  to avoid HubSpot retry storms.
+- **webhooks.repository.ts** — `insertEventIfNew` (idempotent via
+  `ON CONFLICT DO NOTHING` on `hubspot_event_id`), `listPendingEvents`,
+  `markProcessed` / `recordFailure` / `markFailed`.
+- **verify-hubspot-signature middleware** — HMAC SHA-256 v3 source
+  string = `${method}${uri}${rawBody}${ts}`, 5-min timestamp window,
+  constant-time `crypto.timingSafeEqual`. The raw body parser
+  (`express.raw`) is mounted path-scoped at the webhook URL in
+  `app.ts` BEFORE `express.json()` — otherwise the global JSON
+  parser would consume the body and break HMAC verification.
 
 ---
 

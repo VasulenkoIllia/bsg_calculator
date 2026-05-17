@@ -65,6 +65,19 @@ export function createApp(): express.Express {
     })
   );
 
+  // 1b. RAW body parser — Sprint 5 webhook receiver only. The HMAC v3
+  //    signature is computed over the EXACT request bytes, so the
+  //    raw parser MUST run before the generic JSON parser. body-parser
+  //    sets `req._body` after consuming the stream, so the JSON
+  //    parser below skips this path automatically.
+  //    `type: "*/*"` matches any Content-Type (HubSpot historically
+  //    sends application/json, but we want the signature check to
+  //    be the gatekeeper, not the parser's MIME match).
+  app.use(
+    "/api/v1/hubspot/webhooks",
+    express.raw({ type: "*/*", limit: "1mb" })
+  );
+
   // 2. JSON body parser — limit to 1MB.
   //    DocumentTemplatePayload is ~20KB; 1MB leaves 50× headroom for
   //    schema growth while shrinking the DoS-by-huge-body window
@@ -114,7 +127,8 @@ export function createApp(): express.Express {
   app.use("/api/v1/documents", documentsRouter);
   app.use("/api/v1/documents", pdfRouter); // mounts /:number/pdf
   app.use("/api/v1/numbering", numberingRouter);
-  // Future sprints: listings, hubspot/webhooks (Sprint 5).
+  // Sprint 5 routes (POST /api/v1/hubspot/webhooks + POST /api/v1/hubspot/refresh)
+  // are mounted as children of hubspotRouter above.
 
   // 8. 404 catch-all + 9. Error envelope — must be last.
   app.use(notFoundHandler);
