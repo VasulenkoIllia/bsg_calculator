@@ -60,12 +60,27 @@ export interface ListDocumentsArgs {
   limit: number;
 }
 
+/**
+ * Escape `%` and `_` characters in a user-supplied LIKE pattern.
+ * Without this, `q=%` would match every document via `ILIKE '%%%'`,
+ * `q=_` would match every single-character position, etc. Drizzle
+ * already parameterises the value (no SQL injection), but LIKE
+ * metacharacters are interpreted by Postgres and need explicit
+ * escaping.
+ *
+ * Backslash is the default LIKE escape character; we double-escape
+ * it first so `\` in user input is treated as a literal `\`.
+ */
+function escapeLikePattern(raw: string): string {
+  return raw.replace(/\\/g, "\\\\").replace(/[%_]/g, "\\$&");
+}
+
 export async function listDocuments(args: ListDocumentsArgs): Promise<Document[]> {
   const filters = [
     args.companyId ? eq(documents.companyId, args.companyId) : undefined,
     args.hubspotDealId ? eq(documents.hubspotDealId, args.hubspotDealId) : undefined,
     args.scope ? eq(documents.scope, args.scope) : undefined,
-    args.q ? ilike(documents.number, `%${args.q}%`) : undefined,
+    args.q ? ilike(documents.number, `%${escapeLikePattern(args.q)}%`) : undefined,
     args.cursor
       ? or(
           lt(documents.createdAt, new Date(args.cursor.createdAt)),

@@ -12,6 +12,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client.js";
 import * as documentsApi from "../api/documents.js";
+import type { DocumentTemplatePayload } from "./document-wizard/index.js";
 
 export interface SaveDocumentModalProps {
   open: boolean;
@@ -24,10 +25,11 @@ export interface SaveDocumentModalProps {
   companyName: string;
   /**
    * The wizard's current DocumentTemplatePayload. Stored verbatim into
-   * documents.payload as JSONB. `schemaVersion` is injected by this
-   * modal if missing (legacy wizard drafts don't include it).
+   * documents.payload as JSONB. The modal injects `schemaVersion: 1`
+   * automatically on submit — wizardDraft doesn't carry that field
+   * by design (it's a server-side migration marker, not a wizard one).
    */
-  payload: { schemaVersion?: number } & Record<string, unknown>;
+  payload: DocumentTemplatePayload;
   scope: documentsApi.DocumentScope;
 }
 
@@ -57,10 +59,15 @@ export function SaveDocumentModal({
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const enrichedPayload = {
+      // Cast through a clean "object that has schemaVersion" shape;
+      // the backend Zod payload schema requires that field but treats
+      // everything else as passthrough. JSON.stringify will spread
+      // wizardDraft's typed properties without TypeScript complaint
+      // because Record<string, unknown> is wide enough.
+      const enrichedPayload: { schemaVersion: number } & Record<string, unknown> = {
         schemaVersion: 1,
-        ...payload
-      } as { schemaVersion: number } & Record<string, unknown>;
+        ...(payload as unknown as Record<string, unknown>)
+      };
 
       const created = await documentsApi.createDocument({
         companyId,

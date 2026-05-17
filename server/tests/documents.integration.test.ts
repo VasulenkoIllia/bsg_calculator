@@ -329,6 +329,57 @@ describe("GET /api/v1/documents — list + filters", () => {
       .set("Authorization", `Bearer ${token}`);
     expect(limited.body.items).toHaveLength(2);
     expect(limited.body.nextCursor).toBeTruthy();
+
+    // Actually follow the cursor — earlier the test stopped at
+    // "nextCursor is truthy" which would mask a cursor-encoding bug.
+    // Walk page 2 + page 3 and verify all 5 documents come through.
+    const seen = new Set<string>(
+      limited.body.items.map((d: { id: string }) => d.id)
+    );
+    const page2 = await request(app)
+      .get(
+        `/api/v1/documents?companyId=${company.id}&limit=2&cursor=${encodeURIComponent(limited.body.nextCursor)}`
+      )
+      .set("Authorization", `Bearer ${token}`);
+    expect(page2.body.items).toHaveLength(2);
+    page2.body.items.forEach((d: { id: string }) => seen.add(d.id));
+    expect(seen.size).toBe(4);
+
+    const page3 = await request(app)
+      .get(
+        `/api/v1/documents?companyId=${company.id}&limit=2&cursor=${encodeURIComponent(page2.body.nextCursor)}`
+      )
+      .set("Authorization", `Bearer ${token}`);
+    expect(page3.body.items).toHaveLength(1);
+    page3.body.items.forEach((d: { id: string }) => seen.add(d.id));
+    expect(seen.size).toBe(5);
+    expect(page3.body.nextCursor).toBeNull();
+  });
+
+  it("escapes LIKE metacharacters in the q search parameter", async () => {
+    const token = await setupAuth();
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "555555888888" }))
+      .returning();
+    // Save 2 documents so `q=%` would normally match both via wildcard.
+    await request(app)
+      .post("/api/v1/documents")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, scope: "offer", payload: samplePayload });
+    await request(app)
+      .post("/api/v1/documents")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, scope: "agreement", payload: samplePayload });
+
+    // q = literal "%" should NOT match any document number (the
+    // numbers contain no percent signs), proving the metachar
+    // was escaped instead of being interpreted as wildcard.
+    const res = await request(app)
+      .get("/api/v1/documents?q=%25") // URL-encoded "%"
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(0);
   });
 
   it("substring-search on number via ?q", async () => {
@@ -407,22 +458,23 @@ describe("POST /api/v1/documents/:number/sync — Phase 9 stub", () => {
 });
 
 describe("number allocation — TX rollback returns the number", () => {
-  it("a failed INSERT rolls back the number, next save reuses it", async () => {
+  it("pre-allocation validation doesn't consume the sequence value", async () => {
+    // The failing request below trips the calc-ref check BEFORE
+    // allocateNextNumber runs, so the counter never advances.
+    // We document this case separately from the deeper "rollback
+    // AFTER allocation" test below.
     const token = await setupAuth();
     const [company] = await db
       .insert(companies)
       .values(companyFixture({ hubspotCompanyId: "777777222222" }))
       .returning();
 
-    // First save grabs BSG-7100001-222222.
     const first = await request(app)
       .post("/api/v1/documents")
       .set("Authorization", `Bearer ${token}`)
       .send({ companyId: company.id, scope: "offer", payload: samplePayload });
     expect(first.body.number).toBe("BSG-7100001-222222");
 
-    // A save with a bad calc reference triggers TX rollback BEFORE
-    // the document INSERT — the number should NOT be consumed.
     const failed = await request(app)
       .post("/api/v1/documents")
       .set("Authorization", `Bearer ${token}`)
@@ -434,15 +486,58 @@ describe("number allocation — TX rollback returns the number", () => {
       });
     expect(failed.status).toBe(400);
 
-    // Next legitimate save should get BSG-7100002-222222 (not 7100003).
     const second = await request(app)
       .post("/api/v1/documents")
       .set("Authorization", `Bearer ${token}`)
       .send({ companyId: company.id, scope: "offer", payload: samplePayload });
     expect(second.body.number).toBe("BSG-7100002-222222");
 
-    // Sanity: only 2 documents in the DB.
     const rows = await db.select().from(documents);
     expect(rows).toHaveLength(2);
+  });
+
+  it("an INSIDE-TX failure AFTER number allocation rolls back the counter", async () => {
+    // This scenario is the one that ACTUALLY tests the
+    // UPDATE document_number_sequence RETURNING / TX semantics:
+    //   - companyId passes the Zod UUID check (well-formed)
+    //   - the in-TX `SELECT hubspot_company_id FROM companies` fails
+    //     to find the row → ValidationError thrown AFTER the sequence
+    //     counter has been advanced.
+    // If the TX rollback works, the next legitimate save reuses the
+    // sequence value the failed attempt nominally allocated.
+    const token = await setupAuth();
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "777777444444" }))
+      .returning();
+
+    // First successful save → BSG-7100001-444444 (advances counter from 7100001 → 7100002).
+    const first = await request(app)
+      .post("/api/v1/documents")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, scope: "offer", payload: samplePayload });
+    expect(first.body.number).toBe("BSG-7100001-444444");
+
+    // Failed save: well-formed UUID that doesn't exist. createDocument
+    // enters the TX, allocates BSG-7100002-?????? from the sequence,
+    // then the company lookup returns no row → throws → TX rollback.
+    const failed = await request(app)
+      .post("/api/v1/documents")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        companyId: "00000000-0000-0000-0000-999999999999",
+        scope: "offer",
+        payload: samplePayload
+      });
+    expect(failed.status).toBe(400);
+    expect(failed.body.error.code).toBe("VALIDATION_FAILED");
+
+    // Next successful save MUST get BSG-7100002-444444. If the rollback
+    // was broken, this would jump to BSG-7100003-444444.
+    const second = await request(app)
+      .post("/api/v1/documents")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, scope: "offer", payload: samplePayload });
+    expect(second.body.number).toBe("BSG-7100002-444444");
   });
 });

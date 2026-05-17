@@ -52,11 +52,24 @@ describe("GET /api/v1/documents/:number/pdf", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns 404 for an unknown number", async () => {
+  it("returns 400 VALIDATION_FAILED for a malformed number (regex pre-check)", async () => {
+    await createTestUser({ email: "pdf@bsg.test", password: "password12345" });
+    const token = await loginAs("pdf@bsg.test", "password12345");
+    // BSG-9999999 (no suffix) is now rejected by the URL pattern
+    // BEFORE the DB lookup — defends Content-Disposition from CRLF
+    // injection on inputs that bypass the lookup.
+    const res = await request(app)
+      .get("/api/v1/documents/BSG-9999999/pdf")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("VALIDATION_FAILED");
+  });
+
+  it("returns 404 for a well-formed but missing number", async () => {
     await createTestUser({ email: "pdf@bsg.test", password: "password12345" });
     const token = await loginAs("pdf@bsg.test", "password12345");
     const res = await request(app)
-      .get("/api/v1/documents/BSG-9999999/pdf")
+      .get("/api/v1/documents/BSG-9999999-999999/pdf")
       .set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(404);
   });

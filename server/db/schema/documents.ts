@@ -63,9 +63,16 @@ export const documents = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    // `.$onUpdate` makes Drizzle stamp `updatedAt` on every UPDATE
+    // statement it generates. Important for Phase 9 — the future
+    // `patchSyncState` repository function will flip
+    // `hubspot_sync_state` from 'not_synced' to 'synced'; without
+    // this hook the column would stay at the INSERT timestamp and
+    // a "last touched" sort would be meaningless.
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow()
+      .$onUpdate(() => new Date())
   },
   table => ({
     // Listings filter: WHERE company_id = $1 [AND scope = $2]

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -238,18 +238,40 @@ export function WizardPage() {
     staleTime: 10_000
   });
 
-  // Push the peek result into the wizard's documentNumber field so
-  // Step 1's input shows the live BSG-XXXXXXX-YYYYYY rather than the
-  // legacy BSG-DRAFT-XXXXX placeholder. We only overwrite when the
-  // current value still looks like a placeholder so a hand-edit by
-  // the operator isn't clobbered by the next peek refresh.
+  // Push the peek result into the wizard's documentNumber field.
+  //
+  // Heuristic: we want the field to track the backend's preview when
+  // the operator hasn't manually edited it, but PRESERVE a hand-edit
+  // when they have. The earlier (Sprint 4.E.1) implementation gated
+  // overwrites on "looksLikePlaceholder" — BSG-DRAFT- prefix, non-BSG,
+  // XXXXXX suffix, or value equal to incoming peek. That heuristic
+  // broke when the operator switched companies: the current value
+  // was a real BSG-7100001-AAAAAA from the previous peek (not a
+  // placeholder), so the new BSG-7100001-BBBBBB peek for the new
+  // company was silently dropped and the wizard kept showing AAAAAA.
+  //
+  // The robust pattern is to track the last value WE pushed into the
+  // field via a ref. Overwrite freely as long as the current value
+  // still equals our last write — that means the operator has not
+  // touched it. The moment current !== lastWritten, we know it's been
+  // hand-edited and we leave it alone for the rest of the session.
+  const lastPeekWrittenRef = useRef<string | null>(null);
   useEffect(() => {
     const next = numberPeek.data?.next;
     if (!next) return;
     const current = wizardDraft.header.documentNumber;
-    const looksLikePlaceholder =
-      current.startsWith("BSG-DRAFT-") || current.startsWith("BSG-") === false || current.endsWith("XXXXXX") || current === next;
-    if (!looksLikePlaceholder && current.length > 0) return;
+
+    // Empty (e.g. just-cleared) AND any value we wrote previously
+    // are both safe to overwrite. Anything else is a hand-edit.
+    const safeToOverwrite =
+      current.length === 0 ||
+      current === lastPeekWrittenRef.current ||
+      current.startsWith("BSG-DRAFT-") ||
+      current.endsWith("XXXXXX");
+    if (!safeToOverwrite) return;
+    if (current === next) return; // already up-to-date
+
+    lastPeekWrittenRef.current = next;
     setWizardDraft(prev => ({
       ...prev,
       header: { ...prev.header, documentNumber: next }
@@ -294,7 +316,7 @@ export function WizardPage() {
           companyId={selectedCompany.id}
           hubspotDealId={selectedDealId}
           companyName={selectedCompany.name}
-          payload={wizardDraft as unknown as { schemaVersion?: number } & Record<string, unknown>}
+          payload={wizardDraft}
           scope={backendScope}
         />
       ) : null}

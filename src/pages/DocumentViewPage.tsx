@@ -46,6 +46,14 @@ function asWizardPayload(payload: unknown): DocumentTemplatePayload | null {
   ) {
     return null;
   }
+  // NOTE: this is a SHALLOW check — only the four top-level keys
+  // buildOfferPdfHtml dereferences first are validated. A deeper-
+  // nested mismatch (e.g. payload.layout missing a required sub-
+  // field) will surface as a thrown error inside buildOfferPdfHtml,
+  // which the caller catches and turns into a fallback banner. The
+  // cast below is therefore a "passes the entrance check" claim,
+  // not a "fully validated" claim — the deeper validation is the
+  // try/catch around `buildOfferPdfHtml` itself.
   return p as unknown as DocumentTemplatePayload;
 }
 
