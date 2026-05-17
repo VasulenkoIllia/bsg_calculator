@@ -4050,3 +4050,103 @@ Use this file to record meaningful technical decisions for the project.
   - Wire `npm run visual-diff` into the `verify` script once the
     backend dev DB is part of CI. For now operators run it locally
     when touching the PDF template.
+
+### Decision: Sprint 5.F — audit closure (30 findings)
+- Date: 2026-05-17
+- Context:
+  - Post-Sprint 5 + Sprint 5.5 audit by 5 parallel specialist agents
+    (architect, security-reviewer, typescript-reviewer,
+    database-reviewer, code-reviewer). 30 unique findings after
+    de-duplication: 2 BLOCKER (build/runtime), 5 HIGH (safety),
+    12 SHOULD-FIX (design/coverage), 11 NICE (polish).
+- Decision: close all 30 across three commits.
+  - **5.F.1 (commit `02149a5`) — BLOCKER + HIGH (7 items).**
+    Build broken on tsc: visual-diff `waitUntil:"networkidle0"` is
+    SetContentWaitForOptions-rejected, fixture-payload barrel import
+    drags React .tsx into server tree, pngjs untyped. Replaced HMAC
+    URI source with `env.APP_PUBLIC_URL` (was proxy-header derived).
+    Cut refresh `companyIds.max` from 100 → 20 (was 1000 HubSpot
+    calls/min/IP). Wrapped company-deletion path in `db.transaction`.
+    Replaced `setInterval` with self-rescheduling `setTimeout` +
+    `processorRunning` flag to eliminate re-entrancy race. Wired
+    real exponential backoff in `listPendingEvents` WHERE clause
+    (`attempts = 0 OR received_at + attempts × 30s ≤ now()`) so a
+    failing row no longer exhausts its 5-attempt budget in 25 seconds.
+  - **5.F.2 (commit `6da59ef`) — SHOULD-FIX (12 items).**
+    Repository boundary restored: webhook controller no longer uses
+    dynamic `await import()` of db/schema/eq inside a per-id loop;
+    routes through `findCompanyById`. Processor stops issuing raw
+    `db.delete(deals)`/`db.delete(companies)` and instead calls
+    new helpers (`deleteDealsByCompanyId`, `deleteCompanyByHubspotId`,
+    `deleteDealByHubspotId`, `findCompanyByHubspotId`) that accept
+    an optional `tx` handle so the company-deletion path composes
+    with its TX. Partial index expanded from `(occurred_at)` to
+    `(occurred_at, received_at, attempts) WHERE status='pending'`
+    via migration `0005_strong_thor.sql` so the new backoff WHERE
+    clause can do an index-only scan. SSRF defence-in-depth: Zod
+    schema now constrains `eventId` + `objectId` to `/^\d{1,19}$/`.
+    Five identical `companyFixture()` copies consolidated into
+    `server/tests/fixtures/company.ts`. Added missing
+    `deal.deletion` + `deal.propertyChange` processor tests (2 of 6
+    subscription types had zero coverage). Fixed `isWizardPayload`
+    null-pass bug (`typeof null === "object"`). Dropped `as object`
+    cast in `eventToRow`. Made `dropped` field in malformed ack
+    reflect the real array length instead of hardcoded `0`.
+    - **5.F.2 deferral (S3)**: moving the PDF builder out of
+      `src/components/document-wizard/` to `src/shared/pdf-templates/`
+      would touch ~30 wizard React files and we lack E2E coverage to
+      verify a clean cut. Filed as a future refactor with an
+      architecture note at the pdf.controller.ts import site so the
+      next developer sees the rationale. The visual-diff harness
+      would catch a rendering regression, but a wizard-React hydration
+      bug would slip through silently — wait for Sprint 8 E2E
+      Playwright tests before attempting the move.
+    - **5.F.2 known gap (S6)**: any authenticated user can refresh
+      any company via POST /api/v1/hubspot/refresh — no per-resource
+      ownership check. INTENTIONAL pre-RBAC (Sprint 2.8 ships
+      flat-auth). When admin/regular-user roles ship (Phase 9+),
+      gate refresh on `admin` role before any per-resource check
+      would matter. Documented in JSDoc on the controller.
+  - **5.F.3 (this commit) — NICE polish (11 items).**
+    Five items landed as freebies in F.1/F.2 (`id` tie-breaker in
+    ORDER BY, JSDoc rewrite on listPendingEvents, processor:120
+    projection rename via repo helper, req.protocol → env constant).
+    Remaining 6 done here:
+      - Application-side 64 KB cap on `raw` JSONB persisted by the
+        receiver; over-budget bodies stored as a `_truncated` marker
+        so the row stays inspectable without bloating the table.
+      - Per-fixture `maxDiffRatio` override in the visual-diff
+        FIXTURES registry (default still 0.5%).
+      - Combined duplicate import statement from browser-pool in
+        visual-diff/index.ts.
+      - Receiver log line `events queued` now includes
+        `companies` + `deals` breakdown so a delivery storm is
+        triagable at a glance.
+      - Pre-flight check on `pdftoppm` availability with a clear
+        install hint, replacing the previous unactionable ENOENT.
+      - Defence-in-depth comment on the raw body parser scope in
+        app.ts warning future contributors NEVER to broaden the
+        path argument (would shadow JSON parser globally).
+- Verification:
+  - Server typecheck: clean.
+  - Server test suite: 209 tests pass (was 206; +3 from S7 +
+    S12 + retry-backoff). One pre-existing order-dependent flake
+    in companies-deals cursor pagination is unrelated to 5.F.
+  - Webhook integration tests: 27 pass (was 22 in Sprint 5 ship;
+    +5 from F.1 + F.2.b).
+  - `npm run visual-diff`: 14-26 px / 967k drift per page,
+    within the 0.5% threshold by a 200× margin (unchanged).
+- Open follow-ups (NOT closed in 5.F):
+  - **S3 PDF-builder move** — Sprint 8 (after E2E lands) or
+    Phase 9 prep (before outbound Note write-back wants the same
+    builder).
+  - **RBAC for refresh endpoint** — Phase 9+ once user roles ship.
+  - **Multi-replica processor** — Sprint 7 single-replica is fine.
+    Multi-replica needs pg advisory locks or Redis-backed queue.
+  - **Path alias setup** — tsconfig.json/server.json + vite +
+    vitest + tsx all need new resolution config. Not worth the
+    plumbing until at least 2 cross-boundary imports exist.
+- Sprint 5.F is closed. Next sprint per `phase_08_implementation_plan.md`
+  status snapshot is Sprint 6 (frontend continuation:
+  `/calc/:id` hydration + auto-save + global toasts) or Sprint 7
+  (Docker + Coolify deploy).

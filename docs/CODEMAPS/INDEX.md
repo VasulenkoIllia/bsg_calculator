@@ -85,6 +85,8 @@ This directory contains architectural maps of the BSG Calculator codebase to hel
 | **Sprint 4** Documents + PDF render | ✅ DONE | + F.1→F.4 audit closure (28 findings) |
 | **Sprint 4.E.2** Server-side PDF (shared template) | ✅ DONE | buildOfferPdfHtml shared via tsconfig.server.json glob |
 | **Sprint 5** HubSpot webhooks (inbound) | ✅ DONE | `modules/hubspot/webhooks/*` — HMAC v3 + async processor + manual refresh |
+| **Sprint 5.5** Visual-diff harness | ✅ DONE | `scripts/visual-diff/*` — backend vs. frontend PDF equivalence gated |
+| **Sprint 5.F** Audit closure (30 findings, F.1→F.3) | ✅ DONE | HMAC URI hardened, TX-wrapped deletion, exp. backoff, re-entrancy guard, repo boundaries, SSRF defence |
 | **Sprint 6** Frontend continuation | ⏳ Partial | `/calc/:id` hydration + wizard URL-driven seeding still needed |
 | **Sprint 7** Docker + Coolify Deploy | ⏳ Pending | docker-compose + Dockerfile + Coolify config |
 | **Sprint 8** Hardening (optional) | ⏳ Pending | E2E Playwright, CSP, observability |

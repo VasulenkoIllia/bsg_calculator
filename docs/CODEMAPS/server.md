@@ -128,10 +128,18 @@ All modules follow the **routes → controller → service → repository → sc
 - **webhooks.controller.ts** — receiver inserts events into
   `hubspot_webhook_events` and returns 200 in <10ms; refresh
   refetches by `companies.id` UUID and upserts.
-- **webhooks.processor.ts** — `setInterval(5000)` worker started by
-  `server/index.ts`. Picks up `status='pending'` rows ordered by
-  `occurred_at`, fan-outs to per-event upsert / filter / delete logic.
-  `MAX_ATTEMPTS=5` retry budget, then `status='failed'`.
+- **webhooks.processor.ts** — Self-rescheduling `setTimeout(5000)` worker
+  started by `server/index.ts` (Sprint 5.F.1 — replaced `setInterval`
+  to eliminate re-entrancy). Picks up `status='pending'` rows ordered
+  by `(occurred_at, id)`, fan-outs to per-event upsert / filter / delete
+  logic via repository helpers (`deleteDealsByCompanyId`,
+  `deleteCompanyByHubspotId`, `findCompanyByHubspotId`).
+  `MAX_ATTEMPTS=5` retry budget with exponential backoff
+  (`attempts × 30s` since `received_at`) — full budget spans
+  ~7.5 minutes; previously exhausted in ~25 seconds because the
+  backoff column was never wired (Sprint 5.F.1 fix). Company-
+  deletion path is wrapped in `db.transaction()` so the
+  `DELETE deals` + `DELETE companies` pair is atomic.
 - **webhooks.schemas.ts** — Zod enum (`SUPPORTED_SUBSCRIPTION_TYPES`)
   + `webhookBodySchema` (array; min 1). Unknown subscription types
   are logged and dropped (200 with `malformed:true`) — never 4xx,
@@ -141,10 +149,14 @@ All modules follow the **routes → controller → service → repository → sc
   `markProcessed` / `recordFailure` / `markFailed`.
 - **verify-hubspot-signature middleware** — HMAC SHA-256 v3 source
   string = `${method}${uri}${rawBody}${ts}`, 5-min timestamp window,
-  constant-time `crypto.timingSafeEqual`. The raw body parser
-  (`express.raw`) is mounted path-scoped at the webhook URL in
-  `app.ts` BEFORE `express.json()` — otherwise the global JSON
-  parser would consume the body and break HMAC verification.
+  constant-time `crypto.timingSafeEqual`. The URI is built from
+  `env.APP_PUBLIC_URL` (Sprint 5.F.1 — was previously
+  `${req.protocol}://${req.get("host")}` which was proxy-header
+  derived and could in theory be flipped by `X-Forwarded-Proto`
+  injection). The raw body parser (`express.raw`) is mounted
+  path-scoped at the webhook URL in `app.ts` BEFORE `express.json()`
+  — otherwise the global JSON parser would consume the body and
+  break HMAC verification.
 
 ---
 

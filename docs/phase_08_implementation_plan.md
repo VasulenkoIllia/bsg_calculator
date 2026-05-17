@@ -35,7 +35,9 @@ See also:
 | 4. Documents + PDF render (A → E + UX revisions) | ✅ DONE | af719ba..444b338 |
 | 4.F. Sprint 4 audit closure (F.1 → F.3 + docs F.4) | ✅ DONE | 69d0e9a..0d26e8d |
 | 4.E.2. Server-side PDF (shared template module) | ✅ DONE | (bundled with Sprint 4.F) |
-| 5. HubSpot webhooks (inbound, A → E) | ✅ DONE | (this Sprint) |
+| 5. HubSpot webhooks (inbound, A → E) | ✅ DONE | 5f0f0a0 |
+| 5.5. Visual-diff harness (frontend vs. backend PDF) | ✅ DONE | c699dee |
+| 5.F. Sprint 5 audit closure (F.1 → F.3 + docs F.4) | ✅ DONE | 02149a5..HEAD |
 | 6. Frontend continuation (calc page hydration + wizard URL) | ⏳ Partial — listings + doc view + wizard save DONE | — |
 | 7. Docker + Deploy | ⏳ Pending | — |
 | 8. Hardening (optional, E2E + CSP) | ⏳ Pending | — |

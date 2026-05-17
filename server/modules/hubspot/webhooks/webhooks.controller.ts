@@ -33,10 +33,41 @@ import {
  * `hubspot_webhook_events`. The object type is derived from the
  * subscriptionType prefix ('company' / 'deal').
  */
+/**
+ * Sprint 5.F.3: cap the per-event JSONB payload at 64 KB. The raw
+ * body parser already gates the whole request at 1 MB, and a single
+ * HubSpot event payload is typically <2 KB. 64 KB gives 30× headroom
+ * for HubSpot to add fields without blowing up the row. A pathological
+ * event with a huge attachment-like blob would still get stored at
+ * the truncated marker rather than bloating the table.
+ */
+const MAX_RAW_BYTES = 64 * 1024;
+
 function eventToRow(event: WebhookEvent, raw: unknown) {
   const objectType = event.subscriptionType.startsWith("company.")
     ? ("company" as const)
     : ("deal" as const);
+
+  // Clamp the persisted `raw` payload so a single anomalously-large
+  // event can't bloat the row. We measure the JSON-encoded size
+  // (cheap; HubSpot bodies are already JSON). Over-budget bodies are
+  // replaced with a marker object that records the truncation so
+  // operators triaging the row know to look elsewhere for full detail.
+  let safeRaw: unknown = raw;
+  try {
+    const encoded = JSON.stringify(raw);
+    if (encoded && Buffer.byteLength(encoded, "utf8") > MAX_RAW_BYTES) {
+      safeRaw = {
+        _truncated: true,
+        _originalBytes: Buffer.byteLength(encoded, "utf8"),
+        // Keep the first 1 KB so the row stays inspectable.
+        _preview: encoded.slice(0, 1024)
+      };
+    }
+  } catch {
+    safeRaw = { _truncated: true, _reason: "JSON.stringify threw" };
+  }
+
   return {
     hubspotEventId: event.eventId,
     subscriptionType: event.subscriptionType,
@@ -46,7 +77,7 @@ function eventToRow(event: WebhookEvent, raw: unknown) {
     // Drizzle's jsonb column expects `unknown` (any JSON value); the
     // previous `as object` cast was narrower than the column type AND
     // would silently pass `null` since `typeof null === "object"`.
-    raw
+    raw: safeRaw
   };
 }
 
@@ -84,7 +115,14 @@ export async function webhookReceiverController(
 
   let accepted = 0;
   let deduped = 0;
+  // Sprint 5.F.3: log breakdown by objectType so ops triaging a
+  // delivery storm can see at a glance whether HubSpot fired company
+  // events, deal events, or both.
+  let companies = 0;
+  let deals = 0;
   for (const event of parsed.data) {
+    if (event.subscriptionType.startsWith("company.")) companies += 1;
+    else deals += 1;
     const inserted = await insertEventIfNew(eventToRow(event, event));
     if (inserted) {
       accepted += 1;
@@ -93,7 +131,7 @@ export async function webhookReceiverController(
     }
   }
   logger.info(
-    { accepted, deduped, batch: parsed.data.length },
+    { accepted, deduped, batch: parsed.data.length, companies, deals },
     "[hubspot:webhook] events queued"
   );
   res.status(200).json({ accepted, deduped });

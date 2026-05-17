@@ -66,12 +66,14 @@ const __dirname = dirname(__filename);
 
 import { buildOfferPdfHtml } from "../../src/components/document-wizard/buildOfferPdfHtml";
 import { renderHtmlToPdf } from "../../server/modules/pdf/pdf.service";
-import { shutdownBrowserPool } from "../../server/modules/pdf/browser-pool";
-import { acquireBrowser } from "../../server/modules/pdf/browser-pool";
+import {
+  acquireBrowser,
+  shutdownBrowserPool
+} from "../../server/modules/pdf/browser-pool";
 import { FIXTURES, type FixtureKey } from "./fixture-payload";
 
 const MODE = (process.argv[2] ?? "compare") as "gold" | "compare";
-const MAX_DIFF_RATIO = 0.005; // 0.5% of pixels per page
+const DEFAULT_MAX_DIFF_RATIO = 0.005; // 0.5% of pixels per page (overridable per fixture)
 const PNG_DPI = 100; // 100 DPI: ~826×1169 px per A4 page; balances precision vs. CPU
 
 const REPO_ROOT = resolve(__dirname, "..", "..");
@@ -226,8 +228,9 @@ async function processFixture(key: FixtureKey): Promise<{
   fixture: string;
   pageCount: number;
   diffs: PageDiff[];
+  maxDiffRatio: number;
 }> {
-  const { name, build } = FIXTURES[key];
+  const { name, build, maxDiffRatio = DEFAULT_MAX_DIFF_RATIO } = FIXTURES[key];
   console.log(`\n— Fixture: ${name} —`);
   const payload = build();
   const html = buildOfferPdfHtml(payload);
@@ -247,7 +250,7 @@ async function processFixture(key: FixtureKey): Promise<{
 
   if (backendPages.length !== frontendPages.length) {
     console.error(`  ✗ Page count mismatch.`);
-    return { fixture: name, pageCount: -1, diffs: [] };
+    return { fixture: name, pageCount: -1, diffs: [], maxDiffRatio };
   }
 
   const diffs: PageDiff[] = [];
@@ -292,7 +295,7 @@ async function processFixture(key: FixtureKey): Promise<{
         }
         const goldBytes = readFileSync(goldPath);
         const goldDiff = diffPages(goldBytes, backendPages[i], i + 1);
-        if (goldDiff.ratio > MAX_DIFF_RATIO) {
+        if (goldDiff.ratio > maxDiffRatio) {
           console.warn(
             `  ! page ${i + 1}: backend output drifted from gold by ${(goldDiff.ratio * 100).toFixed(3)}%`
           );
@@ -311,11 +314,11 @@ async function processFixture(key: FixtureKey): Promise<{
 
   for (const d of diffs) {
     const pct = (d.ratio * 100).toFixed(3);
-    const tag = d.ratio <= MAX_DIFF_RATIO ? "✓" : "✗";
+    const tag = d.ratio <= maxDiffRatio ? "✓" : "✗";
     console.log(`  ${tag} page ${d.page}: ${d.diffPixels.toLocaleString()} / ${d.totalPixels.toLocaleString()} px (${pct}%)`);
   }
 
-  return { fixture: name, pageCount: backendPages.length, diffs };
+  return { fixture: name, pageCount: backendPages.length, diffs, maxDiffRatio };
 }
 
 async function main(): Promise<void> {
@@ -326,11 +329,27 @@ async function main(): Promise<void> {
     throw new Error("Run visual-diff with NODE_ENV=development (Puppeteer is gated off in test).");
   }
 
+  // Sprint 5.F.3: pre-flight check for pdftoppm. Without this, the
+  // first execFileSync call deep inside processFixture throws an
+  // unactionable ENOENT — operators have to dig through the stack
+  // to figure out what's missing. Fail fast with a clear install hint.
+  try {
+    execFileSync("pdftoppm", ["-v"], { stdio: ["ignore", "ignore", "pipe"] });
+  } catch {
+    console.error(
+      "\n[visual-diff] FATAL: `pdftoppm` not found on PATH.\n" +
+        "  Install with: brew install poppler  (macOS) or  apt install poppler-utils (Debian).\n"
+    );
+    process.exit(2);
+  }
+
   if (existsSync(OUT_DIR)) rmSync(OUT_DIR, { recursive: true, force: true });
   mkdirSync(OUT_DIR, { recursive: true });
 
   console.log(`\n=== Visual-diff (${MODE} mode) ===`);
-  console.log(`  Threshold: ≤ ${(MAX_DIFF_RATIO * 100).toFixed(2)}% pixels differ per page`);
+  console.log(
+    `  Default threshold: ≤ ${(DEFAULT_MAX_DIFF_RATIO * 100).toFixed(2)}% pixels differ per page (per-fixture overrides apply)`
+  );
   console.log(`  Output:    ${OUT_DIR}`);
   console.log(`  Gold:      ${GOLD_DIR}`);
 
@@ -338,14 +357,14 @@ async function main(): Promise<void> {
   try {
     for (const key of Object.keys(FIXTURES) as FixtureKey[]) {
       const result = await processFixture(key);
-      const overBudget = result.diffs.filter(d => d.ratio > MAX_DIFF_RATIO);
+      const overBudget = result.diffs.filter(d => d.ratio > result.maxDiffRatio);
       if (result.pageCount === -1 || overBudget.length > 0) {
         failed = true;
         console.error(
-          `  ✗ ${result.fixture}: ${overBudget.length} page(s) over budget — see ${OUT_DIR}/${result.fixture}/`
+          `  ✗ ${result.fixture}: ${overBudget.length} page(s) over budget (≤${(result.maxDiffRatio * 100).toFixed(2)}%) — see ${OUT_DIR}/${result.fixture}/`
         );
       } else {
-        console.log(`  ✓ ${result.fixture}: all ${result.diffs.length} pages within budget`);
+        console.log(`  ✓ ${result.fixture}: all ${result.diffs.length} pages within budget (≤${(result.maxDiffRatio * 100).toFixed(2)}%)`);
       }
     }
   } finally {

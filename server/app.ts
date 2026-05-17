@@ -73,6 +73,15 @@ export function createApp(): express.Express {
   //    `type: "*/*"` matches any Content-Type (HubSpot historically
   //    sends application/json, but we want the signature check to
   //    be the gatekeeper, not the parser's MIME match).
+  //
+  //    CRITICAL (Sprint 5.F.3 audit): the path argument MUST remain
+  //    `/api/v1/hubspot/webhooks` (exact, single path). Broadening
+  //    the scope — e.g. `app.use(express.raw(...))` without a path,
+  //    or even `app.use("/api/v1", express.raw(...))` — would shadow
+  //    the JSON parser on every endpoint and silently break every
+  //    POST in the API. Add new raw-body endpoints by mounting a
+  //    SECOND `app.use("/the/specific/path", express.raw(...))`,
+  //    never by widening this one.
   app.use(
     "/api/v1/hubspot/webhooks",
     express.raw({ type: "*/*", limit: "1mb" })

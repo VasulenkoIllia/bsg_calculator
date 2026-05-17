@@ -58,9 +58,21 @@ export function offerAndAgreementFixture(): DocumentTemplatePayload {
   return draft;
 }
 
-export const FIXTURES = {
+/**
+ * Sprint 5.F.3: per-fixture diff threshold. Default is 0.005 (0.5%
+ * pixels per page). If a future fixture has dense typography or a
+ * naturally higher anti-aliasing floor, override here without
+ * touching the global default in scripts/visual-diff/index.ts.
+ */
+export interface FixtureSpec {
+  name: string;
+  build: () => DocumentTemplatePayload;
+  maxDiffRatio?: number;
+}
+
+export const FIXTURES: Record<string, FixtureSpec> = {
   offer: { name: "offer-only", build: offerOnlyFixture },
   bundle: { name: "offer-and-agreement", build: offerAndAgreementFixture }
-} as const;
+};
 
 export type FixtureKey = keyof typeof FIXTURES;
