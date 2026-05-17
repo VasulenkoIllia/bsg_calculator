@@ -14,7 +14,9 @@ export function PartiesStep({
   onBack,
   onNext,
   backLabel,
-  nextLabel
+  nextLabel,
+  onSaveDocument,
+  saveDisabledReason
 }: {
   draft: DocumentTemplatePayload;
   onDraftChange: (next: DocumentTemplatePayload) => void;
@@ -22,6 +24,15 @@ export function PartiesStep({
   onNext: () => void;
   backLabel: string;
   nextLabel: string;
+  /**
+   * Sprint 4.E: opens SaveDocumentModal so the operator can persist
+   * the wizard output as a backend document. Parties is the last
+   * data-entry step before Preview for offer_and_agreement scope —
+   * having a Save here lets the operator commit straight away
+   * without bouncing through Preview.
+   */
+  onSaveDocument?: () => void;
+  saveDisabledReason?: string | null;
 }) {
   const parties = draft.agreementParties;
   // Service Provider Co-entity defaults to KASEF PAY INC and is rarely
@@ -185,6 +196,27 @@ export function PartiesStep({
         backLabel={backLabel}
         nextLabel={nextLabel}
       />
+
+      {onSaveDocument ? (
+        <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
+          <button
+            type="button"
+            onClick={onSaveDocument}
+            disabled={Boolean(saveDisabledReason)}
+            title={saveDisabledReason ?? "Save the wizard output to the backend"}
+            className="rounded-xl border border-emerald-500 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Save document
+          </button>
+          {saveDisabledReason ? (
+            <span className="text-xs text-slate-500">{saveDisabledReason}</span>
+          ) : (
+            <span className="text-xs text-slate-500">
+              Or continue to <strong>Preview</strong> for a final visual check.
+            </span>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -186,6 +186,8 @@ export function DocumentWizardPanel({
             onNext={goNext}
             backLabel={backLabelFromCurrent}
             nextLabel={nextLabelFromCurrent}
+            onSaveDocument={onSaveDocument}
+            saveDisabledReason={saveDisabledReason}
           />
         ) : null}
 
