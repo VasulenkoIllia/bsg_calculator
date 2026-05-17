@@ -13,12 +13,41 @@
  *   - Raw payload preview (collapsed by default) for debugging.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../api/client.js";
 import * as documentsApi from "../api/documents.js";
+import { buildOfferPdfHtml } from "../components/document-wizard/index.js";
+import type { DocumentTemplatePayload } from "../components/document-wizard/index.js";
 import { useDocument } from "../hooks/useDocuments.js";
 import { formatDate } from "../shared/format.js";
+
+/**
+ * Best-effort runtime check that `payload` carries a wizard-style
+ * DocumentTemplatePayload. The strict TypeScript shape lives on the
+ * frontend only — backend stores it as opaque JSONB — so the preview
+ * has to verify the structural prerequisites before feeding the
+ * payload to `buildOfferPdfHtml`, otherwise a missing field would
+ * throw at render time and crash the page.
+ *
+ * Returns the typed value or null. We accept any object that carries
+ * the four MUST-HAVE top-level keys the builder dereferences first;
+ * any deeper-shape mismatch surfaces as a wizard-rendering error
+ * (caught and turned into a fallback render below).
+ */
+function asWizardPayload(payload: unknown): DocumentTemplatePayload | null {
+  if (!payload || typeof payload !== "object") return null;
+  const p = payload as Record<string, unknown>;
+  if (
+    typeof p.documentScope !== "string" ||
+    typeof p.header !== "object" ||
+    typeof p.layout !== "object" ||
+    typeof p.agreementParties !== "object"
+  ) {
+    return null;
+  }
+  return p as unknown as DocumentTemplatePayload;
+}
 
 function scopeLabel(scope: string): string {
   switch (scope) {
@@ -132,8 +161,21 @@ export function DocumentViewPage() {
             {templateError}
           </p>
         ) : null}
+      </div>
 
-        <details className="mt-6" open={showRawPayload} onToggle={e => setShowRawPayload(e.currentTarget.open)}>
+      {/* Document preview — same iframe-rendered HTML as the wizard's
+          Preview step, fed by the frontend's buildOfferPdfHtml using
+          the payload stored on save. We compute this lazily so a
+          payload that doesn't conform to DocumentTemplatePayload
+          (e.g. a calc-only snapshot from an earlier save) doesn't
+          crash the page — we fall back to the raw JSON view. */}
+      <DocumentPreviewSection payload={doc.payload} number={doc.number} />
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-6">
+        <details
+          open={showRawPayload}
+          onToggle={e => setShowRawPayload(e.currentTarget.open)}
+        >
           <summary className="cursor-pointer text-sm font-semibold text-slate-700 hover:text-slate-900">
             Raw payload (debug view)
           </summary>
@@ -143,5 +185,80 @@ export function DocumentViewPage() {
         </details>
       </div>
     </section>
+  );
+}
+
+/**
+ * Renders the document preview from the persisted payload. Two cases:
+ *
+ *   1. Payload IS a valid wizard DocumentTemplatePayload (Sprint 4.E
+ *      saves go through this path) → render the same HTML the wizard
+ *      Preview step renders, inside a sandboxed iframe.
+ *
+ *   2. Payload was saved from somewhere else (e.g. a future calc-only
+ *      save path) → show an info banner and rely on the Raw payload
+ *      collapsible below for inspection.
+ *
+ * The rendering call is wrapped in useMemo + try/catch so a deeper
+ * mismatch (missing nested fields buildOfferPdfHtml dereferences)
+ * surfaces as a graceful fallback rather than a render crash.
+ */
+function DocumentPreviewSection({
+  payload,
+  number
+}: {
+  payload: unknown;
+  number: string;
+}) {
+  const wizardPayload = asWizardPayload(payload);
+  const previewHtml = useMemo(() => {
+    if (!wizardPayload) return null;
+    try {
+      return buildOfferPdfHtml(wizardPayload);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[DocumentViewPage] buildOfferPdfHtml threw on document",
+        number,
+        err
+      );
+      return null;
+    }
+  }, [wizardPayload, number]);
+
+  if (!wizardPayload || !previewHtml) {
+    return (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+        <p className="font-semibold">Preview not available</p>
+        <p className="mt-1">
+          The saved payload doesn&apos;t match the wizard&apos;s
+          DocumentTemplatePayload shape — likely a calc-only snapshot
+          or an older draft. The raw payload is still visible in the
+          debug view below.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-slate-900">Document preview</h2>
+        <span className="text-xs text-slate-500">
+          Same render the wizard uses · click Download PDF for the print version
+        </span>
+      </div>
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+        <iframe
+          title={`Document ${number} preview`}
+          srcDoc={previewHtml}
+          // Sandbox keeps any styles inside the iframe from leaking
+          // into the SPA. We don't allow scripts because our generated
+          // HTML never includes any.
+          sandbox=""
+          className="h-[780px] w-full bg-white"
+        />
+      </div>
+    </div>
   );
 }
