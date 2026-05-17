@@ -38,6 +38,16 @@ export interface DocumentWizardPanelProps {
    * Number / Document Type instead of as a standalone panel.
    */
   headerStepBeforeContent?: ReactNode;
+  /**
+   * Sprint 4.E: opens the backend save modal from the Preview step.
+   * When omitted, the Preview step renders only Back + Generate PDF.
+   */
+  onSaveDocument?: () => void;
+  /**
+   * Inline hint shown next to the Save button on Preview when it's
+   * disabled (e.g. "Pick a company on Step 1").
+   */
+  saveDisabledReason?: string | null;
 }
 
 export function DocumentWizardPanel({
@@ -55,7 +65,9 @@ export function DocumentWizardPanel({
   onGeneratePdf,
   onRefreshFromCalculator,
   actionMessage,
-  headerStepBeforeContent
+  headerStepBeforeContent,
+  onSaveDocument,
+  saveDisabledReason
 }: DocumentWizardPanelProps) {
   const scope = draft.documentScope;
   const goNext = () => onStepChange(nextStep(scope, activeStep));
@@ -185,6 +197,8 @@ export function DocumentWizardPanel({
             onHighlightVariablesChange={onHighlightVariablesChange}
             onBack={goPrev}
             onGeneratePdf={onGeneratePdf}
+            onSaveDocument={onSaveDocument}
+            saveDisabledReason={saveDisabledReason}
           />
         ) : null}
 

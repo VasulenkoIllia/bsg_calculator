@@ -282,6 +282,10 @@ export function WizardPage() {
             onOpenSaveDialog={() => setSaveDocOpen(true)}
           />
         }
+        onSaveDocument={() => setSaveDocOpen(true)}
+        saveDisabledReason={
+          selectedCompany ? null : "Pick a company on Step 1 first."
+        }
       />
 
       {selectedCompany ? (
