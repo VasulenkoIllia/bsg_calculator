@@ -279,7 +279,6 @@ export function WizardPage() {
             onCompanyChange={setSelectedCompany}
             selectedDealId={selectedDealId}
             onDealIdChange={setSelectedDealId}
-            onOpenSaveDialog={() => setSaveDocOpen(true)}
           />
         }
         onSaveDocument={() => setSaveDocOpen(true)}

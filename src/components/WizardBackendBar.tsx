@@ -6,8 +6,10 @@
  * is picked, the wizard's Document Number field (in HeaderMetaStep)
  * gets refreshed with the backend's BSG-<seq>-<companyTail6> preview.
  *
- * Save button lives here too — disabled until a company is picked.
- * The actual save happens via SaveDocumentModal (parent state).
+ * NOTE: there is NO Save button in this bar. The operator saves on
+ * the Preview step only — after running through every wizard step
+ * and reviewing the final document. Decision recorded 2026-05-17:
+ * one save-trigger location avoids accidental mid-edit submissions.
  */
 
 import { useEffect, useState } from "react";
@@ -21,15 +23,13 @@ export interface WizardBackendBarProps {
   onCompanyChange: (company: PublicCompany | null) => void;
   selectedDealId: string;
   onDealIdChange: (dealId: string) => void;
-  onOpenSaveDialog: () => void;
 }
 
 export function WizardBackendBar({
   selectedCompany,
   onCompanyChange,
   selectedDealId,
-  onDealIdChange,
-  onOpenSaveDialog
+  onDealIdChange
 }: WizardBackendBarProps) {
   const [companyQuery, setCompanyQuery] = useState("");
   const companySearch = useCompanySearch(companyQuery);
@@ -43,29 +43,15 @@ export function WizardBackendBar({
 
   return (
     <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-      <header className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-900">
-            Backend save target
-          </p>
-          <p className="mt-1 text-xs text-blue-800">
-            Pick the company first — the Document Number above updates
-            with the actual BSG-XXXXXXX-YYYYYY that will be reserved on save.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={onOpenSaveDialog}
-          disabled={!selectedCompany}
-          className="shrink-0 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-          title={
-            selectedCompany
-              ? "Save the current wizard draft as a backend document"
-              : "Select a company first"
-          }
-        >
-          Save document…
-        </button>
+      <header>
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-900">
+          Backend save target
+        </p>
+        <p className="mt-1 text-xs text-blue-800">
+          Pick the company first — Document Number above updates with the
+          actual BSG-XXXXXXX-YYYYYY that will be reserved on save. The
+          Save button itself lives on the Preview step.
+        </p>
       </header>
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
