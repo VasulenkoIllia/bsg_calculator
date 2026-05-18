@@ -18,6 +18,14 @@ export interface Zone6OfferSummaryProps {
    * use); when the prop is omitted the button is hidden.
    */
   onSaveCalculator?: () => void;
+  /**
+   * Sprint 6.2: "Save as offer" + "Save as offer + agreement"
+   * shortcuts. Only mounted in EDIT mode (when the calc is loaded
+   * from a saved config and we know the target company). When the
+   * prop is omitted the buttons are hidden.
+   */
+  onSaveAsOffer?: () => void;
+  onSaveAsOfferAndAgreement?: () => void;
 }
 
 export function Zone6OfferSummary({
@@ -30,7 +38,9 @@ export function Zone6OfferSummary({
   offerSummaryActionMessage,
   onCopy,
   onOpenWizard,
-  onSaveCalculator
+  onSaveCalculator,
+  onSaveAsOffer,
+  onSaveAsOfferAndAgreement
 }: Zone6OfferSummaryProps) {
   return (
     <ZoneSection
@@ -74,6 +84,26 @@ export function Zone6OfferSummary({
                 className="rounded-xl border border-emerald-500 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
               >
                 Save calculator
+              </button>
+            ) : null}
+            {onSaveAsOffer ? (
+              <button
+                type="button"
+                onClick={onSaveAsOffer}
+                className="rounded-xl border border-indigo-500 bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700"
+                title="Persist a BSG-numbered Offer document built from the current calculator state"
+              >
+                Save as Offer
+              </button>
+            ) : null}
+            {onSaveAsOfferAndAgreement ? (
+              <button
+                type="button"
+                onClick={onSaveAsOfferAndAgreement}
+                className="rounded-xl border border-indigo-500 bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700"
+                title="Persist a BSG-numbered Offer + Service Agreement bundle"
+              >
+                Save as Offer + Agreement
               </button>
             ) : null}
             {onOpenWizard ? (
