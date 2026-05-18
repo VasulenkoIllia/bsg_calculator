@@ -25,6 +25,7 @@ export async function listController(req: Request, res: Response): Promise<void>
   const page = await listDocumentsPage({
     companyId: query.companyId,
     hubspotDealId: query.hubspotDealId,
+    calculatorConfigId: query.calculatorConfigId,
     scope: query.scope,
     q: query.q,
     cursor: decodeCursor(query.cursor),

@@ -67,6 +67,11 @@ export type CreateDocumentRequest = z.infer<typeof createDocumentSchema>;
 export const listDocumentsQuerySchema = z.object({
   companyId: z.string().uuid().optional(),
   hubspotDealId: z.string().min(1).max(64).optional(),
+  // Sprint 6.4: filter documents by their source calculator-config id.
+  // Powers the "Documents from this calculator" section on /calc/:id —
+  // the operator sees every BSG-XXXXX document derived from a specific
+  // calc draft.
+  calculatorConfigId: z.string().uuid().optional(),
   scope: documentScopeSchema.optional(),
   // Substring search on number ("7100024" matches "BSG-7100024").
   q: z.string().trim().min(1).max(64).optional(),

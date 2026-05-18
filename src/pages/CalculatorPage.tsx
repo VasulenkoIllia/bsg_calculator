@@ -1,4 +1,4 @@
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildOfferSummaryText } from "../domain/calculator/index.js";
 import {
@@ -25,6 +25,8 @@ import {
   useCalculatorConfig,
   useUpdateCalculatorConfig
 } from "../hooks/useCalculatorConfig.js";
+import { useDocuments } from "../hooks/useDocuments.js";
+import { formatDate, formatScopeLabel } from "../shared/format.js";
 
 export function CalculatorPage() {
   const navigate = useNavigate();
@@ -134,6 +136,16 @@ export function CalculatorPage() {
   // state-storage and the effect entirely.
   const savedAtIso =
     updateMutation.data?.updatedAt ?? configQuery.data?.updatedAt ?? null;
+
+  // Sprint 6.4: "Documents from this calculator" history. Filters
+  // the documents listing by `calculatorConfigId` so the operator
+  // sees every BSG-XXXXX that was saved from this exact calc draft.
+  // Only fires in edit mode (configId resolved) — the new-draft
+  // calculator has no id to filter on.
+  const docsFromCalc = useDocuments({
+    calculatorConfigId: isEditMode ? configId : undefined,
+    enabled: isEditMode
+  });
 
   // Save modal — gathers (company, optional deal, optional title) and
   // POSTs the snapshot to /api/v1/calculator-configs. Sprint 3.B.
@@ -283,6 +295,10 @@ export function CalculatorPage() {
           errorMessage={updateMutation.error?.message}
           savedAtIso={savedAtIso}
         />
+      ) : null}
+
+      {isEditMode && docsFromCalc.items.length > 0 ? (
+        <DocumentsFromCalcSection docs={docsFromCalc.items} />
       ) : null}
 
       {savedToast ? (
@@ -523,6 +539,56 @@ export function CalculatorPage() {
 }
 
 // ─── Edit-mode UX subcomponents ──────────────────────────────────
+
+/**
+ * Sprint 6.4: "Documents from this calculator" history strip.
+ *
+ * Surfaces the BSG-XXXXX documents that were saved from THIS exact
+ * calculator-config so the operator can see — at a glance — every
+ * point-in-time snapshot derived from the live draft they're editing.
+ *
+ * One calc → many documents is the canonical relationship (each save
+ * via the wizard produces a fresh numbered document); this section
+ * makes that visible. Clicking a row opens the document view.
+ *
+ * Rendered only when the list is non-empty: the calc page already
+ * has dense UX and a "0 documents derived yet" banner would be noise.
+ */
+function DocumentsFromCalcSection({
+  docs
+}: {
+  docs: import("../api/types.js").PublicDocument[];
+}) {
+  return (
+    <div className="mb-3 overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <div className="border-b border-slate-200 bg-slate-50 px-4 py-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+          Documents from this calculator{" "}
+          <span className="ml-1 rounded-full bg-slate-200 px-1.5 text-[10px] text-slate-700">
+            {docs.length}
+          </span>
+        </h3>
+      </div>
+      <ul className="divide-y divide-slate-100">
+        {docs.map(doc => (
+          <li key={doc.id}>
+            <Link
+              to={`/documents/${doc.number}`}
+              className="flex items-center justify-between px-4 py-2 text-sm hover:bg-slate-50"
+            >
+              <span className="font-mono text-xs font-semibold text-slate-800">
+                {doc.number}
+              </span>
+              <span className="text-xs text-slate-500">
+                {formatScopeLabel(doc.scope)} · {formatDate(doc.createdAt)}
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 function BannerStatus({
   tone,

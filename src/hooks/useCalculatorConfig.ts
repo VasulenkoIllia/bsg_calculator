@@ -9,10 +9,17 @@
  * "Saved calculators" tab on CompanyDetailPage.
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type InfiniteData
+} from "@tanstack/react-query";
 import { ApiError } from "../api/client.js";
 import * as configsApi from "../api/calculator-configs.js";
-import type { PublicCalculatorConfig } from "../api/types.js";
+import type { CursorPage, PublicCalculatorConfig } from "../api/types.js";
 
 /**
  * GET /api/v1/calculator-configs/:id — single config by UUID.
@@ -61,4 +68,89 @@ export function useUpdateCalculatorConfig(id: string | undefined) {
       void queryClient.invalidateQueries({ queryKey: ["calculator-configs", "list"] });
     }
   });
+}
+
+/**
+ * GET /api/v1/calculator-configs?companyId=… — list saved configs.
+ *
+ * Sprint 6.4: powers the "Saved calculators" tab on CompanyDetailPage.
+ * Same useInfiniteQuery shape as useDocuments / useCompanies — cursor
+ * pagination via the backend's CursorPage envelope. `showAll=true`
+ * drops the per-deal filter so the tab shows EVERY config for the
+ * company regardless of which deal (or none) it's pinned to.
+ *
+ * `enabled` flips off when companyId hasn't been resolved yet (e.g.
+ * the route param hasn't loaded) so we never fire a request with
+ * undefined in the query string.
+ */
+export interface UseCalculatorConfigsOptions {
+  companyId: string | undefined;
+  hubspotDealId?: string;
+  showAll?: boolean;
+  limit?: number;
+}
+
+export interface UseCalculatorConfigsResult {
+  items: PublicCalculatorConfig[];
+  isLoading: boolean;
+  isFetching: boolean;
+  isError: boolean;
+  error: ApiError | null;
+  hasNextPage: boolean;
+  fetchNextPage: () => void;
+  isFetchingNextPage: boolean;
+}
+
+export function useCalculatorConfigs(
+  options: UseCalculatorConfigsOptions
+): UseCalculatorConfigsResult {
+  const query = useInfiniteQuery<
+    CursorPage<PublicCalculatorConfig>,
+    ApiError,
+    InfiniteData<CursorPage<PublicCalculatorConfig>, string | undefined>,
+    unknown[],
+    string | undefined
+  >({
+    queryKey: [
+      "calculator-configs",
+      "list",
+      {
+        companyId: options.companyId,
+        hubspotDealId: options.hubspotDealId,
+        showAll: options.showAll ?? true,
+        limit: options.limit
+      }
+    ],
+    enabled: typeof options.companyId === "string" && options.companyId.length > 0,
+    initialPageParam: undefined,
+    queryFn: async ({ pageParam }) =>
+      configsApi.listCalculatorConfigs({
+        // The `enabled` gate above ensures companyId is non-empty by
+        // the time queryFn runs; the non-null assertion is safe here.
+        companyId: options.companyId!,
+        hubspotDealId: options.hubspotDealId,
+        showAll: options.showAll ?? true,
+        cursor: pageParam,
+        limit: options.limit
+      }),
+    getNextPageParam: lastPage => lastPage.nextCursor ?? undefined
+  });
+
+  const items = useMemo(
+    () => query.data?.pages.flatMap(page => page.items) ?? [],
+    [query.data]
+  );
+
+  return {
+    items,
+    isLoading: query.isLoading,
+    isFetching: query.isFetching,
+    isError: query.isError,
+    error: query.error,
+    hasNextPage: query.hasNextPage,
+    fetchNextPage: () => {
+      void query.fetchNextPage();
+    },
+    isFetchingNextPage: query.isFetchingNextPage
+  };
 }

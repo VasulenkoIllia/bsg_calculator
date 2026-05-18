@@ -22,9 +22,18 @@ import type {
 export interface UseDocumentsOptions {
   companyId?: string;
   hubspotDealId?: string;
+  /** Sprint 6.4: filter to documents derived from a specific calc-config. */
+  calculatorConfigId?: string;
   scope?: documentsApi.DocumentScope;
   q?: string;
   limit?: number;
+  /**
+   * Sprint 6.4: gate the underlying query. Defaults to true (matches
+   * pre-6.4 behaviour). Set to false from callers that mount the hook
+   * conditionally — e.g. /calc/:id only wants to fetch
+   * `?calculatorConfigId=` documents when `isEditMode` is true.
+   */
+  enabled?: boolean;
 }
 
 export interface UseDocumentsResult {
@@ -54,16 +63,19 @@ export function useDocuments(options: UseDocumentsOptions = {}): UseDocumentsRes
       {
         companyId: options.companyId,
         hubspotDealId: options.hubspotDealId,
+        calculatorConfigId: options.calculatorConfigId,
         scope: options.scope,
         q: normalisedQ,
         limit: options.limit
       }
     ],
+    enabled: options.enabled ?? true,
     initialPageParam: undefined,
     queryFn: async ({ pageParam }) =>
       documentsApi.listDocuments({
         companyId: options.companyId,
         hubspotDealId: options.hubspotDealId,
+        calculatorConfigId: options.calculatorConfigId,
         scope: options.scope,
         q: normalisedQ,
         cursor: pageParam,

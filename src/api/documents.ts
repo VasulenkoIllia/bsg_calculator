@@ -22,6 +22,8 @@ export interface CreateDocumentRequest {
 export interface ListDocumentsParams {
   companyId?: string;
   hubspotDealId?: string;
+  /** Sprint 6.4: filter to documents derived from a specific calc-config. */
+  calculatorConfigId?: string;
   scope?: DocumentScope;
   q?: string;
   cursor?: string;

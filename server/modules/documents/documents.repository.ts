@@ -54,6 +54,8 @@ export async function insertDocumentWithNumber(
 export interface ListDocumentsArgs {
   companyId?: string;
   hubspotDealId?: string;
+  /** Sprint 6.4: filter to documents derived from this calc-config. */
+  calculatorConfigId?: string;
   scope?: "offer" | "agreement" | "offer_and_agreement";
   q?: string;
   cursor: Cursor | null;
@@ -79,6 +81,9 @@ export async function listDocuments(args: ListDocumentsArgs): Promise<Document[]
   const filters = [
     args.companyId ? eq(documents.companyId, args.companyId) : undefined,
     args.hubspotDealId ? eq(documents.hubspotDealId, args.hubspotDealId) : undefined,
+    args.calculatorConfigId
+      ? eq(documents.calculatorConfigId, args.calculatorConfigId)
+      : undefined,
     args.scope ? eq(documents.scope, args.scope) : undefined,
     args.q ? ilike(documents.number, `%${escapeLikePattern(args.q)}%`) : undefined,
     args.cursor
