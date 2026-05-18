@@ -15,8 +15,9 @@
 
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ApiError, apiClient } from "../api/client.js";
+import { ApiError } from "../api/client.js";
 import * as documentsApi from "../api/documents.js";
+import { downloadSavedPdf, triggerPdfDownload } from "../api/pdf.js";
 import { buildOfferPdfHtml } from "../components/document-wizard/index.js";
 import type { DocumentTemplatePayload } from "../components/document-wizard/index.js";
 import { useToast } from "../contexts/ToastContext.js";
@@ -78,40 +79,28 @@ export function DocumentViewPage() {
       // instead of an inline alert beside the button — keeps the
       // mutation feedback consistent across the app.
       toast.error(
-        err instanceof ApiError ? err.message : "Failed to use as template."
+        err instanceof ApiError
+          ? err.message
+          : "Could not create a template from this document — try again."
       );
     } finally {
       setTemplatePending(false);
     }
   }
 
-  // PDF download via axios arraybuffer + Blob URL. The earlier
-  // `window.open()` approach didn't attach the Bearer header, which
-  // requireAuth needs. axios pipes the response through our existing
-  // interceptors (refresh-on-401, ApiError envelope), then we wrap
-  // the Buffer in a Blob URL and trigger a hidden-anchor click for
-  // the actual download. The Blob URL is revoked on the next tick
-  // so it doesn't leak.
+  // PDF download routes through the shared src/api/pdf.ts helpers
+  // (Sprint 6.F.1 audit Q1 — was previously inline-duplicated here).
+  // axios pipes the response through our existing interceptors
+  // (refresh-on-401, ApiError envelope), then triggerPdfDownload
+  // wraps the Buffer in a Blob URL + hidden-anchor click + revoke.
   const [pdfPending, setPdfPending] = useState(false);
 
   async function handleDownloadPdf(): Promise<void> {
     if (!number) return;
     setPdfPending(true);
     try {
-      const res = await apiClient.get<ArrayBuffer>(
-        `/documents/${number}/pdf?download=true`,
-        { responseType: "arraybuffer" }
-      );
-      const blob = new Blob([res.data], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${number}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      // Defer revoke so the browser has time to start the download.
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      const blob = await downloadSavedPdf(number);
+      triggerPdfDownload(blob, `${number}.pdf`);
     } catch (err) {
       if (err instanceof ApiError) {
         toast.error(err.message);

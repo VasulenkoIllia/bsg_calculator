@@ -14,6 +14,7 @@
  */
 
 import { Router } from "express";
+import { pdfPreviewLimiter } from "../../middleware/rate-limit";
 import { requireAuth } from "../../middleware/require-auth";
 import { asyncHandler } from "../../shared/async-handler";
 import { downloadPdfController, previewPdfController } from "./pdf.controller";
@@ -29,4 +30,15 @@ export const pdfPreviewRouter = Router();
 pdfPreviewRouter.use(requireAuth());
 
 // POST /api/v1/pdf/preview — render-from-payload (no save).
-pdfPreviewRouter.post("/preview", asyncHandler(previewPdfController));
+//
+// Sprint 6.F.1 (audit HIGH): dedicated 10 req/min/IP limiter on top
+// of the global apiLimiter so a single authenticated user can't
+// monopolise the shared Puppeteer browser pool and DoS PDF generation
+// for everyone else. Same pattern as hubspotProxyLimiter, sized for
+// the operator's realistic "preview-iterate" loop (~handful of
+// renders per minute, not 60).
+pdfPreviewRouter.post(
+  "/preview",
+  pdfPreviewLimiter,
+  asyncHandler(previewPdfController)
+);

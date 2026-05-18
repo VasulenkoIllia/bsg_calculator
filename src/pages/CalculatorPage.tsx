@@ -103,6 +103,17 @@ export function CalculatorPage() {
   // the same values). We mark hydration "settled" one tick AFTER
   // the hydrate effect runs.
   const autoSaveArmedRef = useRef(false);
+  // Sprint 6.F.1 (audit CORRECTNESS): reset the armed flag whenever
+  // configId changes. Without this, navigating /calc/A → /calc/B in
+  // the same SPA session keeps the flag at `true` from the previous
+  // session. The freshly-hydrated payload then immediately triggers
+  // an auto-save PUT for B before the operator has changed anything,
+  // and any default-filling done by seedCalculatorStateFromSnapshot
+  // (e.g. backfilling a field absent from the stored row) would be
+  // silently persisted as if the operator had typed it.
+  useEffect(() => {
+    autoSaveArmedRef.current = false;
+  }, [configId]);
   useEffect(() => {
     if (!isEditMode) return;
     if (hydratedFromIdRef.current !== configId) return;
@@ -272,17 +283,21 @@ export function CalculatorPage() {
     if (configQuery.isError) {
       const status = configQuery.error?.status;
       if (status === 404) {
+        // Sprint 6.F.1 (audit U1): replaced "Calculator config <uuid>
+        // not found" with a UUID-free, operator-actionable message.
+        // The raw UUID was not useful (you can't paste it anywhere to
+        // recover), and surfaces internal identifiers in the UI.
         return (
           <BannerStatus
             tone="error"
-            text={`Calculator config ${configId} not found. Auto-save is disabled.`}
+            text="Saved calculator not found — this link may be outdated. Auto-save is disabled."
           />
         );
       }
       return (
         <BannerStatus
           tone="error"
-          text={configQuery.error?.message ?? "Failed to load saved config."}
+          text={configQuery.error?.message ?? "Failed to load saved calculator."}
         />
       );
     }

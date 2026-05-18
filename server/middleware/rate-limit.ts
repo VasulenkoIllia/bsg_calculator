@@ -86,3 +86,24 @@ export const hubspotProxyLimiter = buildLimiter({
   max: 10,
   message: "Too many HubSpot proxy requests. Slow down."
 });
+
+/**
+ * PDF preview limiter — Sprint 6.F.1 audit fix (HIGH).
+ *
+ * `POST /api/v1/pdf/preview` runs Puppeteer.setContent + page.pdf()
+ * against a single shared browser process. The global apiLimiter
+ * (60/min/IP) is too loose: an authenticated user pumping 60 renders
+ * per minute will keep the browser tab pipeline saturated and starve
+ * the saved-document download path (which uses the SAME pool). A
+ * single misbehaving account therefore degrades PDF generation for
+ * every other operator.
+ *
+ * 10/min/IP is sized for the realistic interactive use case (an
+ * operator iterating on the wizard preview before saving). Real
+ * pricing reviews rarely fire more than a few previews per minute;
+ * the cap leaves comfortable headroom while bounding the worst case.
+ */
+export const pdfPreviewLimiter = buildLimiter({
+  max: 10,
+  message: "Too many PDF preview requests. Wait a moment and try again."
+});

@@ -238,10 +238,15 @@ export function WizardPage() {
       triggerPdfDownload(blob, filename);
       toast.success("PDF generated and downloaded.");
     } catch (err) {
+      // Sprint 6.F.1 (audit U2): drop the misleading "check the
+      // draft is complete" suggestion — the realistic failure mode
+      // here is a Puppeteer crash or a 503 from a restarting backend,
+      // not missing fields (field-level validation surfaces as a 400
+      // with err.message that takes priority).
       const msg =
         err instanceof ApiError
           ? err.message
-          : "Could not generate PDF. Check the wizard draft is complete.";
+          : "PDF generation failed. The server may be restarting — try again in a moment.";
       toast.error(msg);
     } finally {
       setWizardPdfPending(false);

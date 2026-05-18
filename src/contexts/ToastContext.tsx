@@ -74,11 +74,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   // so the provider works under SSR (no `crypto.randomUUID` in older
   // node) and is allocation-cheap. Monotonic + tab-local — collisions
   // across tabs don't matter (each tab has its own provider).
+  //
+  // Sprint 6.F.1 (audit CORRECTNESS): the previous version pulled a
+  // `nextId` closure-defined-in-render into `notify`'s useCallback
+  // without listing it as a dependency. That closure was recreated
+  // each render but `notify` was pinned to the first one — a latent
+  // stale-closure bug. Inlining the id construction directly inside
+  // `notify` removes the captured-closure surface entirely.
   const idCounterRef = useRef(0);
-  const nextId = () => {
-    idCounterRef.current += 1;
-    return `t-${Date.now()}-${idCounterRef.current}`;
-  };
 
   const dismiss = useCallback((id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
@@ -90,9 +93,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const notify = useCallback(
     (kind: ToastKind, message: string, timeoutMs: number | null = DEFAULT_TIMEOUTS[kind]) => {
-      const id = nextId();
+      idCounterRef.current += 1;
       const toast: Toast = {
-        id,
+        id: `t-${Date.now()}-${idCounterRef.current}`,
         kind,
         message,
         timeoutMs,
