@@ -44,7 +44,17 @@ export function CalculatorPage() {
   // We track which id we've hydrated so re-renders or the auto-save
   // mutation echoing back the row don't re-apply the preset (which
   // would clobber unsaved live edits the user just made).
+  //
+  // INFINITE-LOOP NOTE: `useCalculator()` returns a fresh context
+  // value every render (the provider doesn't memoise it), so
+  // including `calc` directly in the effect's dep array would
+  // re-fire the effect every render and — combined with the
+  // hydration ref guard — wouldn't actually loop the body but
+  // would still produce spurious effect runs. We pin `applyStatePreset`
+  // to a ref and exclude `calc` from deps.
   const hydratedFromIdRef = useRef<string | null>(null);
+  const applyStatePresetRef = useRef(calc.applyStatePreset);
+  applyStatePresetRef.current = calc.applyStatePreset;
   useEffect(() => {
     if (!isEditMode) return;
     if (!configQuery.data) return;
@@ -52,7 +62,7 @@ export function CalculatorPage() {
     const payload = configQuery.data.payload as unknown as CalculatorSnapshotPayload;
     try {
       const preset = seedCalculatorStateFromSnapshot(payload);
-      calc.applyStatePreset(preset);
+      applyStatePresetRef.current(preset);
       hydratedFromIdRef.current = configId ?? null;
     } catch (err) {
       // The payload schemaVersion is validated by the backend on
@@ -61,20 +71,28 @@ export function CalculatorPage() {
       // eslint-disable-next-line no-console
       console.error("[CalculatorPage] hydrate failed", err);
     }
-  }, [configId, configQuery.data, isEditMode, calc]);
+  }, [configId, configQuery.data, isEditMode]);
 
   // ─── Auto-save (1s debounce) ─────────────────────────────────────
-  // Extract a snapshot from the live state on every render — cheap
-  // (no deep clone, ~30 keys). Debounce the snapshot so the mutation
-  // only fires after the user pauses typing/clicking for 1 full sec.
-  // We deliberately do NOT include the snapshot in the dependency
-  // array of the mutation effect (only the debounced version),
-  // because referential stability of `calc` is not guaranteed.
-  const liveSnapshot = useMemo(
-    () => (isEditMode ? extractCalculatorSnapshot(calc) : null),
-    [calc, isEditMode]
-  );
-  const debouncedSnapshot = useDebouncedValue(liveSnapshot, 1_000);
+  // Extract a snapshot from the live state on every render. The
+  // snapshot is a fresh object each render (extractCalculatorSnapshot
+  // doesn't memoise), so we can't feed it directly to useDebouncedValue
+  // — its useState would never settle (every render = new ref =
+  // new debounce timer). Instead we debounce a JSON STRING of the
+  // snapshot: strings compare by value, so debounced state actually
+  // changes only when the underlying data changes.
+  const liveSnapshotJson = useMemo(() => {
+    if (!isEditMode) return null;
+    return JSON.stringify(extractCalculatorSnapshot(calc));
+    // We want `liveSnapshotJson` to recompute every render in edit
+    // mode (so any calc state change is captured), but we DON'T want
+    // useMemo to look at every `calc.*` primitive — that's hundreds
+    // of fields. The safe approach: use `calc` in deps despite its
+    // reference instability; useMemo always re-runs but the produced
+    // STRING is what useDebouncedValue de-dupes against.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditMode, calc]);
+  const debouncedSnapshotJson = useDebouncedValue(liveSnapshotJson, 1_000);
   const updateMutation = useUpdateCalculatorConfig(configId);
 
   // Skip the auto-save for the very first snapshot after hydration
@@ -94,29 +112,28 @@ export function CalculatorPage() {
 
   useEffect(() => {
     if (!isEditMode) return;
-    if (!debouncedSnapshot) return;
+    if (!debouncedSnapshotJson) return;
     if (!autoSaveArmedRef.current) return;
     if (updateMutation.isPending) return;
-    updateMutation.mutate({
-      payload: debouncedSnapshot as unknown as { schemaVersion: number } &
-        Record<string, unknown>
-    });
+    const parsedSnapshot = JSON.parse(debouncedSnapshotJson) as { schemaVersion: number } &
+      Record<string, unknown>;
+    updateMutation.mutate({ payload: parsedSnapshot });
     // mutate() is referentially stable per the TanStack Query docs;
     // we deliberately leave it out of the dep array so a rapid retry
     // doesn't re-fire on the same snapshot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSnapshot, isEditMode]);
+  }, [debouncedSnapshotJson, isEditMode]);
 
-  // Status string for the "Saved · 2s ago" indicator. updatedAt comes
-  // from the latest mutation result (preferred) or the initial GET.
-  const [savedAt, setSavedAt] = useState<Date | null>(null);
-  useEffect(() => {
-    if (updateMutation.isSuccess && updateMutation.data) {
-      setSavedAt(new Date(updateMutation.data.updatedAt));
-    } else if (configQuery.data && savedAt === null) {
-      setSavedAt(new Date(configQuery.data.updatedAt));
-    }
-  }, [configQuery.data, updateMutation.data, updateMutation.isSuccess, savedAt]);
+  // Status for the "Saved · 2s ago" indicator. Derived (not state)
+  // so we avoid the Date-object trap: storing `new Date(updatedAt)`
+  // in useState + writing it via setSavedAt on every render of the
+  // savedAt effect produced a new Date reference each time, which
+  // failed the Object.is bail-out in setState and caused
+  // "Maximum update depth exceeded". By deriving directly from the
+  // (stable) underlying updatedAt string we sidestep both the
+  // state-storage and the effect entirely.
+  const savedAtIso =
+    updateMutation.data?.updatedAt ?? configQuery.data?.updatedAt ?? null;
 
   // Save modal — gathers (company, optional deal, optional title) and
   // POSTs the snapshot to /api/v1/calculator-configs. Sprint 3.B.
@@ -264,7 +281,7 @@ export function CalculatorPage() {
           isPending={updateMutation.isPending}
           isError={updateMutation.isError}
           errorMessage={updateMutation.error?.message}
-          savedAt={savedAt}
+          savedAtIso={savedAtIso}
         />
       ) : null}
 
@@ -537,13 +554,18 @@ function SavedStatusBadge({
   isPending,
   isError,
   errorMessage,
-  savedAt
+  savedAtIso
 }: {
   configTitle: string;
   isPending: boolean;
   isError: boolean;
   errorMessage?: string;
-  savedAt: Date | null;
+  /**
+   * ISO timestamp string (or null). Parsed to Date inside this
+   * component on each render — derived data, not stored. Avoids the
+   * "new Date() in useEffect → setState → loop" trap from Sprint 6.1.
+   */
+  savedAtIso: string | null;
 }) {
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -561,14 +583,14 @@ function SavedStatusBadge({
         cls: "bg-red-50 border-red-200 text-red-800"
       };
     }
-    if (!savedAt) {
+    if (!savedAtIso) {
       return {
         label: "Unsaved",
         cls: "bg-slate-100 border-slate-200 text-slate-600"
       };
     }
     return {
-      label: `Saved · ${formatRelativeTime(savedAt)}`,
+      label: `Saved · ${formatRelativeTime(new Date(savedAtIso))}`,
       cls: "bg-emerald-50 border-emerald-200 text-emerald-800"
     };
   })();
