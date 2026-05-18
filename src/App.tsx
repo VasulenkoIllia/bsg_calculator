@@ -7,7 +7,8 @@
  *     /             → redirect to /companies (default landing)
  *     /companies    → CompaniesPage (Sprint 2.8.D)
  *     /companies/:id → CompanyDetailPage (Sprint 2.8.E)
- *     /calculator   → existing CalculatorPage
+ *     /calculator   → existing CalculatorPage (new-draft mode)
+ *     /calc/:id     → CalculatorPage (edit-saved-config mode — Sprint 6.1)
  *     /wizard       → existing WizardPage
  *     *             → NotFoundPage
  *
@@ -53,6 +54,7 @@ export default function App() {
             <Route path="/documents" element={<DocumentsListPage />} />
             <Route path="/documents/:number" element={<DocumentViewPage />} />
             <Route path="/calculator" element={<CalculatorPage />} />
+            <Route path="/calc/:id" element={<CalculatorPage />} />
             <Route path="/wizard" element={<WizardPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>

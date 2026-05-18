@@ -1,5 +1,5 @@
-import { useNavigate } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { buildOfferSummaryText } from "../domain/calculator/index.js";
 import {
   CalculatorActionsPanel,
@@ -13,16 +13,115 @@ import {
   Zone5ProfitabilityCalculations,
   Zone6OfferSummary
 } from "../components/calculator/index.js";
-import { extractCalculatorSnapshot } from "../components/calculator/snapshotShape.js";
+import {
+  extractCalculatorSnapshot,
+  seedCalculatorStateFromSnapshot,
+  type CalculatorSnapshotPayload
+} from "../components/calculator/snapshotShape.js";
 import { SaveCalculatorModal } from "../components/SaveCalculatorModal.js";
 import { useCalculator } from "../contexts/CalculatorContext.js";
+import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
+import {
+  useCalculatorConfig,
+  useUpdateCalculatorConfig
+} from "../hooks/useCalculatorConfig.js";
 
 export function CalculatorPage() {
   const navigate = useNavigate();
   const calc = useCalculator();
 
+  // Sprint 6.1: when the route is `/calc/:id`, this page operates in
+  // "edit existing saved config" mode — load the persisted payload,
+  // hydrate the live calculator state, and auto-save on debounced
+  // changes. When `:id` is absent (route `/calculator`), the page
+  // is a fresh draft and the legacy "Save calculator" modal flow
+  // (POST /calculator-configs) governs.
+  const { id: configId } = useParams<{ id: string }>();
+  const isEditMode = typeof configId === "string" && configId.length > 0;
+  const configQuery = useCalculatorConfig(configId);
+
+  // ─── Hydrate live state from the loaded payload (once per id) ────
+  // We track which id we've hydrated so re-renders or the auto-save
+  // mutation echoing back the row don't re-apply the preset (which
+  // would clobber unsaved live edits the user just made).
+  const hydratedFromIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isEditMode) return;
+    if (!configQuery.data) return;
+    if (hydratedFromIdRef.current === configId) return;
+    const payload = configQuery.data.payload as unknown as CalculatorSnapshotPayload;
+    try {
+      const preset = seedCalculatorStateFromSnapshot(payload);
+      calc.applyStatePreset(preset);
+      hydratedFromIdRef.current = configId ?? null;
+    } catch (err) {
+      // The payload schemaVersion is validated by the backend on
+      // insert, but a future shape drift could still throw here. We
+      // surface as a status banner rather than crashing the page.
+      // eslint-disable-next-line no-console
+      console.error("[CalculatorPage] hydrate failed", err);
+    }
+  }, [configId, configQuery.data, isEditMode, calc]);
+
+  // ─── Auto-save (1s debounce) ─────────────────────────────────────
+  // Extract a snapshot from the live state on every render — cheap
+  // (no deep clone, ~30 keys). Debounce the snapshot so the mutation
+  // only fires after the user pauses typing/clicking for 1 full sec.
+  // We deliberately do NOT include the snapshot in the dependency
+  // array of the mutation effect (only the debounced version),
+  // because referential stability of `calc` is not guaranteed.
+  const liveSnapshot = useMemo(
+    () => (isEditMode ? extractCalculatorSnapshot(calc) : null),
+    [calc, isEditMode]
+  );
+  const debouncedSnapshot = useDebouncedValue(liveSnapshot, 1_000);
+  const updateMutation = useUpdateCalculatorConfig(configId);
+
+  // Skip the auto-save for the very first snapshot after hydration
+  // (otherwise the freshly-loaded payload triggers a no-op PUT to
+  // the same values). We mark hydration "settled" one tick AFTER
+  // the hydrate effect runs.
+  const autoSaveArmedRef = useRef(false);
+  useEffect(() => {
+    if (!isEditMode) return;
+    if (hydratedFromIdRef.current !== configId) return;
+    // Wait one render after hydrate so the live state has settled.
+    const t = setTimeout(() => {
+      autoSaveArmedRef.current = true;
+    }, 0);
+    return () => clearTimeout(t);
+  }, [configId, configQuery.data, isEditMode]);
+
+  useEffect(() => {
+    if (!isEditMode) return;
+    if (!debouncedSnapshot) return;
+    if (!autoSaveArmedRef.current) return;
+    if (updateMutation.isPending) return;
+    updateMutation.mutate({
+      payload: debouncedSnapshot as unknown as { schemaVersion: number } &
+        Record<string, unknown>
+    });
+    // mutate() is referentially stable per the TanStack Query docs;
+    // we deliberately leave it out of the dep array so a rapid retry
+    // doesn't re-fire on the same snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSnapshot, isEditMode]);
+
+  // Status string for the "Saved · 2s ago" indicator. updatedAt comes
+  // from the latest mutation result (preferred) or the initial GET.
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
+  useEffect(() => {
+    if (updateMutation.isSuccess && updateMutation.data) {
+      setSavedAt(new Date(updateMutation.data.updatedAt));
+    } else if (configQuery.data && savedAt === null) {
+      setSavedAt(new Date(configQuery.data.updatedAt));
+    }
+  }, [configQuery.data, updateMutation.data, updateMutation.isSuccess, savedAt]);
+
   // Save modal — gathers (company, optional deal, optional title) and
   // POSTs the snapshot to /api/v1/calculator-configs. Sprint 3.B.
+  // Sprint 6.1: only mounted in NEW-draft mode (no `:id`); when
+  // editing a saved config the auto-save above governs persistence.
   const [saveOpen, setSaveOpen] = useState(false);
   const [savedToast, setSavedToast] = useState<string | null>(null);
 
@@ -120,8 +219,55 @@ export function CalculatorPage() {
   // Puppeteer pipeline. The Offer Summary Preview textarea remains
   // available below for manual copy/paste in the meantime.
 
+  // Edit-mode UX: loading / not-found / errored states surface as a
+  // banner above the calculator so the operator immediately sees
+  // what's happening. The calculator itself still renders so the
+  // user can keep working — we just inform them their changes
+  // aren't being persisted yet.
+  const editModeBanner = (() => {
+    if (!isEditMode) return null;
+    if (configQuery.isLoading) {
+      return (
+        <BannerStatus
+          tone="info"
+          text="Loading saved calculator config…"
+        />
+      );
+    }
+    if (configQuery.isError) {
+      const status = configQuery.error?.status;
+      if (status === 404) {
+        return (
+          <BannerStatus
+            tone="error"
+            text={`Calculator config ${configId} not found. Auto-save is disabled.`}
+          />
+        );
+      }
+      return (
+        <BannerStatus
+          tone="error"
+          text={configQuery.error?.message ?? "Failed to load saved config."}
+        />
+      );
+    }
+    return null;
+  })();
+
   return (
     <>
+      {editModeBanner}
+
+      {isEditMode && configQuery.data ? (
+        <SavedStatusBadge
+          configTitle={configQuery.data.title ?? "(untitled)"}
+          isPending={updateMutation.isPending}
+          isError={updateMutation.isError}
+          errorMessage={updateMutation.error?.message}
+          savedAt={savedAt}
+        />
+      ) : null}
+
       {savedToast ? (
         <div
           role="status"
@@ -324,21 +470,118 @@ export function CalculatorPage() {
         offerSummaryActionMessage={calc.offerSummaryActionMessage}
         onCopy={handleCopyOfferSummary}
         onOpenWizard={() => navigate("/wizard")}
-        onSaveCalculator={() => setSaveOpen(true)}
+        // In edit mode auto-save replaces the explicit modal flow —
+        // the "Save calculator" button is hidden and a "Saved · 2s ago"
+        // badge at the top of the page communicates state instead.
+        onSaveCalculator={isEditMode ? undefined : () => setSaveOpen(true)}
       />
 
-      {snapshot ? (
+      {!isEditMode && snapshot ? (
         <SaveCalculatorModal
           open={saveOpen}
           onClose={() => setSaveOpen(false)}
           payload={snapshot as unknown as { schemaVersion: number } & Record<string, unknown>}
-          onSaved={() => {
+          onSaved={createdId => {
             setSavedToast("Calculator saved.");
             // Auto-dismiss the toast after 4s so it doesn't linger.
             setTimeout(() => setSavedToast(null), 4000);
+            // Sprint 6.1: navigate to the new /calc/:id so subsequent
+            // edits go through the auto-save loop instead of opening
+            // the modal again.
+            navigate(`/calc/${createdId}`, { replace: true });
           }}
         />
       ) : null}
     </>
   );
+}
+
+// ─── Edit-mode UX subcomponents ──────────────────────────────────
+
+function BannerStatus({
+  tone,
+  text
+}: {
+  tone: "info" | "error";
+  text: string;
+}) {
+  const cls =
+    tone === "info"
+      ? "border-blue-200 bg-blue-50 text-blue-800"
+      : "border-red-200 bg-red-50 text-red-800";
+  return (
+    <div role="status" className={`mb-3 rounded-lg border px-4 py-2 text-sm ${cls}`}>
+      {text}
+    </div>
+  );
+}
+
+/**
+ * "Saved · 2s ago" badge that re-renders every 5s so the relative
+ * time stays fresh without spamming the React commit phase.
+ * Reports the current mutation state (pending / saved / errored)
+ * inline so the operator can trust that their changes are being
+ * persisted.
+ */
+function SavedStatusBadge({
+  configTitle,
+  isPending,
+  isError,
+  errorMessage,
+  savedAt
+}: {
+  configTitle: string;
+  isPending: boolean;
+  isError: boolean;
+  errorMessage?: string;
+  savedAt: Date | null;
+}) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick(n => n + 1), 5_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const tag = (() => {
+    if (isPending) {
+      return { label: "Saving…", cls: "bg-blue-50 border-blue-200 text-blue-800" };
+    }
+    if (isError) {
+      return {
+        label: `Save failed: ${errorMessage ?? "unknown error"}`,
+        cls: "bg-red-50 border-red-200 text-red-800"
+      };
+    }
+    if (!savedAt) {
+      return {
+        label: "Unsaved",
+        cls: "bg-slate-100 border-slate-200 text-slate-600"
+      };
+    }
+    return {
+      label: `Saved · ${formatRelativeTime(savedAt)}`,
+      cls: "bg-emerald-50 border-emerald-200 text-emerald-800"
+    };
+  })();
+
+  return (
+    <div
+      role="status"
+      className={`mb-3 flex items-center justify-between rounded-lg border px-4 py-2 text-sm ${tag.cls}`}
+    >
+      <span className="truncate font-semibold">{configTitle}</span>
+      <span aria-live="polite" className="ml-3 shrink-0 text-xs font-medium">
+        {tag.label}
+      </span>
+    </div>
+  );
+}
+
+function formatRelativeTime(when: Date): string {
+  const ageMs = Date.now() - when.getTime();
+  if (ageMs < 5_000) return "just now";
+  if (ageMs < 60_000) return `${Math.floor(ageMs / 1_000)}s ago`;
+  if (ageMs < 3_600_000) return `${Math.floor(ageMs / 60_000)}m ago`;
+  if (ageMs < 86_400_000) return `${Math.floor(ageMs / 3_600_000)}h ago`;
+  return when.toLocaleDateString();
 }
