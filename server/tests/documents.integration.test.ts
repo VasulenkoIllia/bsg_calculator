@@ -387,6 +387,90 @@ describe("GET /api/v1/documents — list + filters", () => {
     expect(res.body.items).toHaveLength(1);
     expect(res.body.items[0].number).toBe("BSG-7100001-111111");
   });
+
+  it("filters by calculatorConfigId (Sprint 6.4: docs-from-this-calc history)", async () => {
+    // Sprint 6.F.3 audit-fill: the Sprint 6.4 ?calculatorConfigId=
+    // filter is the core invariant powering the "Documents from
+    // this calculator" section on /calc/:id. Without this test, a
+    // typo in the repository WHERE clause or a missed wiring in the
+    // controller would silently break the calc-page history view
+    // with no failure signal.
+    const token = await setupAuth();
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture())
+      .returning();
+
+    // Create TWO calculator configs for the same company.
+    const calcA = await request(app)
+      .post("/api/v1/calculator-configs")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, payload: { schemaVersion: 1, _calc: "A" } });
+    const calcB = await request(app)
+      .post("/api/v1/calculator-configs")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, payload: { schemaVersion: 1, _calc: "B" } });
+
+    // 2 documents from calcA, 1 from calcB, 1 with no calc link.
+    for (let i = 0; i < 2; i++) {
+      await request(app)
+        .post("/api/v1/documents")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          companyId: company.id,
+          calculatorConfigId: calcA.body.id,
+          scope: "offer",
+          payload: samplePayload
+        });
+    }
+    await request(app)
+      .post("/api/v1/documents")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        companyId: company.id,
+        calculatorConfigId: calcB.body.id,
+        scope: "offer",
+        payload: samplePayload
+      });
+    await request(app)
+      .post("/api/v1/documents")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, scope: "offer", payload: samplePayload });
+
+    // Filter by calcA — exactly 2 documents.
+    const fromA = await request(app)
+      .get(`/api/v1/documents?calculatorConfigId=${calcA.body.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(fromA.status).toBe(200);
+    expect(fromA.body.items).toHaveLength(2);
+    expect(
+      fromA.body.items.every(
+        (d: { calculatorConfigId: string }) => d.calculatorConfigId === calcA.body.id
+      )
+    ).toBe(true);
+
+    // Filter by calcB — exactly 1 document.
+    const fromB = await request(app)
+      .get(`/api/v1/documents?calculatorConfigId=${calcB.body.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(fromB.body.items).toHaveLength(1);
+    expect(fromB.body.items[0].calculatorConfigId).toBe(calcB.body.id);
+
+    // Filter by a non-existent UUID — empty page, NOT an error.
+    const fromNone = await request(app)
+      .get("/api/v1/documents?calculatorConfigId=00000000-0000-4000-8000-000000000000")
+      .set("Authorization", `Bearer ${token}`);
+    expect(fromNone.status).toBe(200);
+    expect(fromNone.body.items).toHaveLength(0);
+  });
+
+  it("rejects a non-UUID calculatorConfigId with 400", async () => {
+    const token = await setupAuth();
+    const res = await request(app)
+      .get("/api/v1/documents?calculatorConfigId=not-a-uuid")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("POST /api/v1/documents/:number/use-as-template", () => {

@@ -13,8 +13,8 @@ import {
 import type { DocumentTemplatePayload, WizardStep } from "../components/document-wizard/index.js";
 import type { DocumentScope } from "../components/document-wizard/legalDefaults.js";
 import {
-  seedCalculatorStateFromSnapshot,
-  type CalculatorSnapshotPayload
+  isCalculatorSnapshotPayload,
+  seedCalculatorStateFromSnapshot
 } from "../components/calculator/snapshotShape.js";
 import { SaveDocumentModal } from "../components/SaveDocumentModal.js";
 import { WizardBackendBar } from "../components/WizardBackendBar.js";
@@ -291,10 +291,19 @@ export function WizardPage() {
     if (!linkedConfigId) return;
     if (!linkedConfigQuery.data) return;
     if (linkedHydratedFromRef.current === linkedConfigId) return;
-    try {
-      const preset = seedCalculatorStateFromSnapshot(
-        linkedConfigQuery.data.payload as unknown as CalculatorSnapshotPayload
+    // Sprint 6.F.3 (audit Q3): runtime-validate the JSONB payload
+    // before hydration. See snapshotShape.ts → isCalculatorSnapshotPayload.
+    const payload = linkedConfigQuery.data.payload;
+    if (!isCalculatorSnapshotPayload(payload)) {
+      // eslint-disable-next-line no-console
+      console.error(
+        "[WizardPage] linked calc payload not a valid CalculatorSnapshotPayload — skipping hydration",
+        { linkedConfigId, payloadKeys: Object.keys(payload ?? {}) }
       );
+      return;
+    }
+    try {
+      const preset = seedCalculatorStateFromSnapshot(payload);
       calc.applyStatePreset(preset);
       linkedHydratedFromRef.current = linkedConfigId;
       // Also re-seed the wizard draft itself from the freshly-applied

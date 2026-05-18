@@ -15,8 +15,8 @@ import {
 } from "../components/calculator/index.js";
 import {
   extractCalculatorSnapshot,
-  seedCalculatorStateFromSnapshot,
-  type CalculatorSnapshotPayload
+  isCalculatorSnapshotPayload,
+  seedCalculatorStateFromSnapshot
 } from "../components/calculator/snapshotShape.js";
 import { SaveCalculatorModal } from "../components/SaveCalculatorModal.js";
 import {
@@ -69,15 +69,32 @@ export function CalculatorPage() {
     if (!isEditMode) return;
     if (!configQuery.data) return;
     if (hydratedFromIdRef.current === configId) return;
-    const payload = configQuery.data.payload as unknown as CalculatorSnapshotPayload;
+    // Sprint 6.F.3 (audit Q3): runtime-validate the JSONB payload
+    // before feeding it to seedCalculatorStateFromSnapshot. Without
+    // this guard a shape mismatch (schemaVersion drift, malformed
+    // row written by an older client) propagates as undefined
+    // fields into the live calculator state — silently. Now the
+    // mismatch is caught early and surfaces as a console error +
+    // skipped hydration (the auto-save stays disarmed because
+    // hydratedFromIdRef never advances).
+    const payload = configQuery.data.payload;
+    if (!isCalculatorSnapshotPayload(payload)) {
+      // eslint-disable-next-line no-console
+      console.error(
+        "[CalculatorPage] saved payload is not a valid CalculatorSnapshotPayload — skipping hydration",
+        { configId, payloadKeys: Object.keys(payload ?? {}) }
+      );
+      return;
+    }
     try {
       const preset = seedCalculatorStateFromSnapshot(payload);
       applyStatePresetRef.current(preset);
       hydratedFromIdRef.current = configId ?? null;
     } catch (err) {
-      // The payload schemaVersion is validated by the backend on
-      // insert, but a future shape drift could still throw here. We
-      // surface as a status banner rather than crashing the page.
+      // A deeper shape mismatch (a nested object the guard didn't
+      // probe) can still throw inside seedCalculatorStateFromSnapshot.
+      // Caught here and logged; the badge will show "Unsaved" because
+      // savedAtIso stays null until a real save lands.
       // eslint-disable-next-line no-console
       console.error("[CalculatorPage] hydrate failed", err);
     }
