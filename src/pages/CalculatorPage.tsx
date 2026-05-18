@@ -1,4 +1,4 @@
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildOfferSummaryText } from "../domain/calculator/index.js";
 import {
@@ -19,15 +19,22 @@ import {
   type CalculatorSnapshotPayload
 } from "../components/calculator/snapshotShape.js";
 import { SaveCalculatorModal } from "../components/SaveCalculatorModal.js";
+import {
+  BannerStatus,
+  DocumentsFromCalcSection,
+  SavedStatusBadge
+} from "../components/calculator/edit-mode/index.js";
 import { useCalculator } from "../contexts/CalculatorContext.js";
+import { useToast } from "../contexts/ToastContext.js";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
 import {
   useCalculatorConfig,
   useUpdateCalculatorConfig
 } from "../hooks/useCalculatorConfig.js";
 import { useDocuments } from "../hooks/useDocuments.js";
-import { formatDate, formatScopeLabel } from "../shared/format.js";
-import { useToast } from "../contexts/ToastContext.js";
+// formatters moved with edit-mode components — see
+// src/components/calculator/edit-mode/SavedStatusBadge.tsx +
+// DocumentsFromCalcSection.tsx
 
 export function CalculatorPage() {
   const navigate = useNavigate();
@@ -548,147 +555,7 @@ export function CalculatorPage() {
   );
 }
 
-// ─── Edit-mode UX subcomponents ──────────────────────────────────
-
-/**
- * Sprint 6.4: "Documents from this calculator" history strip.
- *
- * Surfaces the BSG-XXXXX documents that were saved from THIS exact
- * calculator-config so the operator can see — at a glance — every
- * point-in-time snapshot derived from the live draft they're editing.
- *
- * One calc → many documents is the canonical relationship (each save
- * via the wizard produces a fresh numbered document); this section
- * makes that visible. Clicking a row opens the document view.
- *
- * Rendered only when the list is non-empty: the calc page already
- * has dense UX and a "0 documents derived yet" banner would be noise.
- */
-function DocumentsFromCalcSection({
-  docs
-}: {
-  docs: import("../api/types.js").PublicDocument[];
-}) {
-  return (
-    <div className="mb-3 overflow-hidden rounded-lg border border-slate-200 bg-white">
-      <div className="border-b border-slate-200 bg-slate-50 px-4 py-2">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-          Documents from this calculator{" "}
-          <span className="ml-1 rounded-full bg-slate-200 px-1.5 text-[10px] text-slate-700">
-            {docs.length}
-          </span>
-        </h3>
-      </div>
-      <ul className="divide-y divide-slate-100">
-        {docs.map(doc => (
-          <li key={doc.id}>
-            <Link
-              to={`/documents/${doc.number}`}
-              className="flex items-center justify-between px-4 py-2 text-sm hover:bg-slate-50"
-            >
-              <span className="font-mono text-xs font-semibold text-slate-800">
-                {doc.number}
-              </span>
-              <span className="text-xs text-slate-500">
-                {formatScopeLabel(doc.scope)} · {formatDate(doc.createdAt)}
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function BannerStatus({
-  tone,
-  text
-}: {
-  tone: "info" | "error";
-  text: string;
-}) {
-  const cls =
-    tone === "info"
-      ? "border-blue-200 bg-blue-50 text-blue-800"
-      : "border-red-200 bg-red-50 text-red-800";
-  return (
-    <div role="status" className={`mb-3 rounded-lg border px-4 py-2 text-sm ${cls}`}>
-      {text}
-    </div>
-  );
-}
-
-/**
- * "Saved · 2s ago" badge that re-renders every 5s so the relative
- * time stays fresh without spamming the React commit phase.
- * Reports the current mutation state (pending / saved / errored)
- * inline so the operator can trust that their changes are being
- * persisted.
- */
-function SavedStatusBadge({
-  configTitle,
-  isPending,
-  isError,
-  errorMessage,
-  savedAtIso
-}: {
-  configTitle: string;
-  isPending: boolean;
-  isError: boolean;
-  errorMessage?: string;
-  /**
-   * ISO timestamp string (or null). Parsed to Date inside this
-   * component on each render — derived data, not stored. Avoids the
-   * "new Date() in useEffect → setState → loop" trap from Sprint 6.1.
-   */
-  savedAtIso: string | null;
-}) {
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => setTick(n => n + 1), 5_000);
-    return () => clearInterval(t);
-  }, []);
-
-  const tag = (() => {
-    if (isPending) {
-      return { label: "Saving…", cls: "bg-blue-50 border-blue-200 text-blue-800" };
-    }
-    if (isError) {
-      return {
-        label: `Save failed: ${errorMessage ?? "unknown error"}`,
-        cls: "bg-red-50 border-red-200 text-red-800"
-      };
-    }
-    if (!savedAtIso) {
-      return {
-        label: "Unsaved",
-        cls: "bg-slate-100 border-slate-200 text-slate-600"
-      };
-    }
-    return {
-      label: `Saved · ${formatRelativeTime(new Date(savedAtIso))}`,
-      cls: "bg-emerald-50 border-emerald-200 text-emerald-800"
-    };
-  })();
-
-  return (
-    <div
-      role="status"
-      className={`mb-3 flex items-center justify-between rounded-lg border px-4 py-2 text-sm ${tag.cls}`}
-    >
-      <span className="truncate font-semibold">{configTitle}</span>
-      <span aria-live="polite" className="ml-3 shrink-0 text-xs font-medium">
-        {tag.label}
-      </span>
-    </div>
-  );
-}
-
-function formatRelativeTime(when: Date): string {
-  const ageMs = Date.now() - when.getTime();
-  if (ageMs < 5_000) return "just now";
-  if (ageMs < 60_000) return `${Math.floor(ageMs / 1_000)}s ago`;
-  if (ageMs < 3_600_000) return `${Math.floor(ageMs / 60_000)}m ago`;
-  if (ageMs < 86_400_000) return `${Math.floor(ageMs / 3_600_000)}h ago`;
-  return when.toLocaleDateString();
-}
+// Edit-mode UX subcomponents (BannerStatus, SavedStatusBadge,
+// DocumentsFromCalcSection) live under
+// src/components/calculator/edit-mode/ since Sprint 6.F.2 — see
+// barrel index there. The split keeps this page file under ~550 LOC.
