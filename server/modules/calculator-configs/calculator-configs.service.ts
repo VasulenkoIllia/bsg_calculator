@@ -113,9 +113,19 @@ export async function updateCalculatorConfigById(
 
   await ensureDealBelongsToCompany(body.hubspotDealId, existing.companyId);
 
+  // Sprint 6.6 bug fix: PARTIAL update semantics — only patch fields
+  // the caller explicitly sent. Previously `body.title ?? null` /
+  // `body.hubspotDealId ?? null` collapsed `undefined` (field omitted
+  // from request) into `null` (clear the field), which silently
+  // erased the title + deal pin on every /calc/:id auto-save tick
+  // because the auto-save sends only `{ payload }`.
+  //
+  // Semantic contract: explicit `null` in the body = "clear this
+  // field". Field absent from the body = "leave unchanged".
   const updated = await updateRow(id, {
-    hubspotDealId: body.hubspotDealId ?? null,
-    title: body.title ?? null,
+    hubspotDealId:
+      body.hubspotDealId !== undefined ? body.hubspotDealId : existing.hubspotDealId,
+    title: body.title !== undefined ? body.title : existing.title,
     payload: body.payload
   });
   if (!updated) throw new NotFoundError("Calculator config");

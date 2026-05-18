@@ -155,6 +155,13 @@ export function CalculatorPage() {
     if (updateMutation.isPending) return;
     const parsedSnapshot = JSON.parse(debouncedSnapshotJson) as { schemaVersion: number } &
       Record<string, unknown>;
+    // Auto-save sends ONLY the payload — title and hubspotDealId are
+    // omitted so the backend's partial-update semantics
+    // (Sprint 6.6 bug fix in calculator-configs.service.ts) leave
+    // those fields untouched. Earlier the body shape was
+    // `{ payload, hubspotDealId?, title? }` and the backend
+    // collapsed `undefined` → `null`, silently erasing the title and
+    // deal-pin on every auto-save tick.
     updateMutation.mutate({ payload: parsedSnapshot });
     // mutate() is referentially stable per the TanStack Query docs;
     // we deliberately leave it out of the dep array so a rapid retry

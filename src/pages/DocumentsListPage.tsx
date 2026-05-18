@@ -9,18 +9,19 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api/client.js";
+import { CompanyTypeahead } from "../components/CompanyTypeahead.js";
 import { LoadMoreButton } from "../components/LoadMoreButton.js";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
-import { useCompanySearch } from "../hooks/useCompanySearch.js";
 import { useDocuments } from "../hooks/useDocuments.js";
 import { SEARCH_DEBOUNCE_MS } from "../shared/constants.js";
 import { formatDate, formatScopeLabel } from "../shared/format.js";
 import type { PublicCompany } from "../api/types.js";
 
 /**
- * Inline company typeahead used as a filter chip. Renders a "× clear"
- * button when a company is picked so the operator can return to the
- * unfiltered view in one click.
+ * Inline company filter — Sprint 6.6 uses the shared CompanyTypeahead
+ * (dropdown-on-focus). Operator clicks the field, sees the company
+ * list, picks one → chip. Click "Change" inside the chip to swap
+ * to a different company; the parent passes `null` back to clear.
  */
 function CompanyFilter({
   selected,
@@ -29,72 +30,14 @@ function CompanyFilter({
   selected: PublicCompany | null;
   onSelectedChange: (company: PublicCompany | null) => void;
 }) {
-  const [query, setQuery] = useState("");
-  const companySearch = useCompanySearch(query);
-
-  if (selected) {
-    return (
-      <div className="flex items-center gap-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-          Filter
-        </span>
-        <div className="flex items-center gap-2 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-sm">
-          <span className="font-semibold text-blue-900">{selected.name}</span>
-          <button
-            type="button"
-            onClick={() => onSelectedChange(null)}
-            className="text-xs font-semibold text-blue-700 hover:text-blue-900 hover:underline"
-            aria-label="Clear company filter"
-          >
-            × clear
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="relative w-full sm:w-72">
-      <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600">
-        Filter by company
-      </span>
-      <input
-        type="search"
-        value={query}
-        onChange={e => setQuery(e.target.value)}
-        placeholder="Type at least 2 letters…"
-        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-      />
-      {companySearch.effectiveQuery.length >= 2 ? (
-        <ul
-          role="listbox"
-          className="absolute z-10 mt-1 max-h-40 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white text-sm shadow-sm"
-        >
-          {companySearch.isLoading ? (
-            <li className="px-3 py-2 text-slate-500">Searching…</li>
-          ) : companySearch.items.length === 0 ? (
-            <li className="px-3 py-2 text-slate-500">
-              No matches for "{companySearch.effectiveQuery}"
-            </li>
-          ) : (
-            companySearch.items.map(c => (
-              <li
-                key={c.id}
-                role="option"
-                aria-selected="false"
-                className="cursor-pointer px-3 py-2 hover:bg-blue-50"
-                onClick={() => {
-                  onSelectedChange(c);
-                  setQuery("");
-                }}
-              >
-                {c.name}
-              </li>
-            ))
-          )}
-        </ul>
-      ) : null}
-    </div>
+    <CompanyTypeahead
+      selected={selected}
+      onSelectedChange={onSelectedChange}
+      label="Filter by company"
+      placeholder="Click to browse, or type to filter…"
+      className="w-full sm:w-72"
+    />
   );
 }
 

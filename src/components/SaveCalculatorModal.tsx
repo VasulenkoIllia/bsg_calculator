@@ -23,8 +23,8 @@ import { useState } from "react";
 import { ApiError } from "../api/client.js";
 import * as calculatorConfigsApi from "../api/calculator-configs.js";
 import { useCompanyDeals } from "../hooks/useCompany.js";
-import { useCompanySearch } from "../hooks/useCompanySearch.js";
 import type { PublicCompany } from "../api/types.js";
+import { CompanyTypeahead } from "./CompanyTypeahead.js";
 
 export interface SaveCalculatorModalProps {
   /** True → modal visible. Parent controls open/close. */
@@ -49,7 +49,8 @@ export function SaveCalculatorModal({
   // Local form state — kept here rather than react-hook-form because
   // the typeahead + dependent deal selector aren't idiomatic in RHF's
   // controlled-input model, and the form has only three fields.
-  const [companyQuery, setCompanyQuery] = useState("");
+  // Sprint 6.6: companyQuery state moved INTO the shared
+  // CompanyTypeahead component — modal no longer needs to mirror it.
   const [selectedCompany, setSelectedCompany] = useState<PublicCompany | null>(null);
   const [selectedDealId, setSelectedDealId] = useState<string>(""); // "" = none
   const [title, setTitle] = useState("");
@@ -58,7 +59,6 @@ export function SaveCalculatorModal({
 
   // Reset everything when the modal closes so a re-open starts fresh.
   function resetAndClose(): void {
-    setCompanyQuery("");
     setSelectedCompany(null);
     setSelectedDealId("");
     setTitle("");
@@ -67,7 +67,6 @@ export function SaveCalculatorModal({
     onClose();
   }
 
-  const companySearch = useCompanySearch(companyQuery);
   // Load deals for the selected company. `enabled` inside
   // useCompanyDeals already gates on companyId being a non-empty
   // string, so no extra guard needed.
@@ -146,76 +145,20 @@ export function SaveCalculatorModal({
           />
         </label>
 
-        {/* Company picker — typeahead. The suggestion <ul> sits OUTSIDE
-            the <label> wrapper so a click on a <li> selects the option
-            rather than getting eaten by the label's default focus-the-
-            input behaviour. */}
-        <div className="space-y-1">
-          <span
-            id="company-label"
-            className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
-          >
-            Company *
-          </span>
-          {selectedCompany ? (
-            <div className="mt-1 flex items-center justify-between rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-sm">
-              <span className="font-semibold text-blue-900">{selectedCompany.name}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedCompany(null);
-                  setSelectedDealId("");
-                }}
-                className="text-xs font-semibold text-blue-700 hover:text-blue-900 hover:underline"
-              >
-                Change
-              </button>
-            </div>
-          ) : (
-            <>
-              <input
-                type="search"
-                value={companyQuery}
-                onChange={e => setCompanyQuery(e.target.value)}
-                placeholder="Type at least 2 letters…"
-                aria-labelledby="company-label"
-                aria-autocomplete="list"
-                aria-controls="company-suggestions"
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-              />
-              {companySearch.effectiveQuery.length >= 2 ? (
-                <ul
-                  id="company-suggestions"
-                  role="listbox"
-                  className="mt-1 max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white text-sm shadow-sm"
-                >
-                  {companySearch.isLoading ? (
-                    <li className="px-3 py-2 text-slate-500">Searching…</li>
-                  ) : companySearch.items.length === 0 ? (
-                    <li className="px-3 py-2 text-slate-500">
-                      No matches for "{companySearch.effectiveQuery}"
-                    </li>
-                  ) : (
-                    companySearch.items.map(c => (
-                      <li
-                        key={c.id}
-                        role="option"
-                        aria-selected="false"
-                        className="cursor-pointer px-3 py-2 hover:bg-blue-50"
-                        onClick={() => {
-                          setSelectedCompany(c);
-                          setCompanyQuery("");
-                        }}
-                      >
-                        {c.name}
-                      </li>
-                    ))
-                  )}
-                </ul>
-              ) : null}
-            </>
-          )}
-        </div>
+        {/* Sprint 6.6: shared CompanyTypeahead replaces the inline
+            picker. Dropdown opens on focus, browse mode lists the
+            first 10 companies before any typing. */}
+        <CompanyTypeahead
+          selected={selectedCompany}
+          onSelectedChange={c => {
+            setSelectedCompany(c);
+            // Clearing the company also clears the dependent deal pin —
+            // a pin for company A would be cross-company nonsense if
+            // the operator switches to company B.
+            if (!c) setSelectedDealId("");
+          }}
+          required
+        />
 
         {/* Deal selector — only when a company is picked. */}
         {selectedCompany ? (

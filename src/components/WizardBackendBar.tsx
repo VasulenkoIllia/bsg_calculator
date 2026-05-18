@@ -12,11 +12,11 @@
  * one save-trigger location avoids accidental mid-edit submissions.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { ApiError } from "../api/client.js";
 import { useCompanyDeals } from "../hooks/useCompany.js";
-import { useCompanySearch } from "../hooks/useCompanySearch.js";
 import type { PublicCompany } from "../api/types.js";
+import { CompanyTypeahead } from "./CompanyTypeahead.js";
 
 export interface WizardBackendBarProps {
   selectedCompany: PublicCompany | null;
@@ -31,8 +31,8 @@ export function WizardBackendBar({
   selectedDealId,
   onDealIdChange
 }: WizardBackendBarProps) {
-  const [companyQuery, setCompanyQuery] = useState("");
-  const companySearch = useCompanySearch(companyQuery);
+  // Sprint 6.6: company picker UI moved into the shared
+  // CompanyTypeahead component (dropdown-on-focus pattern).
   const dealsQuery = useCompanyDeals(selectedCompany?.id);
 
   // Clear the deal selection when the company changes — a deal of
@@ -55,65 +55,11 @@ export function WizardBackendBar({
       </header>
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        {/* Company picker */}
-        <div>
-          <span className="block text-xs font-semibold uppercase tracking-wide text-blue-900">
-            Company *
-          </span>
-          {selectedCompany ? (
-            <div className="mt-1 flex items-center justify-between rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm">
-              <span className="font-semibold text-blue-900">
-                {selectedCompany.name}
-              </span>
-              <button
-                type="button"
-                onClick={() => onCompanyChange(null)}
-                className="text-xs font-semibold text-blue-700 hover:text-blue-900 hover:underline"
-              >
-                Change
-              </button>
-            </div>
-          ) : (
-            <>
-              <input
-                type="search"
-                value={companyQuery}
-                onChange={e => setCompanyQuery(e.target.value)}
-                placeholder="Type at least 2 letters…"
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-              />
-              {companySearch.effectiveQuery.length >= 2 ? (
-                <ul
-                  role="listbox"
-                  className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white text-sm shadow-sm"
-                >
-                  {companySearch.isLoading ? (
-                    <li className="px-3 py-2 text-slate-500">Searching…</li>
-                  ) : companySearch.items.length === 0 ? (
-                    <li className="px-3 py-2 text-slate-500">
-                      No matches for "{companySearch.effectiveQuery}"
-                    </li>
-                  ) : (
-                    companySearch.items.map(c => (
-                      <li
-                        key={c.id}
-                        role="option"
-                        aria-selected="false"
-                        className="cursor-pointer px-3 py-2 hover:bg-blue-50"
-                        onClick={() => {
-                          onCompanyChange(c);
-                          setCompanyQuery("");
-                        }}
-                      >
-                        {c.name}
-                      </li>
-                    ))
-                  )}
-                </ul>
-              ) : null}
-            </>
-          )}
-        </div>
+        <CompanyTypeahead
+          selected={selectedCompany}
+          onSelectedChange={onCompanyChange}
+          required
+        />
 
         {/* Deal selector */}
         <div>

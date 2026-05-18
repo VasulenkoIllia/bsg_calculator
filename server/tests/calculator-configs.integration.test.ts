@@ -240,6 +240,56 @@ describe("PUT /api/v1/calculator-configs/:id", () => {
     expect(res.body.payload).toMatchObject({ _note: "updated" });
   });
 
+  it("PARTIAL update: payload-only body preserves title + dealId (Sprint 6.6 bug fix)", async () => {
+    // Regression test for the auto-save bug:
+    //   - operator sets title "test" + deal pin via SaveCalculatorModal
+    //   - /calc/:id auto-save tick fires PUT with body `{ payload }`
+    //   - PREVIOUS behaviour: title + hubspotDealId silently collapsed
+    //     to NULL because the service did `body.title ?? null`
+    //   - FIXED behaviour: omitted fields leave the column untouched.
+    const token = await setupAuth();
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture())
+      .returning();
+    const [deal] = await db
+      .insert(deals)
+      .values(dealFixture(company.hubspotCompanyId))
+      .returning();
+
+    const created = await request(app)
+      .post("/api/v1/calculator-configs")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        companyId: company.id,
+        hubspotDealId: deal.hubspotDealId,
+        title: "test",
+        payload: samplePayload
+      });
+    expect(created.body.title).toBe("test");
+    expect(created.body.hubspotDealId).toBe(deal.hubspotDealId);
+
+    // Auto-save: body has only payload — must preserve title + deal.
+    const autoSave = await request(app)
+      .put(`/api/v1/calculator-configs/${created.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ payload: { ...samplePayload, _autoSaveTick: 1 } });
+    expect(autoSave.status).toBe(200);
+    expect(autoSave.body.title).toBe("test");
+    expect(autoSave.body.hubspotDealId).toBe(deal.hubspotDealId);
+    expect(autoSave.body.payload).toMatchObject({ _autoSaveTick: 1 });
+
+    // Explicit null in body DOES clear (operator deletes title manually).
+    const clearTitle = await request(app)
+      .put(`/api/v1/calculator-configs/${created.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: null, payload: samplePayload });
+    expect(clearTitle.status).toBe(200);
+    expect(clearTitle.body.title).toBeNull();
+    // deal pin still untouched (was not in this body either).
+    expect(clearTitle.body.hubspotDealId).toBe(deal.hubspotDealId);
+  });
+
   it("rejects cross-company deal on update", async () => {
     const token = await setupAuth();
     const [companyA] = await db.insert(companies).values(companyFixture()).returning();

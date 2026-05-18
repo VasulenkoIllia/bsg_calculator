@@ -103,7 +103,7 @@ describe("SaveCalculatorModal — company typeahead", () => {
     });
 
     renderModal();
-    fireEvent.change(screen.getByPlaceholderText(/at least 2 letters/i), {
+    fireEvent.change(screen.getByPlaceholderText(/click to browse/i), {
       target: { value: "Ac" }
     });
 
@@ -126,7 +126,7 @@ describe("SaveCalculatorModal — company typeahead", () => {
     });
 
     renderModal();
-    fireEvent.change(screen.getByPlaceholderText(/at least 2 letters/i), {
+    fireEvent.change(screen.getByPlaceholderText(/click to browse/i), {
       target: { value: "Ac" }
     });
     await waitFor(() => screen.getByText("Acme Inc"));
@@ -168,7 +168,7 @@ describe("SaveCalculatorModal — submit", () => {
     const onSaved = vi.fn();
     renderModal({ onClose, onSaved });
 
-    fireEvent.change(screen.getByPlaceholderText(/at least 2 letters/i), {
+    fireEvent.change(screen.getByPlaceholderText(/click to browse/i), {
       target: { value: "Ac" }
     });
     await waitFor(() => screen.getByText("Acme Inc"));
@@ -214,7 +214,7 @@ describe("SaveCalculatorModal — submit", () => {
     renderModal();
 
     fireEvent.change(screen.getByLabelText(/title/i), { target: { value: "T1" } });
-    fireEvent.change(screen.getByPlaceholderText(/at least 2 letters/i), {
+    fireEvent.change(screen.getByPlaceholderText(/click to browse/i), {
       target: { value: "Ac" }
     });
     await waitFor(() => screen.getByText("Acme Inc"));
@@ -247,7 +247,7 @@ describe("SaveCalculatorModal — submit", () => {
     );
 
     renderModal();
-    fireEvent.change(screen.getByPlaceholderText(/at least 2 letters/i), {
+    fireEvent.change(screen.getByPlaceholderText(/click to browse/i), {
       target: { value: "Ac" }
     });
     await waitFor(() => screen.getByText("Acme Inc"));

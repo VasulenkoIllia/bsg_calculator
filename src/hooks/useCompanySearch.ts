@@ -8,8 +8,15 @@
  *     more" via Search refinement, not pagination, so we don't expose
  *     fetchNextPage here)
  *
- * Used by SaveCalculatorModal (Sprint 3.B) and the future wizard
- * Step 1 picker (Sprint 6).
+ * Used by SaveCalculatorModal (Sprint 3.B), CompanyFilter on
+ * DocumentsListPage (Sprint 4.D), and WizardBackendBar (Sprint 4.E).
+ *
+ * Sprint 6.6 UX note: callers now show the dropdown on focus (no
+ * `>= 2 chars` gate), so this hook is called with an empty query
+ * on first render. The backend listing already accepts an empty
+ * `q` as "no filter" and returns the first `limit=10` companies —
+ * so the operator can browse without typing. Typing then narrows
+ * the list.
  */
 
 import { useCompanies } from "./useCompanies.js";

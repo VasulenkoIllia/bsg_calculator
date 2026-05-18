@@ -130,7 +130,7 @@ describe("DocumentsListPage — CompanyFilter", () => {
 
     renderPage();
 
-    fireEvent.change(screen.getByPlaceholderText(/at least 2 letters/i), {
+    fireEvent.change(screen.getByPlaceholderText(/click to browse/i), {
       target: { value: "Ac" }
     });
     await waitFor(() => screen.getByText("Acme Inc"));
@@ -138,7 +138,7 @@ describe("DocumentsListPage — CompanyFilter", () => {
 
     // Chip is shown + clear button is present.
     await waitFor(() => {
-      expect(screen.getByText(/× clear/i)).toBeInTheDocument();
+      expect(screen.getByText(/change/i)).toBeInTheDocument();
     });
   });
 
@@ -157,18 +157,18 @@ describe("DocumentsListPage — CompanyFilter", () => {
     renderPage();
 
     // Pick a company → chip appears, useDocuments re-queries with companyId.
-    fireEvent.change(screen.getByPlaceholderText(/at least 2 letters/i), {
+    fireEvent.change(screen.getByPlaceholderText(/click to browse/i), {
       target: { value: "Ac" }
     });
     await waitFor(() => screen.getByText("Acme Inc"));
     fireEvent.click(screen.getByText("Acme Inc"));
-    await waitFor(() => screen.getByText(/× clear/i));
+    await waitFor(() => screen.getByText(/change/i));
 
     // Click "× clear" → chip gone, typeahead input back.
-    fireEvent.click(screen.getByText(/× clear/i));
+    fireEvent.click(screen.getByText(/change/i));
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/at least 2 letters/i)).toBeInTheDocument();
-      expect(screen.queryByText(/× clear/i)).not.toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/click to browse/i)).toBeInTheDocument();
+      expect(screen.queryByText(/change/i)).not.toBeInTheDocument();
     });
 
     // listDocuments was called both with and without companyId.
