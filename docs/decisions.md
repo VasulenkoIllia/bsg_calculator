@@ -4150,3 +4150,133 @@ Use this file to record meaningful technical decisions for the project.
   status snapshot is Sprint 6 (frontend continuation:
   `/calc/:id` hydration + auto-save + global toasts) or Sprint 7
   (Docker + Coolify deploy).
+
+### Decision: Sprint 6 — frontend polish + PDF unification (6.0 → 6.4)
+- Date: 2026-05-18
+- Context:
+  - Sprint 6 closed the last operator-facing UX gaps after the
+    Sprint 5 backend was complete: PDF render engine split between
+    frontend window.print() and backend Puppeteer (5.5 visual-diff
+    acknowledged the variability), saved calculator configs had no
+    "open this back up" flow, and per-page inline toasts were
+    inconsistent across the app.
+- Decision (what shipped):
+  - **6.0 unified PDF render** — new `POST /api/v1/pdf/preview`
+    backend endpoint takes a wizard payload and renders via the
+    same Puppeteer pipeline as `GET /documents/:number/pdf`. The
+    wizard's "Generate PDF" button now calls this endpoint via
+    axios arraybuffer + Blob URL (same pattern as saved-doc
+    download). Removed `src/lib/printHtmlViaIframe.ts`. Single
+    render engine across all PDF paths → Sprint 5.5 caveats
+    (Safari/Firefox variability, browser-injected headers) are
+    moot.
+  - **6.1 /calc/:id edit mode** — new route reuses CalculatorPage
+    with `useParams<{ id }>`. Hydrates live state via
+    `seedCalculatorStateFromSnapshot` + `applyStatePreset`,
+    auto-saves on debounced (1s) snapshot diff via
+    `useUpdateCalculatorConfig`. "Saved · 2s ago" SavedStatusBadge
+    surfaces mutation state. Hydration guard via `hydratedFromIdRef`,
+    auto-save arm via `autoSaveArmedRef` with mandatory reset on
+    configId change (Sprint 6.F.1 audit fix).
+  - **6.2-FIX wizard-from-calc linking** — original 6.2 added
+    "Save as Offer" / "Save as Offer + Agreement" buttons directly
+    on the calc page; user flagged the naming as misleading (calc
+    isn't being CONVERTED into an offer — it spawns multiple
+    documents over its lifetime). Reverted; wizard is now the
+    SOLE document-creation gateway. `/calc/:id` "Open Contract
+    Wizard" passes `?calc=<configId>` so the wizard:
+      - Hydrates CalculatorContext from the linked config
+        (covers deep-linking to /wizard?calc=<id>)
+      - Auto-selects company + deal in WizardBackendBar
+      - Forwards `calculatorConfigId` to SaveDocumentModal →
+        `POST /documents` → backend persists FK link
+  - **6.3 global toasts** — new src/contexts/ToastContext.tsx
+    (~190 LOC, no library deps). Replaces per-page inline
+    `savedToast` / `pdfError` / `templateError` state in
+    CalculatorPage, WizardPage, DocumentViewPage. Auto-dismiss with
+    kind-specific timeouts (success/info 4s, error 6s). aria-live
+    + role=alert wiring for accessibility. ToastProvider wraps
+    AuthProvider in main.tsx + renderApp test harness.
+  - **6.4 lists + tabs** — new useCalculatorConfigs(opts) infinite
+    query hook. CompanyDetailPage rewritten into 3-tab layout
+    (Deals / Saved calculators / Documents) with `?tab=` URL state.
+    "Documents from this calculator" history section on /calc/:id.
+    Backend extended: listDocumentsQuerySchema accepts
+    `calculatorConfigId` filter, propagated through repository
+    WHERE clause for the docs-from-this-calc history view.
+- Sprint 6.1 hotfix (commit `5047e22`):
+  - "Maximum update depth exceeded" surfaced on /calculator after
+    bouncing through /calc/:id. Root cause: `savedAt` state used
+    `new Date(string)` in an effect — new Date object each fire,
+    Object.is bail-out failed, setState fired, effect re-ran. Fixed
+    by deriving `savedAtIso` (string) directly from
+    updateMutation.data + configQuery.data instead of storing in
+    useState. Cascading fixes: `calc` removed from hydrate-effect
+    deps (use applyStatePresetRef pattern), liveSnapshot converted
+    to JSON string for stable debouncedValue comparison.
+- Sprint 6.F audit (4 parallel agents — typescript, code-reviewer,
+  architect, security):
+  - **15 findings** consolidated: 1 HIGH + 2 CORRECTNESS + 8
+    SHOULD-FIX + 4 NICE.
+  - **Sprint 6.F.1** closed HIGH + correctness:
+      - H1 dedicated `pdfPreviewLimiter` (10 req/min/IP) on
+        POST /pdf/preview — prevents single user from monopolising
+        the shared Puppeteer browser pool and DoS'ing PDF gen for
+        everyone else.
+      - C1 `autoSaveArmedRef` reset on configId change — prevents
+        first-debounced-snapshot-for-B from silently overwriting
+        the stored row with hydration-time defaults.
+      - C2 ToastContext `notify` stale-closure fix — inlined id
+        construction inside the useCallback body.
+      - Q1 dedupe DocumentViewPage.handleDownloadPdf to call
+        `downloadSavedPdf` + `triggerPdfDownload` from src/api/pdf.ts.
+      - U1+U2 user-facing error strings tightened (removed raw
+        UUID from "calculator not found" banner; clearer fallbacks
+        on PDF/template errors).
+  - **Sprint 6.F.2** closed decomposition:
+      - Extracted CalculatorPage edit-mode subcomponents
+        (`BannerStatus`, `SavedStatusBadge`,
+        `DocumentsFromCalcSection`) to
+        `src/components/calculator/edit-mode/`. Page file
+        679 → 561 LOC.
+  - **Sprint 6.F.3** closed tests + runtime guards:
+      - T1 added 2 integration tests for the Sprint 6.4
+        `?calculatorConfigId=` filter on listDocuments.
+      - Q3 `isCalculatorSnapshotPayload` runtime guard in
+        snapshotShape.ts; applied to both CalculatorPage +
+        WizardPage hydration paths before the cast.
+  - **Sprint 6.F.4** closed polish:
+      - Q2 stale "Sprint 6.4 WILL add" → past tense JSDoc.
+      - N3 wizard refs renamed (`linkedHydratedFromRef` →
+        `hydratedCalcStateForRef`, `linkedBarSeededRef` →
+        `seededBarTargetForRef`) + comment documenting why the
+        split is intentional.
+      - N4 `npm run visual-diff` re-verified — ≤0.003% pixel drift
+        unchanged after Sprint 6 changes, gold files current.
+  - **Deferred from Sprint 6.F** (4 findings, documented rationale):
+      - D2 WizardSeedSource discriminated union — premature with
+        one source type. Lands when Phase 9 "Use document as
+        template" adds `?fromDoc=`.
+      - T2 CompanyDetailPage tabs test + T3 /calc/:id edit-mode
+        test — flagged as follow-up; manual smoke is sufficient
+        for the simple tab-switch + hydration paths.
+      - S3 PDF builder move from `src/components/document-wizard/`
+        to `src/shared/pdf-templates/` — still waiting on Sprint 8
+        E2E per Sprint 5.F.4 rationale.
+      - N1 per-route payload size cap on /pdf/preview — global
+        1MB limit + 10 req/min rate-limit (F.1) already bound the
+        realistic worst case. Tune if observed in prod.
+- Verification:
+  - 243 frontend tests pass.
+  - 215 server tests pass (+2 from F.3 calculatorConfigId filter
+    coverage; pre-existing hubspot.client retry-race flake
+    documented in Sprint 5.F.4 still occasional).
+  - TypeScript clean (frontend + server).
+  - `npm run visual-diff` ≤0.003% drift.
+- Open for Sprint 7:
+  - Docker + Coolify deploy + public domain.
+  - HubSpot Private App webhook config (uses Sprint 5 receiver +
+    Sprint 5.F.1 HMAC URI hardening).
+- Open for Sprint 8 (optional hardening):
+  - E2E Playwright tests — unlock deferred S3 PDF builder move.
+  - WizardSeedSource refactor when Phase 9 needs it.

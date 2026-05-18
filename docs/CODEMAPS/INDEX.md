@@ -87,6 +87,8 @@ This directory contains architectural maps of the BSG Calculator codebase to hel
 | **Sprint 5** HubSpot webhooks (inbound) | ✅ DONE | `modules/hubspot/webhooks/*` — HMAC v3 + async processor + manual refresh |
 | **Sprint 5.5** Visual-diff harness | ✅ DONE | `scripts/visual-diff/*` — backend vs. frontend PDF equivalence gated |
 | **Sprint 5.F** Audit closure (30 findings, F.1→F.3) | ✅ DONE | HMAC URI hardened, TX-wrapped deletion, exp. backoff, re-entrancy guard, repo boundaries, SSRF defence |
+| **Sprint 6** Frontend polish (6.0 → 6.4) | ✅ DONE | Unified PDF render via POST /pdf/preview, /calc/:id hydration + auto-save, wizard ?calc= linking, global toasts, CompanyDetailPage tabs + docs-from-calc history |
+| **Sprint 6.F** Audit closure (15 findings, F.1→F.4) | ✅ DONE | Rate limit on /pdf/preview, autoSave reset on configId change, decomposition (CalcPage 679→561 LOC), runtime payload guard, calculatorConfigId filter test coverage |
 | **Sprint 6** Frontend continuation | ⏳ Partial | `/calc/:id` hydration + wizard URL-driven seeding still needed |
 | **Sprint 7** Docker + Coolify Deploy | ⏳ Pending | docker-compose + Dockerfile + Coolify config |
 | **Sprint 8** Hardening (optional) | ⏳ Pending | E2E Playwright, CSP, observability |

@@ -37,8 +37,8 @@ See also:
 | 4.E.2. Server-side PDF (shared template module) | ✅ DONE | (bundled with Sprint 4.F) |
 | 5. HubSpot webhooks (inbound, A → E) | ✅ DONE | 5f0f0a0 |
 | 5.5. Visual-diff harness (frontend vs. backend PDF) | ✅ DONE | c699dee |
-| 5.F. Sprint 5 audit closure (F.1 → F.3 + docs F.4) | ✅ DONE | 02149a5..HEAD |
-| 6. Frontend continuation (calc page hydration + wizard URL) | ⏳ Partial — listings + doc view + wizard save DONE | — |
+| 5.F. Sprint 5 audit closure (F.1 → F.3 + docs F.4) | ✅ DONE | 02149a5..ce1ea57 |
+| 6. Frontend continuation (6.0 → 6.4 + 6.F audit closure) | ✅ DONE | 42a7045..dcb57d6 |
 | 7. Docker + Deploy | ⏳ Pending | — |
 | 8. Hardening (optional, E2E + CSP) | ⏳ Pending | — |
 | 9. HubSpot Note write-back | ⏳ Phase-after-7 | — |
