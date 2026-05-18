@@ -4,9 +4,11 @@
  * Same shape as useDocuments / useCompanies: useQuery for the single
  * GET-by-id, useInfiniteQuery for the listing.
  *
- * Sprint 6.1 introduced the single-config hook to power /calc/:id
- * hydration. Sprint 6.4 will add the listing hook for the
- * "Saved calculators" tab on CompanyDetailPage.
+ * Sprint 6.1 introduced the single-config hook (`useCalculatorConfig`)
+ * to power /calc/:id hydration. Sprint 6.4 added the listing hook
+ * (`useCalculatorConfigs`) for the "Saved calculators" tab on
+ * CompanyDetailPage + a parallel use inside the
+ * "Documents from this calculator" history strip on /calc/:id.
  */
 
 import { useMemo } from "react";

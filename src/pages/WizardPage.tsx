@@ -286,11 +286,23 @@ export function WizardPage() {
   const linkedCompanyQuery = useCompany(linkedConfigQuery.data?.companyId);
 
   // (1) + (2): hydrate CalculatorContext once per configId.
-  const linkedHydratedFromRef = useRef<string | null>(null);
+  //
+  // Note on the two refs (`hydratedCalcStateForRef` +
+  // `seededBarTargetForRef`): they track the SAME linkedConfigId but
+  // gate DIFFERENT side effects. The split is intentional — calc-state
+  // hydration depends only on `linkedConfigQuery.data` (fires the
+  // moment the config row arrives) while the bar-seed depends ALSO on
+  // `linkedCompanyQuery.data` (waits for the company-detail fetch).
+  // Collapsing into one ref would force calc hydration to wait for
+  // the company fetch unnecessarily. The renamed refs (Sprint 6.F.4)
+  // make this distinction visible at the call site so a future
+  // "DRY both refs into one" refactor doesn't silently introduce
+  // that wait.
+  const hydratedCalcStateForRef = useRef<string | null>(null);
   useEffect(() => {
     if (!linkedConfigId) return;
     if (!linkedConfigQuery.data) return;
-    if (linkedHydratedFromRef.current === linkedConfigId) return;
+    if (hydratedCalcStateForRef.current === linkedConfigId) return;
     // Sprint 6.F.3 (audit Q3): runtime-validate the JSONB payload
     // before hydration. See snapshotShape.ts → isCalculatorSnapshotPayload.
     const payload = linkedConfigQuery.data.payload;
@@ -305,7 +317,7 @@ export function WizardPage() {
     try {
       const preset = seedCalculatorStateFromSnapshot(payload);
       calc.applyStatePreset(preset);
-      linkedHydratedFromRef.current = linkedConfigId;
+      hydratedCalcStateForRef.current = linkedConfigId;
       // Also re-seed the wizard draft itself from the freshly-applied
       // calculator state so the on-screen preview reflects the
       // linked config immediately (without waiting for the user to
@@ -324,15 +336,15 @@ export function WizardPage() {
   // (3): seed WizardBackendBar selection from the linked config.
   // Only fires once per configId so a manual change in the bar
   // afterwards isn't clobbered on every re-render.
-  const linkedBarSeededRef = useRef<string | null>(null);
+  const seededBarTargetForRef = useRef<string | null>(null);
   useEffect(() => {
     if (!linkedConfigId) return;
     if (!linkedConfigQuery.data) return;
     if (!linkedCompanyQuery.data) return;
-    if (linkedBarSeededRef.current === linkedConfigId) return;
+    if (seededBarTargetForRef.current === linkedConfigId) return;
     setSelectedCompany(linkedCompanyQuery.data);
     setSelectedDealId(linkedConfigQuery.data.hubspotDealId ?? "");
-    linkedBarSeededRef.current = linkedConfigId;
+    seededBarTargetForRef.current = linkedConfigId;
   }, [linkedConfigId, linkedConfigQuery.data, linkedCompanyQuery.data]);
 
   const backendScope = toBackendScope(wizardDraft.documentScope);
