@@ -6,6 +6,7 @@ import App from "../App.js";
 import * as authApi from "../api/auth.js";
 import { setAccessToken, setSessionLostHandler } from "../api/client.js";
 import { AuthProvider } from "../contexts/AuthContext.js";
+import { ToastProvider } from "../contexts/ToastContext.js";
 
 /**
  * Test renderer for the full <App />.
@@ -69,9 +70,15 @@ export async function renderApp(initialPath: string = "/calculator") {
   const user = userEvent.setup();
   const utils = render(
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
+      {/* Sprint 6.3: ToastProvider must wrap any tree that may call
+          useToast() — CalculatorPage, WizardPage and DocumentViewPage
+          all do via the global notify path. Mirrors main.tsx's
+          provider order. */}
+      <ToastProvider>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </ToastProvider>
     </QueryClientProvider>
   );
 

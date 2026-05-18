@@ -27,6 +27,7 @@ import {
 } from "../hooks/useCalculatorConfig.js";
 import { useDocuments } from "../hooks/useDocuments.js";
 import { formatDate, formatScopeLabel } from "../shared/format.js";
+import { useToast } from "../contexts/ToastContext.js";
 
 export function CalculatorPage() {
   const navigate = useNavigate();
@@ -152,7 +153,12 @@ export function CalculatorPage() {
   // Sprint 6.1: only mounted in NEW-draft mode (no `:id`); when
   // editing a saved config the auto-save above governs persistence.
   const [saveOpen, setSaveOpen] = useState(false);
-  const [savedToast, setSavedToast] = useState<string | null>(null);
+
+  // Sprint 6.3: global toasts replace the per-page inline savedToast
+  // state. The "Calculator saved" feedback now flows through the
+  // shared ToastProvider so it's consistent with every other
+  // mutation success message.
+  const toast = useToast();
 
   // Capture the snapshot LAZILY when the modal opens — extracting on
   // every render would clone the whole calculator state needlessly.
@@ -299,15 +305,6 @@ export function CalculatorPage() {
 
       {isEditMode && docsFromCalc.items.length > 0 ? (
         <DocumentsFromCalcSection docs={docsFromCalc.items} />
-      ) : null}
-
-      {savedToast ? (
-        <div
-          role="status"
-          className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800"
-        >
-          {savedToast}
-        </div>
       ) : null}
 
       <HardcodedConstantsPanel
@@ -524,9 +521,7 @@ export function CalculatorPage() {
           onClose={() => setSaveOpen(false)}
           payload={snapshot as unknown as { schemaVersion: number } & Record<string, unknown>}
           onSaved={createdId => {
-            setSavedToast("Calculator saved.");
-            // Auto-dismiss the toast after 4s so it doesn't linger.
-            setTimeout(() => setSavedToast(null), 4000);
+            toast.success("Calculator saved.");
             // Sprint 6.1: navigate to the new /calc/:id so subsequent
             // edits go through the auto-save loop instead of opening
             // the modal again.

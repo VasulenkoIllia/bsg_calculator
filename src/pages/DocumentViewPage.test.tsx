@@ -13,6 +13,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import * as documentsApi from "../api/documents.js";
 import type { PublicDocument } from "../api/types.js";
+import { ToastProvider } from "../contexts/ToastContext.js";
 import { DocumentViewPage } from "./DocumentViewPage.js";
 
 const fixtureDocument = (overrides: Partial<PublicDocument> = {}): PublicDocument => ({
@@ -40,11 +41,13 @@ function renderAt(number: string) {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[`/documents/${number}`]}>
-        <Routes>
-          <Route path="/documents/:number" element={<DocumentViewPage />} />
-        </Routes>
-      </MemoryRouter>
+      <ToastProvider>
+        <MemoryRouter initialEntries={[`/documents/${number}`]}>
+          <Routes>
+            <Route path="/documents/:number" element={<DocumentViewPage />} />
+          </Routes>
+        </MemoryRouter>
+      </ToastProvider>
     </QueryClientProvider>
   );
 }

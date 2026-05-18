@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App.js";
 import { AuthProvider } from "./contexts/AuthContext.js";
+import { ToastProvider } from "./contexts/ToastContext.js";
 import { QUERY_GC_TIME_MS, QUERY_STALE_TIME_MS } from "./shared/constants.js";
 import "./index.css";
 
@@ -37,9 +38,19 @@ const queryClient = new QueryClient({
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
+      {/*
+        ToastProvider wraps AuthProvider so toast notifications
+        produced during auth flows (LoginPage errors, refresh-token
+        rotation failures) can surface via the same channel as
+        every other page. The Toast viewport renders inside the
+        provider, so it's always available regardless of which
+        route is active.
+      */}
+      <ToastProvider>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </ToastProvider>
     </QueryClientProvider>
   </React.StrictMode>
 );

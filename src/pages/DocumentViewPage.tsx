@@ -19,6 +19,7 @@ import { ApiError, apiClient } from "../api/client.js";
 import * as documentsApi from "../api/documents.js";
 import { buildOfferPdfHtml } from "../components/document-wizard/index.js";
 import type { DocumentTemplatePayload } from "../components/document-wizard/index.js";
+import { useToast } from "../contexts/ToastContext.js";
 import { useDocument } from "../hooks/useDocuments.js";
 import { formatDate, formatScopeLabel } from "../shared/format.js";
 
@@ -61,20 +62,24 @@ function asWizardPayload(payload: unknown): DocumentTemplatePayload | null {
 export function DocumentViewPage() {
   const { number } = useParams<{ number: string }>();
   const navigate = useNavigate();
+  const toast = useToast();
   const docQuery = useDocument(number);
   const [templatePending, setTemplatePending] = useState(false);
-  const [templateError, setTemplateError] = useState<string | null>(null);
   const [showRawPayload, setShowRawPayload] = useState(false);
 
   async function handleUseAsTemplate(): Promise<void> {
     if (!number) return;
     setTemplatePending(true);
-    setTemplateError(null);
     try {
       const result = await documentsApi.useDocumentAsTemplate(number);
       navigate(result.redirectUrl);
     } catch (err) {
-      setTemplateError(err instanceof ApiError ? err.message : "Failed to use as template.");
+      // Sprint 6.3: surface failures via the global toast viewport
+      // instead of an inline alert beside the button — keeps the
+      // mutation feedback consistent across the app.
+      toast.error(
+        err instanceof ApiError ? err.message : "Failed to use as template."
+      );
     } finally {
       setTemplatePending(false);
     }
@@ -88,12 +93,10 @@ export function DocumentViewPage() {
   // the actual download. The Blob URL is revoked on the next tick
   // so it doesn't leak.
   const [pdfPending, setPdfPending] = useState(false);
-  const [pdfError, setPdfError] = useState<string | null>(null);
 
   async function handleDownloadPdf(): Promise<void> {
     if (!number) return;
     setPdfPending(true);
-    setPdfError(null);
     try {
       const res = await apiClient.get<ArrayBuffer>(
         `/documents/${number}/pdf?download=true`,
@@ -111,11 +114,11 @@ export function DocumentViewPage() {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
       if (err instanceof ApiError) {
-        setPdfError(err.message);
+        toast.error(err.message);
       } else {
         // eslint-disable-next-line no-console
         console.error("[DocumentViewPage] PDF download unexpected", err);
-        setPdfError("Failed to download PDF.");
+        toast.error("Failed to download PDF.");
       }
     } finally {
       setPdfPending(false);
@@ -180,18 +183,12 @@ export function DocumentViewPage() {
             {templatePending ? "Creating draft…" : "Use as Template"}
           </button>
         </div>
-
-        {pdfError ? (
-          <p role="alert" className="mt-3 text-sm text-red-700">
-            {pdfError}
-          </p>
-        ) : null}
-
-        {templateError ? (
-          <p role="alert" className="mt-3 text-sm text-red-700">
-            {templateError}
-          </p>
-        ) : null}
+        {/*
+          Sprint 6.3: PDF + template errors now flow through the
+          global toast viewport (top-right) instead of inline beside
+          the buttons. Keeps mutation feedback consistent across the
+          whole app.
+        */}
       </div>
 
       {/* Document preview — same iframe-rendered HTML as the wizard's

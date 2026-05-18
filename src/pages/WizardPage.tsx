@@ -23,6 +23,7 @@ import * as documentsApi from "../api/documents.js";
 import { renderPdfPreview, triggerPdfDownload } from "../api/pdf.js";
 import type { PublicCompany } from "../api/types.js";
 import { useCalculator } from "../contexts/CalculatorContext.js";
+import { useToast } from "../contexts/ToastContext.js";
 import { useCalculatorConfig } from "../hooks/useCalculatorConfig.js";
 import { useCompany } from "../hooks/useCompany.js";
 
@@ -65,6 +66,7 @@ function parseStep(value: string | null): WizardStep | null {
 
 export function WizardPage() {
   const calc = useCalculator();
+  const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const calculatorHeaderSeed = useMemo(
@@ -223,7 +225,6 @@ export function WizardPage() {
 
   const handleWizardGeneratePdf = async () => {
     setWizardPdfPending(true);
-    setWizardActionMessage(null);
     try {
       const blob = await renderPdfPreview(wizardDraft);
       // Use the current Document Number as the filename when it
@@ -235,13 +236,13 @@ export function WizardPage() {
       const looksFinal = /^BSG-\d{7}-[0-9A-Z]{6}$/i.test(docNumber);
       const filename = looksFinal ? `${docNumber}.pdf` : "preview.pdf";
       triggerPdfDownload(blob, filename);
-      setWizardActionMessage("PDF generated and downloaded.");
+      toast.success("PDF generated and downloaded.");
     } catch (err) {
       const msg =
         err instanceof ApiError
           ? err.message
           : "Could not generate PDF. Check the wizard draft is complete.";
-      setWizardActionMessage(msg);
+      toast.error(msg);
     } finally {
       setWizardPdfPending(false);
     }
