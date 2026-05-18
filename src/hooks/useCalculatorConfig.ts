@@ -86,10 +86,26 @@ export function useUpdateCalculatorConfig(id: string | undefined) {
  * undefined in the query string.
  */
 export interface UseCalculatorConfigsOptions {
-  companyId: string | undefined;
+  /**
+   * Sprint 6.6: when undefined, the hook still fires — cross-company
+   * listing mode for the top-level /calculators page. When the
+   * caller doesn't want a fetch at all (e.g. the company-detail
+   * page where companyId hasn't loaded yet) it should pass
+   * `enabled: false` explicitly.
+   */
+  companyId?: string;
   hubspotDealId?: string;
   showAll?: boolean;
+  /** Sprint 6.6: substring search on title. */
+  q?: string;
   limit?: number;
+  /**
+   * Sprint 6.6: gate the underlying TanStack query. Defaults to true.
+   * Cross-company mode (companyId omitted) is a legitimate listing
+   * shape, so the old "enabled iff companyId present" gating moved
+   * onto this explicit flag.
+   */
+  enabled?: boolean;
 }
 
 export interface UseCalculatorConfigsResult {
@@ -120,18 +136,18 @@ export function useCalculatorConfigs(
         companyId: options.companyId,
         hubspotDealId: options.hubspotDealId,
         showAll: options.showAll ?? true,
+        q: options.q?.trim() || undefined,
         limit: options.limit
       }
     ],
-    enabled: typeof options.companyId === "string" && options.companyId.length > 0,
+    enabled: options.enabled ?? true,
     initialPageParam: undefined,
     queryFn: async ({ pageParam }) =>
       configsApi.listCalculatorConfigs({
-        // The `enabled` gate above ensures companyId is non-empty by
-        // the time queryFn runs; the non-null assertion is safe here.
-        companyId: options.companyId!,
+        companyId: options.companyId,
         hubspotDealId: options.hubspotDealId,
         showAll: options.showAll ?? true,
+        q: options.q?.trim() || undefined,
         cursor: pageParam,
         limit: options.limit
       }),

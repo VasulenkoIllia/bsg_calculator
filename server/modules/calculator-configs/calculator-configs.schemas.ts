@@ -72,19 +72,36 @@ export type UpdateCalculatorConfigRequest = z.infer<typeof updateCalculatorConfi
 /**
  * GET /api/v1/calculator-configs?…filters…
  *
- * Default behaviour (showAll absent or false): filter by `companyId`
- * AND `(hubspot_deal_id IS NULL OR hubspot_deal_id = $dealId)`. This
- * matches the wizard Step 1 picker scope: "configs that could be
- * applied to THIS deal" (deal-pinned configs + company-level drafts).
+ * Three call-site shapes use this endpoint:
  *
- * showAll=true drops the deal filter — shows every config for that
- * company. Used by the "Show all my configs" link in the picker.
+ *   1. Wizard Step 1 picker (Sprint 3):
+ *        ?companyId=…&hubspotDealId=…&showAll=false
+ *      "Configs that could be applied to THIS deal" — deal-pinned
+ *      configs + company-level drafts.
+ *
+ *   2. CompanyDetailPage "Saved calculators" tab (Sprint 6.4):
+ *        ?companyId=…&showAll=true
+ *      Every config for the company regardless of deal pin.
+ *
+ *   3. Top-level /calculators list (Sprint 6.6):
+ *        ?q=substring (optional)
+ *      No companyId — returns every config the operator can see,
+ *      optionally substring-filtered on title. Powers the
+ *      "Saved Calculators" workspace tab.
+ *
+ * Sprint 6.6: `companyId` relaxed from required to optional so the
+ * top-level discovery view works. When absent, no per-company
+ * filter applies; when present, behaviour matches Sprint 3 + 6.4.
  */
 export const listCalculatorConfigsQuerySchema = z.object({
-  companyId: z.string().uuid({ message: "companyId is required" }),
+  companyId: z.string().uuid({ message: "companyId must be a UUID" }).optional(),
   hubspotDealId: z.string().min(1).max(64).optional(),
   // Coerce because URL params arrive as strings.
   showAll: z.coerce.boolean().optional().default(false),
+  // Sprint 6.6: substring search on `title`. Empty / whitespace-only
+  // q is treated as absent. LIKE metacharacters are escaped by the
+  // repository so `q=%` doesn't match every config.
+  q: z.string().trim().min(1).max(100).optional(),
   cursor: z.string().max(500).optional(),
   limit: z.coerce.number().int().min(1).max(50).default(25)
 });

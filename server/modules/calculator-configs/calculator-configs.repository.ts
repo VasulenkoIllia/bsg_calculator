@@ -12,7 +12,7 @@
  * uses the composite index defined in the schema file.
  */
 
-import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, isNull, lt, or, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import {
   calculatorConfigs,
@@ -72,17 +72,36 @@ export async function deleteCalculatorConfig(id: string): Promise<boolean> {
 }
 
 export interface ListCalculatorConfigsArgs {
-  companyId: string;
+  /**
+   * Sprint 6.6: optional. When absent → returns every config across
+   * every company (used by the top-level /calculators discovery
+   * page). When present → behaves exactly as Sprint 3/6.4.
+   */
+  companyId?: string;
   hubspotDealId?: string;
   showAll: boolean;
+  /** Sprint 6.6: optional substring search on `title`. */
+  q?: string;
   cursor: Cursor | null;
   limit: number;
+}
+
+/**
+ * Escape `%` and `_` so a user-supplied `?q=` is treated as literal
+ * text by LIKE. Mirrors the helper in documents.repository.ts.
+ */
+function escapeLikePattern(raw: string): string {
+  return raw.replace(/\\/g, "\\\\").replace(/[%_]/g, "\\$&");
 }
 
 /**
  * List configs.
  *
  * Filter logic:
+ *   - companyId absent (Sprint 6.6): no company filter → cross-company
+ *     listing for the operator's "Saved Calculators" workspace tab.
+ *     Deal/showAll knobs are ignored in this mode because they only
+ *     make sense relative to a chosen company.
  *   - showAll = true: WHERE company_id = $1
  *   - showAll = false AND hubspotDealId provided:
  *       WHERE company_id = $1
@@ -91,39 +110,54 @@ export interface ListCalculatorConfigsArgs {
  *       WHERE company_id = $1 AND hubspot_deal_id IS NULL
  *       (= "company-level drafts only" — useful for the standalone
  *        wizard entry where no deal is selected yet)
+ *   - q present: AND title ILIKE '%<escaped>%' (added to every mode).
  */
 export async function listCalculatorConfigs(
   args: ListCalculatorConfigsArgs
 ): Promise<CalculatorConfig[]> {
-  const dealFilter = args.showAll
-    ? undefined
-    : args.hubspotDealId
-      ? or(
-          isNull(calculatorConfigs.hubspotDealId),
-          eq(calculatorConfigs.hubspotDealId, args.hubspotDealId)
-        )
-      : isNull(calculatorConfigs.hubspotDealId);
+  // Build filters as an array so we can omit undefined entries cleanly.
+  const filters: Array<ReturnType<typeof eq> | undefined> = [];
 
-  const cursorFilter = args.cursor
-    ? or(
+  if (args.companyId) {
+    filters.push(eq(calculatorConfigs.companyId, args.companyId));
+
+    // Deal / showAll knobs are ONLY meaningful with a chosen company.
+    // Cross-company mode skips them entirely.
+    const dealFilter = args.showAll
+      ? undefined
+      : args.hubspotDealId
+        ? or(
+            isNull(calculatorConfigs.hubspotDealId),
+            eq(calculatorConfigs.hubspotDealId, args.hubspotDealId)
+          )
+        : isNull(calculatorConfigs.hubspotDealId);
+    if (dealFilter) filters.push(dealFilter);
+  }
+
+  if (args.q) {
+    filters.push(ilike(calculatorConfigs.title, `%${escapeLikePattern(args.q)}%`));
+  }
+
+  if (args.cursor) {
+    filters.push(
+      or(
         lt(calculatorConfigs.createdAt, new Date(args.cursor.createdAt)),
         and(
           eq(calculatorConfigs.createdAt, new Date(args.cursor.createdAt)),
           lt(calculatorConfigs.id, args.cursor.id)
         )
       )
-    : undefined;
+    );
+  }
 
-  const whereFilter = and(
-    eq(calculatorConfigs.companyId, args.companyId),
-    dealFilter,
-    cursorFilter
+  const definedFilters = filters.filter(
+    (f): f is Exclude<typeof f, undefined> => f !== undefined
   );
 
   return db
     .select()
     .from(calculatorConfigs)
-    .where(whereFilter)
+    .where(definedFilters.length > 0 ? and(...definedFilters) : undefined)
     .orderBy(desc(calculatorConfigs.createdAt), desc(calculatorConfigs.id))
     .limit(args.limit);
 }

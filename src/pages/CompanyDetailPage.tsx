@@ -65,7 +65,14 @@ export function CompanyDetailPage() {
   // for companies with hundreds of records, gate each query on
   // `activeTab === "<tab>"` so only the visible tab fires.
   const deals = useCompanyDeals(id);
-  const configs = useCalculatorConfigs({ companyId: id });
+  // Sprint 6.6: useCalculatorConfigs no longer gates on companyId
+  // alone (that mode is now reserved for the top-level /calculators
+  // discovery page). On CompanyDetailPage we only want the listing
+  // once the route param has resolved — explicit `enabled` flag.
+  const configs = useCalculatorConfigs({
+    companyId: id,
+    enabled: typeof id === "string" && id.length > 0
+  });
   const documents = useDocuments({ companyId: id });
 
   const renderHeader = () => {

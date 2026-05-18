@@ -29,6 +29,7 @@ export async function listController(req: Request, res: Response): Promise<void>
     companyId: query.companyId,
     hubspotDealId: query.hubspotDealId,
     showAll: query.showAll,
+    q: query.q,
     cursor: decodeCursor(query.cursor),
     limit: query.limit
   });

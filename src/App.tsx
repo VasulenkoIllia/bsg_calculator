@@ -8,6 +8,7 @@
  *     /companies    → CompaniesPage (Sprint 2.8.D)
  *     /companies/:id → CompanyDetailPage (Sprint 2.8.E)
  *     /calculator   → existing CalculatorPage (new-draft mode)
+ *     /calculators  → CalculatorsListPage (top-level discovery — Sprint 6.6)
  *     /calc/:id     → CalculatorPage (edit-saved-config mode — Sprint 6.1)
  *     /wizard       → existing WizardPage
  *     *             → NotFoundPage
@@ -22,6 +23,7 @@ import { AppShell } from "./components/AppShell.js";
 import { PrivateRoute } from "./components/PrivateRoute.js";
 import { CalculatorProvider } from "./contexts/CalculatorContext.js";
 import { CalculatorPage } from "./pages/CalculatorPage.js";
+import { CalculatorsListPage } from "./pages/CalculatorsListPage.js";
 import { CompaniesPage } from "./pages/CompaniesPage.js";
 import { CompanyDetailPage } from "./pages/CompanyDetailPage.js";
 import { DocumentsListPage } from "./pages/DocumentsListPage.js";
@@ -54,6 +56,7 @@ export default function App() {
             <Route path="/documents" element={<DocumentsListPage />} />
             <Route path="/documents/:number" element={<DocumentViewPage />} />
             <Route path="/calculator" element={<CalculatorPage />} />
+            <Route path="/calculators" element={<CalculatorsListPage />} />
             <Route path="/calc/:id" element={<CalculatorPage />} />
             <Route path="/wizard" element={<WizardPage />} />
             <Route path="*" element={<NotFoundPage />} />

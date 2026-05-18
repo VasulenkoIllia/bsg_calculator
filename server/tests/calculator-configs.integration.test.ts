@@ -430,4 +430,62 @@ describe("GET /api/v1/calculator-configs — picker scope", () => {
     expect(page3.body.items).toHaveLength(1);
     expect(page3.body.nextCursor).toBeNull();
   });
+
+  it("Sprint 6.6: companyId optional → lists across all companies", async () => {
+    // The top-level /calculators discovery page uses this mode —
+    // operator sees every config they've saved regardless of which
+    // company it belongs to.
+    const token = await setupAuth();
+    const [companyA] = await db
+      .insert(companies)
+      .values(companyFixture({ name: "Co A" }))
+      .returning();
+    const [companyB] = await db
+      .insert(companies)
+      .values(companyFixture({ name: "Co B" }))
+      .returning();
+
+    for (const body of [
+      { companyId: companyA.id, title: "A1", payload: samplePayload },
+      { companyId: companyA.id, title: "A2", payload: samplePayload },
+      { companyId: companyB.id, title: "B1", payload: samplePayload }
+    ]) {
+      await request(app)
+        .post("/api/v1/calculator-configs")
+        .set("Authorization", `Bearer ${token}`)
+        .send(body);
+    }
+
+    const res = await request(app)
+      .get(`/api/v1/calculator-configs`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    const titles = res.body.items.map((c: { title: string }) => c.title).sort();
+    expect(titles).toEqual(["A1", "A2", "B1"]);
+  });
+
+  it("Sprint 6.6: ?q= substring-filters on title (LIKE-escaped)", async () => {
+    const token = await setupAuth();
+    const [company] = await db.insert(companies).values(companyFixture()).returning();
+
+    for (const title of ["Acme Q1 2026", "Globex Q2", "Acme Q3", "Initech"]) {
+      await request(app)
+        .post("/api/v1/calculator-configs")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ companyId: company.id, title, payload: samplePayload });
+    }
+
+    const res = await request(app)
+      .get(`/api/v1/calculator-configs?q=acme`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    const titles = res.body.items.map((c: { title: string }) => c.title).sort();
+    expect(titles).toEqual(["Acme Q1 2026", "Acme Q3"]);
+
+    // LIKE metachar should not match (it's escaped, treated as literal).
+    const noMatch = await request(app)
+      .get(`/api/v1/calculator-configs?q=%25`) // URL-encoded "%"
+      .set("Authorization", `Bearer ${token}`);
+    expect(noMatch.body.items).toHaveLength(0);
+  });
 });

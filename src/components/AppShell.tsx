@@ -9,6 +9,10 @@ const TABS: Array<{ to: string; label: string }> = [
   { to: "/companies", label: "Companies" },
   { to: "/documents", label: "Documents" },
   { to: "/calculator", label: "Calculator" },
+  // Sprint 6.6: top-level "Saved" discovery entry. Sits next to
+  // "Calculator" so the relationship (new draft vs. resume saved)
+  // is visually adjacent in the workspace bar.
+  { to: "/calculators", label: "Saved calculators" },
   { to: "/wizard", label: "Contract Wizard & PDF" }
 ];
 

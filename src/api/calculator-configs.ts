@@ -29,10 +29,18 @@ export interface CreateCalculatorConfigRequest {
 export type UpdateCalculatorConfigRequest = Omit<CreateCalculatorConfigRequest, "companyId">;
 
 export interface ListCalculatorConfigsParams {
-  companyId: string;
+  /**
+   * Sprint 6.6: optional. When omitted → cross-company listing for
+   * the top-level `/calculators` discovery page. When present →
+   * filters by this company (Sprint 3 wizard picker + Sprint 6.4
+   * CompanyDetailPage tab).
+   */
+  companyId?: string;
   hubspotDealId?: string;
   /** Default false → filter to (company-level OR deal-pinned). */
   showAll?: boolean;
+  /** Sprint 6.6: substring search on title. Empty string ignored. */
+  q?: string;
   cursor?: string;
   limit?: number;
 }
