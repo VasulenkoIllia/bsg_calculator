@@ -8,15 +8,18 @@
  *     more" via Search refinement, not pagination, so we don't expose
  *     fetchNextPage here)
  *
- * Used by SaveCalculatorModal (Sprint 3.B), CompanyFilter on
- * DocumentsListPage (Sprint 4.D), and WizardBackendBar (Sprint 4.E).
+ * Sprint 6.6 consolidated the three original call sites (modals +
+ * filters) into a single shared `CompanyTypeahead` component —
+ * this hook is now used ONLY from there. The hook stays as a named
+ * abstraction because it exports `effectiveQuery` (the trimmed
+ * debounced value), which the consuming component uses for the
+ * "No matches for X" empty-state copy.
  *
- * Sprint 6.6 UX note: callers now show the dropdown on focus (no
- * `>= 2 chars` gate), so this hook is called with an empty query
- * on first render. The backend listing already accepts an empty
- * `q` as "no filter" and returns the first `limit=10` companies —
- * so the operator can browse without typing. Typing then narrows
- * the list.
+ * Behaviour: callers show the dropdown on focus (no `>= 2 chars`
+ * gate), so this hook is called with an empty query on first render.
+ * The backend listing accepts an empty `q` as "no filter" and
+ * returns the first `limit=10` companies — so the operator can
+ * browse without typing. Typing then narrows the list.
  */
 
 import { useCompanies } from "./useCompanies.js";

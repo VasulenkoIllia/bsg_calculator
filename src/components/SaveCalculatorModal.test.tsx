@@ -130,7 +130,7 @@ describe("SaveCalculatorModal — company typeahead", () => {
       target: { value: "Ac" }
     });
     await waitFor(() => screen.getByText("Acme Inc"));
-    fireEvent.click(screen.getByText("Acme Inc"));
+    fireEvent.mouseDown(screen.getByText("Acme Inc"));
 
     await waitFor(() => {
       // Selected company chip is shown
@@ -172,7 +172,7 @@ describe("SaveCalculatorModal — submit", () => {
       target: { value: "Ac" }
     });
     await waitFor(() => screen.getByText("Acme Inc"));
-    fireEvent.click(screen.getByText("Acme Inc"));
+    fireEvent.mouseDown(screen.getByText("Acme Inc"));
     await waitFor(() => screen.getByRole("button", { name: /change/i }));
 
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
@@ -218,7 +218,7 @@ describe("SaveCalculatorModal — submit", () => {
       target: { value: "Ac" }
     });
     await waitFor(() => screen.getByText("Acme Inc"));
-    fireEvent.click(screen.getByText("Acme Inc"));
+    fireEvent.mouseDown(screen.getByText("Acme Inc"));
     await waitFor(() => screen.getByText(/phase 1 onboarding/i));
 
     fireEvent.change(screen.getByLabelText(/^deal/i), { target: { value: "deal-X" } });
@@ -251,7 +251,7 @@ describe("SaveCalculatorModal — submit", () => {
       target: { value: "Ac" }
     });
     await waitFor(() => screen.getByText("Acme Inc"));
-    fireEvent.click(screen.getByText("Acme Inc"));
+    fireEvent.mouseDown(screen.getByText("Acme Inc"));
     await waitFor(() => screen.getByRole("button", { name: /change/i }));
 
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));

@@ -18,6 +18,7 @@ import { parseDtoOrInternalError } from "../../shared/dto-parse";
 import { buildPage, type PageResult } from "../../shared/build-page";
 import { NotFoundError, ValidationError } from "../../shared/errors";
 import type { CalculatorConfig } from "../../db/schema";
+import type { CalculatorConfigWithCompanyName } from "./calculator-configs.repository";
 import {
   dealBelongsToCompany,
   deleteCalculatorConfig as deleteRow,
@@ -34,12 +35,28 @@ import {
   type UpdateCalculatorConfigRequest
 } from "./calculator-configs.schemas";
 
-function toPublic(row: CalculatorConfig): CalculatorConfigPublic {
+/**
+ * Single shared toPublic that works for both shapes:
+ *   - plain CalculatorConfig (create / update / get-by-id) — no
+ *     companyName JOIN, field omitted from the response.
+ *   - CalculatorConfigWithCompanyName (list) — JOIN result, name
+ *     surfaces in the response so consumers can render it without
+ *     a second fetch.
+ *
+ * The DTO schema has `companyName` as optional; omitting it on the
+ * single-row endpoints is a conscious wire-cost choice (no JOIN on
+ * those reads).
+ */
+function toPublic(
+  row: CalculatorConfig | CalculatorConfigWithCompanyName
+): CalculatorConfigPublic {
+  const companyName = "companyName" in row ? row.companyName : undefined;
   return parseDtoOrInternalError(
     calculatorConfigPublicSchema,
     {
       id: row.id,
       companyId: row.companyId,
+      ...(companyName !== undefined ? { companyName } : {}),
       hubspotDealId: row.hubspotDealId,
       title: row.title,
       payload: row.payload,

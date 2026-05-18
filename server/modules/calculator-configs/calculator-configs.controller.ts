@@ -51,6 +51,14 @@ export async function createController(req: Request, res: Response): Promise<voi
   res.status(201).json(created);
 }
 
+/**
+ * PUT semantics: PARTIAL update (Sprint 6.6 bug fix). Fields absent
+ * from the request body leave the matching column unchanged; only an
+ * explicit `null` clears the field. See
+ * calculator-configs.service.ts → updateCalculatorConfigById for the
+ * undefined-vs-null resolver, and the schema docstring in
+ * calculator-configs.schemas.ts for the contract.
+ */
 export async function updateController(req: Request, res: Response): Promise<void> {
   const id = parseUuidParam(req, "id");
   const body = updateCalculatorConfigSchema.parse(req.body);

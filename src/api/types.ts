@@ -121,6 +121,13 @@ export interface CursorPage<TItem> {
 export interface PublicCalculatorConfig {
   id: string;
   companyId: string;
+  /**
+   * Sprint 6.7: surfaced only by the LIST endpoint (JOIN companies).
+   * Single-config fetch (GET /calculator-configs/:id) omits it
+   * because /calc/:id doesn't need the company name — it renders
+   * the config title in the SavedStatusBadge instead.
+   */
+  companyName?: string;
   hubspotDealId: string | null;
   title: string | null;
   payload: unknown;

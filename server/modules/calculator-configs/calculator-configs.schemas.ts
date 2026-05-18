@@ -56,10 +56,24 @@ export const createCalculatorConfigSchema = z.object({
 export type CreateCalculatorConfigRequest = z.infer<typeof createCalculatorConfigSchema>;
 
 /**
- * PUT /api/v1/calculator-configs/:id body — full replace of the
- * mutable fields. `companyId` is NOT replaceable (moving a config
- * across companies would invalidate any document that referenced it).
- * To "move" a draft, save it as a new config under the target company.
+ * PUT /api/v1/calculator-configs/:id body — PARTIAL update.
+ *
+ * `payload` is required on every call (the auto-save path always
+ * sends it). `hubspotDealId` and `title` use PATCH semantics:
+ *
+ *   - field ABSENT from body → leave unchanged on the row
+ *   - field PRESENT as `null` → clear the column
+ *   - field PRESENT as a string → replace with the new value
+ *
+ * `companyId` is NOT replaceable (moving a config across companies
+ * would invalidate any document that referenced it). To "move" a
+ * draft, save it as a new config under the target company.
+ *
+ * The route is named PUT for backwards-compat with the original
+ * Sprint 3 contract; PATCH would be a more honest verb (Sprint 6.7
+ * audit flagged this — kept PUT to avoid churning every caller).
+ * See service.ts for the resolver that distinguishes undefined
+ * vs. null inside the body.
  */
 export const updateCalculatorConfigSchema = z.object({
   hubspotDealId: z.string().min(1).max(64).nullable().optional(),
@@ -112,10 +126,22 @@ export type ListCalculatorConfigsQuery = z.infer<typeof listCalculatorConfigsQue
  * Public-facing calculator-config shape. Identical to the row today
  * but kept as a separate type so we can hide internal columns (e.g.
  * audit metadata) in the future without breaking response contracts.
+ *
+ * Sprint 6.7 audit fix (S4): `companyName` is now populated by the
+ * LIST endpoint via JOIN companies. The top-level /calculators page
+ * needs it so every row identifies its company (previously every
+ * row rendered an identical "Open company →" link with no name —
+ * useless for disambiguation when an operator has 10 configs from
+ * different companies).
+ *
+ * The field is optional because GET-by-id doesn't JOIN — the
+ * /calc/:id consumer (CalculatorPage edit mode) only renders the
+ * config's title in the SavedStatusBadge, not the company name.
  */
 export const calculatorConfigPublicSchema = z.object({
   id: z.string().uuid(),
   companyId: z.string().uuid(),
+  companyName: z.string().optional(),
   hubspotDealId: z.string().nullable(),
   title: z.string().nullable(),
   payload: z.unknown(),

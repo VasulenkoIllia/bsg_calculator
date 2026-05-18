@@ -134,7 +134,7 @@ describe("DocumentsListPage — CompanyFilter", () => {
       target: { value: "Ac" }
     });
     await waitFor(() => screen.getByText("Acme Inc"));
-    fireEvent.click(screen.getByText("Acme Inc"));
+    fireEvent.mouseDown(screen.getByText("Acme Inc"));
 
     // Chip is shown + clear button is present.
     await waitFor(() => {
@@ -161,7 +161,7 @@ describe("DocumentsListPage — CompanyFilter", () => {
       target: { value: "Ac" }
     });
     await waitFor(() => screen.getByText("Acme Inc"));
-    fireEvent.click(screen.getByText("Acme Inc"));
+    fireEvent.mouseDown(screen.getByText("Acme Inc"));
     await waitFor(() => screen.getByText(/change/i));
 
     // Click "× clear" → chip gone, typeahead input back.

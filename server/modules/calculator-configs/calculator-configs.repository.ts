@@ -12,14 +12,26 @@
  * uses the composite index defined in the schema file.
  */
 
-import { and, desc, eq, ilike, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import { db } from "../../db/client";
 import {
   calculatorConfigs,
+  companies,
   type CalculatorConfig,
   type NewCalculatorConfig
 } from "../../db/schema";
 import type { Cursor } from "../../shared/pagination";
+
+/**
+ * Sprint 6.7 audit fix (S4): list-endpoint row shape that carries
+ * the company name alongside the config row. Cross-company listing
+ * surfaces this so the operator can tell rows apart at a glance.
+ * Single-config fetch (`findById`) does NOT JOIN — that endpoint
+ * feeds /calc/:id which only renders the config title.
+ */
+export interface CalculatorConfigWithCompanyName extends CalculatorConfig {
+  companyName: string;
+}
 
 export async function findById(id: string): Promise<CalculatorConfig | undefined> {
   const rows = await db
@@ -40,9 +52,19 @@ export async function insertCalculatorConfig(
   return inserted[0];
 }
 
+/**
+ * Sprint 6.7 audit fix (C3): both optional fields are REQUIRED on
+ * this patch shape. The service layer always resolves them to either
+ * the new value (when present in the request body) or the existing
+ * column value (when absent) BEFORE calling here. Forcing the fields
+ * to be passed at the repo boundary removes a foot-gun for any
+ * future caller that bypasses the service — previously the
+ * `?? null` collapse silently nulled the column when the field was
+ * omitted, which is exactly the bug we fixed in the service.
+ */
 export interface UpdateCalculatorConfigPatch {
-  hubspotDealId?: string | null;
-  title?: string | null;
+  hubspotDealId: string | null;
+  title: string | null;
   payload: unknown;
 }
 
@@ -53,8 +75,8 @@ export async function updateCalculatorConfig(
   const rows = await db
     .update(calculatorConfigs)
     .set({
-      hubspotDealId: patch.hubspotDealId ?? null,
-      title: patch.title ?? null,
+      hubspotDealId: patch.hubspotDealId,
+      title: patch.title,
       payload: patch.payload,
       updatedAt: new Date()
     })
@@ -114,9 +136,13 @@ function escapeLikePattern(raw: string): string {
  */
 export async function listCalculatorConfigs(
   args: ListCalculatorConfigsArgs
-): Promise<CalculatorConfig[]> {
+): Promise<CalculatorConfigWithCompanyName[]> {
   // Build filters as an array so we can omit undefined entries cleanly.
-  const filters: Array<ReturnType<typeof eq> | undefined> = [];
+  // Sprint 6.7 audit fix (N1): typed as SQL<unknown> not
+  // ReturnType<typeof eq> — the array also holds or(), and(), ilike(),
+  // isNull() returns which share the SQL<unknown> shape but aren't
+  // assignable to the narrower `eq` return type.
+  const filters: Array<SQL<unknown> | undefined> = [];
 
   if (args.companyId) {
     filters.push(eq(calculatorConfigs.companyId, args.companyId));
@@ -135,7 +161,18 @@ export async function listCalculatorConfigs(
   }
 
   if (args.q) {
-    filters.push(ilike(calculatorConfigs.title, `%${escapeLikePattern(args.q)}%`));
+    // Sprint 6.7 audit fix (S10): use a raw SQL fragment with an
+    // explicit `ESCAPE '\'` clause so the LIKE escape behaviour is
+    // independent of the connection's `standard_conforming_strings`
+    // setting. Drizzle's `ilike()` helper would emit a plain
+    // `column ILIKE pattern` without an ESCAPE clause, relying on
+    // PostgreSQL's implicit default. The pattern itself is still
+    // parameterised — only the column reference + ESCAPE literal
+    // are inlined.
+    const pattern = `%${escapeLikePattern(args.q)}%`;
+    filters.push(
+      sql`${calculatorConfigs.title} ILIKE ${pattern} ESCAPE '\\'`
+    );
   }
 
   if (args.cursor) {
@@ -154,12 +191,21 @@ export async function listCalculatorConfigs(
     (f): f is Exclude<typeof f, undefined> => f !== undefined
   );
 
-  return db
-    .select()
+  // Sprint 6.7 audit fix (S4): JOIN companies so each row carries
+  // `companyName`. Cheap (FK indexed) and saves the frontend from
+  // N+1 lookups when rendering the cross-company list.
+  const rows = await db
+    .select({
+      config: calculatorConfigs,
+      companyName: companies.name
+    })
     .from(calculatorConfigs)
+    .innerJoin(companies, eq(calculatorConfigs.companyId, companies.id))
     .where(definedFilters.length > 0 ? and(...definedFilters) : undefined)
     .orderBy(desc(calculatorConfigs.createdAt), desc(calculatorConfigs.id))
     .limit(args.limit);
+
+  return rows.map(r => ({ ...r.config, companyName: r.companyName }));
 }
 
 /**

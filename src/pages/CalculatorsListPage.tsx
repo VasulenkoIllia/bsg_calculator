@@ -39,12 +39,27 @@ export function CalculatorsListPage() {
   const q = useDebouncedValue(searchInput, 300);
 
   const configs = useCalculatorConfigs({ q });
+  // Sprint 6.7 audit fix (S9): mirror the DocumentsListPage UX —
+  // when TanStack Query is re-fetching the listing (e.g. after a
+  // window-focus or a mutation invalidates the cache) show a
+  // "refreshing…" hint inline so the operator sees the staleness
+  // signal. The initial-load case keeps using the table-row spinner;
+  // this only fires on background re-fetches with stale data still
+  // visible.
+  const isBackgroundRefetching = configs.isFetching && !configs.isLoading;
 
   return (
     <section className="space-y-4">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Saved calculators</h1>
+          <h1 className="text-xl font-semibold text-slate-900">
+            Saved calculators
+            {isBackgroundRefetching ? (
+              <span className="ml-2 text-xs font-normal text-slate-400">
+                · refreshing…
+              </span>
+            ) : null}
+          </h1>
           <p className="mt-1 text-sm text-slate-500">
             Every calculator draft you&apos;ve saved. Each is owned by a
             company; click <strong>Open →</strong> to keep editing it
@@ -115,18 +130,19 @@ export function CalculatorsListPage() {
                 </td>
                 <td className="px-4 py-3 text-slate-700">
                   {/*
-                    The PublicCalculatorConfig DTO carries companyId
-                    (UUID) but not the company NAME — that would require
-                    a JOIN on the listing endpoint. For Sprint 6.6 we
-                    surface the link instead: clicking the company UUID
-                    chunk takes the operator to /companies/:id, where
-                    the company header gives them the full context.
+                    Sprint 6.7 audit fix (S4): backend list endpoint
+                    now JOINs companies and returns `companyName`, so
+                    each row identifies its parent at a glance. Click
+                    routes through to /companies/:id for full detail.
+                    Fallback handles the edge case where the JOIN
+                    didn't populate the name (shouldn't happen given
+                    the FK, but defensive).
                   */}
                   <Link
                     to={`/companies/${cfg.companyId}`}
-                    className="text-xs font-medium text-blue-700 hover:text-blue-900 hover:underline"
+                    className="font-medium text-blue-700 hover:text-blue-900 hover:underline"
                   >
-                    Open company →
+                    {cfg.companyName ?? "Open company"} →
                   </Link>
                 </td>
                 <td className="px-4 py-3 text-slate-700">

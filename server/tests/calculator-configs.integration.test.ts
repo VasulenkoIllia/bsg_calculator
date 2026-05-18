@@ -538,4 +538,50 @@ describe("GET /api/v1/calculator-configs — picker scope", () => {
       .set("Authorization", `Bearer ${token}`);
     expect(noMatch.body.items).toHaveLength(0);
   });
+
+  it("Sprint 6.7: cross-company ?q= with no match returns empty (the /calculators path)", async () => {
+    // Sprint 6.7 audit fix (S8): the top-level CalculatorsListPage
+    // hits this exact shape — companyId omitted, q present. The
+    // existing Sprint 6.6 test combined ?q= with a scoped companyId;
+    // this one pins down the production call path where the operator
+    // searches without a company filter.
+    const token = await setupAuth();
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture())
+      .returning();
+    for (const title of ["Alpha", "Beta"]) {
+      await request(app)
+        .post("/api/v1/calculator-configs")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ companyId: company.id, title, payload: samplePayload });
+    }
+
+    const res = await request(app)
+      .get(`/api/v1/calculator-configs?q=zzznomatch`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(0);
+  });
+
+  it("Sprint 6.7: list endpoint returns `companyName` via JOIN", async () => {
+    // S4 audit fix verification: every row in the listing should
+    // carry the parent company's name so CalculatorsListPage can
+    // render it without N+1 fetches.
+    const token = await setupAuth();
+    const [companyA] = await db
+      .insert(companies)
+      .values(companyFixture({ name: "Acme Holdings" }))
+      .returning();
+    await request(app)
+      .post("/api/v1/calculator-configs")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: companyA.id, title: "draft", payload: samplePayload });
+
+    const res = await request(app)
+      .get(`/api/v1/calculator-configs`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.items[0].companyName).toBe("Acme Holdings");
+  });
 });
