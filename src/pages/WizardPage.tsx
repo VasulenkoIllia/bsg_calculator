@@ -12,6 +12,10 @@ import {
 } from "../components/document-wizard/index.js";
 import type { DocumentTemplatePayload, WizardStep } from "../components/document-wizard/index.js";
 import type { DocumentScope } from "../components/document-wizard/legalDefaults.js";
+import {
+  seedCalculatorStateFromSnapshot,
+  type CalculatorSnapshotPayload
+} from "../components/calculator/snapshotShape.js";
 import { SaveDocumentModal } from "../components/SaveDocumentModal.js";
 import { WizardBackendBar } from "../components/WizardBackendBar.js";
 import { ApiError } from "../api/client.js";
@@ -19,6 +23,8 @@ import * as documentsApi from "../api/documents.js";
 import { renderPdfPreview, triggerPdfDownload } from "../api/pdf.js";
 import type { PublicCompany } from "../api/types.js";
 import { useCalculator } from "../contexts/CalculatorContext.js";
+import { useCalculatorConfig } from "../hooks/useCalculatorConfig.js";
+import { useCompany } from "../hooks/useCompany.js";
 
 /**
  * Map the wizard's camelCase document scope to the backend's
@@ -251,6 +257,69 @@ export function WizardPage() {
   const [selectedDealId, setSelectedDealId] = useState<string>("");
   const [saveDocOpen, setSaveDocOpen] = useState(false);
 
+  // ─── Sprint 6.2-FIX: wizard-from-calc linking ────────────────────
+  // When the wizard is opened with `?calc=<configId>` (set by the
+  // "Open Contract Wizard" button on /calc/:id), we:
+  //   1. Fetch the calculator-config to learn which company/deal
+  //      it belongs to (the wizard's BSG number + the resulting
+  //      Document's FK chain both need this).
+  //   2. Hydrate the global CalculatorContext from the config's
+  //      payload so the wizard's "Source: Calculator" mode reads
+  //      the right pricing — covers the case of someone deep-linking
+  //      to /wizard?calc=<id> without first visiting /calc/:id.
+  //   3. Auto-pick the company + deal in WizardBackendBar so the
+  //      operator doesn't have to re-pick the same target they
+  //      already chose on the calculator page.
+  //   4. Pass `calculatorConfigId` to SaveDocumentModal so the
+  //      saved Document's `calculator_config_id` FK gets set —
+  //      this is how the operator can later see "which calc did
+  //      this document come from" + how a calc page can show
+  //      "documents derived from this calculator" (Sprint 6.4+).
+  const linkedConfigId = searchParams.get("calc");
+  const linkedConfigQuery = useCalculatorConfig(linkedConfigId ?? undefined);
+  const linkedCompanyQuery = useCompany(linkedConfigQuery.data?.companyId);
+
+  // (1) + (2): hydrate CalculatorContext once per configId.
+  const linkedHydratedFromRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!linkedConfigId) return;
+    if (!linkedConfigQuery.data) return;
+    if (linkedHydratedFromRef.current === linkedConfigId) return;
+    try {
+      const preset = seedCalculatorStateFromSnapshot(
+        linkedConfigQuery.data.payload as unknown as CalculatorSnapshotPayload
+      );
+      calc.applyStatePreset(preset);
+      linkedHydratedFromRef.current = linkedConfigId;
+      // Also re-seed the wizard draft itself from the freshly-applied
+      // calculator state so the on-screen preview reflects the
+      // linked config immediately (without waiting for the user to
+      // hit the "Source: Calculator" radio).
+      setWizardSourceMode("calculator");
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[WizardPage] linked calc hydrate failed", err);
+    }
+    // We deliberately exclude `calc` from the dep array — applyStatePreset
+    // is referentially stable across re-renders, and including the whole
+    // context would re-trigger the effect on every state mutation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedConfigId, linkedConfigQuery.data]);
+
+  // (3): seed WizardBackendBar selection from the linked config.
+  // Only fires once per configId so a manual change in the bar
+  // afterwards isn't clobbered on every re-render.
+  const linkedBarSeededRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!linkedConfigId) return;
+    if (!linkedConfigQuery.data) return;
+    if (!linkedCompanyQuery.data) return;
+    if (linkedBarSeededRef.current === linkedConfigId) return;
+    setSelectedCompany(linkedCompanyQuery.data);
+    setSelectedDealId(linkedConfigQuery.data.hubspotDealId ?? "");
+    linkedBarSeededRef.current = linkedConfigId;
+  }, [linkedConfigId, linkedConfigQuery.data, linkedCompanyQuery.data]);
+
   const backendScope = toBackendScope(wizardDraft.documentScope);
 
   // Live BSG-<seq>-<suffix> preview from the backend. When no company
@@ -350,6 +419,13 @@ export function WizardPage() {
           companyName={selectedCompany.name}
           payload={wizardDraft}
           scope={backendScope}
+          // Sprint 6.2-FIX: when the wizard was opened via
+          // /wizard?calc=<id>, propagate the source calculator-config
+          // id all the way to POST /documents so the saved Document
+          // row's FK `calculator_config_id` is populated — this
+          // links the document back to its source for future history
+          // views ("documents from this calculator").
+          calculatorConfigId={linkedConfigId}
         />
       ) : null}
     </>

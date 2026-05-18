@@ -19,12 +19,6 @@ import {
   type CalculatorSnapshotPayload
 } from "../components/calculator/snapshotShape.js";
 import { SaveCalculatorModal } from "../components/SaveCalculatorModal.js";
-import { SaveDocumentModal } from "../components/SaveDocumentModal.js";
-import {
-  buildDocumentHeaderMetaFromCalculator,
-  buildDocumentTemplatePayloadFromCalculator
-} from "../components/document-wizard/index.js";
-import type { DocumentTemplatePayload } from "../components/document-wizard/types.js";
 import { useCalculator } from "../contexts/CalculatorContext.js";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
 import {
@@ -130,55 +124,6 @@ export function CalculatorPage() {
   // editing a saved config the auto-save above governs persistence.
   const [saveOpen, setSaveOpen] = useState(false);
   const [savedToast, setSavedToast] = useState<string | null>(null);
-
-  // Sprint 6.2: "Save as offer / Save as agreement" path. Only
-  // surfaced in EDIT mode, because building a DocumentTemplatePayload
-  // requires knowing the target company (for the BSG number suffix +
-  // optional deal pin); a fresh-draft `/calculator` doesn't yet know
-  // that. The operator can hit "Save calculator" first, get redirected
-  // to /calc/:id, then export to a document from there.
-  const [saveDocScope, setSaveDocScope] = useState<
-    "offer" | "offer_and_agreement" | null
-  >(null);
-
-  const documentPayloadFromCalc = useMemo<DocumentTemplatePayload | null>(() => {
-    if (saveDocScope === null) return null;
-    const header = buildDocumentHeaderMetaFromCalculator(
-      calc.payinEuPricing.model,
-      calc.payinWwPricing.model
-    );
-    const payload = buildDocumentTemplatePayloadFromCalculator({
-      header,
-      calculatorType: calc.calculatorType,
-      payin: calc.payin,
-      payout: calc.payout,
-      payinEuPricing: calc.payinEuPricing,
-      payinWwPricing: calc.payinWwPricing,
-      payoutPricing: calc.payoutPricing,
-      payoutMinimumFeeEnabled: calc.payoutMinimumFeeEnabled,
-      payoutMinimumFeePerTransaction: calc.payoutMinimumFeePerTransaction,
-      threeDsEnabled: calc.threeDsEnabled,
-      threeDsRevenuePerSuccessfulTransaction:
-        calc.threeDsRevenuePerSuccessfulTransaction,
-      settlementIncluded: calc.settlementIncluded,
-      settlementFeeEnabled: calc.settlementFeeEnabled,
-      settlementFeeRatePercent: calc.settlementFeeRatePercent,
-      monthlyMinimumFeeEnabled: calc.monthlyMinimumFeeEnabled,
-      monthlyMinimumFeeAmount: calc.monthlyMinimumFeeAmount,
-      failedTrxEnabled: calc.failedTrxEnabled,
-      failedTrxMode: calc.failedTrxMode,
-      failedTrxOverLimitThresholdPercent:
-        calc.failedTrxOverLimitThresholdPercent,
-      contractSummarySettings: calc.contractSummarySettings
-    });
-    // Set the scope on the produced payload so the wizard's
-    // documentScope-aware rendering picks up the right shape (offer
-    // vs. offer_and_agreement appendix).
-    return {
-      ...payload,
-      documentScope: saveDocScope === "offer" ? "offer" : "offerAndAgreement"
-    };
-  }, [saveDocScope, calc]);
 
   // Capture the snapshot LAZILY when the modal opens — extracting on
   // every render would clone the whole calculator state needlessly.
@@ -524,21 +469,20 @@ export function CalculatorPage() {
         offerSummaryText={offerSummaryText}
         offerSummaryActionMessage={calc.offerSummaryActionMessage}
         onCopy={handleCopyOfferSummary}
-        onOpenWizard={() => navigate("/wizard")}
+        // Sprint 6.2-FIX: when editing a saved calc, the wizard needs
+        // to know which config the resulting document derives from so
+        // documents.calculator_config_id can be set (FK link). Pass
+        // the configId as a query param. In new-draft mode there's no
+        // configId yet — the wizard's existing "Source: Calculator"
+        // mode reads the live state from CalculatorContext, which is
+        // what we want for the unsaved-calc → wizard flow.
+        onOpenWizard={() =>
+          navigate(isEditMode ? `/wizard?calc=${configId}` : "/wizard")
+        }
         // In edit mode auto-save replaces the explicit modal flow —
         // the "Save calculator" button is hidden and a "Saved · 2s ago"
         // badge at the top of the page communicates state instead.
         onSaveCalculator={isEditMode ? undefined : () => setSaveOpen(true)}
-        // Sprint 6.2: "Save as offer/agreement" only in edit mode
-        // because building the BSG number requires the target company,
-        // which is only known once a calculator-config has been
-        // persisted. In new-draft mode the operator hits "Save
-        // calculator" first → redirected to /calc/:id → these
-        // buttons appear.
-        onSaveAsOffer={isEditMode ? () => setSaveDocScope("offer") : undefined}
-        onSaveAsOfferAndAgreement={
-          isEditMode ? () => setSaveDocScope("offer_and_agreement") : undefined
-        }
       />
 
       {!isEditMode && snapshot ? (
@@ -555,18 +499,6 @@ export function CalculatorPage() {
             // the modal again.
             navigate(`/calc/${createdId}`, { replace: true });
           }}
-        />
-      ) : null}
-
-      {isEditMode && configQuery.data && documentPayloadFromCalc && saveDocScope ? (
-        <SaveDocumentModal
-          open={saveDocScope !== null}
-          onClose={() => setSaveDocScope(null)}
-          companyId={configQuery.data.companyId}
-          hubspotDealId={configQuery.data.hubspotDealId ?? ""}
-          companyName={configQuery.data.title ?? "this company"}
-          payload={documentPayloadFromCalc}
-          scope={saveDocScope}
         />
       ) : null}
     </>

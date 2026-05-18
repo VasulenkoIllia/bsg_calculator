@@ -16,16 +16,15 @@ export interface Zone6OfferSummaryProps {
    * (POST /api/v1/calculator-configs via SaveCalculatorModal). Optional
    * because the calculator can run without a backend (legacy / offline
    * use); when the prop is omitted the button is hidden.
+   *
+   * Sprint 6.2-FIX (2026-05-18): the calculator page does NOT create
+   * documents directly. Document creation is the wizard's job — calc
+   * page persists ONLY the calculator entity, then "Open Contract
+   * Wizard" navigates to /wizard?calc=<id> with the config id as a
+   * link so the wizard knows which calc the saved document is
+   * derived from (FK on documents.calculator_config_id).
    */
   onSaveCalculator?: () => void;
-  /**
-   * Sprint 6.2: "Save as offer" + "Save as offer + agreement"
-   * shortcuts. Only mounted in EDIT mode (when the calc is loaded
-   * from a saved config and we know the target company). When the
-   * prop is omitted the buttons are hidden.
-   */
-  onSaveAsOffer?: () => void;
-  onSaveAsOfferAndAgreement?: () => void;
 }
 
 export function Zone6OfferSummary({
@@ -38,9 +37,7 @@ export function Zone6OfferSummary({
   offerSummaryActionMessage,
   onCopy,
   onOpenWizard,
-  onSaveCalculator,
-  onSaveAsOffer,
-  onSaveAsOfferAndAgreement
+  onSaveCalculator
 }: Zone6OfferSummaryProps) {
   return (
     <ZoneSection
@@ -84,26 +81,6 @@ export function Zone6OfferSummary({
                 className="rounded-xl border border-emerald-500 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
               >
                 Save calculator
-              </button>
-            ) : null}
-            {onSaveAsOffer ? (
-              <button
-                type="button"
-                onClick={onSaveAsOffer}
-                className="rounded-xl border border-indigo-500 bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700"
-                title="Persist a BSG-numbered Offer document built from the current calculator state"
-              >
-                Save as Offer
-              </button>
-            ) : null}
-            {onSaveAsOfferAndAgreement ? (
-              <button
-                type="button"
-                onClick={onSaveAsOfferAndAgreement}
-                className="rounded-xl border border-indigo-500 bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700"
-                title="Persist a BSG-numbered Offer + Service Agreement bundle"
-              >
-                Save as Offer + Agreement
               </button>
             ) : null}
             {onOpenWizard ? (

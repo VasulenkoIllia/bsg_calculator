@@ -31,6 +31,16 @@ export interface SaveDocumentModalProps {
    */
   payload: DocumentTemplatePayload;
   scope: documentsApi.DocumentScope;
+  /**
+   * Sprint 6.2-FIX: source calculator-config id when the wizard was
+   * opened via /wizard?calc=<id>. Populates the saved Document's
+   * `calculator_config_id` FK so the operator can later see which
+   * calculator produced this document (and the calc page can show
+   * "documents derived from this calculator" once Sprint 6.4 wires
+   * the listing UX). Optional — wizard can also be used standalone
+   * with no source calc.
+   */
+  calculatorConfigId?: string | null;
 }
 
 export function SaveDocumentModal({
@@ -40,7 +50,8 @@ export function SaveDocumentModal({
   hubspotDealId,
   companyName,
   payload,
-  scope
+  scope,
+  calculatorConfigId
 }: SaveDocumentModalProps) {
   const navigate = useNavigate();
   const [addendum, setAddendum] = useState("");
@@ -72,6 +83,10 @@ export function SaveDocumentModal({
       const created = await documentsApi.createDocument({
         companyId,
         hubspotDealId: hubspotDealId || null,
+        // Sprint 6.2-FIX: propagate source calc id when set, otherwise
+        // omit so backend persists NULL (Document not derived from
+        // a saved calc — possible for a manual-blank wizard run).
+        calculatorConfigId: calculatorConfigId ?? null,
         scope,
         payload: enrichedPayload,
         addendum: addendum.trim() ? addendum.trim() : null
@@ -122,6 +137,14 @@ export function SaveDocumentModal({
             <strong className="font-semibold text-slate-700">{companyName}</strong>.
             Backend assigns the next BSG-XXXXX number atomically.
           </p>
+          {calculatorConfigId ? (
+            <p className="mt-2 text-xs text-slate-400">
+              Derived from a saved calculator — the calculator entity
+              stays editable; this just creates a point-in-time document
+              snapshot. You can save more documents from the same
+              calculator later.
+            </p>
+          ) : null}
         </header>
 
         <label className="block space-y-1">
