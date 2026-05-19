@@ -8,6 +8,7 @@
 
 import { useMemo } from "react";
 import {
+  keepPreviousData,
   useInfiniteQuery,
   useQuery,
   type InfiniteData
@@ -111,7 +112,14 @@ export function useDocuments(options: UseDocumentsOptions = {}): UseDocumentsRes
         cursor: pageParam,
         limit: options.limit
       }),
-    getNextPageParam: lastPage => lastPage.nextCursor ?? undefined
+    getNextPageParam: lastPage => lastPage.nextCursor ?? undefined,
+    // Sprint 7.0: keep previous data visible while the sort-change
+    // refetch is in flight. Without this, flipping sort surfaces as
+    // a fresh queryKey → `isLoading=true` → table briefly replaced
+    // by the "Loading documents…" row → table shrinks → page jumps.
+    // `keepPreviousData` makes the stale rows persist with
+    // `isFetching` showing the background refresh state instead.
+    placeholderData: keepPreviousData
   });
 
   // Sprint 6.9 S12: cast through the narrower type since the wire

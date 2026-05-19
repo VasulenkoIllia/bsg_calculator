@@ -1,6 +1,24 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext.js";
 import { CalculatorHeader } from "./calculator/index.js";
+
+/**
+ * Sprint 7.0: routes that show the big gradient "Calculator v4 / BSG
+ * PRICING WORKSPACE" hero banner. The hero is heavy (≈220px tall)
+ * and works as a landing/orientation surface for the new-draft
+ * calculator entry. On every OTHER page (Companies, Documents,
+ * Saved calculators, /calc/:id edit-mode, Wizard) it just pushes
+ * the actual content below the fold — the operator already knows
+ * what app they're in, the workspace tabs are right there, and the
+ * sticky toolbar on /calc/:id loses half its purpose if the hero
+ * eats the first scroll viewport anyway.
+ *
+ * Match against `pathname` exact-equality so /calc/:id (edit mode)
+ * doesn't accidentally inherit the new-draft hero.
+ */
+function shouldShowHero(pathname: string): boolean {
+  return pathname === "/" || pathname === "/calculator";
+}
 
 const TABS: Array<{ to: string; label: string }> = [
   // Companies first — it's the natural entry now that the backend
@@ -83,11 +101,13 @@ function IdentityStrip() {
 }
 
 export function AppShell() {
+  const { pathname } = useLocation();
+  const showHero = shouldShowHero(pathname);
   return (
     <main className="min-h-screen">
       <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8 md:py-10">
         <IdentityStrip />
-        <CalculatorHeader />
+        {showHero ? <CalculatorHeader /> : null}
         <WorkspaceTabs />
         <Outlet />
       </div>

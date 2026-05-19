@@ -115,10 +115,12 @@ describe("SortableTh", () => {
     expect(button.textContent).toContain("▼");
   });
 
-  it("inactive column shows the dim dash indicator (—)", () => {
+  it("inactive column shows the dim ↕ 'sortable' hint", () => {
+    // Sprint 7.0 UX polish: changed from `—` (read as decorative
+    // punctuation) to `↕` (reads as "this column is sortable").
     setup({ field: "created", activeField: "name" });
     const button = screen.getByRole("button", { name: /header/i });
-    expect(button.textContent).toContain("—");
+    expect(button.textContent).toContain("↕");
   });
 
   it("Sprint 6.9 S9: clicking an inactive column ALWAYS starts asc, regardless of the previous active direction", () => {

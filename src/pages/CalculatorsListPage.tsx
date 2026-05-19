@@ -120,8 +120,9 @@ export function CalculatorsListPage() {
                 activeField={sortField}
                 activeDirection={sortDir}
                 onSortChange={handleSortChange}
+                tooltip="HubSpot deal ID if the draft is pinned to a specific deal, or 'company-level' if it's available to any deal of the parent company."
               >
-                Deal pin
+                Deal
               </SortableTh>
               <SortableTh
                 field="updatedAt"

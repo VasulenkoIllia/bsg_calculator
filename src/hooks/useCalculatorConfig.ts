@@ -13,6 +13,7 @@
 
 import { useMemo } from "react";
 import {
+  keepPreviousData,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -180,7 +181,11 @@ export function useCalculatorConfigs(
         cursor: pageParam,
         limit: options.limit
       }),
-    getNextPageParam: lastPage => lastPage.nextCursor ?? undefined
+    getNextPageParam: lastPage => lastPage.nextCursor ?? undefined,
+    // Sprint 7.0: keep previous rows visible during sort-change
+    // refetch — eliminates the "Loading…" placeholder flash and the
+    // associated page-jump. See useDocuments for the same pattern.
+    placeholderData: keepPreviousData
   });
 
   // Sprint 6.9 S12: cast through the strict list-item type — see
