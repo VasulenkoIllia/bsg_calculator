@@ -43,6 +43,13 @@
       "when": 1779049489703,
       "tag": "0005_strong_thor",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779050000000,
+      "tag": "0006_lazy_jamie_braddock",
+      "breakpoints": true
     }
   ]
 }

@@ -206,15 +206,15 @@ export function DocumentsListPage() {
                     Sprint 6.8: backend list endpoint JOINs companies
                     and returns `companyName`. Link to /companies/:id
                     mirrors the Saved-calculators page (Sprint 6.7).
-                    Fallback handles the edge case where the JOIN
-                    didn't populate the name (shouldn't happen given
-                    the FK, but defensive).
+                    Sprint 6.9 S12: PublicDocumentListItem makes
+                    companyName REQUIRED (the INNER JOIN + non-null
+                    FK guarantees it), so no fallback needed.
                   */}
                   <Link
                     to={`/companies/${doc.companyId}`}
                     className="font-medium text-blue-700 hover:text-blue-900 hover:underline"
                   >
-                    {doc.companyName ?? "Open company"} →
+                    {doc.companyName} →
                   </Link>
                 </td>
                 <td className="px-4 py-3 text-slate-700">{formatScopeLabel(doc.scope)}</td>

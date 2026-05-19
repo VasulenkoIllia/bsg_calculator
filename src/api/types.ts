@@ -126,6 +126,9 @@ export interface PublicCalculatorConfig {
    * Single-config fetch (GET /calculator-configs/:id) omits it
    * because /calc/:id doesn't need the company name — it renders
    * the config title in the SavedStatusBadge instead.
+   *
+   * Sprint 6.9 S12: list consumers narrow via
+   * `PublicCalculatorConfigListItem` for compile-time guarantee.
    */
   companyName?: string;
   hubspotDealId: string | null;
@@ -135,6 +138,16 @@ export interface PublicCalculatorConfig {
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * Sprint 6.9 S12: narrow shape for items returned by the LIST
+ * endpoint of calculator-configs. Mirrors PublicDocumentListItem
+ * — companyName is REQUIRED here because the repository's INNER
+ * JOIN guarantees it.
+ */
+export type PublicCalculatorConfigListItem = PublicCalculatorConfig & {
+  companyName: string;
+};
 
 // ─── Documents ────────────────────────────────────────────────────
 /**
@@ -154,6 +167,12 @@ export interface PublicDocument {
    * Sprint 6.8: surfaced only by the LIST endpoint (JOIN companies).
    * Single-doc fetch (GET /documents/:number) omits it — the detail
    * page already loads the full company elsewhere.
+   *
+   * Sprint 6.9 S12: still optional here because GET-by-number omits
+   * it, but list consumers should narrow via `PublicDocumentListItem`
+   * (below) which makes companyName REQUIRED. That captures the
+   * runtime invariant (the JOIN is INNER + FK is non-nullable) at
+   * the type level for the list-rendering call sites.
    */
   companyName?: string;
   hubspotDealId: string | null;
@@ -167,6 +186,18 @@ export interface PublicDocument {
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * Sprint 6.9 S12: narrow shape for items returned by the LIST
+ * endpoint. `companyName` is REQUIRED here because the repository's
+ * INNER JOIN companies + non-nullable FK guarantees it. The list
+ * page renders `doc.companyName` directly without a fallback — the
+ * type prevents a caller from accidentally piping single-doc
+ * results through a list-rendering component.
+ */
+export type PublicDocumentListItem = PublicDocument & {
+  companyName: string;
+};
 
 // ─── HubSpot ──────────────────────────────────────────────────────
 export interface HubspotPipeline {

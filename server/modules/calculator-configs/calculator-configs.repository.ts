@@ -1,11 +1,23 @@
 /**
  * Calculator-configs DB access.
  *
- * Read side: list + by-id, ordered by (createdAt DESC, id DESC) for
- * stable pagination even when timestamps collide on multi-save bursts.
+ * Read side: list + by-id. Sprint 6.8 added per-column sort over
+ * (title, companyName, hubspotDealId, updatedAt, createdAt) ×
+ * (asc, desc). Default remains createdAt-desc to preserve pre-6.8
+ * pagination behaviour. The cursor predicate uses `(sortExpr, id)`
+ * tuple comparison to stay stable across duplicate sort values.
+ * String columns use LOWER() for case-insensitive A-Z ordering;
+ * the matching functional indexes shipped in migration 0006.
+ *
+ * Sprint 6.9 N5 — locale note: LOWER() respects Postgres
+ * `LC_COLLATE` (default `en_US.UTF-8`). Cyrillic / European company
+ * names will cluster at the end of an ASC list rather than
+ * interspersed alphabetically with Latin ones. If correct
+ * locale-aware ordering becomes a product requirement, switch to
+ * `COLLATE "und-x-icu"` on the affected columns.
  *
  * Write side: insert + update. UPDATE sets `updatedAt = now()` so
- * the listings can render "last edited X ago" without a separate
+ * listings can render "last edited X ago" without a separate
  * touch-trigger.
  *
  * The "company AND (deal IS NULL OR deal = $dealId)" picker query
@@ -20,7 +32,11 @@ import {
   type CalculatorConfig,
   type NewCalculatorConfig
 } from "../../db/schema";
-import type { SortSpec, SortedCursor } from "../../shared/sorted-pagination";
+import {
+  assertCursorValueIsIsoDate,
+  type SortSpec,
+  type SortedCursor
+} from "../../shared/sorted-pagination";
 
 /**
  * Sprint 6.8: whitelist of sortable columns. Encoded as a const
@@ -149,6 +165,14 @@ export function cursorValueForRow(
       return row.updatedAt.toISOString();
     case "createdAt":
       return row.createdAt.toISOString();
+    default: {
+      // Sprint 6.9 S1: assertNever exhaustiveness so adding a new
+      // entry to CalculatorConfigSortField without updating this
+      // switch becomes a COMPILE error instead of a silent
+      // undefined-returning function that corrupts the cursor.
+      const _exhaustive: never = field;
+      throw new Error(`cursorValueForRow: unhandled sort field ${String(_exhaustive)}`);
+    }
   }
 }
 
@@ -236,10 +260,17 @@ export async function listCalculatorConfigs(
   const dirCmp = args.sort.dir === "asc" ? gt : lt;
 
   if (args.cursor) {
-    const cursorValueExpr =
-      args.sort.field === "createdAt" || args.sort.field === "updatedAt"
-        ? sql`${new Date(args.cursor.value)}::timestamptz`
-        : sql`${args.cursor.value}`;
+    // Sprint 6.9 C1: validate ISO before `new Date(...)` for date
+    // sorts. Mirrors documents.repository — see note there.
+    const isDateSort =
+      args.sort.field === "createdAt" || args.sort.field === "updatedAt";
+    let cursorValueExpr;
+    if (isDateSort) {
+      assertCursorValueIsIsoDate(args.cursor.value);
+      cursorValueExpr = sql`${new Date(args.cursor.value)}::timestamptz`;
+    } else {
+      cursorValueExpr = sql`${args.cursor.value}`;
+    }
 
     filters.push(
       or(

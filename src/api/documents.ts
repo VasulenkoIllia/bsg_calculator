@@ -23,6 +23,12 @@ export interface CreateDocumentRequest {
  * Sprint 6.8: per-column sort spec. Allowed `field` values are
  * whitelisted server-side; the frontend types the union here so a
  * typo on the call-site surfaces at compile time.
+ *
+ * Sprint 6.9 S3: kept in lockstep with
+ * server/modules/documents/documents.repository.ts → documentSortFields.
+ * The drift trap is acknowledged — if/when we adopt the shared-schemas
+ * refactor (decisions.md "Phase 8 backend conventions"), this and the
+ * backend tuple collapse into a single source of truth.
  */
 export type DocumentSortField =
   | "number"
@@ -31,6 +37,12 @@ export type DocumentSortField =
   | "hubspotSyncState"
   | "createdAt";
 
+/**
+ * Sprint 6.9 S2: typed sort string. Catches `"createdAt:dsc"` /
+ * `"company:asc"` typos at compile time instead of a runtime 400.
+ */
+export type DocumentSortSpec = `${DocumentSortField}:${"asc" | "desc"}`;
+
 export interface ListDocumentsParams {
   companyId?: string;
   hubspotDealId?: string;
@@ -38,8 +50,8 @@ export interface ListDocumentsParams {
   calculatorConfigId?: string;
   scope?: DocumentScope;
   q?: string;
-  /** Sprint 6.8: "field:asc" or "field:desc"; default "createdAt:desc". */
-  sort?: string;
+  /** Sprint 6.8 / S2: typed "field:asc" or "field:desc"; default "createdAt:desc". */
+  sort?: DocumentSortSpec;
   cursor?: string;
   limit?: number;
 }

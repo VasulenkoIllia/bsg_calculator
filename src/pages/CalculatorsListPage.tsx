@@ -183,7 +183,10 @@ export function CalculatorsListPage() {
                     to={`/companies/${cfg.companyId}`}
                     className="font-medium text-blue-700 hover:text-blue-900 hover:underline"
                   >
-                    {cfg.companyName ?? "Open company"} →
+                    {/* Sprint 6.9 S12: PublicCalculatorConfigListItem
+                        guarantees companyName via INNER JOIN; no
+                        fallback needed. */}
+                    {cfg.companyName} →
                   </Link>
                 </td>
                 <td className="px-4 py-3 text-slate-700">

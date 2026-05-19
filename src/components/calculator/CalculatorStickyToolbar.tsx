@@ -9,15 +9,25 @@
  *
  * This toolbar duplicates the wizard CTA (and the "Save calculator"
  * CTA in new-draft mode) into a sticky strip that pins to the top
- * of the scroll viewport. The toolbar lives inside the route content
- * — the AppShell header above is non-sticky, so `top-0` here means
- * "stick to the top of the viewport once the page scrolls past the
- * AppShell header".
+ * of the scroll viewport.
  *
- * z-30 sits below the workspace nav (which has its own implicit
- * stack-context from being above this in the DOM) but above the
- * zone panels — high enough that the row's drop-shadow lifts it
- * visually off the zones.
+ * Sprint 6.9 S5 / N9: positioning notes —
+ *   - The AppShell renders IdentityStrip + CalculatorHeader +
+ *     WorkspaceTabs above the route Outlet, NONE of which are
+ *     position:sticky. So `sticky top-0` here means "stick to the
+ *     literal top of the viewport once the content above has
+ *     scrolled away". On long pages this works well: the operator
+ *     scrolls past Zone 0 and the toolbar follows.
+ *   - On SHORT viewports (mobile, or all zones collapsed) the
+ *     content doesn't overflow, sticky never engages, and the
+ *     toolbar renders inline. That's the correct fallback — there's
+ *     nothing to scroll past, so nothing to pin.
+ *   - z-30 sits above the zone panels but BELOW the AppShell
+ *     header chrome (which is non-stacking-positioned, so z-index
+ *     doesn't actually compete — DOM order takes over once you
+ *     scroll into the route content). If the AppShell were ever
+ *     made sticky too, the toolbar's `top-0` would need to be
+ *     bumped to `top-[<header-height>]`.
  */
 
 import { type ReactNode } from "react";

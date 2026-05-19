@@ -548,6 +548,67 @@ describe("GET /api/v1/documents — list + filters", () => {
     expect(res.status).toBe(400);
   });
 
+  it("Sprint 6.9 S8: ?sort=hubspotSyncState:asc orders by enum string (failed → not_synced → synced)", async () => {
+    const token = await setupAuth();
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "555555444400" }))
+      .returning();
+    // All new documents default to hubspotSyncState='not_synced'.
+    // We don't have a wired sync flow yet (Phase 9), so we INSERT
+    // direct UPDATE to test the sort path on an enum column.
+    for (let i = 0; i < 3; i++) {
+      await request(app)
+        .post("/api/v1/documents")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ companyId: company.id, scope: "offer", payload: samplePayload });
+    }
+    const all = await request(app)
+      .get(`/api/v1/documents?companyId=${company.id}&sort=createdAt:asc`)
+      .set("Authorization", `Bearer ${token}`);
+    const ids: string[] = all.body.items.map((d: { id: string }) => d.id);
+    // Force the 3 rows into distinct sync states.
+    await db
+      .update(documents)
+      .set({ hubspotSyncState: "failed" })
+      .where(eq(documents.id, ids[0]));
+    await db
+      .update(documents)
+      .set({ hubspotSyncState: "synced" })
+      .where(eq(documents.id, ids[2]));
+    // ids[1] stays 'not_synced'.
+
+    const sorted = await request(app)
+      .get(
+        `/api/v1/documents?companyId=${company.id}&sort=hubspotSyncState:asc&limit=10`
+      )
+      .set("Authorization", `Bearer ${token}`);
+    expect(sorted.status).toBe(200);
+    const states = sorted.body.items.map((d: { hubspotSyncState: string }) =>
+      d.hubspotSyncState
+    );
+    // LOWER() alphabetical: failed < not_synced < synced.
+    expect(states).toEqual(["failed", "not_synced", "synced"]);
+  });
+
+  it("Sprint 6.9 C1: tampered cursor with non-ISO date value yields 400 (not 500)", async () => {
+    const token = await setupAuth();
+    const tampered = Buffer.from(
+      JSON.stringify({
+        sort: "createdAt:desc",
+        value: "garbage-not-a-date",
+        id: "00000000-0000-4000-8000-000000000000"
+      }),
+      "utf8"
+    ).toString("base64url");
+    const res = await request(app)
+      .get(
+        `/api/v1/documents?sort=createdAt:desc&limit=5&cursor=${encodeURIComponent(tampered)}`
+      )
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(400);
+  });
+
   it("Sprint 6.8: cursor minted under one sort is rejected by another (mismatch 400)", async () => {
     const token = await setupAuth();
     const [company] = await db

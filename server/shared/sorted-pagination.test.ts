@@ -15,6 +15,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  assertCursorValueIsIsoDate,
   buildSortedPage,
   decodeSortedCursor,
   encodeSortKey,
@@ -32,7 +33,12 @@ describe("encodeSortKey", () => {
 
 describe("encode / decode SortedCursor — round-trip", () => {
   it("decodes back the same payload it encoded", () => {
-    const cursor = { sort: "companyName:asc", value: "acme inc", id: "abc-123" };
+    const cursor = {
+      sort: "companyName:asc",
+      value: "acme inc",
+      // Sprint 6.9 N1: id must now pass UUID validation; use a real one.
+      id: "11111111-1111-4111-8111-111111111111"
+    };
     const raw = encodeSortedCursor(cursor);
     const decoded = decodeSortedCursor(raw, "companyName:asc");
     expect(decoded).toEqual(cursor);
@@ -54,7 +60,11 @@ describe("encode / decode SortedCursor — round-trip", () => {
   });
 
   it("decode REJECTS a sort/cursor mismatch (operator changed sort mid-pagination)", () => {
-    const cursor = { sort: "createdAt:desc", value: "2026-05-19T00:00:00Z", id: "id-1" };
+    const cursor = {
+      sort: "createdAt:desc",
+      value: "2026-05-19T00:00:00Z",
+      id: "22222222-2222-4222-8222-222222222222"
+    };
     const raw = encodeSortedCursor(cursor);
     expect(() => decodeSortedCursor(raw, "companyName:asc")).toThrow(ValidationError);
   });
@@ -105,6 +115,45 @@ describe("parseSortQuery", () => {
     expect(() => parseSortQuery(":asc", allowed, defaults)).toThrow(ValidationError);
     expect(() => parseSortQuery("title:", allowed, defaults)).toThrow(ValidationError);
   });
+
+  it("Sprint 6.9 S10: error message does NOT reflect user input verbatim", () => {
+    try {
+      parseSortQuery("totallyEvilFieldName:asc", allowed, defaults);
+      throw new Error("expected throw");
+    } catch (e) {
+      const err = e as ValidationError;
+      // The message must NOT contain the attacker-supplied string.
+      // (It mentions the static allowed list, which is fine.)
+      const msg = JSON.stringify(err);
+      expect(msg).not.toContain("totallyEvilFieldName");
+    }
+  });
+});
+
+describe("Sprint 6.9 N1: decodeSortedCursor validates cursor.id as UUID", () => {
+  it("rejects a cursor with a non-UUID id", () => {
+    const bad = encodeSortedCursor({
+      sort: "createdAt:desc",
+      value: "2026-01-01T00:00:00Z",
+      id: "not-a-uuid"
+    });
+    expect(() => decodeSortedCursor(bad, "createdAt:desc")).toThrow(ValidationError);
+  });
+});
+
+describe("Sprint 6.9 C1: assertCursorValueIsIsoDate", () => {
+  it("accepts a valid ISO timestamp", () => {
+    expect(() => assertCursorValueIsIsoDate("2026-05-19T00:00:00.000Z")).not.toThrow();
+  });
+  it("accepts a partial ISO that Date.parse handles", () => {
+    expect(() => assertCursorValueIsIsoDate("2026-05-19")).not.toThrow();
+  });
+  it("REJECTS a non-date string", () => {
+    expect(() => assertCursorValueIsIsoDate("not-a-date")).toThrow(ValidationError);
+  });
+  it("REJECTS an empty string", () => {
+    expect(() => assertCursorValueIsIsoDate("")).toThrow(ValidationError);
+  });
 });
 
 describe("buildSortedPage", () => {
@@ -117,7 +166,7 @@ describe("buildSortedPage", () => {
       5,
       sort,
       r => r,
-      r => ({ value: r.title, id: r.id })
+      r => ({ value: r.title, id: `${"0".repeat(8)}-0000-4000-8000-${r.id.padStart(12, "0")}` })
     );
     expect(page.items).toHaveLength(2);
     expect(page.nextCursor).toBeNull();
@@ -137,7 +186,7 @@ describe("buildSortedPage", () => {
       2,
       sort,
       r => r,
-      r => ({ value: r.title, id: r.id })
+      r => ({ value: r.title, id: `${"0".repeat(8)}-0000-4000-8000-${r.id.padStart(12, "0")}` })
     );
     expect(page.items).toHaveLength(2);
     expect(page.items.map(r => r.id)).toEqual(["1", "2"]);
@@ -146,6 +195,9 @@ describe("buildSortedPage", () => {
     // The cursor encodes the sort spec + the LAST row of the kept page
     // (row id 2, title "b") — not the overflow row.
     const decoded = decodeSortedCursor(page.nextCursor!, "title:asc");
-    expect(decoded).toEqual({ sort: "title:asc", value: "b", id: "2" });
+    expect(decoded?.sort).toBe("title:asc");
+    expect(decoded?.value).toBe("b");
+    // id padded to UUID-shaped via the toCursor helper above.
+    expect(decoded?.id).toBe("00000000-0000-4000-8000-000000000002");
   });
 });

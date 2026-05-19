@@ -21,7 +21,11 @@ import {
 } from "@tanstack/react-query";
 import { ApiError } from "../api/client.js";
 import * as configsApi from "../api/calculator-configs.js";
-import type { CursorPage, PublicCalculatorConfig } from "../api/types.js";
+import type {
+  CursorPage,
+  PublicCalculatorConfig,
+  PublicCalculatorConfigListItem
+} from "../api/types.js";
 
 /**
  * GET /api/v1/calculator-configs/:id — single config by UUID.
@@ -104,8 +108,11 @@ export interface UseCalculatorConfigsOptions {
    * sort as part of the cache key, so flipping sort starts a fresh
    * page chain — the backend rejects cursor/sort mismatches with a
    * 400 anyway, so this is defensive.
+   *
+   * Sprint 6.9 S2: typed via `CalculatorConfigSortSpec` for
+   * compile-time typo detection.
    */
-  sort?: string;
+  sort?: configsApi.CalculatorConfigSortSpec;
   limit?: number;
   /**
    * Sprint 6.6: gate the underlying TanStack query. Defaults to true.
@@ -117,7 +124,13 @@ export interface UseCalculatorConfigsOptions {
 }
 
 export interface UseCalculatorConfigsResult {
-  items: PublicCalculatorConfig[];
+  /**
+   * Sprint 6.9 S12: items narrowed to `PublicCalculatorConfigListItem`.
+   * companyName is guaranteed by the backend INNER JOIN; the strict
+   * type prevents single-config payloads from leaking through the
+   * same render path.
+   */
+  items: PublicCalculatorConfigListItem[];
   isLoading: boolean;
   isFetching: boolean;
   isError: boolean;
@@ -127,9 +140,15 @@ export interface UseCalculatorConfigsResult {
   isFetchingNextPage: boolean;
 }
 
+/** Sprint 6.9 N3: backend default sort. Single cache entry for the
+ * implicit and the explicit-default cases. */
+const DEFAULT_CALC_CONFIGS_SORT: configsApi.CalculatorConfigSortSpec =
+  "createdAt:desc";
+
 export function useCalculatorConfigs(
   options: UseCalculatorConfigsOptions
 ): UseCalculatorConfigsResult {
+  const sort = options.sort ?? DEFAULT_CALC_CONFIGS_SORT;
   const query = useInfiniteQuery<
     CursorPage<PublicCalculatorConfig>,
     ApiError,
@@ -145,7 +164,7 @@ export function useCalculatorConfigs(
         hubspotDealId: options.hubspotDealId,
         showAll: options.showAll ?? true,
         q: options.q?.trim() || undefined,
-        sort: options.sort,
+        sort,
         limit: options.limit
       }
     ],
@@ -157,15 +176,19 @@ export function useCalculatorConfigs(
         hubspotDealId: options.hubspotDealId,
         showAll: options.showAll ?? true,
         q: options.q?.trim() || undefined,
-        sort: options.sort,
+        sort,
         cursor: pageParam,
         limit: options.limit
       }),
     getNextPageParam: lastPage => lastPage.nextCursor ?? undefined
   });
 
+  // Sprint 6.9 S12: cast through the strict list-item type — see
+  // useDocuments for the same pattern.
   const items = useMemo(
-    () => query.data?.pages.flatMap(page => page.items) ?? [],
+    () =>
+      (query.data?.pages.flatMap(page => page.items) ??
+        []) as PublicCalculatorConfigListItem[],
     [query.data]
   );
 

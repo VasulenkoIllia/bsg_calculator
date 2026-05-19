@@ -24,7 +24,11 @@ import {
   type Document,
   type NewDocument
 } from "../../db/schema";
-import type { SortSpec, SortedCursor } from "../../shared/sorted-pagination";
+import {
+  assertCursorValueIsIsoDate,
+  type SortSpec,
+  type SortedCursor
+} from "../../shared/sorted-pagination";
 
 /**
  * Sprint 6.8: list-endpoint row shape that carries the parent company
@@ -130,7 +134,12 @@ function buildOrderByAndCursorPredicate(
   // Per-field SQL expression for ORDER BY and cursor comparison.
   // Strings use LOWER() for case-insensitive A-Z ordering.
   const exprByField: Record<DocumentSortField, ReturnType<typeof sql>> = {
-    number: sql`LOWER(${documents.number})`,
+    // Sprint 6.9 S6: number is uppercase fixed-format
+    // (BSG-XXXXXXX-XXXXXX), so LOWER() is a no-op AND prevents the
+    // `documents_number_lower_idx` from being used. Compare raw —
+    // and the index migration covers the LOWER variant for the
+    // string columns that actually need it.
+    number: sql`${documents.number}`,
     companyName: sql`LOWER(${companies.name})`,
     scope: sql`LOWER(${documents.scope})`,
     hubspotSyncState: sql`LOWER(${documents.hubspotSyncState})`,
@@ -146,10 +155,19 @@ function buildOrderByAndCursorPredicate(
     // For date sort, cursor.value is ISO; cast to timestamp for the
     // comparison so it matches the timestamp column. For string sorts,
     // cursor.value is already lowercased on emit.
-    const cursorValueExpr =
-      sort.field === "createdAt"
-        ? sql`${new Date(cursor.value)}::timestamptz`
-        : sql`${cursor.value}`;
+    //
+    // Sprint 6.9 C1: validate the ISO string BEFORE constructing the
+    // Date. An invalid value here would otherwise either crash inside
+    // Drizzle's parameter serialization (500) or silently coerce to
+    // NULL (empty result). Either is a contract bug; this is the
+    // single chokepoint that converts it into a clean 400.
+    let cursorValueExpr;
+    if (sort.field === "createdAt") {
+      assertCursorValueIsIsoDate(cursor.value);
+      cursorValueExpr = sql`${new Date(cursor.value)}::timestamptz`;
+    } else {
+      cursorValueExpr = sql`${cursor.value}`;
+    }
 
     cursorPredicate = or(
       dirCmp(expr, cursorValueExpr),
@@ -164,6 +182,11 @@ function buildOrderByAndCursorPredicate(
  * Emit the string value that should be stored in the cursor for a
  * given row + sort field. Mirrors `buildOrderByAndCursorPredicate`'s
  * LOWER() so the predicate composes with the stored value.
+ *
+ * Sprint 6.9 S1: explicit `: string` return type + `assertNever`
+ * default arm so adding a new entry to `DocumentSortField` without
+ * updating this switch becomes a COMPILE error rather than a
+ * silent undefined-returning function that corrupts the cursor.
  */
 export function cursorValueForRow(
   row: DocumentWithCompanyName,
@@ -171,7 +194,11 @@ export function cursorValueForRow(
 ): string {
   switch (field) {
     case "number":
-      return row.number.toLowerCase();
+      // Sprint 6.9 S6: documents.number is uppercase fixed-format
+      // (BSG-XXXXXXX-XXXXXX); LOWER() in SQL is a no-op but the
+      // cursor used to .toLowerCase() to match. We now sort by raw
+      // value so the cursor stays uppercase too.
+      return row.number;
     case "companyName":
       return row.companyName.toLowerCase();
     case "scope":
@@ -180,6 +207,10 @@ export function cursorValueForRow(
       return row.hubspotSyncState.toLowerCase();
     case "createdAt":
       return row.createdAt.toISOString();
+    default: {
+      const _exhaustive: never = field;
+      throw new Error(`cursorValueForRow: unhandled sort field ${String(_exhaustive)}`);
+    }
   }
 }
 

@@ -11,6 +11,7 @@
 
 import { Router } from "express";
 import { requireAuth } from "../../middleware/require-auth";
+import { listingLimiter } from "../../middleware/rate-limit";
 import { asyncHandler } from "../../shared/async-handler";
 import {
   createController,
@@ -24,7 +25,9 @@ export const calculatorConfigsRouter = Router();
 
 calculatorConfigsRouter.use(requireAuth());
 
-calculatorConfigsRouter.get("/", asyncHandler(listController));
+// Sprint 6.9 N4: tighter rate limit on the list path. See
+// middleware/rate-limit.ts → listingLimiter (30/min/IP).
+calculatorConfigsRouter.get("/", listingLimiter, asyncHandler(listController));
 calculatorConfigsRouter.post("/", asyncHandler(createController));
 calculatorConfigsRouter.get("/:id", asyncHandler(getController));
 calculatorConfigsRouter.put("/:id", asyncHandler(updateController));

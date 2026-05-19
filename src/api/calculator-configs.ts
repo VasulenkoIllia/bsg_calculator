@@ -41,6 +41,12 @@ export type CalculatorConfigSortField =
   | "updatedAt"
   | "createdAt";
 
+/**
+ * Sprint 6.9 S2: typed sort string. Catches typos at compile time.
+ */
+export type CalculatorConfigSortSpec =
+  `${CalculatorConfigSortField}:${"asc" | "desc"}`;
+
 export interface ListCalculatorConfigsParams {
   /**
    * Sprint 6.6: optional. When omitted → cross-company listing for
@@ -54,8 +60,8 @@ export interface ListCalculatorConfigsParams {
   showAll?: boolean;
   /** Sprint 6.6: substring search on title. Empty string ignored. */
   q?: string;
-  /** Sprint 6.8: "field:asc" or "field:desc"; default "createdAt:desc". */
-  sort?: string;
+  /** Sprint 6.8 / S2: typed "field:asc" or "field:desc"; default "createdAt:desc". */
+  sort?: CalculatorConfigSortSpec;
   cursor?: string;
   limit?: number;
 }

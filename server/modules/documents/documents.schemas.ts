@@ -81,10 +81,16 @@ export const listDocumentsQuerySchema = z.object({
   // pre-6.8 behaviour). Allowed values are validated by the service
   // via `parseSortQuery` — this schema accepts any short string so
   // the error surface is a single VALIDATION_FAILED from the parser.
+  // Sprint 6.9 N2: relaxed from /^[a-zA-Z]+:.../ to allow digits +
+  // underscores in the field segment. Future field names like
+  // `zone1` or `created_at` (snake-case alternative) would have been
+  // pre-rejected by Zod before parseSortQuery could whitelist-validate.
+  // The security boundary is still the whitelist in
+  // `parseSortQuery` — this regex is shape pre-filter only.
   sort: z
     .string()
     .max(64)
-    .regex(/^[a-zA-Z]+:(asc|desc)$/, {
+    .regex(/^[a-zA-Z][\w]*:(asc|desc)$/, {
       message: "sort must be in 'field:asc' or 'field:desc' form"
     })
     .optional(),

@@ -136,8 +136,17 @@ export function CalculatorPage() {
   // and any default-filling done by seedCalculatorStateFromSnapshot
   // (e.g. backfilling a field absent from the stored row) would be
   // silently persisted as if the operator had typed it.
+  //
+  // Sprint 6.9 S4: reset `hydratedFromIdRef` for the SAME reason —
+  // navigating /calc/A → /calc/B → /calc/A leaves the ref pointing
+  // at "A" from visit #1, so the hydrate effect short-circuits on
+  // visit #3 and never re-applies A's persisted payload. Operator
+  // sees stale state from CalculatorContext if they edited B in
+  // between. Resetting on configId change forces re-hydration on
+  // every navigation to a config page.
   useEffect(() => {
     autoSaveArmedRef.current = false;
+    hydratedFromIdRef.current = null;
   }, [configId]);
   useEffect(() => {
     if (!isEditMode) return;

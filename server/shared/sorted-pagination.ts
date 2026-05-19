@@ -52,9 +52,22 @@ export function encodeSortedCursor(c: SortedCursor): string {
 }
 
 /**
+ * Lazy UUID regex — same shape as Zod's `.uuid()` but inlined so the
+ * shared-pagination helpers don't pull in Zod. Used to validate
+ * cursor.id before it reaches the repository (a non-UUID would
+ * produce a Postgres `22P02` and surface as a 500 — Sprint 6.9 N1).
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
  * Decode + validate that the cursor's sort spec matches the current
  * `?sort=` query param. Mismatch is treated as a malformed cursor
  * (the operator changed sort mid-pagination — frontend should reset).
+ *
+ * Sprint 6.9 C1 + N1: also validates `id` is a UUID. Date-typed sort
+ * fields validate `value` is parseable as a Date in the repository
+ * layer (see `validateCursorValueAsDate`) — the helper can't do that
+ * here because the field→type mapping is per-endpoint.
  */
 export function decodeSortedCursor(
   raw: string | undefined,
@@ -84,6 +97,12 @@ export function decodeSortedCursor(
     );
   }
   const c = parsed as SortedCursor;
+  if (!UUID_RE.test(c.id)) {
+    throw new ValidationError(
+      [{ path: ["cursor"], message: "Cursor id is malformed." }],
+      "Invalid cursor id"
+    );
+  }
   if (c.sort !== expectedSort) {
     throw new ValidationError(
       [
@@ -97,6 +116,26 @@ export function decodeSortedCursor(
     );
   }
   return c;
+}
+
+/**
+ * Sprint 6.9 C1: validate that a cursor's `value` parses as a date
+ * BEFORE we hand it to `new Date(...)` and Drizzle. Without this,
+ * a tampered cursor like `{ value: "not-a-date" }` either produces
+ * Postgres `22P02 invalid_input_syntax for type timestamptz` (raw
+ * 500) or silently coerces to NULL (empty result with no error).
+ * Both are bad — we want a clean 400.
+ *
+ * Used by repositories whose sort spec includes a timestamp field.
+ */
+export function assertCursorValueIsIsoDate(value: string): void {
+  const ms = Date.parse(value);
+  if (Number.isNaN(ms)) {
+    throw new ValidationError(
+      [{ path: ["cursor"], message: "Cursor value is not a valid ISO timestamp." }],
+      "Invalid cursor value for date sort"
+    );
+  }
 }
 
 /**
@@ -153,7 +192,24 @@ export function parseSortQuery<TField extends string>(
   defaults: SortSpec<TField>
 ): SortSpec<TField> {
   if (!raw) return defaults;
+  // Sprint 6.9 N8: only allow ONE colon. Don't split into more parts
+  // and discard silently — explicitly reject extra colons.
+  const colonCount = (raw.match(/:/g) ?? []).length;
+  if (colonCount !== 1) {
+    throw new ValidationError(
+      [
+        {
+          path: ["sort"],
+          message:
+            "sort must contain exactly one ':' separator and be in 'field:asc' or 'field:desc' form"
+        }
+      ],
+      "Invalid sort"
+    );
+  }
   const parts = raw.split(":");
+  // Defensive: colonCount===1 already guarantees length===2, but
+  // keep the check so the tuple destructure below is sound.
   if (parts.length !== 2) {
     throw new ValidationError(
       [{ path: ["sort"], message: "sort must be in 'field:asc' or 'field:desc' form" }],
@@ -162,11 +218,15 @@ export function parseSortQuery<TField extends string>(
   }
   const [fieldPart, dirPart] = parts;
   if (!allowed.includes(fieldPart as TField)) {
+    // Sprint 6.9 S10: DO NOT reflect `fieldPart` (user input) back in
+    // the error payload — that's a minor content-injection vector
+    // and makes fuzzing the whitelist trivial. Only the static list
+    // of allowed fields is returned.
     throw new ValidationError(
       [
         {
           path: ["sort"],
-          message: `unknown sort field '${fieldPart}'; allowed: ${allowed.join(", ")}`
+          message: `Unknown sort field; allowed: ${allowed.join(", ")}`
         }
       ],
       "Invalid sort field"

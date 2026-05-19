@@ -13,7 +13,7 @@
 
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { SortableTh, type SortDirection } from "./SortableTh";
+import { SortableTh, type SortDirection } from "./SortableTh.js";
 
 type Field = "name" | "created";
 
@@ -119,5 +119,24 @@ describe("SortableTh", () => {
     setup({ field: "created", activeField: "name" });
     const button = screen.getByRole("button", { name: /header/i });
     expect(button.textContent).toContain("—");
+  });
+
+  it("Sprint 6.9 S9: clicking an inactive column ALWAYS starts asc, regardless of the previous active direction", () => {
+    // Sprint 6.9 audit S9: locks the contract that switching to a
+    // NEW column resets the direction. Without this, a parent that
+    // forgot to reset sortDir on column-change could carry "desc"
+    // into the new column unexpectedly, surfacing as a sort/cursor
+    // mismatch + 400 on the next page.
+    const { onSortChange } = setup({
+      field: "created",
+      activeField: "name",
+      activeDirection: "desc"
+    });
+    fireEvent.click(screen.getByRole("button", { name: /header/i }));
+    expect(onSortChange).toHaveBeenCalledTimes(1);
+    // Even though active direction was "desc", clicking the
+    // inactive column must surface as "asc" — that's the
+    // SortableTh contract.
+    expect(onSortChange).toHaveBeenCalledWith("created", "asc");
   });
 });

@@ -103,6 +103,16 @@ export type UpdateCalculatorConfigRequest = z.infer<typeof updateCalculatorConfi
  *      optionally substring-filtered on title. Powers the
  *      "Saved Calculators" workspace tab.
  *
+ *      Sprint 6.9 S11 — AUTHORIZATION POLICY: this endpoint is gated
+ *      ONLY by `requireAuth`. There is no per-row ownership check;
+ *      any authenticated user sees every config across every
+ *      company. This is INTENTIONAL because the application is a
+ *      single-team internal tool — BSG operators all collaborate
+ *      over the same workspace. If credentials are ever issued to
+ *      external integrators or end-clients, this becomes an IDOR
+ *      vector and MUST be reworked to enforce a user↔company
+ *      membership join before returning rows.
+ *
  * Sprint 6.6: `companyId` relaxed from required to optional so the
  * top-level discovery view works. When absent, no per-company
  * filter applies; when present, behaviour matches Sprint 3 + 6.4.
@@ -121,10 +131,11 @@ export const listCalculatorConfigsQuerySchema = z.object({
   // and dir is "asc" or "desc". Default: "createdAt:desc" (matches
   // pre-6.8 behaviour). Whitelist enforcement happens in the service
   // via `parseSortQuery` — Zod here only checks the shape.
+  // Sprint 6.9 N2: see documents.schemas.ts — relaxed shape filter.
   sort: z
     .string()
     .max(64)
-    .regex(/^[a-zA-Z]+:(asc|desc)$/, {
+    .regex(/^[a-zA-Z][\w]*:(asc|desc)$/, {
       message: "sort must be in 'field:asc' or 'field:desc' form"
     })
     .optional(),

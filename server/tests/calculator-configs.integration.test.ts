@@ -649,4 +649,99 @@ describe("GET /api/v1/calculator-configs — picker scope", () => {
       .set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(400);
   });
+
+  it("Sprint 6.9 S7: cursor pagination crosses NULL/non-NULL hubspotDealId boundary correctly", async () => {
+    // Sprint 6.9 audit S7: previous integration tests only covered
+    // title/companyName sort cursors. The hubspotDealId column is
+    // nullable + COALESCE'd to '' for ordering, so NULL rows and
+    // any (hypothetical) empty-string rows cluster at the same
+    // sort position. The cursor must still walk through them
+    // exactly once without skipping or duplicating.
+    const token = await setupAuth();
+    const [company] = await db.insert(companies).values(companyFixture()).returning();
+    const [deal] = await db
+      .insert(deals)
+      .values(dealFixture(company.hubspotCompanyId))
+      .returning();
+    // 2 NULL-deal configs + 1 with the real deal pin.
+    await request(app)
+      .post("/api/v1/calculator-configs")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, title: "no deal A", payload: samplePayload });
+    await request(app)
+      .post("/api/v1/calculator-configs")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, title: "no deal B", payload: samplePayload });
+    await request(app)
+      .post("/api/v1/calculator-configs")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        companyId: company.id,
+        hubspotDealId: deal.hubspotDealId,
+        title: "with deal",
+        payload: samplePayload
+      });
+
+    const page1 = await request(app)
+      .get(
+        `/api/v1/calculator-configs?companyId=${company.id}&showAll=true&sort=hubspotDealId:asc&limit=2`
+      )
+      .set("Authorization", `Bearer ${token}`);
+    expect(page1.status).toBe(200);
+    expect(page1.body.items).toHaveLength(2);
+    expect(page1.body.nextCursor).toBeTruthy();
+
+    const page2 = await request(app)
+      .get(
+        `/api/v1/calculator-configs?companyId=${company.id}&showAll=true&sort=hubspotDealId:asc&limit=2&cursor=${encodeURIComponent(page1.body.nextCursor)}`
+      )
+      .set("Authorization", `Bearer ${token}`);
+    expect(page2.status).toBe(200);
+    expect(page2.body.items).toHaveLength(1);
+
+    // All 3 distinct rows should have come through across the
+    // two pages — no duplicates, no skipped rows.
+    const allIds = [
+      ...page1.body.items.map((c: { id: string }) => c.id),
+      ...page2.body.items.map((c: { id: string }) => c.id)
+    ];
+    expect(new Set(allIds).size).toBe(3);
+  });
+
+  it("Sprint 6.9 C1: tampered cursor with non-ISO date value is rejected with 400 (not 500)", async () => {
+    const token = await setupAuth();
+    // Craft a cursor by hand: sort matches default, value is garbage.
+    const tampered = Buffer.from(
+      JSON.stringify({
+        sort: "createdAt:desc",
+        value: "definitely-not-a-date",
+        id: "00000000-0000-4000-8000-000000000000"
+      }),
+      "utf8"
+    ).toString("base64url");
+    const res = await request(app)
+      .get(
+        `/api/v1/calculator-configs?sort=createdAt:desc&limit=5&cursor=${encodeURIComponent(tampered)}`
+      )
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(400);
+  });
+
+  it("Sprint 6.9 N1: tampered cursor with non-UUID id is rejected with 400 (not 500)", async () => {
+    const token = await setupAuth();
+    const tampered = Buffer.from(
+      JSON.stringify({
+        sort: "createdAt:desc",
+        value: "2026-01-01T00:00:00.000Z",
+        id: "not-a-uuid"
+      }),
+      "utf8"
+    ).toString("base64url");
+    const res = await request(app)
+      .get(
+        `/api/v1/calculator-configs?sort=createdAt:desc&limit=5&cursor=${encodeURIComponent(tampered)}`
+      )
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(400);
+  });
 });

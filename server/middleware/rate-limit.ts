@@ -107,3 +107,20 @@ export const pdfPreviewLimiter = buildLimiter({
   max: 10,
   message: "Too many PDF preview requests. Wait a moment and try again."
 });
+
+/**
+ * Sprint 6.9 N4 — listing limiter for endpoints that accept the
+ * Sprint 6.8 `?sort=` parameter. `LOWER()` ORDER BY without a
+ * functional index used to filesort on every page; the indexes
+ * shipped in 0006 migrate the LOWER variant for the affected
+ * columns, but a malicious caller could still walk every cursor at
+ * 60 req/min, hitting the JOIN'd listing repeatedly.
+ *
+ * 30/min/IP leaves headroom for legitimate Load-more clicks (one
+ * page every ~2 seconds is generous) while halving the worst-case
+ * cost vs the global apiLimiter.
+ */
+export const listingLimiter = buildLimiter({
+  max: 30,
+  message: "Too many list requests. Wait a moment and try again."
+});

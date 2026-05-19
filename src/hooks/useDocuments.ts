@@ -16,7 +16,8 @@ import { ApiError } from "../api/client.js";
 import * as documentsApi from "../api/documents.js";
 import type {
   CursorPage,
-  PublicDocument
+  PublicDocument,
+  PublicDocumentListItem
 } from "../api/types.js";
 
 export interface UseDocumentsOptions {
@@ -31,8 +32,11 @@ export interface UseDocumentsOptions {
    * "companyName:asc"). Default "createdAt:desc" (matches pre-6.8
    * behaviour). Changing sort mid-pagination resets the cursor chain
    * automatically because TanStack Query treats it as a new queryKey.
+   *
+   * Sprint 6.9 S2: typed via `DocumentSortSpec` so typos in field
+   * name or direction fail at compile time.
    */
-  sort?: string;
+  sort?: documentsApi.DocumentSortSpec;
   limit?: number;
   /**
    * Sprint 6.4: gate the underlying query. Defaults to true (matches
@@ -44,7 +48,14 @@ export interface UseDocumentsOptions {
 }
 
 export interface UseDocumentsResult {
-  items: PublicDocument[];
+  /**
+   * Sprint 6.9 S12: items are narrowed to `PublicDocumentListItem`
+   * because the backend list endpoint INNER-JOINs companies and
+   * guarantees `companyName`. The narrow type prevents list-renderer
+   * call sites from accidentally feeding single-doc payloads
+   * (which omit `companyName`) through the same path.
+   */
+  items: PublicDocumentListItem[];
   isLoading: boolean;
   isFetching: boolean;
   isError: boolean;
@@ -54,8 +65,15 @@ export interface UseDocumentsResult {
   isFetchingNextPage: boolean;
 }
 
+/** Sprint 6.9 N3: backend default sort. Mirroring it client-side
+ * means `useDocuments({})` and `useDocuments({ sort: "createdAt:desc" })`
+ * share a single TanStack Query cache entry instead of forking into
+ * two identical requests. */
+const DEFAULT_DOCUMENTS_SORT: documentsApi.DocumentSortSpec = "createdAt:desc";
+
 export function useDocuments(options: UseDocumentsOptions = {}): UseDocumentsResult {
   const normalisedQ = options.q?.trim() ? options.q.trim() : undefined;
+  const sort = options.sort ?? DEFAULT_DOCUMENTS_SORT;
 
   const query = useInfiniteQuery<
     CursorPage<PublicDocument>,
@@ -76,7 +94,7 @@ export function useDocuments(options: UseDocumentsOptions = {}): UseDocumentsRes
         // Sprint 6.8: sort is part of the cache key so flipping sort
         // surfaces as a new query rather than reusing the cursor
         // chain — the backend would 400 on a sort/cursor mismatch.
-        sort: options.sort,
+        sort,
         limit: options.limit
       }
     ],
@@ -89,15 +107,21 @@ export function useDocuments(options: UseDocumentsOptions = {}): UseDocumentsRes
         calculatorConfigId: options.calculatorConfigId,
         scope: options.scope,
         q: normalisedQ,
-        sort: options.sort,
+        sort,
         cursor: pageParam,
         limit: options.limit
       }),
     getNextPageParam: lastPage => lastPage.nextCursor ?? undefined
   });
 
+  // Sprint 6.9 S12: cast through the narrower type since the wire
+  // envelope is PublicDocument-shaped but the LIST contract
+  // guarantees companyName. This is the single trust boundary —
+  // every consumer downstream gets the strict type.
   const items = useMemo(
-    () => query.data?.pages.flatMap(page => page.items) ?? [],
+    () =>
+      (query.data?.pages.flatMap(page => page.items) ??
+        []) as PublicDocumentListItem[],
     [query.data]
   );
 
