@@ -27,9 +27,11 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api/client.js";
 import { LoadMoreButton } from "../components/LoadMoreButton.js";
+import { SortableTh, type SortDirection } from "../components/SortableTh.js";
 import { useCalculatorConfigs } from "../hooks/useCalculatorConfig.js";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
 import { formatDate } from "../shared/format.js";
+import type { CalculatorConfigSortField } from "../api/calculator-configs.js";
 
 export function CalculatorsListPage() {
   const [searchInput, setSearchInput] = useState("");
@@ -37,8 +39,17 @@ export function CalculatorsListPage() {
   // doesn't fire a request per keystroke. Mirrors the pattern used
   // on /documents (DocumentsListPage) and the company-typeahead.
   const q = useDebouncedValue(searchInput, 300);
+  // Sprint 6.8: per-column sort state. Default mirrors backend
+  // default (createdAt:desc) so the initial render matches pre-6.8.
+  const [sortField, setSortField] = useState<CalculatorConfigSortField>("createdAt");
+  const [sortDir, setSortDir] = useState<SortDirection>("desc");
 
-  const configs = useCalculatorConfigs({ q });
+  const handleSortChange = (field: CalculatorConfigSortField, dir: SortDirection) => {
+    setSortField(field);
+    setSortDir(dir);
+  };
+
+  const configs = useCalculatorConfigs({ q, sort: `${sortField}:${sortDir}` });
   // Sprint 6.7 audit fix (S9): mirror the DocumentsListPage UX —
   // when TanStack Query is re-fetching the listing (e.g. after a
   // window-focus or a mutation invalidates the cache) show a
@@ -86,13 +97,43 @@ export function CalculatorsListPage() {
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-600">
+          <thead className="bg-slate-50">
             <tr>
-              <th className="px-4 py-3 text-left">Title</th>
-              <th className="px-4 py-3 text-left">Company</th>
-              <th className="px-4 py-3 text-left">Deal pin</th>
-              <th className="px-4 py-3 text-left">Updated</th>
-              <th className="px-4 py-3" />
+              <SortableTh
+                field="title"
+                activeField={sortField}
+                activeDirection={sortDir}
+                onSortChange={handleSortChange}
+              >
+                Title
+              </SortableTh>
+              <SortableTh
+                field="companyName"
+                activeField={sortField}
+                activeDirection={sortDir}
+                onSortChange={handleSortChange}
+              >
+                Company
+              </SortableTh>
+              <SortableTh
+                field="hubspotDealId"
+                activeField={sortField}
+                activeDirection={sortDir}
+                onSortChange={handleSortChange}
+              >
+                Deal pin
+              </SortableTh>
+              <SortableTh
+                field="updatedAt"
+                activeField={sortField}
+                activeDirection={sortDir}
+                onSortChange={handleSortChange}
+              >
+                Updated
+              </SortableTh>
+              {/* Right-most action column has no header label and is
+                  not sortable — the Open → link is row-level. */}
+              <th className="px-4 py-3" aria-label="Actions" />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">

@@ -28,6 +28,19 @@ export interface CreateCalculatorConfigRequest {
 /** PUT body — same as create minus `companyId` (locked after insert). */
 export type UpdateCalculatorConfigRequest = Omit<CreateCalculatorConfigRequest, "companyId">;
 
+/**
+ * Sprint 6.8: per-column sort spec union. Same shape as
+ * documents.DocumentSortField — kept in lockstep with the backend
+ * whitelist (server/modules/calculator-configs/calculator-configs.repository.ts
+ * → calculatorConfigSortFields).
+ */
+export type CalculatorConfigSortField =
+  | "title"
+  | "companyName"
+  | "hubspotDealId"
+  | "updatedAt"
+  | "createdAt";
+
 export interface ListCalculatorConfigsParams {
   /**
    * Sprint 6.6: optional. When omitted → cross-company listing for
@@ -41,6 +54,8 @@ export interface ListCalculatorConfigsParams {
   showAll?: boolean;
   /** Sprint 6.6: substring search on title. Empty string ignored. */
   q?: string;
+  /** Sprint 6.8: "field:asc" or "field:desc"; default "createdAt:desc". */
+  sort?: string;
   cursor?: string;
   limit?: number;
 }

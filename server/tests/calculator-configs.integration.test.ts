@@ -584,4 +584,69 @@ describe("GET /api/v1/calculator-configs — picker scope", () => {
     expect(res.status).toBe(200);
     expect(res.body.items[0].companyName).toBe("Acme Holdings");
   });
+
+  it("Sprint 6.8: ?sort=title:asc orders alphabetically regardless of insert order", async () => {
+    const token = await setupAuth();
+    const [company] = await db.insert(companies).values(companyFixture()).returning();
+    // Insert in deliberately scrambled order so a default
+    // createdAt-DESC sort would NOT match the asc-by-title output.
+    for (const t of ["Charlie draft", "Alpha draft", "Bravo draft"]) {
+      await request(app)
+        .post("/api/v1/calculator-configs")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ companyId: company.id, title: t, payload: samplePayload });
+    }
+
+    const asc = await request(app)
+      .get(`/api/v1/calculator-configs?companyId=${company.id}&showAll=true&sort=title:asc&limit=10`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(asc.status).toBe(200);
+    const titles = asc.body.items.map((c: { title: string | null }) => c.title);
+    expect(titles).toEqual(["Alpha draft", "Bravo draft", "Charlie draft"]);
+
+    // And the reverse.
+    const desc = await request(app)
+      .get(`/api/v1/calculator-configs?companyId=${company.id}&showAll=true&sort=title:desc&limit=10`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(desc.body.items.map((c: { title: string | null }) => c.title)).toEqual([
+      "Charlie draft",
+      "Bravo draft",
+      "Alpha draft"
+    ]);
+  });
+
+  it("Sprint 6.8: ?sort=companyName:asc orders across companies", async () => {
+    const token = await setupAuth();
+    const [coB] = await db
+      .insert(companies)
+      .values(companyFixture({ name: "Bravo Corp", hubspotCompanyId: "666666888801" }))
+      .returning();
+    const [coA] = await db
+      .insert(companies)
+      .values(companyFixture({ name: "Acme Holdings", hubspotCompanyId: "666666888802" }))
+      .returning();
+    for (const co of [coB, coA]) {
+      await request(app)
+        .post("/api/v1/calculator-configs")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ companyId: co.id, title: `draft for ${co.name}`, payload: samplePayload });
+    }
+    const res = await request(app)
+      .get(`/api/v1/calculator-configs?sort=companyName:asc&limit=10`)
+      .set("Authorization", `Bearer ${token}`);
+    const names = res.body.items.map((c: { companyName?: string }) => c.companyName);
+    // Acme < Bravo regardless of insertion order.
+    const idxA = names.indexOf("Acme Holdings");
+    const idxB = names.indexOf("Bravo Corp");
+    expect(idxA).toBeGreaterThanOrEqual(0);
+    expect(idxA).toBeLessThan(idxB);
+  });
+
+  it("Sprint 6.8: unknown sort field is rejected with 400", async () => {
+    const token = await setupAuth();
+    const res = await request(app)
+      .get(`/api/v1/calculator-configs?sort=bogus:asc`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(400);
+  });
 });

@@ -471,6 +471,107 @@ describe("GET /api/v1/documents — list + filters", () => {
       .set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(400);
   });
+
+  it("Sprint 6.8: list returns companyName via JOIN", async () => {
+    const token = await setupAuth();
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture({ name: "Sprint 6.8 Docs Co", hubspotCompanyId: "555555111100" }))
+      .returning();
+    await request(app)
+      .post("/api/v1/documents")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, scope: "offer", payload: samplePayload });
+
+    const res = await request(app)
+      .get(`/api/v1/documents?companyId=${company.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].companyName).toBe("Sprint 6.8 Docs Co");
+  });
+
+  it("Sprint 6.8: ?sort=companyName:asc orders rows A-Z regardless of insert order", async () => {
+    const token = await setupAuth();
+    // Insert THREE companies whose names sort A→C in alphabetical
+    // order; the insert order below is deliberately scrambled so a
+    // naive "ORDER BY createdAt DESC" default would NOT match the
+    // expected A→B→C output.
+    const [companyC] = await db
+      .insert(companies)
+      .values(companyFixture({ name: "Charlie LLC", hubspotCompanyId: "555555222200" }))
+      .returning();
+    const [companyA] = await db
+      .insert(companies)
+      .values(companyFixture({ name: "Acme Inc", hubspotCompanyId: "555555222201" }))
+      .returning();
+    const [companyB] = await db
+      .insert(companies)
+      .values(companyFixture({ name: "Bravo Corp", hubspotCompanyId: "555555222202" }))
+      .returning();
+    for (const co of [companyC, companyA, companyB]) {
+      await request(app)
+        .post("/api/v1/documents")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ companyId: co.id, scope: "offer", payload: samplePayload });
+    }
+
+    const asc = await request(app)
+      .get("/api/v1/documents?sort=companyName:asc&limit=10")
+      .set("Authorization", `Bearer ${token}`);
+    expect(asc.status).toBe(200);
+    const names = asc.body.items.map((d: { companyName?: string }) => d.companyName);
+    // Sprint 6.8 ?sort=companyName:asc must put Acme first, Bravo
+    // second, Charlie third — independent of insertion order.
+    const idxAcme = names.indexOf("Acme Inc");
+    const idxBravo = names.indexOf("Bravo Corp");
+    const idxCharlie = names.indexOf("Charlie LLC");
+    expect(idxAcme).toBeGreaterThanOrEqual(0);
+    expect(idxAcme).toBeLessThan(idxBravo);
+    expect(idxBravo).toBeLessThan(idxCharlie);
+
+    // Flip to desc → order reverses.
+    const desc = await request(app)
+      .get("/api/v1/documents?sort=companyName:desc&limit=10")
+      .set("Authorization", `Bearer ${token}`);
+    const descNames = desc.body.items.map((d: { companyName?: string }) => d.companyName);
+    const dIdxAcme = descNames.indexOf("Acme Inc");
+    const dIdxCharlie = descNames.indexOf("Charlie LLC");
+    expect(dIdxCharlie).toBeLessThan(dIdxAcme);
+  });
+
+  it("Sprint 6.8: rejects unknown sort field with 400", async () => {
+    const token = await setupAuth();
+    const res = await request(app)
+      .get("/api/v1/documents?sort=bogusField:asc")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(400);
+  });
+
+  it("Sprint 6.8: cursor minted under one sort is rejected by another (mismatch 400)", async () => {
+    const token = await setupAuth();
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "555555333300" }))
+      .returning();
+    for (let i = 0; i < 3; i++) {
+      await request(app)
+        .post("/api/v1/documents")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ companyId: company.id, scope: "offer", payload: samplePayload });
+    }
+    const page1 = await request(app)
+      .get(`/api/v1/documents?companyId=${company.id}&sort=createdAt:desc&limit=2`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(page1.body.nextCursor).toBeTruthy();
+    // Now reuse that cursor with a DIFFERENT sort — must surface as 400.
+    const mismatch = await request(app)
+      .get(
+        `/api/v1/documents?companyId=${company.id}&sort=companyName:asc&limit=2&cursor=${encodeURIComponent(page1.body.nextCursor)}`
+      )
+      .set("Authorization", `Bearer ${token}`);
+    expect(mismatch.status).toBe(400);
+  });
 });
 
 describe("POST /api/v1/documents/:number/use-as-template", () => {

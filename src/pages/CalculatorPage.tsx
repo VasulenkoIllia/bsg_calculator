@@ -18,6 +18,7 @@ import {
   isCalculatorSnapshotPayload,
   seedCalculatorStateFromSnapshot
 } from "../components/calculator/snapshotShape.js";
+import { CalculatorStickyToolbar } from "../components/calculator/CalculatorStickyToolbar.js";
 import { SaveCalculatorModal } from "../components/SaveCalculatorModal.js";
 import {
   BannerStatus,
@@ -335,8 +336,35 @@ export function CalculatorPage() {
     return null;
   })();
 
+  // Sprint 6.8: sticky-bar handlers MIRROR Zone 6's Export Actions so
+  // the two buttons stay in lockstep. Keeping these closures local
+  // (not extracted to a useMemo) — the cost is negligible and the
+  // call sites read cleanly.
+  const handleOpenWizardFromToolbar = () =>
+    navigate(isEditMode ? `/wizard?calc=${configId}` : "/wizard");
+  const handleSaveFromToolbar = isEditMode ? undefined : () => setSaveOpen(true);
+  // The toolbar's draft-title chip surfaces the saved config's title
+  // in edit mode, or null in new-draft mode (no name yet — chip
+  // hidden entirely).
+  const toolbarDraftTitle = isEditMode
+    ? (configQuery.data?.title ?? "(untitled)")
+    : null;
+
   return (
     <>
+      {/*
+        Sprint 6.8 sticky toolbar: pins Open Contract Wizard + Save
+        calculator (new-draft mode only) to the top of the viewport so
+        the operator can jump to the wizard without scrolling through
+        all six zones. Renders FIRST so it sits above editModeBanner,
+        SavedStatusBadge, and the zone panels.
+      */}
+      <CalculatorStickyToolbar
+        draftTitle={toolbarDraftTitle}
+        onOpenWizard={handleOpenWizardFromToolbar}
+        onSaveCalculator={handleSaveFromToolbar}
+      />
+
       {editModeBanner}
 
       {isEditMode && configQuery.data ? (

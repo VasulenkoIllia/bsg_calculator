@@ -98,6 +98,14 @@ export interface UseCalculatorConfigsOptions {
   showAll?: boolean;
   /** Sprint 6.6: substring search on title. */
   q?: string;
+  /**
+   * Sprint 6.8: per-column sort. Format: "field:dir" (e.g.
+   * "title:asc"). Default "createdAt:desc". TanStack Query treats
+   * sort as part of the cache key, so flipping sort starts a fresh
+   * page chain — the backend rejects cursor/sort mismatches with a
+   * 400 anyway, so this is defensive.
+   */
+  sort?: string;
   limit?: number;
   /**
    * Sprint 6.6: gate the underlying TanStack query. Defaults to true.
@@ -137,6 +145,7 @@ export function useCalculatorConfigs(
         hubspotDealId: options.hubspotDealId,
         showAll: options.showAll ?? true,
         q: options.q?.trim() || undefined,
+        sort: options.sort,
         limit: options.limit
       }
     ],
@@ -148,6 +157,7 @@ export function useCalculatorConfigs(
         hubspotDealId: options.hubspotDealId,
         showAll: options.showAll ?? true,
         q: options.q?.trim() || undefined,
+        sort: options.sort,
         cursor: pageParam,
         limit: options.limit
       }),

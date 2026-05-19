@@ -26,6 +26,13 @@ export interface UseDocumentsOptions {
   calculatorConfigId?: string;
   scope?: documentsApi.DocumentScope;
   q?: string;
+  /**
+   * Sprint 6.8: per-column sort. Format: "field:dir" (e.g.
+   * "companyName:asc"). Default "createdAt:desc" (matches pre-6.8
+   * behaviour). Changing sort mid-pagination resets the cursor chain
+   * automatically because TanStack Query treats it as a new queryKey.
+   */
+  sort?: string;
   limit?: number;
   /**
    * Sprint 6.4: gate the underlying query. Defaults to true (matches
@@ -66,6 +73,10 @@ export function useDocuments(options: UseDocumentsOptions = {}): UseDocumentsRes
         calculatorConfigId: options.calculatorConfigId,
         scope: options.scope,
         q: normalisedQ,
+        // Sprint 6.8: sort is part of the cache key so flipping sort
+        // surfaces as a new query rather than reusing the cursor
+        // chain — the backend would 400 on a sort/cursor mismatch.
+        sort: options.sort,
         limit: options.limit
       }
     ],
@@ -78,6 +89,7 @@ export function useDocuments(options: UseDocumentsOptions = {}): UseDocumentsRes
         calculatorConfigId: options.calculatorConfigId,
         scope: options.scope,
         q: normalisedQ,
+        sort: options.sort,
         cursor: pageParam,
         limit: options.limit
       }),

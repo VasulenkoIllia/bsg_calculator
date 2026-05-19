@@ -15,11 +15,12 @@
  */
 
 import { parseDtoOrInternalError } from "../../shared/dto-parse";
-import { buildPage, type PageResult } from "../../shared/build-page";
+import { buildSortedPage, type PageResult } from "../../shared/sorted-pagination";
 import { NotFoundError, ValidationError } from "../../shared/errors";
 import type { CalculatorConfig } from "../../db/schema";
 import type { CalculatorConfigWithCompanyName } from "./calculator-configs.repository";
 import {
+  cursorValueForRow,
   dealBelongsToCompany,
   deleteCalculatorConfig as deleteRow,
   findById,
@@ -158,11 +159,11 @@ export async function listCalculatorConfigsPage(
   args: ListCalculatorConfigsArgs
 ): Promise<CalculatorConfigListPage> {
   // Fetch limit+1 to know whether more rows exist beyond this page.
-  // buildPage trims to `limit` and derives the cursor from the last
-  // kept row (same pattern as companies / deals).
+  // Sprint 6.8: uses buildSortedPage so the cursor carries the active
+  // sort spec. Pre-6.8 callers used buildPage from build-page.ts.
   const rows = await listCalculatorConfigs({ ...args, limit: args.limit + 1 });
-  return buildPage(rows, args.limit, toPublic, row => ({
-    createdAt: row.createdAt.toISOString(),
+  return buildSortedPage(rows, args.limit, args.sort, toPublic, row => ({
+    value: cursorValueForRow(row, args.sort.field),
     id: row.id
   }));
 }

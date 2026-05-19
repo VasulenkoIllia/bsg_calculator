@@ -116,6 +116,18 @@ export const listCalculatorConfigsQuerySchema = z.object({
   // q is treated as absent. LIKE metacharacters are escaped by the
   // repository so `q=%` doesn't match every config.
   q: z.string().trim().min(1).max(100).optional(),
+  // Sprint 6.8: per-column sort. Format: "field:dir" where field is
+  // one of {title, companyName, hubspotDealId, updatedAt, createdAt}
+  // and dir is "asc" or "desc". Default: "createdAt:desc" (matches
+  // pre-6.8 behaviour). Whitelist enforcement happens in the service
+  // via `parseSortQuery` — Zod here only checks the shape.
+  sort: z
+    .string()
+    .max(64)
+    .regex(/^[a-zA-Z]+:(asc|desc)$/, {
+      message: "sort must be in 'field:asc' or 'field:desc' form"
+    })
+    .optional(),
   cursor: z.string().max(500).optional(),
   limit: z.coerce.number().int().min(1).max(50).default(25)
 });

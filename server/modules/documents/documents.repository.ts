@@ -8,18 +8,46 @@
  *     the pool.
  *   - `findById / findByNumber / list / patchSyncState` — non-TX
  *     reads used by the GET endpoints.
+ *
+ * Sprint 6.8: list endpoint now JOINs companies (mirrors Sprint 6.7
+ * on /calculator-configs) AND accepts a per-column SortSpec. The
+ * cursor predicate switches shape per chosen sort field.
  */
 
-import { and, desc, eq, ilike, lt, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, ilike, lt, or, sql } from "drizzle-orm";
 import { db, type DbOrTx } from "../../db/client";
 import {
   calculatorConfigs,
+  companies,
   documents,
   type CalculatorConfig,
   type Document,
   type NewDocument
 } from "../../db/schema";
-import type { Cursor } from "../../shared/pagination";
+import type { SortSpec, SortedCursor } from "../../shared/sorted-pagination";
+
+/**
+ * Sprint 6.8: list-endpoint row shape that carries the parent company
+ * name alongside the document row. Surfaced on the listing DTO so the
+ * /documents page can render a Company column without N+1 lookups.
+ */
+export interface DocumentWithCompanyName extends Document {
+  companyName: string;
+}
+
+/**
+ * Whitelist of sortable columns on /documents. Encoded as a const
+ * tuple so `parseSortQuery` can both validate input and feed the
+ * type system.
+ */
+export const documentSortFields = [
+  "number",
+  "companyName",
+  "scope",
+  "hubspotSyncState",
+  "createdAt"
+] as const;
+export type DocumentSortField = (typeof documentSortFields)[number];
 
 export async function findById(id: string): Promise<Document | undefined> {
   const rows = await db.select().from(documents).where(eq(documents.id, id)).limit(1);
@@ -58,7 +86,9 @@ export interface ListDocumentsArgs {
   calculatorConfigId?: string;
   scope?: "offer" | "agreement" | "offer_and_agreement";
   q?: string;
-  cursor: Cursor | null;
+  /** Sprint 6.8: clickable-header per-column sort. */
+  sort: SortSpec<DocumentSortField>;
+  cursor: SortedCursor | null;
   limit: number;
 }
 
@@ -77,7 +107,90 @@ function escapeLikePattern(raw: string): string {
   return raw.replace(/\\/g, "\\\\").replace(/[%_]/g, "\\$&");
 }
 
-export async function listDocuments(args: ListDocumentsArgs): Promise<Document[]> {
+/**
+ * Map a SortSpec → drizzle column ref + direction wrapper. Returns the
+ * `ORDER BY` clause as an array (sort key + id tiebreaker).
+ *
+ * For string columns we use `LOWER(...)` so a-z and A-Z interleave
+ * naturally. The cursor's `value` is also lowercased on emit, so the
+ * predicate composes correctly.
+ */
+function buildOrderByAndCursorPredicate(
+  sort: SortSpec<DocumentSortField>,
+  cursor: SortedCursor | null
+) {
+  // ORDER BY parts. Always include id as a tiebreaker to keep
+  // pagination stable across duplicate sort values.
+  const orderBy = [] as ReturnType<typeof asc>[];
+  let cursorPredicate: ReturnType<typeof or> | undefined;
+
+  const dirCol = sort.dir === "asc" ? asc : desc;
+  const dirCmp = sort.dir === "asc" ? gt : lt;
+
+  // Per-field SQL expression for ORDER BY and cursor comparison.
+  // Strings use LOWER() for case-insensitive A-Z ordering.
+  const exprByField: Record<DocumentSortField, ReturnType<typeof sql>> = {
+    number: sql`LOWER(${documents.number})`,
+    companyName: sql`LOWER(${companies.name})`,
+    scope: sql`LOWER(${documents.scope})`,
+    hubspotSyncState: sql`LOWER(${documents.hubspotSyncState})`,
+    // createdAt is a timestamp — no LOWER, compare directly.
+    createdAt: sql`${documents.createdAt}`
+  };
+  const expr = exprByField[sort.field];
+
+  orderBy.push(dirCol(expr));
+  orderBy.push(dirCol(documents.id));
+
+  if (cursor) {
+    // For date sort, cursor.value is ISO; cast to timestamp for the
+    // comparison so it matches the timestamp column. For string sorts,
+    // cursor.value is already lowercased on emit.
+    const cursorValueExpr =
+      sort.field === "createdAt"
+        ? sql`${new Date(cursor.value)}::timestamptz`
+        : sql`${cursor.value}`;
+
+    cursorPredicate = or(
+      dirCmp(expr, cursorValueExpr),
+      and(eq(expr, cursorValueExpr), dirCmp(documents.id, cursor.id))
+    );
+  }
+
+  return { orderBy, cursorPredicate };
+}
+
+/**
+ * Emit the string value that should be stored in the cursor for a
+ * given row + sort field. Mirrors `buildOrderByAndCursorPredicate`'s
+ * LOWER() so the predicate composes with the stored value.
+ */
+export function cursorValueForRow(
+  row: DocumentWithCompanyName,
+  field: DocumentSortField
+): string {
+  switch (field) {
+    case "number":
+      return row.number.toLowerCase();
+    case "companyName":
+      return row.companyName.toLowerCase();
+    case "scope":
+      return row.scope.toLowerCase();
+    case "hubspotSyncState":
+      return row.hubspotSyncState.toLowerCase();
+    case "createdAt":
+      return row.createdAt.toISOString();
+  }
+}
+
+export async function listDocuments(
+  args: ListDocumentsArgs
+): Promise<DocumentWithCompanyName[]> {
+  const { orderBy, cursorPredicate } = buildOrderByAndCursorPredicate(
+    args.sort,
+    args.cursor
+  );
+
   const filters = [
     args.companyId ? eq(documents.companyId, args.companyId) : undefined,
     args.hubspotDealId ? eq(documents.hubspotDealId, args.hubspotDealId) : undefined,
@@ -86,23 +199,23 @@ export async function listDocuments(args: ListDocumentsArgs): Promise<Document[]
       : undefined,
     args.scope ? eq(documents.scope, args.scope) : undefined,
     args.q ? ilike(documents.number, `%${escapeLikePattern(args.q)}%`) : undefined,
-    args.cursor
-      ? or(
-          lt(documents.createdAt, new Date(args.cursor.createdAt)),
-          and(
-            eq(documents.createdAt, new Date(args.cursor.createdAt)),
-            lt(documents.id, args.cursor.id)
-          )
-        )
-      : undefined
+    cursorPredicate
   ].filter((f): f is Exclude<typeof f, undefined> => f !== undefined);
 
-  return db
-    .select()
+  // Sprint 6.8: JOIN companies — needed both for the companyName
+  // column on the DTO and for `ORDER BY companies.name` sort.
+  const rows = await db
+    .select({
+      doc: documents,
+      companyName: companies.name
+    })
     .from(documents)
+    .innerJoin(companies, eq(documents.companyId, companies.id))
     .where(filters.length > 0 ? and(...filters) : undefined)
-    .orderBy(desc(documents.createdAt), desc(documents.id))
+    .orderBy(...orderBy)
     .limit(args.limit);
+
+  return rows.map(r => ({ ...r.doc, companyName: r.companyName }));
 }
 
 /**
@@ -122,3 +235,4 @@ export async function findCalculatorConfigById(
     .limit(1);
   return rows[0];
 }
+

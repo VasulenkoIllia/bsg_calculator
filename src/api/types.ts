@@ -150,6 +150,12 @@ export interface PublicDocument {
   id: string;
   number: string;
   companyId: string;
+  /**
+   * Sprint 6.8: surfaced only by the LIST endpoint (JOIN companies).
+   * Single-doc fetch (GET /documents/:number) omits it — the detail
+   * page already loads the full company elsewhere.
+   */
+  companyName?: string;
   hubspotDealId: string | null;
   calculatorConfigId: string | null;
   scope: "offer" | "agreement" | "offer_and_agreement";

@@ -4,6 +4,11 @@
  * Mirrors CompaniesPage in shape: search box, table, Load more.
  * Substring search on the `number` column (e.g. typing "7100024"
  * matches "BSG-7100024-..."). Company filter via typeahead picker.
+ *
+ * Sprint 6.8: added Company column (link to /companies/:id) plus
+ * clickable column headers for asc↔desc sort on every column.
+ * Backend pairing: `?sort=field:dir` controls the ORDER BY; cursor
+ * carries the sort spec so a mid-pagination switch is rejected.
  */
 
 import { useState } from "react";
@@ -11,10 +16,12 @@ import { Link } from "react-router-dom";
 import { ApiError } from "../api/client.js";
 import { CompanyTypeahead } from "../components/CompanyTypeahead.js";
 import { LoadMoreButton } from "../components/LoadMoreButton.js";
+import { SortableTh, type SortDirection } from "../components/SortableTh.js";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
 import { useDocuments } from "../hooks/useDocuments.js";
 import { SEARCH_DEBOUNCE_MS } from "../shared/constants.js";
 import { formatDate, formatScopeLabel } from "../shared/format.js";
+import type { DocumentSortField } from "../api/documents.js";
 import type { PublicCompany } from "../api/types.js";
 
 /**
@@ -44,8 +51,19 @@ function CompanyFilter({
 export function DocumentsListPage() {
   const [search, setSearch] = useState("");
   const [selectedCompany, setSelectedCompany] = useState<PublicCompany | null>(null);
+  // Sprint 6.8: per-column sort state — default mirrors the backend
+  // default (`createdAt:desc`), so the initial render matches the
+  // pre-6.8 ordering exactly. Flipping sort triggers a fresh
+  // TanStack-Query page chain via the queryKey.
+  const [sortField, setSortField] = useState<DocumentSortField>("createdAt");
+  const [sortDir, setSortDir] = useState<SortDirection>("desc");
   const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
   const trimmed = debouncedSearch.trim();
+
+  const handleSortChange = (field: DocumentSortField, dir: SortDirection) => {
+    setSortField(field);
+    setSortDir(dir);
+  };
 
   const {
     items,
@@ -58,7 +76,8 @@ export function DocumentsListPage() {
     isFetchingNextPage
   } = useDocuments({
     q: trimmed.length > 0 ? trimmed : undefined,
-    companyId: selectedCompany?.id
+    companyId: selectedCompany?.id,
+    sort: `${sortField}:${sortDir}`
   });
 
   const isBackgroundRefetching = isFetching && !isLoading;
@@ -100,18 +119,54 @@ export function DocumentsListPage() {
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-600">
+          <thead className="bg-slate-50">
             <tr>
-              <th className="px-4 py-3 text-left">Number</th>
-              <th className="px-4 py-3 text-left">Scope</th>
-              <th className="px-4 py-3 text-left">HubSpot sync</th>
-              <th className="px-4 py-3 text-left">Created</th>
+              <SortableTh
+                field="number"
+                activeField={sortField}
+                activeDirection={sortDir}
+                onSortChange={handleSortChange}
+              >
+                Number
+              </SortableTh>
+              <SortableTh
+                field="companyName"
+                activeField={sortField}
+                activeDirection={sortDir}
+                onSortChange={handleSortChange}
+              >
+                Company
+              </SortableTh>
+              <SortableTh
+                field="scope"
+                activeField={sortField}
+                activeDirection={sortDir}
+                onSortChange={handleSortChange}
+              >
+                Scope
+              </SortableTh>
+              <SortableTh
+                field="hubspotSyncState"
+                activeField={sortField}
+                activeDirection={sortDir}
+                onSortChange={handleSortChange}
+              >
+                HubSpot sync
+              </SortableTh>
+              <SortableTh
+                field="createdAt"
+                activeField={sortField}
+                activeDirection={sortDir}
+                onSortChange={handleSortChange}
+              >
+                Created
+              </SortableTh>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {isLoading ? (
               <tr>
-                <td colSpan={4} className="px-4 py-6 text-center text-sm text-slate-500">
+                <td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-500">
                   Loading documents…
                 </td>
               </tr>
@@ -119,7 +174,7 @@ export function DocumentsListPage() {
 
             {isError ? (
               <tr>
-                <td colSpan={4} className="px-4 py-6 text-center text-sm text-red-600">
+                <td colSpan={5} className="px-4 py-6 text-center text-sm text-red-600">
                   Failed to load documents
                   {error instanceof ApiError ? `: ${error.message}` : "."}
                 </td>
@@ -128,7 +183,7 @@ export function DocumentsListPage() {
 
             {!isLoading && !isError && items.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-4 py-6 text-center text-sm text-slate-500">
+                <td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-500">
                   {trimmed.length > 0 || selectedCompany
                     ? "No documents match the current filters."
                     : "No documents yet. Save one from the wizard to populate this list."}
@@ -144,6 +199,22 @@ export function DocumentsListPage() {
                     className="hover:text-blue-900 hover:underline"
                   >
                     {doc.number}
+                  </Link>
+                </td>
+                <td className="px-4 py-3 text-slate-700">
+                  {/*
+                    Sprint 6.8: backend list endpoint JOINs companies
+                    and returns `companyName`. Link to /companies/:id
+                    mirrors the Saved-calculators page (Sprint 6.7).
+                    Fallback handles the edge case where the JOIN
+                    didn't populate the name (shouldn't happen given
+                    the FK, but defensive).
+                  */}
+                  <Link
+                    to={`/companies/${doc.companyId}`}
+                    className="font-medium text-blue-700 hover:text-blue-900 hover:underline"
+                  >
+                    {doc.companyName ?? "Open company"} →
                   </Link>
                 </td>
                 <td className="px-4 py-3 text-slate-700">{formatScopeLabel(doc.scope)}</td>

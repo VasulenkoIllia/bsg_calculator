@@ -7,9 +7,14 @@
  */
 
 import type { Request, Response } from "express";
-import { decodeCursor } from "../../shared/pagination";
+import {
+  decodeSortedCursor,
+  encodeSortKey,
+  parseSortQuery
+} from "../../shared/sorted-pagination";
 import { parseUuidParam } from "../../shared/uuid-param";
 import { TokenInvalidError } from "../../shared/errors";
+import { calculatorConfigSortFields } from "./calculator-configs.repository";
 import {
   createCalculatorConfigSchema,
   listCalculatorConfigsQuerySchema,
@@ -25,12 +30,21 @@ import {
 
 export async function listController(req: Request, res: Response): Promise<void> {
   const query = listCalculatorConfigsQuerySchema.parse(req.query);
+  // Sprint 6.8: per-column sort. The cursor encodes the sort spec it
+  // was minted under so a mid-pagination `?sort=` switch surfaces as
+  // a 400 (forces the frontend to reset to page 1).
+  const sort = parseSortQuery(query.sort, calculatorConfigSortFields, {
+    field: "createdAt",
+    dir: "desc"
+  });
+  const cursor = decodeSortedCursor(query.cursor, encodeSortKey(sort));
   const page = await listCalculatorConfigsPage({
     companyId: query.companyId,
     hubspotDealId: query.hubspotDealId,
     showAll: query.showAll,
     q: query.q,
-    cursor: decodeCursor(query.cursor),
+    sort,
+    cursor,
     limit: query.limit
   });
   res.status(200).json(page);

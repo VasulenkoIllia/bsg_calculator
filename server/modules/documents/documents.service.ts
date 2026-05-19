@@ -14,16 +14,18 @@
 import { eq } from "drizzle-orm";
 import { db } from "../../db/client";
 import { parseDtoOrInternalError } from "../../shared/dto-parse";
-import { buildPage, type PageResult } from "../../shared/build-page";
+import { buildSortedPage, type PageResult } from "../../shared/sorted-pagination";
 import { NotFoundError, ValidationError } from "../../shared/errors";
 import { companies, type Document } from "../../db/schema";
 import { dealBelongsToCompany } from "../calculator-configs/calculator-configs.repository";
 import { insertCalculatorConfig } from "../calculator-configs/calculator-configs.repository";
 import {
+  cursorValueForRow,
   findByNumber,
   findCalculatorConfigById,
   insertDocumentWithNumber,
   listDocuments,
+  type DocumentWithCompanyName,
   type ListDocumentsArgs
 } from "./documents.repository";
 import {
@@ -33,13 +35,20 @@ import {
 } from "./documents.schemas";
 import { allocateNextNumber } from "./numbering.service";
 
-function toPublic(row: Document): DocumentPublic {
+/**
+ * Sprint 6.8: dual signature like calculator-configs.toPublic. Plain
+ * `Document` (single-fetch endpoints) omits companyName; the
+ * `DocumentWithCompanyName` shape (list endpoint) surfaces it.
+ */
+function toPublic(row: Document | DocumentWithCompanyName): DocumentPublic {
+  const companyName = "companyName" in row ? row.companyName : undefined;
   return parseDtoOrInternalError(
     documentPublicSchema,
     {
       id: row.id,
       number: row.number,
       companyId: row.companyId,
+      ...(companyName !== undefined ? { companyName } : {}),
       hubspotDealId: row.hubspotDealId,
       calculatorConfigId: row.calculatorConfigId,
       scope: row.scope as DocumentPublic["scope"],
@@ -173,8 +182,8 @@ export async function listDocumentsPage(
   args: ListDocumentsArgs
 ): Promise<DocumentListPage> {
   const rows = await listDocuments({ ...args, limit: args.limit + 1 });
-  return buildPage(rows, args.limit, toPublic, row => ({
-    createdAt: row.createdAt.toISOString(),
+  return buildSortedPage(rows, args.limit, args.sort, toPublic, row => ({
+    value: cursorValueForRow(row, args.sort.field),
     id: row.id
   }));
 }

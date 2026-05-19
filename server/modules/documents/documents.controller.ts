@@ -6,8 +6,13 @@
 
 import type { Request, Response } from "express";
 import { db } from "../../db/client";
-import { decodeCursor } from "../../shared/pagination";
+import {
+  decodeSortedCursor,
+  encodeSortKey,
+  parseSortQuery
+} from "../../shared/sorted-pagination";
 import { NotImplementedError, TokenInvalidError } from "../../shared/errors";
+import { documentSortFields } from "./documents.repository";
 import {
   createDocumentSchema,
   listDocumentsQuerySchema
@@ -22,13 +27,23 @@ import { peekNextNumber } from "./numbering.service";
 
 export async function listController(req: Request, res: Response): Promise<void> {
   const query = listDocumentsQuerySchema.parse(req.query);
+  // Sprint 6.8: per-column sort. The cursor encodes the sort spec it
+  // was minted under, so a mismatch between `?sort=` and the cursor's
+  // own sort surfaces as a 400 inside `decodeSortedCursor` rather
+  // than returning weirdly-ordered rows.
+  const sort = parseSortQuery(query.sort, documentSortFields, {
+    field: "createdAt",
+    dir: "desc"
+  });
+  const cursor = decodeSortedCursor(query.cursor, encodeSortKey(sort));
   const page = await listDocumentsPage({
     companyId: query.companyId,
     hubspotDealId: query.hubspotDealId,
     calculatorConfigId: query.calculatorConfigId,
     scope: query.scope,
     q: query.q,
-    cursor: decodeCursor(query.cursor),
+    sort,
+    cursor,
     limit: query.limit
   });
   res.status(200).json(page);

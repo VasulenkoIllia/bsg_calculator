@@ -19,6 +19,18 @@ export interface CreateDocumentRequest {
   addendum?: string | null;
 }
 
+/**
+ * Sprint 6.8: per-column sort spec. Allowed `field` values are
+ * whitelisted server-side; the frontend types the union here so a
+ * typo on the call-site surfaces at compile time.
+ */
+export type DocumentSortField =
+  | "number"
+  | "companyName"
+  | "scope"
+  | "hubspotSyncState"
+  | "createdAt";
+
 export interface ListDocumentsParams {
   companyId?: string;
   hubspotDealId?: string;
@@ -26,6 +38,8 @@ export interface ListDocumentsParams {
   calculatorConfigId?: string;
   scope?: DocumentScope;
   q?: string;
+  /** Sprint 6.8: "field:asc" or "field:desc"; default "createdAt:desc". */
+  sort?: string;
   cursor?: string;
   limit?: number;
 }

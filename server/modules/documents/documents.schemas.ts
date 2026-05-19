@@ -75,6 +75,19 @@ export const listDocumentsQuerySchema = z.object({
   scope: documentScopeSchema.optional(),
   // Substring search on number ("7100024" matches "BSG-7100024").
   q: z.string().trim().min(1).max(64).optional(),
+  // Sprint 6.8: per-column sort. Format: "field:dir" where field is
+  // one of {number, companyName, scope, hubspotSyncState, createdAt}
+  // and dir is "asc" or "desc". Default: "createdAt:desc" (matches
+  // pre-6.8 behaviour). Allowed values are validated by the service
+  // via `parseSortQuery` — this schema accepts any short string so
+  // the error surface is a single VALIDATION_FAILED from the parser.
+  sort: z
+    .string()
+    .max(64)
+    .regex(/^[a-zA-Z]+:(asc|desc)$/, {
+      message: "sort must be in 'field:asc' or 'field:desc' form"
+    })
+    .optional(),
   cursor: z.string().max(500).optional(),
   limit: z.coerce.number().int().min(1).max(50).default(25)
 });
@@ -85,6 +98,12 @@ export const documentPublicSchema = z.object({
   id: z.string().uuid(),
   number: z.string(),
   companyId: z.string().uuid(),
+  /**
+   * Sprint 6.8: surfaced only by the LIST endpoint (JOIN companies).
+   * Single-doc fetch (GET /documents/:number) omits it because the
+   * detail page already loads the full company elsewhere.
+   */
+  companyName: z.string().optional(),
   hubspotDealId: z.string().nullable(),
   calculatorConfigId: z.string().uuid().nullable(),
   scope: documentScopeSchema,

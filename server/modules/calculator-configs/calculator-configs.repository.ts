@@ -12,7 +12,7 @@
  * uses the composite index defined in the schema file.
  */
 
-import { and, desc, eq, isNull, lt, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import { db } from "../../db/client";
 import {
   calculatorConfigs,
@@ -20,7 +20,21 @@ import {
   type CalculatorConfig,
   type NewCalculatorConfig
 } from "../../db/schema";
-import type { Cursor } from "../../shared/pagination";
+import type { SortSpec, SortedCursor } from "../../shared/sorted-pagination";
+
+/**
+ * Sprint 6.8: whitelist of sortable columns. Encoded as a const
+ * tuple so `parseSortQuery` can both validate input and drive
+ * the type system.
+ */
+export const calculatorConfigSortFields = [
+  "title",
+  "companyName",
+  "hubspotDealId",
+  "updatedAt",
+  "createdAt"
+] as const;
+export type CalculatorConfigSortField = (typeof calculatorConfigSortFields)[number];
 
 /**
  * Sprint 6.7 audit fix (S4): list-endpoint row shape that carries
@@ -104,8 +118,38 @@ export interface ListCalculatorConfigsArgs {
   showAll: boolean;
   /** Sprint 6.6: optional substring search on `title`. */
   q?: string;
-  cursor: Cursor | null;
+  /** Sprint 6.8: clickable-header per-column sort. */
+  sort: SortSpec<CalculatorConfigSortField>;
+  cursor: SortedCursor | null;
   limit: number;
+}
+
+/**
+ * Sprint 6.8: derive the cursor value from a row given the sort field.
+ * Mirrors the LOWER() collation used in ORDER BY for string columns so
+ * the predicate composes correctly. Exposed for the service's
+ * `buildSortedPage` toCursor callback.
+ *
+ * Note: `hubspotDealId` is nullable; when NULL we coerce to "" so
+ * stable comparisons still work. Postgres NULLs sort last by default
+ * — the empty-string fallback matches that for the cursor predicate.
+ */
+export function cursorValueForRow(
+  row: CalculatorConfigWithCompanyName,
+  field: CalculatorConfigSortField
+): string {
+  switch (field) {
+    case "title":
+      return (row.title ?? "").toLowerCase();
+    case "companyName":
+      return row.companyName.toLowerCase();
+    case "hubspotDealId":
+      return (row.hubspotDealId ?? "").toLowerCase();
+    case "updatedAt":
+      return row.updatedAt.toISOString();
+    case "createdAt":
+      return row.createdAt.toISOString();
+  }
 }
 
 /**
@@ -175,14 +219,32 @@ export async function listCalculatorConfigs(
     );
   }
 
+  // Sprint 6.8: per-column sort. ORDER BY (chosen, id) keeps
+  // pagination stable; the cursor predicate mirrors the ORDER BY.
+  // String columns use LOWER() so a-z + A-Z interleave correctly
+  // (case-insensitive A-Z UX). hubspotDealId is COALESCE'd to "" so
+  // NULL doesn't break the comparison — matches `cursorValueForRow`.
+  const sortExprByField: Record<CalculatorConfigSortField, ReturnType<typeof sql>> = {
+    title: sql`LOWER(COALESCE(${calculatorConfigs.title}, ''))`,
+    companyName: sql`LOWER(${companies.name})`,
+    hubspotDealId: sql`LOWER(COALESCE(${calculatorConfigs.hubspotDealId}, ''))`,
+    updatedAt: sql`${calculatorConfigs.updatedAt}`,
+    createdAt: sql`${calculatorConfigs.createdAt}`
+  };
+  const sortExpr = sortExprByField[args.sort.field];
+  const dirCol = args.sort.dir === "asc" ? asc : desc;
+  const dirCmp = args.sort.dir === "asc" ? gt : lt;
+
   if (args.cursor) {
+    const cursorValueExpr =
+      args.sort.field === "createdAt" || args.sort.field === "updatedAt"
+        ? sql`${new Date(args.cursor.value)}::timestamptz`
+        : sql`${args.cursor.value}`;
+
     filters.push(
       or(
-        lt(calculatorConfigs.createdAt, new Date(args.cursor.createdAt)),
-        and(
-          eq(calculatorConfigs.createdAt, new Date(args.cursor.createdAt)),
-          lt(calculatorConfigs.id, args.cursor.id)
-        )
+        dirCmp(sortExpr, cursorValueExpr),
+        and(eq(sortExpr, cursorValueExpr), dirCmp(calculatorConfigs.id, args.cursor.id))
       )
     );
   }
@@ -202,7 +264,7 @@ export async function listCalculatorConfigs(
     .from(calculatorConfigs)
     .innerJoin(companies, eq(calculatorConfigs.companyId, companies.id))
     .where(definedFilters.length > 0 ? and(...definedFilters) : undefined)
-    .orderBy(desc(calculatorConfigs.createdAt), desc(calculatorConfigs.id))
+    .orderBy(dirCol(sortExpr), dirCol(calculatorConfigs.id))
     .limit(args.limit);
 
   return rows.map(r => ({ ...r.config, companyName: r.companyName }));
