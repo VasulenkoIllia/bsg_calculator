@@ -17,7 +17,7 @@
 
 import { Link } from "react-router-dom";
 import type { PublicDocument } from "../../../api/types.js";
-import { formatDate, formatScopeLabel } from "../../../shared/format.js";
+import { formatDateTime, formatScopeLabel } from "../../../shared/format.js";
 
 export function DocumentsFromCalcSection({ docs }: { docs: PublicDocument[] }) {
   return (
@@ -41,7 +41,7 @@ export function DocumentsFromCalcSection({ docs }: { docs: PublicDocument[] }) {
                 {doc.number}
               </span>
               <span className="text-xs text-slate-500">
-                {formatScopeLabel(doc.scope)} · {formatDate(doc.createdAt)}
+                {formatScopeLabel(doc.scope)} · {formatDateTime(doc.createdAt)}
               </span>
             </Link>
           </li>

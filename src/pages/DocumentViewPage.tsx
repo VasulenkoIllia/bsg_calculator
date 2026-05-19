@@ -22,7 +22,7 @@ import { buildOfferPdfHtml } from "../components/document-wizard/index.js";
 import type { DocumentTemplatePayload } from "../components/document-wizard/index.js";
 import { useToast } from "../contexts/ToastContext.js";
 import { useDocument } from "../hooks/useDocuments.js";
-import { formatDate, formatScopeLabel } from "../shared/format.js";
+import { formatDateTime, formatScopeLabel } from "../shared/format.js";
 
 /**
  * Best-effort runtime check that `payload` carries a wizard-style
@@ -145,7 +145,7 @@ export function DocumentViewPage() {
           <h1 className="font-mono text-xl font-semibold text-slate-900">
             {doc.number}
           </h1>
-          <p className="text-sm text-slate-500">Created {formatDate(doc.createdAt)}</p>
+          <p className="text-sm text-slate-500">Created {formatDateTime(doc.createdAt)}</p>
         </header>
 
         {doc.addendum ? (

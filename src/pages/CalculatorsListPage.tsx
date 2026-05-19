@@ -30,7 +30,7 @@ import { LoadMoreButton } from "../components/LoadMoreButton.js";
 import { SortableTh, type SortDirection } from "../components/SortableTh.js";
 import { useCalculatorConfigs } from "../hooks/useCalculatorConfig.js";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
-import { formatDate } from "../shared/format.js";
+import { formatDateTime } from "../shared/format.js";
 import type { CalculatorConfigSortField } from "../api/calculator-configs.js";
 
 export function CalculatorsListPage() {
@@ -197,7 +197,7 @@ export function CalculatorsListPage() {
                     <span className="text-slate-400">company-level</span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-slate-500">{formatDate(cfg.updatedAt)}</td>
+                <td className="px-4 py-3 text-slate-500">{formatDateTime(cfg.updatedAt)}</td>
                 <td className="px-4 py-3 text-right">
                   <Link
                     to={`/calc/${cfg.id}`}

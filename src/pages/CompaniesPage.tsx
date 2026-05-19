@@ -17,7 +17,7 @@ import { LoadMoreButton } from "../components/LoadMoreButton.js";
 import { useCompanies } from "../hooks/useCompanies.js";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
 import { SEARCH_DEBOUNCE_MS } from "../shared/constants.js";
-import { formatDate } from "../shared/format.js";
+import { formatDateTime } from "../shared/format.js";
 
 export function CompaniesPage() {
   const [search, setSearch] = useState("");
@@ -113,7 +113,7 @@ export function CompaniesPage() {
                 <td className="px-4 py-3 text-slate-700">{company.segmentType ?? "—"}</td>
                 <td className="px-4 py-3 text-slate-700">{company.lifecycleStage ?? "—"}</td>
                 <td className="px-4 py-3 text-slate-500">
-                  {formatDate(company.hubspotModifiedAt)}
+                  {formatDateTime(company.hubspotModifiedAt)}
                 </td>
               </tr>
             ))}

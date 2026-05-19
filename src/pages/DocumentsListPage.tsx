@@ -20,7 +20,7 @@ import { SortableTh, type SortDirection } from "../components/SortableTh.js";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
 import { useDocuments } from "../hooks/useDocuments.js";
 import { SEARCH_DEBOUNCE_MS } from "../shared/constants.js";
-import { formatDate, formatScopeLabel } from "../shared/format.js";
+import { formatDateTime, formatScopeLabel } from "../shared/format.js";
 import type { DocumentSortField } from "../api/documents.js";
 import type { PublicCompany } from "../api/types.js";
 
@@ -233,7 +233,7 @@ export function DocumentsListPage() {
                     </span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-slate-500">{formatDate(doc.createdAt)}</td>
+                <td className="px-4 py-3 text-slate-500">{formatDateTime(doc.createdAt)}</td>
               </tr>
             ))}
           </tbody>

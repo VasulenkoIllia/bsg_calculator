@@ -30,7 +30,7 @@ import type {
   PublicDeal,
   PublicDocument
 } from "../api/types.js";
-import { formatDate, formatScopeLabel } from "../shared/format.js";
+import { formatDateTime, formatScopeLabel } from "../shared/format.js";
 
 function formatAmount(deal: PublicDeal): string {
   if (!deal.amount) return "—";
@@ -111,7 +111,7 @@ export function CompanyDetailPage() {
           </div>
           <div>
             <dt className="font-semibold text-slate-500">Last synced</dt>
-            <dd>{formatDate(company.lastSyncedAt)}</dd>
+            <dd>{formatDateTime(company.lastSyncedAt)}</dd>
           </div>
         </dl>
       </header>
@@ -272,7 +272,7 @@ function DealsTable({ deals }: { deals: ReturnType<typeof useCompanyDeals> }) {
               {formatAmount(deal)}
             </td>
             <td className="px-4 py-3 text-slate-500">
-              {formatDate(deal.hubspotModifiedAt)}
+              {formatDateTime(deal.hubspotModifiedAt)}
             </td>
           </tr>
         ))}
@@ -331,7 +331,7 @@ function CalcsTable({ configs }: { configs: ReturnType<typeof useCalculatorConfi
                 <span className="text-slate-400">company-level</span>
               )}
             </td>
-            <td className="px-4 py-3 text-slate-500">{formatDate(cfg.updatedAt)}</td>
+            <td className="px-4 py-3 text-slate-500">{formatDateTime(cfg.updatedAt)}</td>
             <td className="px-4 py-3 text-right">
               <Link
                 to={`/calc/${cfg.id}`}
@@ -393,7 +393,7 @@ function DocumentsTable({ documents }: { documents: ReturnType<typeof useDocumen
             <td className="px-4 py-3 text-slate-700">
               {formatScopeLabel(doc.scope)}
             </td>
-            <td className="px-4 py-3 text-slate-500">{formatDate(doc.createdAt)}</td>
+            <td className="px-4 py-3 text-slate-500">{formatDateTime(doc.createdAt)}</td>
             <td className="px-4 py-3 text-right">
               <Link
                 to={`/documents/${doc.number}`}
