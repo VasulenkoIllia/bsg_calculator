@@ -27,7 +27,10 @@ export function PreviewStep({
   highlightVariables,
   onHighlightVariablesChange,
   onBack,
-  onGeneratePdf
+  onGeneratePdf,
+  generatePdfPending,
+  onSaveDocument,
+  saveDisabledReason
 }: {
   draft: DocumentTemplatePayload;
   previewHtml: string;
@@ -35,6 +38,22 @@ export function PreviewStep({
   onHighlightVariablesChange: (next: boolean) => void;
   onBack: () => void;
   onGeneratePdf: () => void;
+  /**
+   * Sprint 6.0: backend PDF preview is in-flight. Button disables +
+   * label switches to "Preparing PDF…" until the Blob arrives.
+   */
+  generatePdfPending?: boolean;
+  /**
+   * Sprint 4.E: opens SaveDocumentModal so the operator can persist
+   * the wizard output as a backend document (BSG-XXXXXXX-YYYYYY).
+   * Optional — wizard remains usable when no backend is wired.
+   */
+  onSaveDocument?: () => void;
+  /**
+   * When set, the Save button is disabled and the string is shown
+   * as the tooltip / inline hint (e.g. "Pick a company on Step 1").
+   */
+  saveDisabledReason?: string | null;
 }) {
   const partiesWarning = detectMissingParties(draft);
 
@@ -82,7 +101,7 @@ export function PreviewStep({
           className="h-[780px] w-full bg-white"
         />
       </div>
-      <div className="mt-4 flex flex-wrap gap-3">
+      <div className="mt-4 flex flex-wrap items-center gap-3">
         <button
           type="button"
           onClick={onBack}
@@ -93,10 +112,27 @@ export function PreviewStep({
         <button
           type="button"
           onClick={onGeneratePdf}
-          className="rounded-xl border border-blue-300 bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+          disabled={generatePdfPending}
+          className="rounded-xl border border-blue-300 bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Generate PDF
+          {generatePdfPending ? "Preparing PDF…" : "Generate PDF"}
         </button>
+        {onSaveDocument ? (
+          <>
+            <button
+              type="button"
+              onClick={onSaveDocument}
+              disabled={Boolean(saveDisabledReason)}
+              title={saveDisabledReason ?? "Save the wizard output to the backend"}
+              className="rounded-xl border border-emerald-500 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Save document
+            </button>
+            {saveDisabledReason ? (
+              <span className="text-xs text-slate-500">{saveDisabledReason}</span>
+            ) : null}
+          </>
+        ) : null}
       </div>
     </div>
   );

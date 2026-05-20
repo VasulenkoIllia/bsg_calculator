@@ -3108,3 +3108,1175 @@ Use this file to record meaningful technical decisions for the project.
     work.
 - Follow-up actions:
   - Start Sprint 1 (Foundation) on branch `phase-8-foundation`.
+
+### Decision: Sprint 2 — restrict companies to `direct_client` only
+- Date: 2026-05-16
+- Context:
+  - First live backfill on 2026-05-16 pulled all 51 BSG HubSpot
+    companies (23 Clients, 23 Agents/referring partners, 2 NULL).
+  - User reviewed the data and clarified the scope:
+    > "мені цікавить тільки компані тайп Client — інші компанії
+    >  зараз мене не цікавлять. А діли всі тягнемо і даємо
+    >  можливість фільтрувати"
+  - Translation: only `company_type = direct_client` companies are
+    relevant to BSG's calculator/document workflow. Agents
+    (`referring_partner`) are referenced in deals via the free-text
+    `agent_label` field but never need their own row in our cache.
+    Deals stay unfiltered + filterable in UI.
+- Decision:
+  - Add env var `HUBSPOT_COMPANY_TYPE_FILTER`, default
+    `direct_client`. Empty string disables the filter.
+  - Backfill switches from `GET /crm/v3/objects/companies` (List)
+    to `POST /crm/v3/objects/companies/search` with
+    `filterGroups: [{ filters: [{ propertyName: "company_type",
+    operator: "EQ", value: <filter> }] }]` when a filter is set.
+    Server-side filtering is more efficient than pull-then-drop.
+  - **Cleanup pass** at the START of each backfill: DELETE deals
+    whose company is about to be removed, DELETE companies whose
+    `company_type` doesn't match the filter (including NULL).
+    Backfill becomes "make the DB match the filter contract".
+  - Deals: ALL deals still pulled. Deals whose
+    `hs_primary_associated_company` is an unfiltered company are
+    skipped via the existing FK-violation log path. Verified live:
+    8 HubSpot deals → 7 upserted, 1 skipped (referenced an agent
+    company that's no longer in our DB).
+  - Remove the now-redundant `companyType` filter from
+    `GET /api/v1/companies` API (every row is already
+    `direct_client`). Existing query param is ignored silently;
+    extra Zod params don't 400.
+  - Add `businessVertical` filter to deals API
+    (`GET /api/v1/deals?businessVertical=iGaming%20%2F%20Betting`).
+    Operator can now filter by vertical without writing custom SQL.
+- Alternatives considered:
+  - Client-side filter (pull all, drop in mapper): rejected.
+    Wastes API calls (~50% of fetches are throwaway) + complicates
+    "what changed?" logic when filter loosens.
+  - Hard-coded `direct_client` (no env var): rejected — having a
+    knob future-proofs the cache for "include aggregators only"
+    scenarios.
+  - Don't delete existing rows (just skip new ones): rejected.
+    DB would accumulate stale wrong-type rows across runs; backfill
+    should be the alignment operation.
+  - `ON DELETE CASCADE` on companies → deals FK: rejected. The
+    FK policy is `RESTRICT` for data-integrity reasons (a webhook-
+    delivered company.deletion event must NOT silently lose
+    documents). Backfill cleanup is an admin operation that knows
+    what it's doing and explicitly deletes deals first.
+- Consequences:
+  - DB schema unchanged. Only env config + backfill logic + a
+    single API filter change.
+  - Live test on real BSG tenant: 48 companies + 8 deals →
+    23 direct_client companies + 7 deals. Cleanup deleted
+    25 non-matching companies + 1 orphan deal.
+  - All 87 server tests still pass; 1 integration test re-purposed
+    from "filters by company_type" to "ignores unknown query
+    params" + 1 new test "filters by businessVertical".
+- Follow-up actions:
+  - bsg_hubspot_field_mapping.md updated with the storage-filter
+    section.
+  - When Sprint 5 (webhooks) ships, the webhook receiver MUST
+    apply the same filter — only ack/upsert events for matching
+    `company_type`. Otherwise an Agent could leak in via a
+    webhook event between backfills.
+
+### Decision: Sprint 2.7 — audit-driven hardening cycle (A → I)
+- Date: 2026-05-16
+- Context:
+  - Phase 8 Sprints 1-2.6 delivered a working backend (auth +
+    companies + deals + HubSpot client + backfill). User then
+    asked for a full audit pass before Sprint 3 (Calculator
+    Configs) to clear technical debt while the surface area was
+    still small enough to refactor cheaply.
+  - The cycle ran four audit rounds (3× typescript-reviewer +
+    1× security-reviewer), closing every finding (HIGH/MED/LOW/
+    NICE-TO-HAVE/HARDENING) in nine numbered commits A-I. User
+    pattern: "фіксимо повністю всі проблеми" each round.
+  - Aggregate: ~25 findings closed across 9 commits, +~600 LOC
+    in helpers / refines / tests, -1 dead env var, 0 regressions
+    (128/128 server + 259/259 frontend stayed green throughout).
+- Decision:
+  - Treat the closed-loop "audit → fix → re-audit" as the
+    completion gate for each backend sprint going forward, NOT
+    only Sprint 2.x. The cost is ~½ day per sprint, the benefit
+    is that no LOW-severity finding compounds into a HIGH one
+    later when the file is harder to refactor.
+  - Commits A-I in detail:
+    - 2.7.A (2890b38): TTL fallback semantics + /pipelines
+      endpoint extracted from inline controller logic.
+    - 2.7.B (88f1bfc): Backfill decomposition (orchestrator /
+      page-fetch / mapper) + N+1 fix when deal misses its
+      primary company in cache.
+    - 2.7.C (23175cc): hubspot.client retry/backoff covered by
+      8 new unit tests (429, 5xx, network err, retry budget).
+    - 2.7.D (6756b03): NICE polish — buildPage() pagination
+      helper, q.min(2) on search, clampLimit removed.
+    - 2.7.E (6a804df): Thundering-herd guard on pipelines
+      cache + per-route rate-limit stacking + boundary test
+      for "exactly limit" requests.
+    - 2.7.F (d83282d): Extracted ttl-refresh + dto-parse +
+      hubspot soft-validate helpers (3 helpers, 0 duplication).
+    - 2.7.G (b4eedd2): Removed dead ZodError re-export.
+    - 2.7.H (a9ddcc9): 8 fixes from fresh review — race on
+      pipelines cache, expiry comparison, JWT regex, console →
+      logger, parseTimestamp negative-numeric path, cookie
+      null sentinel, env-gated auto-backfill, log dedup.
+    - 2.7.I (127f8be): 7 security-review fixes — TRUST_PROXY_HOPS
+      env, sameSite strict, pino redact paths, SSRF refine for
+      HUBSPOT_API_BASE_URL, webhook secret required in prod,
+      body limit 5mb → 1mb, removed unused JWT_REFRESH_SECRET.
+- Alternatives considered:
+  - "Fix only HIGH/MED, defer LOW to backlog": rejected at user
+    request. Rationale: LOW findings in a freshly-written module
+    almost always shrink the cost of the next refactor; deferring
+    them invites the "we'll get to it after Sprint X" trap.
+  - "Single big commit at the end": rejected. Each sub-commit
+    represents one re-audit, which makes the rationale traceable
+    and gives clean rollback boundaries if anything regresses.
+- Consequences:
+  - Backend enters Sprint 3 with: 0 EXPLOITABLE / 0 RISKY / 0
+    HARDENING security findings; typecheck:server clean; vite
+    build clean; 128 server + 259 frontend tests green.
+  - Shared helpers established: `shared/ttl-refresh.ts`,
+    `shared/dto-parse.ts`, `shared/build-page.ts`,
+    `shared/db-helpers.ts`. Sprint 3+ modules should reuse them
+    rather than re-implementing pagination / output-validation.
+  - Soft-validation pattern (Zod `safeParse` → log on drift,
+    fall through to cast) established for HubSpot responses;
+    same pattern recommended for any external API client.
+  - `JWT_REFRESH_SECRET` env var REMOVED — refresh tokens are
+    opaque random strings (SHA-256-hashed). If any docs / ops
+    scripts still reference it, they MUST be updated; the env
+    loader will silently ignore an unknown key.
+  - `TRUST_PROXY_HOPS` env var ADDED with default 1. Production
+    deploys MUST verify the value matches the real Traefik hop
+    count to avoid X-Forwarded-For spoofing of `req.ip`.
+- Follow-up actions:
+  - Sprint 3 (Calculator Configs): start on the same branch
+    with the helpers above as the reuse baseline.
+  - Sprint 5 (webhooks): the env validator now REQUIRES
+    `HUBSPOT_WEBHOOK_SECRET` in production. Ops must set a
+    secret before the next prod deploy even though the webhook
+    handler ships later — see env.ts superRefine.
+  - Codemap regenerated to reflect new shared helpers + the
+    nine modules under `server/`.
+
+### Decision: Sprint 2.8 — frontend integration layer (A → E)
+- Date: 2026-05-16
+- Context:
+  - After Sprint 2.7 the backend was complete (auth, companies,
+    deals, HubSpot reads). A manual probe showed the SPA had ZERO
+    network calls into it — `src/lib/` had `printHtmlViaIframe.ts`,
+    `src/contexts/` had only `CalculatorContext.tsx`, no
+    `fetch`/`axios` anywhere in `src/`. The backend was running in
+    a vacuum.
+  - Rather than continue to Sprint 3 (Calculator Configs) and grow
+    the contract surface before frontend ever validated it, we did
+    the wire-up first. That moved part of the original Sprint 6
+    frontend work earlier; the rest (calc page + document view page)
+    waits for Sprint 3 + Sprint 4 backend to ship.
+- Decision:
+  - **Stack**: axios singleton + interceptors, TanStack Query v5 for
+    server state (useInfiniteQuery for cursor pagination), react-
+    hook-form + zod for forms (reuses backend Zod schemas where
+    possible), in-memory access-token storage (NEVER localStorage).
+  - **Vite dev proxy**: `/api/* → http://localhost:8080` with
+    `changeOrigin: true`. Prod serves SPA + API from the same
+    Express, so the proxy is dev-only.
+  - **Routing**: `/` redirects to `/companies` (the natural workflow
+    entry), all routes except `/login` sit behind `<PrivateRoute />`
+    which gates on the AuthContext's `isBooting / user` state.
+  - **Five commits A → E** delivered:
+    - 2.8.A (6b9c7a4): API client + types + axios interceptors —
+      `src/api/{client,types,auth,companies,deals,hubspot,index}.ts`
+      + 8 unit tests covering Bearer attach, refresh-on-401,
+      single-flight refresh, session-lost callback, envelope
+      mapping. Vite proxy added.
+    - 2.8.B (4b63755): AuthProvider + QueryClientProvider —
+      `src/contexts/AuthContext.tsx` cold-boots via /auth/refresh,
+      hydrates user via /auth/me, exposes `login/logout` actions +
+      `user/isBooting` state. main.tsx wraps the app.
+    - 2.8.C (fe3e27b): LoginPage + PrivateRoute + route reorg.
+      react-hook-form + zod schema mirroring backend
+      loginRequestSchema. Error envelope mapped to human messages
+      per `code`. AppShell extended with IdentityStrip (signed-in
+      name + Sign out) + a Companies workspace tab. Existing
+      calculator/wizard tests updated to async `renderApp()`.
+    - 2.8.D (5f8042e): CompaniesPage with debounced search +
+      cursor pagination. `useCompanies` (useInfiniteQuery) +
+      `useDebouncedValue` hooks. 5 integration tests covering
+      loading / empty / error / debounced search / Load more.
+    - 2.8.E (c5778fe): CompanyDetailPage — company header + deals
+      table with the same pagination tail. `useCompany` (useQuery)
+      + `useCompanyDeals` (useInfiniteQuery) hooks. 5 tests
+      including amount formatting edge cases.
+  - **Sprint 2.8.F (audit closure, A → E in F.1 → F.5)** — after
+    a triple-agent audit (TypeScript reviewer + security reviewer
+    + code reviewer in parallel) we closed 34 findings across
+    5 sub-commits:
+    - F.1 (769e5fb): CRITICAL — `PublicUser` interface diverged
+      from backend `userPublicSchema` on every field except `id`
+      and `displayName` (declared `role/active/createdAt`; wire
+      has `email/isAdmin/isActive`). Updated types + every test
+      fixture. `CursorPage<T>` gained the `limit` field the
+      backend always emits.
+    - F.2 (cad13ac): HIGH — StrictMode-safe cold boot via
+      `useRef` latch (was firing two /auth/refresh calls per dev
+      page load); LoginPage `isBooting` guard to suppress the
+      form-flash on direct /login deep-link.
+    - F.3 (79c1060): HIGH — axios module augmentation for
+      `_isRefresh`/`_retry` (no more `as unknown as` double
+      casts); refresh single-flight race fixed by moving the
+      singleton release to `.then(cleanup, cleanup)` so it queues
+      behind callers' continuations; `useInfiniteQuery<…, Error,
+      …>` typed as `ApiError` so `error.code` is reachable
+      without runtime `instanceof`.
+    - F.4 (2ebcdaf): 11 MED — `useMemo` for flattened items,
+      `normaliseSearch` helper unifying buildKey + query
+      threshold, LoginPage `resolveSafeFromPath` with path-
+      relative guard, AppShell `handleLogout` try/finally,
+      isFetching background indicator, shared `formatDate`
+      helper, `vi.restoreAllMocks` test pattern, session-lost
+      handler test, renderApp cleanup.
+    - F.5 (06810f8): 16 LOW + nice-to-have — PrivateRoute test
+      (3 cases), AppShell IdentityStrip test (2 cases),
+      `<LoadMoreButton />` extracted, `src/shared/constants.ts`
+      (`QUERY_STALE_TIME_MS`, `QUERY_GC_TIME_MS`,
+      `SEARCH_DEBOUNCE_MS`), vite-env.d.ts cross-origin warning,
+      ApiError.details security JSDoc, setSessionLostHandler
+      single-slot doc, snapshotShape.ts clientNotes
+      Sprint-3-Zod-cap reminder.
+- Alternatives considered:
+  - Keep Sprint 3 backend first: rejected. Adding another module
+    before the frontend layer existed risked growing API contracts
+    that would never get exercised until much later.
+  - Use SWR instead of TanStack Query: rejected. TanStack's
+    `useInfiniteQuery` with `getNextPageParam` mapped cleanly to
+    our cursor pagination; SWR's pagination story is less ergonomic.
+  - Store access token in `localStorage`: rejected. XSS would yield
+    an instantly-stealable long-lived credential. Module memory +
+    httpOnly refresh cookie is the standard pattern.
+  - Validate API responses with Zod at the frontend boundary
+    (mirroring backend schemas): deferred. The cost (a `.parse()`
+    call per response, plus duplicating every schema in `src/api/`)
+    isn't justified at the current scale, and the F.1 finding shows
+    that drift is catchable by careful TypeScript review. Revisit
+    when more endpoints exist or when shared zod-schemas refactor
+    lands.
+- Consequences:
+  - 5 (A-E) + 5 (F.1-F.5) = 10 commits between `92a4649` (drizzle
+    audit fix) and `06810f8`.
+  - Frontend baseline now includes: `src/api/` (8 files), `src/
+    contexts/AuthContext.tsx`, `src/hooks/` (3 hooks), `src/pages/
+    {LoginPage,CompaniesPage,CompanyDetailPage}`, `src/components/
+    {PrivateRoute,LoadMoreButton}`, `src/shared/{format,constants}`.
+  - Frontend tests: 227 (203 pre-2.8 + 8 client + 7 auth + 6 login
+    + 5 companies + 5 detail + 3 PrivateRoute + 2 AppShell — minus
+    re-counted overlaps after the worktree exclusion fix).
+  - Backend unchanged for 2.8; new env var TRUST_PROXY_HOPS still
+    holds; npm audit 0.
+- Follow-up actions:
+  - Sprint 3 (Calculator Configs) will piggyback on the patterns
+    established here: `src/api/calculator-configs.ts`,
+    `src/hooks/useCalculatorConfigs.ts`, `<CalcConfigPage />`
+    reusing `<LoadMoreButton />` + `formatDate` + the search
+    debounce pattern.
+  - Sprint 6 (original "Frontend integration" plan) is partially
+    DONE — auth + listings already shipped. Remaining scope: calc
+    page (/calc/:id), document view (/documents/:number), wizard
+    URL-driven hydration. Will fold into the corresponding sprint
+    (Sprint 3 wires calc page; Sprint 4 wires document view).
+  - Production deploys MUST manually clean any users with the
+    pre-F.1 phantom `role` column reference if any external code
+    consumes /auth/me — none does today.
+
+### Decision: Pre-Sprint 3 — Calculator config + Document anchors + UX shape
+- Date: 2026-05-17
+- Context:
+  - After Sprint 2.8 the SPA validated the auth + companies + deals
+    flow against the backend, but every downstream entity (calculator
+    configs, documents) still had open architectural questions about
+    HOW they hang off the company/deal hierarchy. Locking these now
+    avoids the much-more-expensive refactor that would follow a
+    Sprint 3 schema commit.
+  - User reviewed an ASCII wireframe of the future
+    `/companies/:id` page (Overview / Deals / Documents tabs) plus
+    the operator journey (login → company → calc → doc) and chose
+    one option per axis: A2, B2, C1, D3.
+- Decision:
+  - **A2 — Documents anchor: `company_id NOT NULL` + `hubspot_deal_id NULLABLE`**.
+    Every document belongs to a company. Optionally also belongs to a
+    deal. Schema:
+
+        documents.company_id        UUID NOT NULL REFERENCES companies(id)
+        documents.hubspot_deal_id   TEXT NULL REFERENCES deals(hubspot_deal_id)
+
+    The Documents tab on `/companies/:id` lists ALL the company's
+    documents and renders the Deal column when present, falling back
+    to "—" for company-level docs. Standalone offers (e.g. a generic
+    proposal without a tracked deal) are first-class.
+  - **B2 — Calculator configs anchor: same shape as Documents**.
+
+        calculator_configs.company_id      UUID NOT NULL REFERENCES companies(id)
+        calculator_configs.hubspot_deal_id TEXT NULL REFERENCES deals(hubspot_deal_id)
+
+    Symmetric with documents so the "save calc as offer" flow can
+    just carry both ids through verbatim. A "create new calc for
+    this deal" button on a deal row in `/companies/:id` pre-fills
+    `hubspot_deal_id`; the global "+ New calculation" button on
+    the company header leaves it null.
+  - **C1 — Listing UX: tabs on detail page, NOT hierarchical accordion**.
+    Keep Sprint 2.8's flat CompaniesPage table. Extend
+    CompanyDetailPage with three tabs:
+      - Overview (current header dl)
+      - Deals (current deals table)
+      - Documents (NEW — Sprint 6 wiring; backend lands in Sprint 4)
+    The original Sprint 6 spec called for a hierarchical accordion on
+    `/listings`. Rejected because:
+      (a) tabs are simpler to paginate (each tab uses its own
+          useInfiniteQuery)
+      (b) the accordion conflated three different cursor streams
+          (companies, deals, docs) onto one page, fighting React Query
+      (c) tabs match the mental model "this company has Deals AND
+          Documents" rather than "Documents are nested inside Deals"
+  - **D3 — `/wizard` becomes a thin shim that creates a blank config
+    and redirects to `/calc/:newConfigId`**. Sprint 6 will rewrite
+    WizardPage's mount handler:
+
+        // current
+        renders the wizard with local state
+
+        // post-Sprint 6
+        POST /calculator-configs { companyId: null, ... blank seed }
+          → newConfigId
+          → navigate(`/calc/${newConfigId}`, { replace: true })
+
+    Loses the "manual blank" deep-link convenience of today but
+    consolidates into one pipeline (single source of truth for
+    autosave + persistence). Tests for `?source=manualBlank` URL
+    params can be deleted along with the manual wizard state.
+- Alternatives considered:
+  - A3 (document MUST have a deal): rejected. BSG's sales flow
+    sometimes produces an offer before a HubSpot deal exists — the
+    deal is created later when the offer is accepted.
+  - B3 (config MUST have a deal): same rejection for the same reason.
+  - C2 (hierarchical accordion): rejected, see above.
+  - D2 (delete /wizard): rejected. Existing tests + bookmarks still
+    reference /wizard; a redirect preserves them without dual logic.
+- Consequences:
+  - Sprint 3 SQL migration schema is now locked:
+      - `calculator_configs.company_id UUID NOT NULL`
+      - `calculator_configs.hubspot_deal_id TEXT NULL`
+      - FK ON DELETE: company → CASCADE (drop configs when company
+        is removed), deal → SET NULL (configs survive a deal
+        deletion, the deal column just nulls out).
+  - Sprint 4 SQL migration schema:
+      - `documents.company_id UUID NOT NULL`
+      - `documents.hubspot_deal_id TEXT NULL`
+      - FK ON DELETE: company → RESTRICT (cannot delete a company
+        with documents — operator must archive), deal → SET NULL.
+  - Sprint 6 frontend work:
+      - Add Tabs primitive (Sprint 6 — first form library decision
+        carry-over from F.5 NICE-TO-HAVE deferred).
+      - `/companies/:id` consumes useCompany + useCompanyDeals +
+        useCompanyDocuments (last is Sprint 4 hook).
+      - `/wizard` route gets a tiny "creating draft…" splash before
+        the redirect.
+- Follow-up actions:
+  - Sprint 3 starts on the `implement-backend` branch with the locked
+    schema. Drizzle migration generated as `0003_calculator_configs.sql`.
+  - Sprint 4 starts after 3 lands; migration `0004_documents.sql`
+    references calculator_configs FK (numbering sequence already
+    set up in Sprint 1 according to phase_08_backend_plan §3).
+  - `docs/CODEMAPS/frontend.md` "Future Sprint touchpoints" section
+    is now concrete: `<CalcConfigPage />`, `<CompanyDocumentsTab />`,
+    `<WizardRedirectPage />`.
+
+### Decision: Calculator save UX — explicit save, no autosave
+- Date: 2026-05-17
+- Context:
+  - Original Phase 8 plan envisioned `/calc/:id` with debounced
+    (1s) PATCH autosave and a "Saved · Xs ago" indicator — typical
+    Google-Docs-style live persistence.
+  - User reviewed the wireframes for the two save flows
+    (calculator save + wizard Step 1 picker) and clarified the
+    intended operator workflow:
+    > "користувач налаштував калькулятор все перевірив і в кінці
+    >  він може зберегти його за потреби явно натисне і обире до
+    >  якої компанії чи діла зберегти"
+  - The mental model is "calculator is a scratchpad; you commit
+    it when you've finished iterating", NOT "every keystroke is
+    persisted".
+- Decision:
+  - **Calculator save is EXPLICIT**. Operator edits calculator
+    in-memory (existing CalculatorContext state), clicks "Save
+    calculator" → modal opens → operator picks company + optional
+    deal + optional title → `POST /api/v1/calculator-configs` →
+    toast confirms.
+  - **No debounced PATCH, no "Saved · Xs ago" indicator**.
+    Calculator state lives in `CalculatorContext` until explicit
+    save. Reload-without-save = lose changes (operator's responsibility).
+  - **Updating an existing config**: opening a saved config and
+    editing → clicking "Save" → PUT replaces the config's payload.
+    No special "save as new" — to fork, operator opens config and
+    clicks "Save as new" which prompts for new company/deal/title.
+  - **Multiple drafts per (company, deal) allowed**. The schema
+    has NO unique constraint on `(company_id, hubspot_deal_id)`.
+    Operator can keep `Q1-Optimistic` + `Q1-Pessimistic` side-by-
+    side. Wizard Step 1 picker lists them all (chronological).
+  - **Wizard Step 1 config picker**:
+      - Default scope: configs where `company_id = selectedCompany AND
+        (hubspot_deal_id IS NULL OR hubspot_deal_id = selectedDeal)`.
+      - "Show all my configs" link drops the deal filter → all
+        configs for that company.
+      - "Start blank" option = no seed, wizard launches with empty
+        state (existing behavior).
+- Alternatives considered:
+  - Debounced autosave: rejected per user feedback above. The
+    backend would still be simpler if added later — `PATCH
+    /calculator-configs/:id` could be added as a Sprint 3.5
+    addendum if the operator workflow evolves.
+  - Auto-create draft on first edit, attach later: rejected.
+    Would pollute the DB with abandoned drafts on every session
+    where the operator just wanted to do a quick what-if.
+  - Single config per (company, deal) with overwrite-on-save:
+    rejected. Operators legitimately compare scenarios; throwing
+    away history would force them to keep multiple browser tabs
+    open.
+- Consequences:
+  - Sprint 3 backend gains:
+      - `PUT /api/v1/calculator-configs/:id` instead of `PATCH`
+        (full replace, no partial-merge).
+      - `GET /api/v1/calculator-configs?companyId=…&hubspotDealId=…&showAll=…`
+        for the picker.
+      - No autosave debouncing logic on the frontend; just one
+        button + modal + `useMutation`.
+  - Sprint 3 frontend ships:
+      - "Save calculator" button on `/calculator` page header.
+      - `<SaveCalculatorModal />` with company typeahead (reuses
+        listCompanies endpoint) + deal selector filtered to
+        selected company + optional title.
+      - Toast on success/error.
+  - Sprint 4 (documents) is unaffected — document creation already
+    requires a configId from `POST /api/v1/documents`, which the
+    wizard will supply once Sprint 6 wires Step 1's picker.
+  - Sprint 6 wizard Step 1:
+      - Two new fields: "Attach to" (company + deal) and "Seed from
+        saved calculator" (radio: blank | pick config).
+      - Picker fetches via the Sprint 3 list endpoint.
+- Follow-up actions:
+  - Sprint 3 backend tests MUST cover the multi-draft case
+    (POST two configs with same company+deal → both persisted with
+    distinct ids).
+  - Sprint 3 frontend tests MUST cover the modal validation:
+    company REQUIRED, deal optional, title optional.
+  - `docs/phase_08_implementation_plan.md` Sprint 3 section has
+    been updated to reflect explicit-save model (no PATCH endpoint,
+    no autosave wiring).
+  - If operator feedback ever requests autosave, the backend can
+    add `PATCH /api/v1/calculator-configs/:id` (partial-merge) and
+    the frontend can add a debounce wrapper around it without
+    breaking existing CRUD callers.
+
+### Decision: Pre-Sprint 4 — Documents UX + payload shape + template flow
+- Date: 2026-05-17
+- Context:
+  - Sprint 4 ships the documents + PDF module. Before writing the
+    migration, locked three UX questions that touch the schema (Q2)
+    and the wizard wiring (Q1, Q3).
+- Decision:
+  - **Q1 — Wizard "Save as document" lives ONLY on the last step**.
+    The 7-step wizard runs to completion (Header → Acquirer fees →
+    Volumes → ... → Parties & Signatures). On Step 7, depending on
+    Document Type (offer / agreement / offer_and_agreement), the
+    appropriate "Save" button(s) appear. Clicking opens AddendumModal
+    → optional addendum text → POST /api/v1/documents → redirect
+    to /documents/:number.
+    Rejected alternatives:
+      - Per-step "Save & close": would require a tristate payload
+        (complete vs draft vs invalid) — explosion in validation
+        rules with no business benefit, the wizard takes ~3 min and
+        operators run it end-to-end anyway.
+      - "Generate Document" button in the wizard header: invites
+        accidental clicks mid-edit and decouples save from final
+        review.
+  - **Q2 — documents.payload = CalculatorSnapshotPayload + wizard-
+    specific meta in ONE JSONB blob**.
+    Shape:
+
+        {
+          // mirror of CalculatorSnapshotPayload (calculator-configs payload)
+          schemaVersion: 1,
+          calculatorType, payinVolume, ..., clientNotes,
+          // wizard-specific additions (Step 1: header meta; Step 7: parties)
+          header: { dateIssued, validityDays, contactPerson, ... },
+          parties: {
+            merchant: { legalName, regNumber, address, ... },
+            bsg: { entity, signatory, ... }
+          },
+          signatures: { merchantSignatoryName, bsgSignatoryName }
+        }
+
+    Rationale:
+      - The existing src/components/document-wizard PDF builder
+        already consumes this combined shape. Splitting would create
+        a join cost at render time for zero modeling benefit.
+      - PDF render is read-only against payload — JSON shape mismatch
+        would surface immediately in PDF QA, not silently corrupt data.
+      - "Use as template" can extract the calc slice (via
+        extractCalculatorSnapshot on the payload directly) without
+        re-fetching the calculator-config.
+    Rejected alternatives:
+      - Calc snapshot + parties/signatures as separate columns:
+        rejected. JSONB lets us evolve the schema (e.g. Phase 9 might
+        add `localised_translations`) without migrations.
+      - Pre-rendered HTML: rejected. Editing or re-styling existing
+        docs requires re-rendering anyway; storing source-of-truth
+        as data + rendering on demand is the standard pattern.
+  - **Q3 — "Use as template" redirects to /calc/:newConfigId**, not
+    /wizard. The button on /documents/:number does:
+      1. POST /api/v1/documents/:number/use-as-template
+      2. Backend extracts the calc slice from documents.payload,
+         creates a new calculator_configs row (company_id +
+         hubspot_deal_id inherited from source doc), returns
+         { configId, redirectUrl: "/calc/:configId" }
+      3. Frontend navigates.
+    The operator then iterates on the calc, and if they want to
+    produce a NEW document, opens the wizard from there as usual.
+    Rejected:
+      - Direct redirect to /wizard?seed=<docId>: rejected. Would
+        mean a document → wizard → document cycle without a clear
+        intermediate state — confusing the "what am I editing"
+        mental model. Calc-as-intermediate is the cleaner break.
+- Alternatives considered (cross-cutting):
+  - "Save as draft" intermediate state on documents: rejected.
+    Documents are immutable artefacts (an offer that's been sent to
+    a client doesn't get edited; it gets superseded). Drafts live
+    in calculator_configs.
+  - Allowing documents.calculator_config_id NOT NULL: rejected. A
+    document MAY originate from a config (Flow A) but doesn't HAVE
+    to — Flow C ("direct clone from existing document") creates a
+    doc without ever touching a config row.
+- Consequences:
+  - Sprint 4 SQL migration 0003_documents.sql locked:
+
+        documents (
+          id              UUID PK DEFAULT gen_random_uuid(),
+          number          TEXT NOT NULL UNIQUE,    -- BSG-7100024 format
+          company_id      UUID NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+          hubspot_deal_id TEXT NULL REFERENCES deals(hubspot_deal_id) ON DELETE SET NULL,
+          calculator_config_id UUID NULL REFERENCES calculator_configs(id) ON DELETE SET NULL,
+          scope           TEXT NOT NULL CHECK (scope IN ('offer','agreement','offer_and_agreement')),
+          payload         JSONB NOT NULL,
+          addendum        TEXT,
+          hubspot_sync_state TEXT NOT NULL DEFAULT 'not_synced'
+            CHECK (hubspot_sync_state IN ('not_synced','synced','failed')),
+          hubspot_note_id TEXT,
+          created_by_user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+          created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+
+        document_number_sequence (
+          id INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),  -- singleton
+          next_value INT NOT NULL DEFAULT 7100001
+        );
+
+    FK on company DELETE = RESTRICT (operator must archive the doc
+    before removing the company; CASCADE would silently destroy
+    legal-record artefacts).
+    FK on deal DELETE = SET NULL (doc survives a deal deletion; the
+    deal column just nulls out).
+    FK on calculator_config DELETE = SET NULL (deleting a saved
+    calculator-config doesn't invalidate the document; the link is
+    informational).
+  - Sprint 4 endpoint surface:
+      - POST   /api/v1/documents               (Flow A from configId,
+                                                Flow B from /use-as-template,
+                                                Flow C from direct body)
+      - GET    /api/v1/documents/:number
+      - POST   /api/v1/documents/:number/use-as-template → new
+                                                calculator-config + redirect
+      - GET    /api/v1/documents?…filters     (cursor pagination)
+      - GET    /api/v1/documents/:number/pdf?download=true
+                                                (Puppeteer-streamed)
+      - GET    /api/v1/numbering/peek
+      - POST   /api/v1/documents/:number/sync → 501 stub (Phase 9)
+  - Sprint 4 frontend:
+      - AddendumModal (opens on wizard Step 7's Save buttons).
+      - DocumentsListPage at /documents.
+      - DocumentViewPage at /documents/:number (read-only render,
+        Download PDF button, Use as Template button).
+      - Wizard Step 7 gets one new section: "Save buttons" (per
+        scope: 1, 2, or 3 buttons depending on Document Type).
+- Follow-up actions:
+  - Sprint 4.A migration MUST seed `document_number_sequence` with
+    a single row (id=1, next_value=7100001) — see decisions.md
+    "DOCUMENT_NUMBER_START=7100001".
+  - Numbering allocation MUST use `UPDATE ... RETURNING` inside the
+    POST /documents transaction so concurrent saves can't collide.
+    Integration test required: spawn 2 parallel POSTs against the
+    same company/deal, assert distinct numbers.
+  - PDF render MUST be stream-only (no /tmp files, no DB cache).
+    Buffer flows: Puppeteer Buffer → HTTP response.
+  - Phase 9 (HubSpot Note write-back) will populate
+    `documents.hubspot_note_id` + flip `hubspot_sync_state` to
+    `synced`. Sprint 4 keeps the stub returning 501 so the schema
+    is ready when Phase 9 lands.
+
+### Decision: Sprint 4 — documents + PDF module shipped (A → E.fix)
+- Date: 2026-05-17
+- Context:
+  - Pre-Sprint-4 locked decisions A2 + B2 + C1 + D3 (see earlier
+    record). Sprint 4 implemented the schema + module + UI plus
+    several post-smoke iterations driven by user feedback.
+  - 12 commits between `dd7b46a` and the F.4 doc sync.
+- Decision (high-level outcomes):
+  - **Document numbering format** = `BSG-<seq:07d>-<suffix:06d>`,
+    suffix = last 6 chars of `companies.hubspot_company_id`. Aligned
+    with `phase_08_backend_plan.md §6`. Sprint 4.A initially shipped
+    `BSG-<seq>` only and the F.1.0 round restored the suffix.
+  - **Atomic allocation** via `UPDATE document_number_sequence SET
+    next_value = next_value + 1 RETURNING next_value - 1` inside the
+    POST /documents transaction. Failed INSERT rolls back the
+    increment — no sequence gaps. Two tests cover this explicitly:
+    pre-allocation validation (calc-ref fail) AND in-TX failure
+    after allocation (unknown-company-UUID).
+  - **Frontend wizard backend bar** lives INSIDE Step 1 (Header /
+    Meta) and ONLY on that step. Save button lives ONLY on Preview
+    step. Two earlier UX revisions tried bar-on-every-step and
+    button-on-every-step; both were rolled back per user feedback
+    ("операт перевіряє все на Preview перед save").
+  - **Inline HTML preview** on `/documents/:number` uses the same
+    `buildOfferPdfHtml` the wizard's Preview step renders. Iframe
+    has `sandbox=""` + `allow=""` (no scripts, no permissions). The
+    `asWizardPayload` shape-check is shallow; deeper validation
+    surfaces as a thrown error inside `buildOfferPdfHtml` and is
+    caught/rendered as a fallback banner.
+  - **`?renderedHtml=` debug path** in pdf.controller is now
+    `isProd`-gated. Production rejects with 403 ForbiddenError. Dev
+    keeps it for manual rendering tests until Sprint 4.E.2 ships
+    the shared template module.
+  - **Document URL regex pre-check** (`/^BSG-\d{7}-[0-9A-Z]{6}$/i`)
+    rejects malformed numbers BEFORE the DB lookup. Defends
+    Content-Disposition `filename=` from CRLF injection on future
+    code paths that may bypass the DB validator.
+  - **LIKE metacharacter escape** in documents.repository: `q=%`
+    no longer matches every row.
+  - **`documents.updatedAt` `$onUpdate` hook** — Drizzle stamps
+    every UPDATE so Phase 9's `patchSyncState` doesn't leave the
+    column at the INSERT timestamp.
+  - **`APP_PUBLIC_URL` env var** (validated against localhost in
+    production) — set up now so Phase 9 has a clean place to read
+    "where do we point HubSpot Notes back to".
+  - **Shared `formatScopeLabel`** in `src/shared/format.ts` next to
+    `formatDate` — DocumentsListPage + DocumentViewPage use it.
+- Alternatives considered:
+  - Storing pre-rendered HTML in `documents.payload`: rejected per
+    pre-Sprint-4 lock (Q2 → B option). The current approach renders
+    on demand from a structured payload — supports re-styling without
+    re-saving documents.
+  - Per-step Save buttons: rejected. Operator must complete the
+    full wizard + preview before committing — single save trigger.
+  - Server-side Puppeteer PDF render in Sprint 4: BACKEND PLUMBING
+    SHIPPED but the `buildOfferPdfHtml` builder still lives only on
+    the frontend. Sprint 4.E.2 will extract a shared template module
+    so the server can call it. Until then, `Download PDF` is
+    explicitly disabled on the UI with a tooltip noting Sprint 4.E.2.
+- Consequences:
+  - Backend: +1 module (documents), +1 module (pdf), +1 migration
+    (0003), +1 error class (NotImplementedError), +1 env var
+    (APP_PUBLIC_URL). 183 server tests (was 146 pre-Sprint-4).
+  - Frontend: +3 pages (DocumentsListPage, DocumentViewPage),
+    +2 modals (SaveDocumentModal, WizardBackendBar), +1 hook
+    (useDocuments), +1 formatter (formatScopeLabel). 243 frontend
+    tests (was 211 pre-Sprint-4).
+  - 28 audit findings closed in F.1 (correctness — 1 BLOCKER + 9
+    SHOULD-FIX), F.2 (refactor + APP_PUBLIC_URL + iframe allow=""),
+    F.3 (test coverage). Zero open findings.
+- Follow-up actions:
+  - Sprint 4.E.2 (shared template module): pick approach (a) move
+    `src/components/document-wizard/buildOfferPdfHtml.ts` + deps to
+    `src/shared-templates/` and include in `tsconfig.server.json`,
+    OR (b) Vite library-mode build. Pre-commit comment in
+    `pdf.controller.ts` flags this for the implementing engineer.
+  - Sprint 5 (HubSpot webhooks): inbound only. Backend `documents`
+    schema already has `hubspot_sync_state` + `hubspot_note_id`
+    placeholders for Phase 9's outbound write-back.
+  - Phase 9 (HubSpot Note write-back): will use `APP_PUBLIC_URL +
+    "/documents/" + number` as the link payload. Env validator
+    enforces the URL is a real https origin in production.
+  - WizardBackendBar + SaveDocumentModal frontend tests deferred
+    to Sprint 6 polish (mirror SaveCalculatorModal pattern).
+
+### Decision: Pre-Sprint 5 — HubSpot webhooks scope + filter behaviour
+- Date: 2026-05-17
+- Context:
+  - Sprint 5 backend scope = inbound HubSpot webhooks. Phase 9 will
+    later add outbound Note write-back. Locking event-type coverage
+    + filter behaviour BEFORE writing the migration so the worker
+    + processor design knows what to expect.
+- Decision:
+  - **Event types covered** = `company.creation`, `company.propertyChange`,
+    `company.deletion`, `deal.creation`, `deal.propertyChange`,
+    `deal.deletion`. Full set; nothing deferred.
+    Deletion handling: incoming `deletion` event triggers a hard
+    DELETE on `companies` (or `deals`) by HubSpot natural key. FK
+    policies (already locked in earlier records): deals FK on
+    company.hubspotCompanyId is RESTRICT — but the webhook
+    processor runs the deletes IN ORDER: deals first, then their
+    company. The processor MUST handle `404` from HubSpot fetches
+    on deletion events (HubSpot's API returns 404 after the row is
+    gone) — treat 404 as "delete in our DB and ack".
+  - **Storage filter sync** = drop-on-event. Webhook processor
+    fetches the full object from HubSpot, checks `properties.company_type`
+    against `HUBSPOT_COMPANY_TYPE_FILTER`:
+      - If MATCH (e.g. `direct_client`) → upsert into `companies` row.
+      - If MISMATCH (e.g. Agent / NULL) → mark event as
+        `processed` with `outcome = 'filtered_out'`, do NOT upsert.
+      - The same backfill cleanup pass that runs at server startup
+        re-aligns the DB if the filter is ever loosened/tightened.
+    For deals: deals are saved as long as their parent company
+    passes the filter (the existing backfill skip path already
+    handles this case).
+  - **Async processing model** = receiver inserts a row into
+    `hubspot_webhook_events` and immediately returns 200. A worker
+    loop (`setInterval` every 5s in-process — single replica until
+    Sprint 7) polls pending rows, fetches the object from HubSpot,
+    runs the upsert/filter, marks the row as `processed` or
+    increments `attempts` + sets `last_error`. Idempotency via
+    UNIQUE on `hubspot_event_id` (HubSpot delivers each event a
+    handful of times; `ON CONFLICT DO NOTHING` makes the receiver
+    side trivially idempotent).
+- Alternatives considered:
+  - Synchronous processing (verify HMAC → fetch from HubSpot →
+    upsert in the request): rejected. HubSpot ack timeout is 30s;
+    a slow upstream HubSpot or a temporary rate-limit hit could
+    cascade into "HubSpot retries the event, we re-process, etc."
+    Async with idempotent insert is the standard pattern.
+  - Store all events even for non-matching companies: rejected for
+    DB hygiene. `outcome = 'filtered_out'` rows are still kept
+    (audit trail), they just don't touch `companies`/`deals`.
+  - Per-company-type webhook subscriptions in HubSpot: rejected.
+    HubSpot's webhook subscription model is global per Private App,
+    not filterable by company-type. Easier to filter at receive
+    time than to maintain N separate subscriptions.
+- Consequences:
+  - Sprint 5 schema: `hubspot_webhook_events` table with columns:
+      - `id` UUID PK
+      - `hubspot_event_id` TEXT NOT NULL UNIQUE (idempotency)
+      - `subscription_type` TEXT NOT NULL (company.creation, etc.)
+      - `object_type` TEXT NOT NULL ('company' | 'deal')
+      - `hubspot_object_id` TEXT NOT NULL (the company/deal id)
+      - `occurred_at` TIMESTAMPTZ NOT NULL (from event payload)
+      - `received_at` TIMESTAMPTZ DEFAULT now()
+      - `status` TEXT NOT NULL DEFAULT 'pending'
+        (CHECK: pending | processed | failed)
+      - `outcome` TEXT NULL (CHECK: upserted | deleted | filtered_out | null)
+      - `attempts` INT NOT NULL DEFAULT 0
+      - `last_error` TEXT NULL
+      - `processed_at` TIMESTAMPTZ NULL
+      - `raw` JSONB NOT NULL (the full event body for debugging)
+  - Index: partial index on `(status)` WHERE status = 'pending' —
+    the polling worker's hot path.
+  - Sprint 5 endpoint surface:
+      - POST `/api/v1/hubspot/webhooks` (HMAC-protected; rate-limited
+        via `webhookLimiter` 200/min/IP from Sprint 2.7)
+      - POST `/api/v1/hubspot/refresh` (auth-protected; manual sync
+        trigger for operators)
+  - New worker boot in `server/index.ts`: `startWebhookProcessor()`
+    after backfill hook. `setInterval(5000)` polling.
+- Follow-up actions:
+  - Sprint 5 implementation broken into A (migration + schema),
+    B (HMAC middleware + receiver), C (worker + processor),
+    D (refresh endpoint + integration tests), E (docs).
+  - HubSpot Private App webhook configuration → goes into
+    `docs/hubspot_api_reference.md` so a future operator can set
+    up webhooks without rediscovering the steps.
+  - Sprint 7 (Docker) needs to handle the worker's `setInterval` —
+    single-replica deploy is fine; multi-replica future would
+    need a row-lock or a Redis-backed queue. Note as TODO.
+
+### Decision: Sprint 5 — HubSpot webhooks shipped (A → E)
+- Date: 2026-05-17
+- Context:
+  - Pre-Sprint 5 locked the scope (all 6 event types, drop-on-event
+    filtering, async receiver + worker, idempotency via UNIQUE on
+    `hubspot_event_id`). This record captures what landed plus the
+    one architectural deviation we encountered during wiring.
+- Decision (what shipped):
+  - **Migration `0004_complex_squadron_sinister.sql`** — created
+    `hubspot_webhook_events` (12 columns + partial index on
+    `(status)` WHERE status='pending' + 3 CHECK constraints encoding
+    the status / outcome / object_type enums inline).
+  - **HMAC v3 middleware** (`server/middleware/verify-hubspot-signature.ts`).
+    Source string = `${method}${uri}${rawBody}${timestamp}`,
+    `crypto.timingSafeEqual`, 5-minute timestamp window.
+    Decoded raw body is re-parsed into `req.body` so downstream
+    handlers see the same JSON shape as every other endpoint.
+  - **Receiver + refresh routes** mounted as
+    `hubspotWebhooksRouter` inside the existing `hubspotRouter`:
+      - `POST /api/v1/hubspot/webhooks` — public (signature-auth),
+        `webhookLimiter` 200/min/IP, returns 200 even on shape
+        mismatch (logs + `malformed:true` so HubSpot doesn't retry).
+      - `POST /api/v1/hubspot/refresh` — Bearer-auth,
+        `hubspotProxyLimiter` 10/min/IP, max 100 ids.
+  - **Async processor** (`webhooks.processor.ts`) —
+    `setInterval(5000)` in-process, `BATCH_SIZE=50`,
+    `MAX_ATTEMPTS=5`. Skipped in `NODE_ENV=test` so the test suite
+    can drive it via `processWebhookBatch()` directly. Stop hook
+    runs before DB pool drain in `shutdown()`.
+  - **HubSpot 404 race protection** — a `creation`/`propertyChange`
+    event whose object has already been deleted in HubSpot
+    surfaces as `NotFoundError` from `hubspot.getCompany` /
+    `getDeal`. We catch it and treat as a delete (so the local
+    DB stays consistent without re-queuing the event forever).
+  - **Drop-on-event filter** — `passesCompanyTypeFilter()` enforces
+    `HUBSPOT_COMPANY_TYPE_FILTER` against `properties.company_type`.
+    Non-matching → outcome=`filtered_out`, no upsert.
+  - **Deal-without-parent** — if a deal event fires for a deal
+    whose parent company isn't in our cache, we mark it
+    `filtered_out` and skip — preventing a FK insert error. The
+    next company event for the parent (or a manual refresh) will
+    backfill the missing company; the deal will be picked up via
+    the future propertyChange or a backfill rerun.
+- Architectural deviation (from Pre-Sprint 5):
+  - **Raw body parser mount location** — Pre-Sprint 5 implied the
+    raw parser would be route-scoped inside the webhooks router.
+    In practice this didn't work: `app.use(express.json())` is
+    mounted globally in `app.ts` and consumes the body BEFORE the
+    route-level `express.raw` ever runs. Fix: mount `express.raw`
+    path-scoped at `/api/v1/hubspot/webhooks` BEFORE
+    `express.json()`. body-parser's `_body` sentinel makes the
+    second parser a no-op once the first has consumed the stream.
+- Test coverage:
+  - 22 integration tests in `server/tests/hubspot-webhooks.integration.test.ts`:
+      - Receiver: missing sig (403), tampered sig (403), stale ts
+        (403), valid payload (200 + DB row), dedup (200 with
+        deduped=1), malformed payload shape (200 with
+        malformed=true), unsupported subscription type
+        (200 with malformed=true).
+      - Processor: creation → upsert, propertyChange → upsert,
+        filtered_out (non-direct_client), deletion (no HubSpot
+        fetch + cascades to deals), HubSpot 404 race, transient
+        failure (attempts++), retry budget exhaustion
+        (`status='failed'`), deal-with-parent vs deal-without-parent,
+        `occurredAt` ASC ordering.
+      - Refresh: 401 unauth, 400 too-many ids, 400 non-UUID,
+        happy path (refetch + upsert), missing local row (counted
+        as failed).
+  - Full suite: 204 tests pass.
+- Follow-up actions / TODOs:
+  - **Sprint 7 (Docker)** — the `setInterval(5000)` worker is
+    single-replica safe. If we ever run >1 replica, swap to
+    pg advisory locks or a Redis-backed queue. Add to deployment
+    runbook in `docs/deployment.md` once Sprint 7 ships.
+  - **Operator UI** — `POST /api/v1/hubspot/refresh` has no UI
+    surface yet. Sprint 6+ may add a "Force resync" button on a
+    future Companies admin page.
+  - **HubSpot Private App webhook setup** — documented in
+    `docs/hubspot_api_reference.md` (URL + secret + subscription
+    list) so the operator can finish the connection at deploy time.
+
+### Decision: Sprint 5.5 — Visual-diff harness (frontend vs. backend PDF)
+- Date: 2026-05-17
+- Context:
+  - User asked the load-bearing question: "are the two PDF
+    rendering paths (frontend wizard 'Generate PDF' vs. backend
+    `GET /api/v1/documents/:number/pdf`) producing byte-for-byte
+    equivalent output for the same payload?" Until Sprint 5.5
+    nothing checked this — Sprint 4.E.2 shared the HTML builder
+    but the render engines differ (browser-native print pipeline
+    vs. Puppeteer `page.pdf()`).
+- Decision:
+  - Build an automated visual-diff harness
+    (`scripts/visual-diff/index.ts`). It uses Puppeteer for both
+    renders with two different settings configs that approximate
+    the two production paths:
+      - **backend**  — exact production `renderHtmlToPdf()` with
+        `preferCSSPageSize: true` + explicit margins
+      - **frontend simulated** — `page.pdf({ format: "A4",
+        printBackground: true })` with no preferCSSPageSize/margin,
+        approximating window.print() → Save as PDF defaults
+  - Compares per-page via `pixelmatch` after `pdftoppm` rasterisation
+    at 100 DPI. Threshold 0.5% pixel drift per page.
+  - Two fixtures land: `offer-only` (2 pages) and
+    `offer-and-agreement` (12 pages — bundle scope with the MSA
+    appendix).
+- **Result**:
+  - All pages within budget by a 200× margin.
+    - Offer-only: 19 px diff / 967k (0.002%) per page.
+    - Bundle: 14–26 px diff / 967k (≤0.003%) per page.
+  - The handful of differing pixels are anti-aliasing artifacts
+    from `pdftoppm` rounding adjacent renders of the same A4
+    geometry at different sub-pixel positions. Not visible to a
+    human eye.
+  - PDF byte sizes are within 4–25 bytes of each other (PDF
+    metadata only; the content streams are identical).
+  - **Conclusion**: backend and frontend PDF paths produce
+    visually equivalent output, with backend being the canonical
+    reference because it's deterministic across browsers.
+- Caveats documented (in `scripts/visual-diff/README.md` and the
+  operator-facing `docs/hubspot_api_reference.md` workflow notes):
+  - Users on Safari/Firefox may see slightly different output
+    (kerning, page-break heuristics). Recommend "Download PDF"
+    button on `/documents/:number` for any contract delivered to a
+    counterparty.
+  - If the user enables "Headers and footers" in the browser print
+    dialog, their browser injects URL + timestamp on each page.
+    Backend output never has this.
+  - Browser version drift (user on a much older Chrome than
+    Puppeteer's bundled one) — not testable in CI.
+- Alternatives considered:
+  - Drop the frontend "Generate PDF" button entirely, force
+    everyone through backend Download. Rejected — the wizard's
+    in-browser print is a useful "preview-before-save" affordance,
+    especially during pricing iteration.
+  - Use Playwright on three browsers (Chrome / Safari / Firefox)
+    in CI. Deferred — adds ~30s to every CI run for marginal
+    coverage given the dominant operator browser is Chrome.
+  - Bytewise PDF diff. Rejected — PDF metadata (creation date,
+    object IDs) always differs even when content matches; pixel
+    diff is a more honest signal.
+- Consequences:
+  - `npm run visual-diff` is the CI gate going forward. Any template
+    change requires regenerating gold files via
+    `npm run visual-diff:gold` and reviewing the diff in code
+    review.
+  - `tests/visual-diff-gold/` is committed; `tests/visual-diff-output/`
+    is gitignored.
+  - Sprint 8 (hardening) can extend this with Playwright multi-
+    browser support if real-world variation reports come in.
+- Follow-up actions:
+  - Wire `npm run visual-diff` into the `verify` script once the
+    backend dev DB is part of CI. For now operators run it locally
+    when touching the PDF template.
+
+### Decision: Sprint 5.F — audit closure (30 findings)
+- Date: 2026-05-17
+- Context:
+  - Post-Sprint 5 + Sprint 5.5 audit by 5 parallel specialist agents
+    (architect, security-reviewer, typescript-reviewer,
+    database-reviewer, code-reviewer). 30 unique findings after
+    de-duplication: 2 BLOCKER (build/runtime), 5 HIGH (safety),
+    12 SHOULD-FIX (design/coverage), 11 NICE (polish).
+- Decision: close all 30 across three commits.
+  - **5.F.1 (commit `02149a5`) — BLOCKER + HIGH (7 items).**
+    Build broken on tsc: visual-diff `waitUntil:"networkidle0"` is
+    SetContentWaitForOptions-rejected, fixture-payload barrel import
+    drags React .tsx into server tree, pngjs untyped. Replaced HMAC
+    URI source with `env.APP_PUBLIC_URL` (was proxy-header derived).
+    Cut refresh `companyIds.max` from 100 → 20 (was 1000 HubSpot
+    calls/min/IP). Wrapped company-deletion path in `db.transaction`.
+    Replaced `setInterval` with self-rescheduling `setTimeout` +
+    `processorRunning` flag to eliminate re-entrancy race. Wired
+    real exponential backoff in `listPendingEvents` WHERE clause
+    (`attempts = 0 OR received_at + attempts × 30s ≤ now()`) so a
+    failing row no longer exhausts its 5-attempt budget in 25 seconds.
+  - **5.F.2 (commit `6da59ef`) — SHOULD-FIX (12 items).**
+    Repository boundary restored: webhook controller no longer uses
+    dynamic `await import()` of db/schema/eq inside a per-id loop;
+    routes through `findCompanyById`. Processor stops issuing raw
+    `db.delete(deals)`/`db.delete(companies)` and instead calls
+    new helpers (`deleteDealsByCompanyId`, `deleteCompanyByHubspotId`,
+    `deleteDealByHubspotId`, `findCompanyByHubspotId`) that accept
+    an optional `tx` handle so the company-deletion path composes
+    with its TX. Partial index expanded from `(occurred_at)` to
+    `(occurred_at, received_at, attempts) WHERE status='pending'`
+    via migration `0005_strong_thor.sql` so the new backoff WHERE
+    clause can do an index-only scan. SSRF defence-in-depth: Zod
+    schema now constrains `eventId` + `objectId` to `/^\d{1,19}$/`.
+    Five identical `companyFixture()` copies consolidated into
+    `server/tests/fixtures/company.ts`. Added missing
+    `deal.deletion` + `deal.propertyChange` processor tests (2 of 6
+    subscription types had zero coverage). Fixed `isWizardPayload`
+    null-pass bug (`typeof null === "object"`). Dropped `as object`
+    cast in `eventToRow`. Made `dropped` field in malformed ack
+    reflect the real array length instead of hardcoded `0`.
+    - **5.F.2 deferral (S3)**: moving the PDF builder out of
+      `src/components/document-wizard/` to `src/shared/pdf-templates/`
+      would touch ~30 wizard React files and we lack E2E coverage to
+      verify a clean cut. Filed as a future refactor with an
+      architecture note at the pdf.controller.ts import site so the
+      next developer sees the rationale. The visual-diff harness
+      would catch a rendering regression, but a wizard-React hydration
+      bug would slip through silently — wait for Sprint 8 E2E
+      Playwright tests before attempting the move.
+    - **5.F.2 known gap (S6)**: any authenticated user can refresh
+      any company via POST /api/v1/hubspot/refresh — no per-resource
+      ownership check. INTENTIONAL pre-RBAC (Sprint 2.8 ships
+      flat-auth). When admin/regular-user roles ship (Phase 9+),
+      gate refresh on `admin` role before any per-resource check
+      would matter. Documented in JSDoc on the controller.
+  - **5.F.3 (this commit) — NICE polish (11 items).**
+    Five items landed as freebies in F.1/F.2 (`id` tie-breaker in
+    ORDER BY, JSDoc rewrite on listPendingEvents, processor:120
+    projection rename via repo helper, req.protocol → env constant).
+    Remaining 6 done here:
+      - Application-side 64 KB cap on `raw` JSONB persisted by the
+        receiver; over-budget bodies stored as a `_truncated` marker
+        so the row stays inspectable without bloating the table.
+      - Per-fixture `maxDiffRatio` override in the visual-diff
+        FIXTURES registry (default still 0.5%).
+      - Combined duplicate import statement from browser-pool in
+        visual-diff/index.ts.
+      - Receiver log line `events queued` now includes
+        `companies` + `deals` breakdown so a delivery storm is
+        triagable at a glance.
+      - Pre-flight check on `pdftoppm` availability with a clear
+        install hint, replacing the previous unactionable ENOENT.
+      - Defence-in-depth comment on the raw body parser scope in
+        app.ts warning future contributors NEVER to broaden the
+        path argument (would shadow JSON parser globally).
+- Verification:
+  - Server typecheck: clean.
+  - Server test suite: 209 tests pass (was 206; +3 from S7 +
+    S12 + retry-backoff). One pre-existing order-dependent flake
+    in companies-deals cursor pagination is unrelated to 5.F.
+  - Webhook integration tests: 27 pass (was 22 in Sprint 5 ship;
+    +5 from F.1 + F.2.b).
+  - `npm run visual-diff`: 14-26 px / 967k drift per page,
+    within the 0.5% threshold by a 200× margin (unchanged).
+- Open follow-ups (NOT closed in 5.F):
+  - **S3 PDF-builder move** — Sprint 8 (after E2E lands) or
+    Phase 9 prep (before outbound Note write-back wants the same
+    builder).
+  - **RBAC for refresh endpoint** — Phase 9+ once user roles ship.
+  - **Multi-replica processor** — Sprint 7 single-replica is fine.
+    Multi-replica needs pg advisory locks or Redis-backed queue.
+  - **Path alias setup** — tsconfig.json/server.json + vite +
+    vitest + tsx all need new resolution config. Not worth the
+    plumbing until at least 2 cross-boundary imports exist.
+- Sprint 5.F is closed. Next sprint per `phase_08_implementation_plan.md`
+  status snapshot is Sprint 6 (frontend continuation:
+  `/calc/:id` hydration + auto-save + global toasts) or Sprint 7
+  (Docker + Coolify deploy).
+
+### Decision: Sprint 6 — frontend polish + PDF unification (6.0 → 6.4)
+- Date: 2026-05-18
+- Context:
+  - Sprint 6 closed the last operator-facing UX gaps after the
+    Sprint 5 backend was complete: PDF render engine split between
+    frontend window.print() and backend Puppeteer (5.5 visual-diff
+    acknowledged the variability), saved calculator configs had no
+    "open this back up" flow, and per-page inline toasts were
+    inconsistent across the app.
+- Decision (what shipped):
+  - **6.0 unified PDF render** — new `POST /api/v1/pdf/preview`
+    backend endpoint takes a wizard payload and renders via the
+    same Puppeteer pipeline as `GET /documents/:number/pdf`. The
+    wizard's "Generate PDF" button now calls this endpoint via
+    axios arraybuffer + Blob URL (same pattern as saved-doc
+    download). Removed `src/lib/printHtmlViaIframe.ts`. Single
+    render engine across all PDF paths → Sprint 5.5 caveats
+    (Safari/Firefox variability, browser-injected headers) are
+    moot.
+  - **6.1 /calc/:id edit mode** — new route reuses CalculatorPage
+    with `useParams<{ id }>`. Hydrates live state via
+    `seedCalculatorStateFromSnapshot` + `applyStatePreset`,
+    auto-saves on debounced (1s) snapshot diff via
+    `useUpdateCalculatorConfig`. "Saved · 2s ago" SavedStatusBadge
+    surfaces mutation state. Hydration guard via `hydratedFromIdRef`,
+    auto-save arm via `autoSaveArmedRef` with mandatory reset on
+    configId change (Sprint 6.F.1 audit fix).
+  - **6.2-FIX wizard-from-calc linking** — original 6.2 added
+    "Save as Offer" / "Save as Offer + Agreement" buttons directly
+    on the calc page; user flagged the naming as misleading (calc
+    isn't being CONVERTED into an offer — it spawns multiple
+    documents over its lifetime). Reverted; wizard is now the
+    SOLE document-creation gateway. `/calc/:id` "Open Contract
+    Wizard" passes `?calc=<configId>` so the wizard:
+      - Hydrates CalculatorContext from the linked config
+        (covers deep-linking to /wizard?calc=<id>)
+      - Auto-selects company + deal in WizardBackendBar
+      - Forwards `calculatorConfigId` to SaveDocumentModal →
+        `POST /documents` → backend persists FK link
+  - **6.3 global toasts** — new src/contexts/ToastContext.tsx
+    (~190 LOC, no library deps). Replaces per-page inline
+    `savedToast` / `pdfError` / `templateError` state in
+    CalculatorPage, WizardPage, DocumentViewPage. Auto-dismiss with
+    kind-specific timeouts (success/info 4s, error 6s). aria-live
+    + role=alert wiring for accessibility. ToastProvider wraps
+    AuthProvider in main.tsx + renderApp test harness.
+  - **6.4 lists + tabs** — new useCalculatorConfigs(opts) infinite
+    query hook. CompanyDetailPage rewritten into 3-tab layout
+    (Deals / Saved calculators / Documents) with `?tab=` URL state.
+    "Documents from this calculator" history section on /calc/:id.
+    Backend extended: listDocumentsQuerySchema accepts
+    `calculatorConfigId` filter, propagated through repository
+    WHERE clause for the docs-from-this-calc history view.
+- Sprint 6.1 hotfix (commit `5047e22`):
+  - "Maximum update depth exceeded" surfaced on /calculator after
+    bouncing through /calc/:id. Root cause: `savedAt` state used
+    `new Date(string)` in an effect — new Date object each fire,
+    Object.is bail-out failed, setState fired, effect re-ran. Fixed
+    by deriving `savedAtIso` (string) directly from
+    updateMutation.data + configQuery.data instead of storing in
+    useState. Cascading fixes: `calc` removed from hydrate-effect
+    deps (use applyStatePresetRef pattern), liveSnapshot converted
+    to JSON string for stable debouncedValue comparison.
+- Sprint 6.F audit (4 parallel agents — typescript, code-reviewer,
+  architect, security):
+  - **15 findings** consolidated: 1 HIGH + 2 CORRECTNESS + 8
+    SHOULD-FIX + 4 NICE.
+  - **Sprint 6.F.1** closed HIGH + correctness:
+      - H1 dedicated `pdfPreviewLimiter` (10 req/min/IP) on
+        POST /pdf/preview — prevents single user from monopolising
+        the shared Puppeteer browser pool and DoS'ing PDF gen for
+        everyone else.
+      - C1 `autoSaveArmedRef` reset on configId change — prevents
+        first-debounced-snapshot-for-B from silently overwriting
+        the stored row with hydration-time defaults.
+      - C2 ToastContext `notify` stale-closure fix — inlined id
+        construction inside the useCallback body.
+      - Q1 dedupe DocumentViewPage.handleDownloadPdf to call
+        `downloadSavedPdf` + `triggerPdfDownload` from src/api/pdf.ts.
+      - U1+U2 user-facing error strings tightened (removed raw
+        UUID from "calculator not found" banner; clearer fallbacks
+        on PDF/template errors).
+  - **Sprint 6.F.2** closed decomposition:
+      - Extracted CalculatorPage edit-mode subcomponents
+        (`BannerStatus`, `SavedStatusBadge`,
+        `DocumentsFromCalcSection`) to
+        `src/components/calculator/edit-mode/`. Page file
+        679 → 561 LOC.
+  - **Sprint 6.F.3** closed tests + runtime guards:
+      - T1 added 2 integration tests for the Sprint 6.4
+        `?calculatorConfigId=` filter on listDocuments.
+      - Q3 `isCalculatorSnapshotPayload` runtime guard in
+        snapshotShape.ts; applied to both CalculatorPage +
+        WizardPage hydration paths before the cast.
+  - **Sprint 6.F.4** closed polish:
+      - Q2 stale "Sprint 6.4 WILL add" → past tense JSDoc.
+      - N3 wizard refs renamed (`linkedHydratedFromRef` →
+        `hydratedCalcStateForRef`, `linkedBarSeededRef` →
+        `seededBarTargetForRef`) + comment documenting why the
+        split is intentional.
+      - N4 `npm run visual-diff` re-verified — ≤0.003% pixel drift
+        unchanged after Sprint 6 changes, gold files current.
+  - **Deferred from Sprint 6.F** (4 findings, documented rationale):
+      - D2 WizardSeedSource discriminated union — premature with
+        one source type. Lands when Phase 9 "Use document as
+        template" adds `?fromDoc=`.
+      - T2 CompanyDetailPage tabs test + T3 /calc/:id edit-mode
+        test — flagged as follow-up; manual smoke is sufficient
+        for the simple tab-switch + hydration paths.
+      - S3 PDF builder move from `src/components/document-wizard/`
+        to `src/shared/pdf-templates/` — still waiting on Sprint 8
+        E2E per Sprint 5.F.4 rationale.
+      - N1 per-route payload size cap on /pdf/preview — global
+        1MB limit + 10 req/min rate-limit (F.1) already bound the
+        realistic worst case. Tune if observed in prod.
+- Verification:
+  - 243 frontend tests pass.
+  - 215 server tests pass (+2 from F.3 calculatorConfigId filter
+    coverage; pre-existing hubspot.client retry-race flake
+    documented in Sprint 5.F.4 still occasional).
+  - TypeScript clean (frontend + server).
+  - `npm run visual-diff` ≤0.003% drift.
+- Open for Sprint 7:
+  - Docker + Coolify deploy + public domain.
+  - HubSpot Private App webhook config (uses Sprint 5 receiver +
+    Sprint 5.F.1 HMAC URI hardening).
+- Open for Sprint 8 (optional hardening):
+  - E2E Playwright tests — unlock deferred S3 PDF builder move.
+  - WizardSeedSource refactor when Phase 9 needs it.

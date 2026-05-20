@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { HeaderMetaStep } from "./wizard/steps/HeaderMetaStep.js";
 import { OtherFeesStep } from "./wizard/steps/OtherFeesStep.js";
 import { PartiesStep } from "./wizard/steps/PartiesStep.js";
@@ -28,8 +29,32 @@ export interface DocumentWizardPanelProps {
   highlightVariables: boolean;
   onHighlightVariablesChange: (next: boolean) => void;
   onGeneratePdf: () => void;
+  /**
+   * Sprint 6.0: when true, the "Generate PDF" button on the Preview
+   * step shows a "Preparing PDF…" label and is disabled — the backend
+   * Puppeteer render takes ~1-3s, this prevents double-clicks and
+   * gives the operator a clear in-flight signal.
+   */
+  generatePdfPending?: boolean;
   onRefreshFromCalculator: () => void;
   actionMessage: string | null;
+  /**
+   * Optional content rendered INSIDE Step 1 above HeaderMetaStep.
+   * Used by WizardPage to inject the backend-save target picker
+   * (company + deal + save button) so it lives next to Document
+   * Number / Document Type instead of as a standalone panel.
+   */
+  headerStepBeforeContent?: ReactNode;
+  /**
+   * Sprint 4.E: opens the backend save modal from the Preview step.
+   * When omitted, the Preview step renders only Back + Generate PDF.
+   */
+  onSaveDocument?: () => void;
+  /**
+   * Inline hint shown next to the Save button on Preview when it's
+   * disabled (e.g. "Pick a company on Step 1").
+   */
+  saveDisabledReason?: string | null;
 }
 
 export function DocumentWizardPanel({
@@ -45,8 +70,12 @@ export function DocumentWizardPanel({
   highlightVariables,
   onHighlightVariablesChange,
   onGeneratePdf,
+  generatePdfPending,
   onRefreshFromCalculator,
-  actionMessage
+  actionMessage,
+  headerStepBeforeContent,
+  onSaveDocument,
+  saveDisabledReason
 }: DocumentWizardPanelProps) {
   const scope = draft.documentScope;
   const goNext = () => onStepChange(nextStep(scope, activeStep));
@@ -108,14 +137,17 @@ export function DocumentWizardPanel({
         <Stepper activeStep={activeStep} scope={scope} onStepChange={onStepChange} />
 
         {activeStep === 1 ? (
-          <HeaderMetaStep
-            draft={draft}
-            onDraftChange={onDraftChange}
-            onRefreshFromCalculator={onRefreshFromCalculator}
-            onContinueToNext={goNext}
-            onContinueToPreview={() => onStepChange(6)}
-            nextStepLabel={nextLabelFromCurrent}
-          />
+          <>
+            {headerStepBeforeContent}
+            <HeaderMetaStep
+              draft={draft}
+              onDraftChange={onDraftChange}
+              onRefreshFromCalculator={onRefreshFromCalculator}
+              onContinueToNext={goNext}
+              onContinueToPreview={() => onStepChange(6)}
+              nextStepLabel={nextLabelFromCurrent}
+            />
+          </>
         ) : null}
 
         {activeStep === 2 ? (
@@ -173,6 +205,9 @@ export function DocumentWizardPanel({
             onHighlightVariablesChange={onHighlightVariablesChange}
             onBack={goPrev}
             onGeneratePdf={onGeneratePdf}
+            generatePdfPending={generatePdfPending}
+            onSaveDocument={onSaveDocument}
+            saveDisabledReason={saveDisabledReason}
           />
         ) : null}
 

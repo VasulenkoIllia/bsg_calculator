@@ -10,9 +10,21 @@ export interface Zone6OfferSummaryProps {
   offerSummaryText: string;
   offerSummaryActionMessage: string | null;
   onCopy: () => void;
-  onExportPdf: () => void;
-  onPrint: () => void;
   onOpenWizard?: () => void;
+  /**
+   * Persist the current calculator state to the backend
+   * (POST /api/v1/calculator-configs via SaveCalculatorModal). Optional
+   * because the calculator can run without a backend (legacy / offline
+   * use); when the prop is omitted the button is hidden.
+   *
+   * Sprint 6.2-FIX (2026-05-18): the calculator page does NOT create
+   * documents directly. Document creation is the wizard's job — calc
+   * page persists ONLY the calculator entity, then "Open Contract
+   * Wizard" navigates to /wizard?calc=<id> with the config id as a
+   * link so the wizard knows which calc the saved document is
+   * derived from (FK on documents.calculator_config_id).
+   */
+  onSaveCalculator?: () => void;
 }
 
 export function Zone6OfferSummary({
@@ -24,9 +36,8 @@ export function Zone6OfferSummary({
   offerSummaryText,
   offerSummaryActionMessage,
   onCopy,
-  onExportPdf,
-  onPrint,
-  onOpenWizard
+  onOpenWizard,
+  onSaveCalculator
 }: Zone6OfferSummaryProps) {
   return (
     <ZoneSection
@@ -59,9 +70,19 @@ export function Zone6OfferSummary({
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <h3 className="text-lg font-bold text-slate-900">Export Actions</h3>
           <p className="mt-1 text-sm text-slate-600">
-            Copy the summary, open print dialog, or export via "Save as PDF".
+            Save the draft to the backend, open the wizard for a full
+            offer/agreement, or copy the summary text.
           </p>
           <div className="mt-3 flex flex-wrap gap-3">
+            {onSaveCalculator ? (
+              <button
+                type="button"
+                onClick={onSaveCalculator}
+                className="rounded-xl border border-emerald-500 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
+              >
+                Save calculator
+              </button>
+            ) : null}
             {onOpenWizard ? (
               <button
                 type="button"
@@ -77,20 +98,6 @@ export function Zone6OfferSummary({
               className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
             >
               Copy to Clipboard
-            </button>
-            <button
-              type="button"
-              onClick={onExportPdf}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-            >
-              Export to PDF
-            </button>
-            <button
-              type="button"
-              onClick={onPrint}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-            >
-              Print
             </button>
           </div>
           {offerSummaryActionMessage ? (

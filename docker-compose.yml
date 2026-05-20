@@ -1,17 +1,74 @@
+# BSG Calculator — production docker-compose (Sprint 7.3.B).
+#
+# One Postgres + one application container behind Traefik. The app
+# image bundles the Vite SPA + the Express API + Chromium for PDF
+# rendering — see `Dockerfile`. Express serves /api/* AND the SPA
+# static files, so a single Traefik router maps the domain to the
+# app's port 8080 — no separate frontend service.
+#
+# Usage:
+#   # On the prod host (assumes `proxy` external network from Traefik):
+#   cp .env.production.example .env
+#   # … fill in the placeholders …
+#   docker compose pull          # if pulling pre-built image
+#   docker compose up -d --build # if building on the host
+#   docker compose logs -f app
+#
+# Data persistence:
+#   `bsg_postgres_data` is a named Docker volume. Survives container
+#   recreate. Snapshot strategy is the operator's responsibility —
+#   see `docs/deployment.md` for a `pg_dump` cron example.
+
 services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: ${APP_NAME}-postgres
+    restart: unless-stopped
+    # NOT exposed to host — only reachable via the internal Docker
+    # network. The app container reaches it as `postgres:5432`.
+    # If a temporary external connection is needed (psql session),
+    # uncomment the `ports:` block.
+    # ports:
+    #   - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - bsg_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+
   app:
-    container_name: ${APP_NAME}-frontend
+    image: ${APP_IMAGE:-bsg-calculator:latest}
+    container_name: ${APP_NAME}-app
     init: true
     build:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    # depends_on with health-condition: app boot only starts after
+    # Postgres is accepting connections. The entrypoint also has a
+    # 60s retry loop as belt-and-braces.
+    depends_on:
+      postgres:
+        condition: service_healthy
     env_file:
       - .env
     environment:
-      APP_NAME: ${APP_NAME}
-      APP_DOMAIN: ${APP_DOMAIN}
-      TZ: ${TZ}
+      # The app reaches Postgres via the internal network name.
+      # `DATABASE_URL` is constructed from the discrete vars so the
+      # operator can change DB_PASSWORD in one place.
+      DATABASE_URL: postgres://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      NODE_ENV: production
+      PORT: "8080"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -25,13 +82,23 @@ services:
       - "traefik.http.routers.${APP_NAME}.entrypoints=${TRAEFIK_ENTRYPOINT}"
       - "traefik.http.routers.${APP_NAME}.tls=${TRAEFIK_TLS}"
       - "traefik.http.routers.${APP_NAME}.tls.certresolver=${TRAEFIK_CERTRESOLVER}"
-      - "traefik.http.services.${APP_NAME}.loadbalancer.server.port=80"
+      # All traffic goes to port 8080 — Express handles both /api/*
+      # and the SPA static fallback. No second Traefik router needed.
+      - "traefik.http.services.${APP_NAME}.loadbalancer.server.port=8080"
+    # Internal healthcheck — Traefik will only route traffic to a
+    # container reporting healthy. Generous start_period because the
+    # entrypoint waits for Postgres + applies migrations before the
+    # Express listener binds.
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health >/dev/null 2>&1 || exit 1"]
-      interval: 10s
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health || exit 1"]
+      interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 60s
+
+volumes:
+  bsg_postgres_data:
+    name: ${APP_NAME}-postgres-data
 
 networks:
   proxy:

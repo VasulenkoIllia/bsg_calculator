@@ -975,3 +975,142 @@ Official HubSpot developer documentation (fetched 2026-05-14):
   The `companies` + `deals` table schemas in `phase_08_backend_plan.md`
   §3 already reserve `hubspot_raw` JSONB so any shape from HubSpot
   flows through losslessly until we extract named columns.
+
+---
+
+## 14. Webhooks — Private App configuration (Sprint 5)
+
+Sprint 5 wires HubSpot → bsg-calculator one-way data flow via the
+Private App webhook subscriptions feature.
+
+### 14.1 Endpoint
+
+```
+POST https://bsg.workflo.space/api/v1/hubspot/webhooks
+```
+
+- Public; **no Bearer token**. Authenticated via HMAC v3 signature in
+  the `X-HubSpot-Signature-v3` header.
+- Body: HubSpot delivers an array of event objects (see §14.3).
+- Response: 200 with `{ accepted, deduped }` (or
+  `{ accepted: 0, dropped: 0, malformed: true }` on shape mismatch).
+  We **never** return 4xx for malformed-but-signed bodies — HubSpot
+  would retry on the same schedule and the events are unprocessable
+  anyway. Log + ack + drop.
+
+### 14.2 Required env
+
+```
+HUBSPOT_WEBHOOK_SECRET=<the App's "Client secret" value>
+HUBSPOT_COMPANY_TYPE_FILTER=direct_client   # already set for backfill
+```
+
+`HUBSPOT_WEBHOOK_SECRET` is the Private App's **Client secret**
+(NOT the same value as `HUBSPOT_API_TOKEN`). The HMAC v3 source
+string is:
+
+```
+${method}${full_request_uri}${raw_body}${request_timestamp}
+```
+
+Reference:
+[Validating webhook requests](https://developers.hubspot.com/docs/api/webhooks/validating-requests).
+
+### 14.3 Event subscriptions to enable
+
+Configure these six subscriptions in the Private App → **Webhooks**
+panel. Anything outside this set is logged and dropped by the
+receiver (`SUPPORTED_SUBSCRIPTION_TYPES` enum):
+
+| Subscription          | Effect on our DB                                  |
+|-----------------------|---------------------------------------------------|
+| `company.creation`    | Fetch from HubSpot → upsert if matches filter     |
+| `company.propertyChange` | Refetch → upsert (or `filtered_out`)           |
+| `company.deletion`    | DELETE from `companies` + cascade to `deals`      |
+| `deal.creation`       | Fetch → upsert if parent company is in our cache  |
+| `deal.propertyChange` | Refetch → upsert                                  |
+| `deal.deletion`       | DELETE from `deals` by `hubspot_deal_id`          |
+
+Sample event payload HubSpot delivers (array; one entry per event):
+
+```json
+[
+  {
+    "appId": 1234567,
+    "eventId": 987654321,
+    "subscriptionId": 222,
+    "portalId": 12345,
+    "occurredAt": 1747500000000,
+    "subscriptionType": "company.creation",
+    "attemptNumber": 0,
+    "objectId": 426487875793,
+    "changeSource": "CRM",
+    "changeFlag": "NEW"
+  }
+]
+```
+
+### 14.4 Setup steps (operator)
+
+1. HubSpot → Settings → Integrations → **Private Apps** → select the
+   bsg-calculator app.
+2. **Auth** tab → copy the "Client secret" → set
+   `HUBSPOT_WEBHOOK_SECRET` in the prod env / `.env`. Redeploy so the
+   server boots with the new env. (In production, env validator
+   refuses to start if this is empty.)
+3. **Webhooks** tab → set the target URL to
+   `https://bsg.workflo.space/api/v1/hubspot/webhooks`.
+4. Add the six subscriptions from §14.3.
+5. Click **Send test webhook** for each subscription type — verify
+   the row appears in `hubspot_webhook_events` with
+   `status='processed'` after a few seconds (the worker polls
+   every 5s).
+
+### 14.5 Manual refresh endpoint
+
+```
+POST https://bsg.workflo.space/api/v1/hubspot/refresh
+Authorization: Bearer <jwt>
+Content-Type: application/json
+
+{ "companyIds": ["uuid-1", "uuid-2"] }
+```
+
+- Bearer auth required (same as every other `/api/v1` endpoint).
+- `companyIds` is an array of our internal `companies.id` UUIDs
+  (max 100). For each, the server looks up the HubSpot company id,
+  refetches via `GET /crm/v3/objects/companies/{id}`, runs the
+  mapper, and upserts the row. Returns
+  `{ refreshed, failed, requested }`.
+- Used by operators when a HubSpot edit didn't trigger a webhook
+  (rare) or to force-sync after a manual data correction.
+
+### 14.6 Async processing model
+
+- Receiver inserts a row into `hubspot_webhook_events` with
+  `status='pending'` and returns 200 in <10ms. Idempotency via
+  `UNIQUE(hubspot_event_id)` + `ON CONFLICT DO NOTHING` — HubSpot's
+  at-least-once delivery is absorbed silently.
+- Worker (`startWebhookProcessor()` in `server/index.ts`) polls
+  `pending` rows every 5s, ordered by `occurred_at ASC`, batch
+  size 50. Single-replica in-process (Sprint 7 docker is
+  single-replica; multi-replica would need pg advisory locks or a
+  Redis-backed queue — TODO in `docs/decisions.md`).
+- Retry budget: `MAX_ATTEMPTS=5`. After exhaustion the row flips to
+  `status='failed'` and stays in the DB for audit. The 5-attempt cap
+  + `last_error` clamp prevents one bad event from looping forever.
+
+### 14.7 Observability
+
+Log lines you can grep for in pino output:
+
+- `[hubspot:webhook] events queued` — receiver, on every signed POST.
+- `[hubspot:webhook] batch complete` — worker, on every non-empty
+  poll tick (includes `processed`/`failed` counts).
+- `[hubspot:webhook] event failed — will retry` — transient
+  failure (HubSpot 5xx / network).
+- `[hubspot:webhook] event exhausted retry budget → marked failed`
+  — terminal failure after 5 attempts.
+- `[hubspot:webhook] signature mismatch — rejecting` — HMAC
+  verification failed (either wrong secret or someone is probing
+  the endpoint).

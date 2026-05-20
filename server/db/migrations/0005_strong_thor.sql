@@ -1,0 +1,2 @@
+DROP INDEX "hubspot_webhook_events_pending_idx";--> statement-breakpoint
+CREATE INDEX "hubspot_webhook_events_pending_idx" ON "hubspot_webhook_events" USING btree ("occurred_at","received_at","attempts") WHERE status = 'pending';

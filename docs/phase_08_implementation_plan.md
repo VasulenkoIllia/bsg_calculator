@@ -1,7 +1,7 @@
 # Phase 8 Implementation Plan
 
-Date: 2026-05-15
-Status: **Ready to start coding.**
+Date: 2026-05-15  (last revised 2026-05-17 — post-Sprint 2.8.F)
+Status: **Sprints 1, 2, 2.5, 2.6, 2.7, 2.8 complete. Sprint 3 next.**
 
 Maps the decisions in `phase_08_backend_plan.md` + `backend_conventions.md`
 + `decisions.md` to a sequenced sprint plan with explicit deliverables,
@@ -15,25 +15,58 @@ See also:
 - `docs/backend_conventions.md` — folder, conventions, error format.
 - `docs/bsg_hubspot_field_mapping.md` — HubSpot field selection.
 - `docs/decisions.md` — full decision log.
+- `docs/CODEMAPS/{server,frontend}.md` — architectural maps.
+
+---
+
+## Status snapshot (2026-05-17 post-Sprint 4.F)
+
+| Sprint | State | Commits |
+|---|---|---|
+| 1. Foundation | ✅ DONE | Sprint 1 commits |
+| 2. HubSpot reads + backfill | ✅ DONE | Sprint 2 commits |
+| 2.5. company_type filter | ✅ DONE | 45db178 |
+| 2.6. Fallback to non-primary association | ✅ DONE | 4222194 |
+| 2.7. Hardening cycle (A → I) | ✅ DONE | 2890b38..127f8be |
+| 2.7 wrap-up docs | ✅ DONE | 31cc088 |
+| 2.8. Frontend auth + listings (A → E) | ✅ DONE | 6b9c7a4..c5778fe |
+| 2.8.F. Frontend audit closure (F.1 → F.5) | ✅ DONE | 769e5fb..06810f8 |
+| 3. Calculator configs CRUD | ✅ DONE | e7acf6d, 91ff6ad |
+| 4. Documents + PDF render (A → E + UX revisions) | ✅ DONE | af719ba..444b338 |
+| 4.F. Sprint 4 audit closure (F.1 → F.3 + docs F.4) | ✅ DONE | 69d0e9a..0d26e8d |
+| 4.E.2. Server-side PDF (shared template module) | ✅ DONE | (bundled with Sprint 4.F) |
+| 5. HubSpot webhooks (inbound, A → E) | ✅ DONE | 5f0f0a0 |
+| 5.5. Visual-diff harness (frontend vs. backend PDF) | ✅ DONE | c699dee |
+| 5.F. Sprint 5 audit closure (F.1 → F.3 + docs F.4) | ✅ DONE | 02149a5..ce1ea57 |
+| 6. Frontend continuation (6.0 → 6.4 + 6.F audit closure) | ✅ DONE | 42a7045..dcb57d6 |
+| 7. Docker + Deploy | ⏳ Pending | — |
+| 8. Hardening (optional, E2E + CSP) | ⏳ Pending | — |
+| 9. HubSpot Note write-back | ⏳ Phase-after-7 | — |
 
 ---
 
 ## Dependency graph
 
 ```
-Sprint 1 (Foundation) ────┬──→ Sprint 2 (HubSpot reads) ──┐
-                          │                                 │
-                          ├──→ Sprint 3 (Calc configs) ────┤
-                          │                                 │
-                          └──→ Sprint 4 (Documents + PDF) ─┤
-                                                            ├──→ Sprint 6 (Frontend) ──→ Sprint 7 (Docker + Deploy)
-                              Sprint 5 (Webhooks) ─────────┘
+Sprint 1 (Foundation)  ✅ ───┬──→ Sprint 2 (HubSpot reads) ✅ ──┐
+                              │                                  │
+                              │   ┌─→ Sprint 2.8 (Frontend     │
+                              │   │   auth + listings) ✅       │
+                              │   │                              │
+                              ├──→ Sprint 3 (Calc configs) ✅ ──┤
+                              │                                  │
+                              └──→ Sprint 4 (Documents + PDF)✅─┤
+                                                                 ├──→ Sprint 6 (Calc/Doc UI) ──→ Sprint 7 (Docker + Deploy)
+                                  Sprint 5 (Webhooks)    ✅ ───┘
 ```
 
-Sprint 1 unlocks 2/3/4 (parallel-capable). Sprint 5 (webhooks)
-requires a publicly-reachable HTTPS endpoint, so it usually lands
-after Sprint 7 (deploy). Sprint 6 (frontend) needs 2 + 3 + 4 backend
-APIs working.
+The original Sprint 6 (Frontend) was split: auth + listings already
+shipped in **2.8** (because the SPA had zero backend integration and
+that needed to be validated before backend grew further). The
+remaining Sprint 6 work (calc page hydration, document view, wizard
+URL-driven seeding, "Save as offer/agreement" flows) waits for
+Sprints 3 + 4 backend to land — see Sprint 6 section below for the
+narrowed scope.
 
 ---
 
@@ -152,36 +185,160 @@ APIs working.
 
 ---
 
+## Sprint 2.8 — Frontend auth + listings (✅ DONE, ~3 days)
+
+**Reason for insertion**: At the end of Sprint 2.7 the SPA had zero
+integration with the backend (no fetch / axios calls anywhere in
+`src/`). Continuing to Sprint 3 would have grown the contract surface
+without ever validating it from a real client. Sprint 2.8 closed that
+gap by lifting the auth + listings work from the original Sprint 6
+forward.
+
+### Delivered (commits 6b9c7a4 → 06810f8)
+
+1. **API client layer** (`src/api/`)
+   - axios singleton with refresh-on-401 single-flight, in-memory
+     access token, typed `ApiError`, session-lost callback
+   - One file per backend module: `auth.ts`, `companies.ts`,
+     `deals.ts`, `hubspot.ts`
+   - Mirror types in `types.ts` (validated 1:1 against backend Zod)
+
+2. **AuthProvider + QueryClient** (`src/contexts/AuthContext.tsx`,
+   `src/main.tsx`)
+   - Cold-boot refresh via httpOnly cookie (StrictMode-safe via ref latch)
+   - `useAuth()` hook with `{ user, isBooting, login, logout }`
+   - Global TanStack Query defaults (30s stale, 5min gc, retry 1)
+
+3. **LoginPage** (`/login`)
+   - react-hook-form + zod schema mirroring backend `loginRequestSchema`
+   - Error envelope → human messages per `code`
+   - `isBooting` splash; bounces logged-in users to `state.from` or `/companies`
+
+4. **PrivateRoute + AppShell**
+   - Layout-route auth gate with boot splash / redirect / outlet
+   - IdentityStrip (signed-in name + Sign out) in AppShell
+   - Workspace tab "Companies" added (first position)
+
+5. **CompaniesPage** (`/companies`)
+   - Debounced search (300ms; q≥2 chars to match backend Zod)
+   - Cursor pagination via `useInfiniteQuery` + `<LoadMoreButton />`
+   - Loading / error / empty / refreshing states
+
+6. **CompanyDetailPage** (`/companies/:id`)
+   - Header dl (segment, lifecycle, HubSpot id, last synced)
+   - Deals table with pagination
+   - Amount column renders raw `numeric() + currency`
+
+7. **Audit closure 2.8.F (F.1 → F.5)** — 34 findings closed:
+   - CRITICAL: `PublicUser` shape diverged from backend; fixed
+   - HIGH: StrictMode double-refresh, LoginPage flash, refresh
+     single-flight race, axios augmentation (no more `as unknown as`),
+     `useInfiniteQuery<…, ApiError, …>` typed errors
+   - MED: memoised items, `normaliseSearch` helper, safe fromPath,
+     handleLogout try/finally, isFetching indicator, shared
+     `formatDate`, `vi.restoreAllMocks` pattern, sessionLost test
+   - LOW: PrivateRoute + AppShell tests, `<LoadMoreButton />`,
+     constants extraction, JSDoc warnings, dev-proxy cookie note
+
+### Acceptance criteria (met)
+
+- Manual smoke in browser: login → companies list → detail → deals → logout
+- 227/227 frontend tests, 128/128 server tests, build clean, 0 vulns
+- Backend untouched; integration validated through real network calls
+
+### Carry-over to later sprints
+
+- `/calc/:id` (configurator hydration + autosave) — Sprint 3
+- `/documents/:number` (read-only + PDF download) — Sprint 4
+- Wizard URL-driven seeding from a config — Sprint 6 (continuation)
+
+---
+
 ## Sprint 3 — Calculator configs (~0.5 days)
 
-**Goal**: operator can save and resume calculator drafts.
+**Goal**: operator can save and resume calculator drafts. Save is
+**EXPLICIT** (no autosave) — operator tunes the calculator, verifies
+it, then clicks "Save" and chooses company+deal on the modal.
 
 ### Deliverables
 
 1. **Migration** — `0003_calculator_configs.sql`
-   - `calculator_configs` table per `phase_08_backend_plan.md` §3.
+   - `calculator_configs` table (per `phase_08_backend_plan.md` §3 +
+     the pre-Sprint-3 anchor decision in `decisions.md`):
+
+         id                  UUID PK DEFAULT gen_random_uuid()
+         company_id          UUID NOT NULL REFERENCES companies(id)
+                             ON DELETE CASCADE
+         hubspot_deal_id     TEXT NULL REFERENCES deals(hubspot_deal_id)
+                             ON DELETE SET NULL
+         title               TEXT NULL
+         payload             JSONB NOT NULL
+         created_by_user_id  UUID NOT NULL REFERENCES users(id)
+         created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+         updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+
+   - Indexes: `(company_id, hubspot_deal_id, created_at DESC)` —
+     supports the wizard Step 1 picker query
+     `WHERE company_id = $1 AND (deal_id IS NULL OR deal_id = $2)`.
+   - **No UNIQUE constraint** on (company_id, hubspot_deal_id) —
+     multiple drafts per deal are allowed (operator can keep what-if
+     versions side-by-side).
 
 2. **Calculator-configs module** (`server/modules/calculator-configs/`)
-   - `POST /api/v1/calculator-configs` (create)
-   - `GET /api/v1/calculator-configs/:id`
-   - `PATCH /api/v1/calculator-configs/:id` (FULL REPLACE of payload, not merge)
-   - `DELETE /api/v1/calculator-configs/:id` (hard delete)
-   - `GET /api/v1/calculator-configs?company_id=&deal_id=&created_by=` (list)
+   - `POST /api/v1/calculator-configs` (create new)
+     Body: `{ companyId, hubspotDealId?, title?, payload }`
+     Returns: `{ id, ...row }`
+   - `GET /api/v1/calculator-configs/:id` (load — used by wizard
+     Step 1 picker AND by /calc/:id legacy editor if it ever ships).
+   - `PUT /api/v1/calculator-configs/:id` (FULL REPLACE — used when
+     operator re-saves an existing config; idempotent overwrite).
+   - `DELETE /api/v1/calculator-configs/:id` (hard delete).
+   - `GET /api/v1/calculator-configs?companyId=&hubspotDealId=&showAll=` (list)
+     - Default (showAll=false): filter by `companyId` AND (`deal_id IS NULL OR deal_id = ?`).
+     - `showAll=true`: drop the deal filter, show every config for
+       that company. Used by the "Show all my configs" link in the
+       wizard picker.
+     - Returns `CursorPage<PublicCalculatorConfig>` (reuses Sprint
+       2.7's `shared/build-page.ts`).
+   - **No PATCH** (no autosave → no partial-update endpoint needed).
 
-3. **Auto-name helper**
-   - When `name` is NULL on create/save, frontend or backend
-     renders "Untitled · <company name> · <date>".
+3. **Auto-name helper** (frontend; backend stores NULL for empty)
+   - If operator leaves the title blank on save, frontend renders
+     "Untitled · ACME Trading · 17 May 14:32" client-side. Backend
+     stores actual NULL so future renames don't fight a stale name.
 
 4. **Validation**
-   - `payload` validated via Zod re-export of
-     `DocumentTemplatePayload` from the frontend types.
+   - `payload` validated via Zod schema mirroring frontend
+     `CalculatorSnapshotPayload` (from `src/components/calculator/snapshotShape.ts`).
+     Backend re-imports the type and adds runtime check.
+   - `companyId` MUST exist in `companies` (FK).
+   - `hubspotDealId` MUST belong to `companyId` if both provided
+     (cross-company configs rejected as `VALIDATION_FAILED`).
+
+5. **Frontend wire-up (in same Sprint 3)** — minimal save modal
+   - "Save calculator" button on the legacy `/calculator` page opens
+     a modal: title (optional) + company (typeahead) + deal
+     (filtered to selected company, optional).
+   - On submit: `POST /api/v1/calculator-configs`, toast on success,
+     close modal. Calculator state stays in-memory; no auto-redirect.
+   - `useCompanySearch()` hook reuses the listCompanies endpoint
+     with debounced `q` (300ms, min 2 chars — patterns from 2.8).
+   - **Wizard Step 1 picker lands in Sprint 6** (waits for documents
+     module). Sprint 3 only ships the save side.
 
 ### Acceptance criteria
 
 - Full CRUD works against live DB.
-- Updating `payload` with a malformed shape returns
-  `VALIDATION_FAILED` with Zod issues in `details`.
-- Integration tests: 15 cases (CRUD × happy/auth-fail/validation-fail).
+- Save modal in /calculator successfully POSTs and shows the new
+  config in `GET /calculator-configs?companyId=X`.
+- Wizard / document save NOT in scope — those are Sprint 4 + 6.
+- Updating with a malformed `payload` returns `VALIDATION_FAILED`
+  with Zod issues in `details`.
+- Cross-company `hubspotDealId` rejected.
+- Integration tests: 15 cases (CRUD × happy / auth-fail / validation-fail
+  / cross-company-deal / list-with-showAll / cursor pagination).
+- Frontend tests: save modal (3-4 cases incl. validation errors,
+  success toast).
 
 ---
 
@@ -281,58 +438,69 @@ APIs working.
 
 ---
 
-## Sprint 6 — Frontend integration (~2 days)
+## Sprint 6 — Frontend continuation (~1 day, **narrowed**)
 
-**Goal**: existing wizard becomes backend-backed; new listing + view pages ship.
+**NOTE** — auth + listings (items 1, 2, 3 from the original Sprint 6
+spec) **ALREADY SHIPPED in Sprint 2.8** to validate the API contract
+before the backend grew further. The remaining deliverables below
+require Sprints 3 + 4 backend to land first.
 
-### Deliverables
+**Goal**: connect the wizard + document view + addendum flow to the
+new backend endpoints. Polish the operator journey end-to-end.
 
-1. **Auth pages**
-   - `/login` — email/password form, calls `POST /api/v1/auth/login`,
-     stores access in memory + refresh in httpOnly cookie.
-   - Auth context: 401 → silent refresh, refresh fails → redirect
-     to `/login`.
-   - User menu in header with logout.
+### Done (in Sprint 2.8 — see status snapshot above)
 
-2. **API client** — `src/lib/api/`
-   - One file per backend module: `auth.ts`, `calculator-configs.ts`,
-     `documents.ts`, `companies.ts`, `deals.ts`, `listings.ts`,
-     `hubspot.ts`.
-   - Fetch wrapper: injects `Authorization: Bearer`, handles 401
-     refresh, parses error envelope.
+- ~~Auth pages~~ → LoginPage at `/login`, AuthContext, logout in header
+- ~~API client~~ → `src/api/` with axios singleton + interceptors
+- ~~Listings page~~ → `/companies` + `/companies/:id` (slightly different
+  shape from the original "hierarchical accordion" — flat table on the
+  list, dedicated detail page on the click-through. Re-evaluate whether
+  the accordion still makes sense once we have documents to nest.)
 
-3. **Listings page** — `/listings`
-   - Hierarchical accordion: Company → expand → Deals + standalone
-     docs → expand deal → docs + calcs.
-   - "Refresh from HubSpot" button → `POST /hubspot/refresh`.
-   - Pagination (50 companies / page).
+### Remaining deliverables (post-Sprints 3 + 4)
 
-4. **Calc page** — `/calc/:id`
+1. **Calc page** — `/calc/:id`
    - Mount loads via `GET /calculator-configs/:id` and hydrates the
-     existing wizard.
+     existing wizard's state. Use `applyStatePreset()` on the
+     calculator hook.
    - Debounced (1s) `PATCH /calculator-configs/:id` on every change.
-     "Saved · Xs ago" indicator.
+     "Saved · Xs ago" indicator in the header.
    - "Save as offer" / "Save as agreement" buttons open an addendum
      modal → `POST /documents` → redirect to `/documents/:number`.
+   - Re-use `useDebouncedValue` + the api client patterns from 2.8.
 
-5. **Document view page** — `/documents/:number`
-   - Read-only display of payload.
+2. **Document view page** — `/documents/:number`
+   - Read-only display of payload — render the wizard in view-only
+     mode hydrated from `GET /documents/:number`.
    - "Download PDF" button → triggers
-     `GET /documents/:number/pdf?download=true`.
+     `GET /documents/:number/pdf?download=true` (browser-native download).
    - "Use as template" button → `POST /documents/:number/use-as-template`
      → redirect to `/calc/<new-uuid>`.
 
-6. **Wizard updates**
+3. **Wizard updates**
    - Remove `defaultDraftNumber()` placeholder, use
      `GET /numbering/peek` for the preview number.
    - Remove `window.print()` path, route to `/documents/:number/pdf`.
 
+4. **Listing UX revisit (decision required, see "Plan adjustments" below)**
+   - Original spec called for a hierarchical accordion
+     (Company → Deals → docs → calcs). Sprint 2.8 shipped a flat table.
+     Once we have documents to display, decide:
+       (a) Keep flat table + add a documents tab on `/companies/:id`
+       (b) Switch to accordion as originally specced
+       (c) Hybrid: flat table on list, expandable tree on detail
+
+5. **Toasts / error UX**
+   - Today errors render inline on each page. Add a global toast for
+     mutations (`POST /documents` etc.) so success/error feedback is
+     consistent across the addendum flow.
+
 ### Acceptance criteria
 
 - Full operator journey works in dev:
-  login → listings → pick company → pick deal → "+ new calc" →
-  edit (auto-saves) → "Save as offer" → addendum prompt → view doc → download PDF.
-- All API errors render the `error.message` in toast.
+  login → companies → pick company → see deals → "+ new calc" → edit
+  (auto-saves) → "Save as offer" → addendum prompt → view doc → download PDF.
+- All API errors render via the global toast.
 - E2E test (Playwright): 5-10 scenarios covering the full journey.
 
 ---

@@ -1,0 +1,177 @@
+/**
+ * HubSpot payload → our DB row mapper.
+ *
+ * Pure, sync transformations. No DB calls — repositories receive the
+ * mapped row and decide upsert vs insert.
+ *
+ * Robustness: HubSpot occasionally sends invalid timestamps or
+ * missing primary-association ids. We log + skip orphans rather than
+ * crash the backfill loop. Mapper returns `null` for an
+ * unprocessable row; the caller filters it out.
+ */
+
+import { logger } from "../../middleware/logger";
+import type { NewCompany, NewDeal } from "../../db/schema";
+import type { HubspotObject } from "./hubspot.types";
+
+/**
+ * Map a HubSpot company object into our INSERT row shape.
+ *
+ * Required HubSpot properties: `hs_object_id`, `name`, `createdate`,
+ * `hs_lastmodifieddate`. If any is missing the row is unusable —
+ * return null + log.
+ */
+export function mapHubspotCompanyToRow(obj: HubspotObject): NewCompany | null {
+  const props = obj.properties;
+  const id = obj.id ?? props.hs_object_id;
+  const name = props.name;
+  const createdAt = parseTimestamp(props.createdate);
+  const modifiedAt = parseTimestamp(props.hs_lastmodifieddate);
+
+  if (!id || !name || !createdAt || !modifiedAt) {
+    logger.warn(
+      { hubspotId: id, missing: { name: !name, createdAt: !createdAt, modifiedAt: !modifiedAt } },
+      "[hubspot.mapper] skipping malformed company"
+    );
+    return null;
+  }
+
+  return {
+    hubspotCompanyId: id,
+    name,
+    companyType: nullableString(props.company_type),
+    segmentType: nullableString(props.segment_type),
+    lifecycleStage: nullableString(props.lifecyclestage),
+    hsTaskLabel: nullableString(props.hs_task_label),
+    hubspotCreatedAt: createdAt,
+    hubspotModifiedAt: modifiedAt,
+    // Persist the full payload (everything HubSpot returned) so
+    // future feature work can promote a JSONB field to a column
+    // without re-fetching from HubSpot.
+    hubspotRaw: props,
+    lastSyncedAt: new Date()
+  };
+}
+
+/**
+ * Map a HubSpot deal object into our INSERT row shape.
+ *
+ * Required HubSpot properties: `hs_object_id`,
+ * `hs_primary_associated_company` (deal MUST belong to a company in
+ * our system), `dealname`, `createdate`, `hs_lastmodifieddate`.
+ * Without an associated company the FK insert would fail anyway —
+ * we log + skip.
+ */
+export function mapHubspotDealToRow(obj: HubspotObject): NewDeal | null {
+  const props = obj.properties;
+  const id = obj.id ?? props.hs_object_id;
+  const companyId =
+    props.hs_primary_associated_company ??
+    obj.associations?.companies?.results[0]?.id ??
+    null;
+  const name = props.dealname;
+  const createdAt = parseTimestamp(props.createdate);
+  const modifiedAt = parseTimestamp(props.hs_lastmodifieddate);
+
+  if (!id || !companyId || !name || !createdAt || !modifiedAt) {
+    logger.warn(
+      {
+        hubspotId: id,
+        missing: {
+          companyId: !companyId,
+          name: !name,
+          createdAt: !createdAt,
+          modifiedAt: !modifiedAt
+        }
+      },
+      "[hubspot.mapper] skipping malformed or orphan deal"
+    );
+    return null;
+  }
+
+  return {
+    hubspotDealId: id,
+    hubspotCompanyId: companyId,
+    name,
+    stage: nullableString(props.dealstage),
+    pipelineId: nullableString(props.pipeline),
+    amount: nullableString(props.amount), // numeric() is a string in pg
+    currency: nullableString(props.deal_currency_code),
+    clientLabel: nullableString(props.client),
+    agentLabel: nullableString(props.agent),
+    businessVertical: nullableString(props.business_vertical),
+    hubspotCreatedAt: createdAt,
+    hubspotModifiedAt: modifiedAt,
+    hubspotRaw: props,
+    lastSyncedAt: new Date()
+  };
+}
+
+/** HubSpot serialises timestamps as ISO strings or epoch-ms strings. */
+function parseTimestamp(raw: string | null | undefined): Date | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return null;
+
+  // Numeric epoch path FIRST — match optional sign + digits only.
+  // This separates "12345" / "-100" / "0" from ISO-like strings
+  // (which contain letters or dashes between digits).
+  if (/^-?\d+$/.test(trimmed)) {
+    const n = Number(trimmed);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    // HubSpot sometimes returns seconds, sometimes ms. Heuristic:
+    // anything below 1e12 is seconds (year ~2001), else ms.
+    const ms = n < 1e12 ? n * 1000 : n;
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  // ISO format fall-through: "2026-04-17T16:02:14.684Z" or
+  // date-only "2026-04-17".
+  const d = new Date(trimmed);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** "" / null / undefined → null. Otherwise return the trimmed value. */
+function nullableString(raw: string | null | undefined): string | null {
+  if (raw === null || raw === undefined) return null;
+  const trimmed = raw.trim();
+  return trimmed.length === 0 ? null : trimmed;
+}
+
+/**
+ * Extract ALL candidate company IDs a deal is associated with, in
+ * priority order (primary first, then any other associations).
+ *
+ * Used by the backfill to fall back from a primary that's been
+ * filtered out (e.g. an Agent company) to a secondary that's in
+ * our cache (e.g. the Merchant). The associated-company-id list
+ * is returned in HubSpot's own order; deduplicated to keep the
+ * iteration cheap.
+ *
+ * Example real BSG case: deal "WORLDFY OY"
+ *   - hs_primary_associated_company → "(A) Waseem" (Agent, filtered out)
+ *   - associations.companies.results[1] → "(M) WORLDFY" (Merchant, kept)
+ *
+ * With this helper, backfill chooses the merchant id, logs a warn
+ * so BSG sales sees which deals need primary-association fixes in
+ * the HubSpot UI.
+ */
+export function extractDealCompanyCandidates(obj: HubspotObject): string[] {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  const push = (id: string | null | undefined): void => {
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    ordered.push(id);
+  };
+
+  // Primary first.
+  push(obj.properties.hs_primary_associated_company);
+  // Then every other association (HubSpot returns them in stable
+  // order; we preserve it).
+  for (const assoc of obj.associations?.companies?.results ?? []) {
+    push(assoc.id);
+  }
+  return ordered;
+}

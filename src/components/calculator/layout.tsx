@@ -1,5 +1,11 @@
 import type { HardcodedConstantGroup } from "./types.js";
 
+/**
+ * @deprecated Sprint 7.1 — no longer rendered by AppShell. Kept as a
+ * named export in case a future landing surface wants to mount the
+ * gradient hero. If still unused at the next cleanup pass (Sprint
+ * 7.3+), remove this function and the barrel re-export.
+ */
 export function CalculatorHeader() {
   return (
     <header className="panel mb-6 overflow-hidden">
@@ -59,6 +65,13 @@ export function HardcodedConstantsPanel({
   );
 }
 
+/**
+ * @deprecated Sprint 7.2 — the three buttons (Show formulas / Reset 0
+ * / Apply defaults) moved into CalculatorStickyToolbar so the sticky
+ * bar carries every calculator action. If the standalone panel
+ * surface is still unused at the next cleanup pass, remove this
+ * function and the barrel re-export.
+ */
 export function CalculatorActionsPanel({
   showHardcodedConstants,
   onToggleConstantsAndFormulas,

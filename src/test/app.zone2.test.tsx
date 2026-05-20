@@ -4,7 +4,7 @@ import { renderApp } from "./renderApp.js";
 
 describe("Zone 2: Introducer Commission", () => {
   it("renders models and recalculates introducer commission", async () => {
-    const { user } = renderApp();
+    const { user } = await renderApp();
 
     await user.click(screen.getByRole("button", { name: "Show constants & formulas" }));
 

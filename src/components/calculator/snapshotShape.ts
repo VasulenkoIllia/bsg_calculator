@@ -45,6 +45,39 @@ import {
 //   - showHardcodedConstants, showZone3Formulas, showZone4Formulas
 //   - showUnifiedFormulas, unifiedExpandedById, zoneExpanded
 //   - offerSummaryActionMessage
+/**
+ * Sprint 6.F.3 (audit Q3): narrow runtime guard used by edit-mode
+ * hydration in CalculatorPage + WizardPage to validate JSONB payloads
+ * fetched from the backend before feeding them into
+ * `seedCalculatorStateFromSnapshot`. Without this, an unchecked
+ * `as unknown as CalculatorSnapshotPayload` cast would let a shape
+ * mismatch silently produce undefined fields in the live calculator
+ * state — easy to miss until the user notices a number rendering as
+ * NaN.
+ *
+ * This is intentionally a SHALLOW guard (checks schemaVersion + 4
+ * MUST-HAVE top-level keys are objects). Deeper-shape mismatches
+ * still surface as thrown errors inside seedCalculatorStateFromSnapshot,
+ * which the caller's try/catch turns into a user-visible status
+ * banner. A full Zod schema for the 30+ fields would be the
+ * stricter option — deferred until the JSONB column actually
+ * carries multiple schema versions worth migrating between.
+ */
+export function isCalculatorSnapshotPayload(
+  value: unknown
+): value is CalculatorSnapshotPayload {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  if (v.schemaVersion !== 1) return false;
+  // `typeof null === "object"` in JS, so explicit non-null + object
+  // checks are required for each nested key.
+  if (!v.calculatorType || typeof v.calculatorType !== "object") return false;
+  if (!v.payinEuPricing || typeof v.payinEuPricing !== "object") return false;
+  if (!v.payinWwPricing || typeof v.payinWwPricing !== "object") return false;
+  if (!v.payoutPricing || typeof v.payoutPricing !== "object") return false;
+  return true;
+}
+
 export interface CalculatorSnapshotPayload {
   // Schema version. Phase 8 starts at 1; bumps with breaking schema
   // changes so backend migrations and stored rows stay readable.
@@ -94,6 +127,11 @@ export interface CalculatorSnapshotPayload {
   contractSummarySettings: ContractSummarySettings;
 
   // Zone 6 free-form notes — persisted because they drive offer copy.
+  // The frontend textarea has no maxLength; when Sprint 3 wires this
+  // through POST /calculator-snapshots the backend Zod schema MUST
+  // add `.max(4000)` (or similar) to defend against an outsized POST
+  // body. The Express body parser is already capped at 1MB but a
+  // per-field cap also keeps DB storage predictable.
   clientNotes: string;
 }
 

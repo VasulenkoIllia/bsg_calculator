@@ -4,7 +4,7 @@ import { renderApp } from "./renderApp.js";
 
 describe("Zone 5 and Zone 6", () => {
   it("renders zone 5 profitability and recalculates totals", async () => {
-    const { user } = renderApp();
+    const { user } = await renderApp();
 
     await user.click(screen.getByRole("button", { name: "Show constants & formulas" }));
 
@@ -28,7 +28,7 @@ describe("Zone 5 and Zone 6", () => {
   });
 
   it("supports unified profitability controls (expand/collapse + show formulas)", async () => {
-    const { user } = renderApp();
+    const { user } = await renderApp();
 
     await user.click(screen.getByRole("button", { name: "Show constants & formulas" }));
 
@@ -81,7 +81,7 @@ describe("Zone 5 and Zone 6", () => {
   });
 
   it("shows payout provider TRX tier formulas in unified breakdown", async () => {
-    const { user } = renderApp();
+    const { user } = await renderApp();
 
     await user.click(screen.getByRole("button", { name: "Show constants & formulas" }));
     await user.click(screen.getByRole("checkbox", { name: "Payout" }));
@@ -96,7 +96,7 @@ describe("Zone 5 and Zone 6", () => {
   });
 
   it("renders zone 6 offer summary and updates preview", async () => {
-    const { user } = renderApp();
+    const { user } = await renderApp();
 
     expect(screen.getByText("Zone 6: Offer Summary")).toBeInTheDocument();
     const summaryPreview = screen.getByLabelText("Offer Summary Preview");

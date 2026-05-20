@@ -2,57 +2,66 @@
   // ────────────────────────────────────────────────────────────────
   // Server-side typecheck config.
   //
-  // Validates that the modules earmarked for Node-side reuse compile
-  // WITHOUT DOM / browser types. Runs alongside the main tsconfig
-  // (which still uses `DOM`/`DOM.Iterable` for the React frontend);
-  // this file is a guardrail — it catches accidental imports of
-  // `document`, `window`, `HTMLElement`, etc. in code that the Phase 8
-  // backend will reuse.
+  // Phase 8 (2026-05-16): expanded from a frontend-reuse guardrail
+  // into the actual server-build config. Now covers:
+  //   - `server/**/*.ts` — full backend (Express + Drizzle + Puppeteer)
+  //   - `src/domain/calculator/**` — pure math, reused by future
+  //     server-side PDF render + calculator validation.
+  //   - `src/shared/**` — escapeHtml + any Node-safe utilities.
+  //   - `src/components/calculator/{snapshotShape,derivedSummaryShape}.ts`
+  //     — backend payload contracts.
+  //   - `src/components/document-wizard/**` — buildOfferPdfHtml +
+  //     agreementPdf + offerPdf + pdf-kit. Pure-string HTML builder
+  //     consumed by server/modules/pdf/pdf.controller.ts to render
+  //     documents via Puppeteer. NO React imports anywhere — all
+  //     files in this tree are Node-safe by design.
   //
   // Run:
   //   npx tsc -p tsconfig.server.json --noEmit
   //
-  // Scope intentionally narrow — extends only as backend reuse grows:
-  //   - `src/domain/calculator/**` — pure math, never any DOM.
-  //   - `src/shared/**` — escapeHtml + any future Node-safe utilities.
-  //   - `src/components/calculator/snapshotShape.ts` — backend payload
-  //     contract + extract/seed helpers.
-  //   - `src/components/calculator/derivedSummaryShape.ts` — backend
-  //     derived-summary payload contract.
-  //   - `src/components/document-wizard/wizard/layoutHelpers.ts` —
-  //     pure wizard layout helpers (no React).
-  //   - `src/components/document-wizard/types.ts` — DocumentTemplatePayload
-  //     shape (interfaces only, no runtime).
-  //
-  // Adding more files to `include` is fine when they're confirmed
-  // Node-safe. The PDF builder (`buildOfferPdfHtml.ts`,
-  // `offerPdf/sections/*`, `agreementPdf/*`) is intentionally NOT here
-  // yet — it's verified Node-safe by inspection but never tested
-  // against a strictly DOM-free typecheck. Adding it is a small follow-
-  // up worth doing before Phase 8 implements the Puppeteer endpoint.
+  // Sprint 4.E.2 (2026-05-17): expanded document-wizard glob from
+  // just-types to the full module so the server can call
+  // `buildOfferPdfHtml(payload)` directly.
   // ────────────────────────────────────────────────────────────────
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022"],
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    // Bundler resolution lets imports omit the `.js` extension while
+    // still working at runtime under tsx (used by `dev:server`,
+    // `db:migrate`, `create-user`, etc.). This is what makes Drizzle
+    // Kit's CJS loader happy on the same `server/db/schema/*.ts`
+    // files. tsx normalises both forms; native `node --loader tsx`
+    // also handles them.
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "types": ["node"],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "noEmit": true,
-    // Bare TS interfaces / unions don't emit; we still need to point
-    // at a clean output dir to keep IDE pickup happy even with noEmit.
+    "resolveJsonModule": true,
     "outDir": "dist-server"
   },
   "include": [
+    "server/**/*.ts",
+    "scripts/**/*.ts",
     "src/domain/**/*.ts",
     "src/shared/**/*.ts",
     "src/components/calculator/snapshotShape.ts",
     "src/components/calculator/derivedSummaryShape.ts",
+    // Document-wizard subset that the PDF builder needs. We include
+    // ONLY the pure-string HTML files — DocumentWizardPanel.tsx and
+    // wizard/** are React, intentionally left out so the server tree
+    // doesn't accidentally drag in any UI deps.
+    "src/components/document-wizard/buildOfferPdfHtml.ts",
+    "src/components/document-wizard/buildPdfUiKitHtml.ts",
+    "src/components/document-wizard/legalDefaults.ts",
+    "src/components/document-wizard/types.ts",
     "src/components/document-wizard/wizard/layoutHelpers.ts",
-    "src/components/document-wizard/types.ts"
+    "src/components/document-wizard/offerPdf/**/*.ts",
+    "src/components/document-wizard/agreementPdf/**/*.ts",
+    "src/components/document-wizard/pdf-kit/**/*.ts"
   ],
-  "exclude": ["**/*.test.ts", "**/*.test.tsx"]
+  "exclude": ["**/*.test.ts", "**/*.test.tsx", "**/node_modules/**"]
 }

@@ -24,3 +24,19 @@ pnpm-debug.log*
 .env.*.local
 
 /data
+
+# Sprint 7.3.A — extra exclusions for the single-image build:
+# tests, archived files, docs, screenshots, devcontainer.
+**/*.test.ts
+**/*.test.tsx
+server/tests
+scripts/visual-diff
+docs
+docker-compose.dev.yml
+docker-compose.yml.archive
+Dockerfile.frontend-archive
+README.md
+*.md
+nginx
+.husky
+.claude
