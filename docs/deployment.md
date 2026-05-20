@@ -310,6 +310,31 @@ Default 64MB is fine for offer + agreement renders. If you bump it, set `shm_siz
 
 - No SMTP / email service (invites + password resets via copy-link only; see Phase 8 spec).
 - No automated backups — operator must set up the `pg_dump` cron above.
-- No HubSpot Note write-back yet (Sprint stub returns 501; Phase 9).
+- **HubSpot Note write-back is NOT YET IMPLEMENTED.** `POST /api/v1/documents/:number/sync` returns `501 NOT_IMPLEMENTED`. The frontend does not surface a "Sync to HubSpot" button — only a read-only status badge on the documents list. Manual curl to the sync endpoint returns a clean 501. Phase 9 will implement `hubspot.client.createNote()` + wire the controller.
 - No 2FA on login yet (Phase 8 Stage 2).
 - No alerting on sustained outage — failures show only in container logs.
+
+## 9. HubSpot synchronization — current state (Sprint 7.4)
+
+### Inbound (HubSpot → our DB) — ✅ WORKS
+Three pull paths, all production-ready:
+1. **One-time backfill** (`docker compose exec app npx tsx server/scripts/hubspot-backfill.ts`) — pulls every `direct_client` company + its deals, idempotent via UPSERT.
+2. **Webhook receiver** (`POST /api/v1/hubspot/webhooks`) — HMAC-SHA-256 verified, 5-minute replay window, async queue in `hubspot_webhook_events` table, retry budget = 5, 30s × attempt backoff. Sprint 7.4 added a token-failure circuit-breaker (3 consecutive 401s → batch aborts + emits `HUBSPOT_TOKEN_INVALID` ERROR log).
+3. **TTL refresh** (fire-and-forget on cache hit if `last_synced_at > 5min ago`) — refreshes single company/deal in background.
+
+Sprint 7.4 also fixed a correctness bug where deals whose primary HubSpot company association was filtered out (`WORLDFY OY` style) would silently land as `filtered_out` instead of using the fallback company from `associations.companies.results`.
+
+### Outbound (our DB → HubSpot) — ❌ NOT IMPLEMENTED (Phase 9)
+There is no `createNote` / `updateNote` method on the HubSpot client. The `POST /api/v1/documents/:number/sync` route is wired but the controller throws `NotImplementedError`. The `hubspotSyncState` column on `documents` will stay `not_synced` for every document until Phase 9 lands.
+
+`hubspot.client.deleteNote()` exists (Sprint 7.3.D) — added for Phase 8 document-deletion flow — but is not invoked by any current code path.
+
+### Pipeline stages — pulled on app boot
+The deal pipeline + stage labels are fetched once at server startup via `hubspot.listPipelineStages()` and cached for 1 hour in-memory. To pick up new stages added in HubSpot before the TTL expires, restart the app container (`docker compose restart app`).
+
+### Token-rotation playbook
+1. Generate new Private App access token in HubSpot.
+2. `nano /srv/bsg/.env` → replace `HUBSPOT_API_TOKEN`.
+3. `docker compose up -d app` (restart picks up the new env).
+4. Watch logs: `docker compose logs -f app | grep -i hubspot`.
+5. Verify: `curl https://bsg.workflo.space/ready` should show `"hubspot":"ok"`. If it shows `"fail"`, the new token was rejected — re-check.

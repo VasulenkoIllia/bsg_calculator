@@ -36,7 +36,6 @@ import { hubspot } from "../hubspot.client";
 import { mapHubspotCompanyToRow, mapHubspotDealToRow } from "../hubspot.mapper";
 import {
   deleteCompanyByHubspotId,
-  findCompanyByHubspotId,
   upsertCompany
 } from "../../companies/companies.repository";
 import {
@@ -44,6 +43,7 @@ import {
   deleteDealsByCompanyId,
   upsertDeal
 } from "../../deals/deals.repository";
+import { resolveDealCompany } from "../../deals/deals.service";
 import {
   listPendingEvents,
   markFailed,
@@ -125,14 +125,23 @@ async function processOne(
           "hubspot.mapper rejected deal payload (orphan or malformed)"
         );
       }
-      // Deal upsert requires the parent company to be in our cache.
-      // If it isn't, skip the deal — the next company event for it
-      // (or a manual refresh) will reconcile.
-      const parent = await findCompanyByHubspotId(row.hubspotCompanyId);
-      if (!parent) {
+      // Sprint 7.4 (audit S3) — multi-candidate fallback parity with
+      // the backfill + TTL-refresh paths. The mapper picks ONE
+      // company id (`hs_primary_associated_company` first), but real
+      // deals like WORLDFY OY have primary = Agent (filtered out)
+      // and a fallback Merchant in `associations.companies.results`.
+      // Before this fix, processOne fell back to a single-id lookup
+      // and silently returned "filtered_out" — losing every
+      // propertyChange event for those deals. resolveDealCompany
+      // walks every candidate and returns the first one we actually
+      // have in our cache.
+      const resolved = await resolveDealCompany(obj);
+      if (!resolved) {
         return "filtered_out";
       }
-      await upsertDeal(row);
+      // Patch the row's company id to whichever candidate we found
+      // before upserting, so the FK lands on the real parent.
+      await upsertDeal({ ...row, hubspotCompanyId: resolved.hubspotCompanyId });
       return "upserted";
     }
   } catch (err) {
@@ -168,13 +177,35 @@ export async function processWebhookBatch(): Promise<{
   const events = await listPendingEvents({ limit: BATCH_SIZE });
   let processed = 0;
   let failed = 0;
+  // Sprint 7.4 (audit S4) — token-failure circuit-breaker.
+  // If HubSpot rejects our Private App token, EVERY event in the
+  // queue would fail in the same way and burn 5 retry attempts
+  // each (1000+ log lines for a 200-event queue before any can be
+  // marked failed). The breaker tracks consecutive 401-style
+  // upstream failures inside a single batch and aborts after 3,
+  // so the operator gets a single loud signal + the queue waits
+  // for the next batch tick (5s) when (hopefully) the token has
+  // been rotated. recordFailure is still called so the attempt
+  // counter advances normally.
+  const TOKEN_INVALID_ABORT_THRESHOLD = 3;
+  let consecutiveTokenInvalid = 0;
   for (const event of events) {
     try {
       const outcome = await processOne(event);
       await markProcessed(event.id, outcome);
       processed += 1;
+      consecutiveTokenInvalid = 0;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      const isTokenInvalid =
+        err instanceof HubspotUnreachableError &&
+        typeof err.details === "object" &&
+        err.details !== null &&
+        "status" in err.details &&
+        (err.details as { status?: number }).status === 401;
+      if (isTokenInvalid) {
+        consecutiveTokenInvalid += 1;
+      }
       const nextAttempts = event.attempts + 1;
       if (nextAttempts >= MAX_ATTEMPTS) {
         await markFailed(event.id, message);
@@ -194,6 +225,17 @@ export async function processWebhookBatch(): Promise<{
           },
           "[hubspot:webhook] event failed — will retry"
         );
+      }
+      if (consecutiveTokenInvalid >= TOKEN_INVALID_ABORT_THRESHOLD) {
+        logger.error(
+          {
+            code: "HUBSPOT_TOKEN_INVALID",
+            consecutiveTokenInvalid,
+            remainingInBatch: events.length - events.indexOf(event) - 1
+          },
+          "[hubspot:webhook] aborting batch: 3 consecutive HUBSPOT_TOKEN_INVALID failures. Rotate HUBSPOT_API_TOKEN and restart."
+        );
+        break;
       }
     }
   }

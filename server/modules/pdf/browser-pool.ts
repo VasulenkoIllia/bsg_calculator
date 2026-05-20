@@ -62,14 +62,29 @@ async function launch(): Promise<PoolState> {
   // `--disable-dev-shm-usage` stays because /dev/shm in Docker is
   // tmpfs-capped at 64MB by default and Chromium hits the limit on
   // larger PDF renders.
+  //
+  // Sprint 7.4 — PUPPETEER_NO_SANDBOX escape hatch:
+  //   If the host kernel lacks userns remapping (e.g. default
+  //   Coolify install) the setuid sandbox can't engage and
+  //   Chromium refuses to launch. Operator can opt out via
+  //   PUPPETEER_NO_SANDBOX=true to revert to the pre-7.3.E
+  //   --no-sandbox flags. We log this loudly so the security
+  //   posture downgrade is observable.
+  const args = [
+    "--disable-extensions",
+    "--disable-default-apps",
+    "--disable-dev-shm-usage"
+  ];
+  if (env.PUPPETEER_NO_SANDBOX) {
+    args.unshift("--no-sandbox", "--disable-setuid-sandbox");
+    logger.warn(
+      "[pdf] PUPPETEER_NO_SANDBOX=true — Chromium running WITHOUT sandbox. Acceptable for trusted-template renders; review before any user-input HTML path lands."
+    );
+  }
   const browser = await puppeteer.launch({
     headless: env.PUPPETEER_HEADLESS,
     executablePath: env.PUPPETEER_EXECUTABLE_PATH || undefined,
-    args: [
-      "--disable-extensions",
-      "--disable-default-apps",
-      "--disable-dev-shm-usage"
-    ]
+    args
   });
   logger.info(
     { pid: browser.process()?.pid ?? null },

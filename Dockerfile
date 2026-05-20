@@ -60,12 +60,17 @@ RUN apt-get update \
       ca-certificates \
       tini \
       curl \
+      netcat-openbsd \
  && rm -rf /var/lib/apt/lists/*
 
 # `tini` is our PID 1 — it forwards SIGTERM to Node correctly so
 # graceful shutdown (DB pool drain, Puppeteer pool close) works
 # on `docker stop`.
 # `curl` is used by the docker-compose HEALTHCHECK; tiny addition.
+# `netcat-openbsd` is used by docker/entrypoint.sh to probe Postgres
+# reachability (`nc -z host port`) before running migrations.
+# Sprint 7.4 (audit) — without this the entrypoint crashed with
+# `sh: nc: not found` BEFORE migrations could even run.
 
 # Tell Puppeteer to use the system Chromium rather than the bundled
 # one (avoids re-downloading + matches the version we just apt-installed).
@@ -73,6 +78,14 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 WORKDIR /app
+
+# Sprint 7.4 (audit B1 follow-up): expose node_modules/.bin on PATH
+# so `tsx` (and any other dependency binary) resolves from a plain
+# shell. Without this the entrypoint dies with `tsx: not found`
+# even though the package is installed — npm only auto-adds .bin
+# to PATH when running through `npm run ...`, NOT for direct
+# `tsx server/...` invocations from sh.
+ENV PATH="/app/node_modules/.bin:${PATH}"
 
 # Production-only dependencies. Note that `tsx` is in `dependencies`
 # (Sprint 7.3.A moved it) so it survives the `--omit=dev` prune.

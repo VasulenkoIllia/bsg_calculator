@@ -128,6 +128,16 @@ const EnvSchema = z.object({
   PDF_RENDER_TIMEOUT_MS: z.coerce.number().int().min(1000).default(30000),
   PUPPETEER_RENDERS_PER_BROWSER: z.coerce.number().int().min(1).default(1000),
   PUPPETEER_BROWSER_TTL_MS: z.coerce.number().int().min(60000).default(86400000),
+  // Sprint 7.4 escape hatch: some Docker hosts (notably default
+  // Coolify installs without user-namespace remapping) cannot run
+  // Chromium with its setuid sandbox. Symptom: Puppeteer launch
+  // fails with `SUID sandbox helper binary was found, but is not
+  // configured correctly`. Setting this to `true` reverts to the
+  // pre-7.3.E behaviour (--no-sandbox) so PDF generation works.
+  // SECURITY: only set this when you understand the trade-off —
+  // the calculator HTML is operator-built so the XSS surface is
+  // small, but a future user-input path could amplify the risk.
+  PUPPETEER_NO_SANDBOX: z.coerce.boolean().default(false),
 
   // Document numbering
   DOCUMENT_NUMBER_START: z.coerce.number().int().min(1).default(7100001),

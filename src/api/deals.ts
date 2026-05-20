@@ -18,10 +18,30 @@
 import { apiClient } from "./client.js";
 import type { CursorPage, PublicDeal } from "./types.js";
 
+/**
+ * Sprint 7.4 (audit S5) — keep in lockstep with backend
+ * `server/modules/deals/deals.repository.ts → dealSortFields`. The
+ * frontend nested `/companies/:id/deals` page uses its own narrower
+ * `CompanyDealSortField` (from companies.ts); this is the wider
+ * cross-company set for the top-level `/deals` page.
+ */
+export type DealSortField =
+  | "name"
+  | "stage"
+  | "amount"
+  | "businessVertical"
+  | "hubspotModifiedAt"
+  | "createdAt";
+
+/** Sprint 7.4 — typed sort string. Catches typos at compile time. */
+export type DealSortSpec = `${DealSortField}:${"asc" | "desc"}`;
+
 export interface ListDealsParams {
   stage?: string;
   hubspotCompanyId?: string;
   businessVertical?: string;
+  /** Sprint 7.4: per-column sort. Default backend = "createdAt:desc". */
+  sort?: DealSortSpec;
   cursor?: string;
   limit?: number;
 }

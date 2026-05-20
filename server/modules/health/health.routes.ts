@@ -14,6 +14,7 @@ import { sql } from "drizzle-orm";
 import { Router } from "express";
 import { db } from "../../db/client";
 import { env } from "../../config/env";
+import { hubspot } from "../hubspot/hubspot.client";
 import { asyncHandler } from "../../shared/async-handler";
 
 export const healthRouter = Router();
@@ -42,12 +43,23 @@ healthRouter.get(
       allOk = false;
     }
 
-    // HubSpot reachability: only checked when a token is configured.
-    // Phase 8 returns "unconfigured"; Phase 9 will do a HEAD request
-    // to the token info endpoint.
-    if (env.HUBSPOT_API_TOKEN) {
-      // Phase 9 wires the real check. Phase 8 placeholder.
-      checks.hubspot = "ok";
+    // Sprint 7.4 — REAL HubSpot reachability check (was a hardcoded
+    // "ok" placeholder before). Hits the pipelines endpoint with a
+    // small list call (cheap, cached behind the client's own
+    // pipeline cache; we just want a 200 from HubSpot to confirm
+    // the token + network path).
+    //
+    // A 401 here is the most important signal: it means the
+    // Private App token was revoked or rotated. Operator must
+    // rotate HUBSPOT_API_TOKEN in env and restart.
+    if (env.HUBSPOT_API_TOKEN && hubspot.isConfigured()) {
+      try {
+        await hubspot.listPipelineStages();
+        checks.hubspot = "ok";
+      } catch {
+        checks.hubspot = "fail";
+        allOk = false;
+      }
     }
 
     res.status(allOk ? 200 : 503).json({
