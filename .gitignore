@@ -24,6 +24,11 @@ pnpm-debug.log*
 .env
 .env.local
 .env.*.local
+# Sprint 7.3 — production env (uploaded to server, never committed).
+# Generic catch-all for any future per-env file too (.env.staging, etc.).
+.env.production
+.env.staging
+.env.*.production
 .claude/
 
 # Visual-diff transient run output — gold files in tests/visual-diff-gold/
