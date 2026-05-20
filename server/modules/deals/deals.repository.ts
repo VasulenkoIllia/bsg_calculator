@@ -2,11 +2,53 @@
  * Deals DB access.
  */
 
-import { and, desc, eq, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, lt, or, sql } from "drizzle-orm";
 import { db, type DbOrTx } from "../../db/client";
 import { deals, type Deal, type NewDeal } from "../../db/schema";
 import { expectSingle } from "../../shared/db-helpers";
-import type { Cursor } from "../../shared/pagination";
+import {
+  assertCursorValueIsIsoDate,
+  type SortSpec,
+  type SortedCursor
+} from "../../shared/sorted-pagination";
+
+/**
+ * Sprint 7.2: whitelist of sortable columns on /deals. Same pattern
+ * as documents + companies + calculator-configs.
+ */
+export const dealSortFields = [
+  "name",
+  "stage",
+  "businessVertical",
+  "amount",
+  "hubspotModifiedAt",
+  "createdAt"
+] as const;
+export type DealSortField = (typeof dealSortFields)[number];
+
+export function cursorValueForRow(row: Deal, field: DealSortField): string {
+  switch (field) {
+    case "name":
+      return row.name.toLowerCase();
+    case "stage":
+      return (row.stage ?? "").toLowerCase();
+    case "businessVertical":
+      return (row.businessVertical ?? "").toLowerCase();
+    case "amount":
+      // pg numeric() → JS string. Lex-sort would break ('10' < '2'),
+      // so we left-pad numerically for stable ordering. NULL → '' which
+      // sorts before any padded number.
+      return row.amount === null ? "" : row.amount.padStart(20, "0");
+    case "hubspotModifiedAt":
+      return row.hubspotModifiedAt.toISOString();
+    case "createdAt":
+      return row.createdAt.toISOString();
+    default: {
+      const _exhaustive: never = field;
+      throw new Error(`cursorValueForRow: unhandled sort field ${String(_exhaustive)}`);
+    }
+  }
+}
 
 export async function findDealById(id: string): Promise<Deal | undefined> {
   const rows = await db.select().from(deals).where(eq(deals.id, id)).limit(1);
@@ -26,7 +68,9 @@ export interface ListDealsArgs {
   stage?: string;
   hubspotCompanyId?: string;
   businessVertical?: string;
-  cursor: Cursor | null;
+  /** Sprint 7.2: clickable-header per-column sort. */
+  sort: SortSpec<DealSortField>;
+  cursor: SortedCursor | null;
   limit: number;
 }
 
@@ -41,14 +85,44 @@ export async function listDeals(args: ListDealsArgs): Promise<Deal[]> {
   if (args.businessVertical) {
     conditions.push(eq(deals.businessVertical, args.businessVertical));
   }
+
+  // Sprint 7.2: per-column sort. Same pattern as companies.repository.
+  // `amount` is pg numeric() → string; we left-pad in the cursor for
+  // numeric ordering, but SQL-side we cast to numeric so ORDER BY
+  // orders by the actual value. NULLs are COALESCE'd to 0 to land at
+  // the bottom of an ASC sort (consistent with the cursor value '').
+  const sortExprByField: Record<DealSortField, ReturnType<typeof sql>> = {
+    name: sql`LOWER(${deals.name})`,
+    stage: sql`LOWER(COALESCE(${deals.stage}, ''))`,
+    businessVertical: sql`LOWER(COALESCE(${deals.businessVertical}, ''))`,
+    amount: sql`COALESCE(${deals.amount}, 0)`,
+    hubspotModifiedAt: sql`${deals.hubspotModifiedAt}`,
+    createdAt: sql`${deals.createdAt}`
+  };
+  const sortExpr = sortExprByField[args.sort.field];
+  const dirCol = args.sort.dir === "asc" ? asc : desc;
+  const dirCmp = args.sort.dir === "asc" ? gt : lt;
+
   if (args.cursor) {
+    const isDateSort =
+      args.sort.field === "createdAt" || args.sort.field === "hubspotModifiedAt";
+    let cursorValueExpr;
+    if (isDateSort) {
+      assertCursorValueIsIsoDate(args.cursor.value);
+      cursorValueExpr = sql`${new Date(args.cursor.value)}::timestamptz`;
+    } else if (args.sort.field === "amount") {
+      // Cursor value was padded for lex-sort; strip leading zeroes
+      // for the SQL-side numeric comparison. Empty string → 0.
+      const stripped = args.cursor.value.replace(/^0+/, "") || "0";
+      cursorValueExpr = sql`${stripped}::numeric`;
+    } else {
+      cursorValueExpr = sql`${args.cursor.value}`;
+    }
+
     conditions.push(
       or(
-        lt(deals.createdAt, new Date(args.cursor.createdAt)),
-        and(
-          eq(deals.createdAt, new Date(args.cursor.createdAt)),
-          lt(deals.id, args.cursor.id)
-        )
+        dirCmp(sortExpr, cursorValueExpr),
+        and(eq(sortExpr, cursorValueExpr), dirCmp(deals.id, args.cursor.id))
       )
     );
   }
@@ -59,7 +133,7 @@ export async function listDeals(args: ListDealsArgs): Promise<Deal[]> {
     .select()
     .from(deals)
     .where(where)
-    .orderBy(desc(deals.createdAt), desc(deals.id))
+    .orderBy(dirCol(sortExpr), dirCol(deals.id))
     .limit(args.limit);
 }
 

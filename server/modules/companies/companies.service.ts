@@ -14,12 +14,13 @@
 import { env } from "../../config/env";
 import { parseDtoOrInternalError } from "../../shared/dto-parse";
 import { NotFoundError } from "../../shared/errors";
-import { buildPage, type PageResult } from "../../shared/build-page";
+import { buildSortedPage, type PageResult } from "../../shared/sorted-pagination";
 import { scheduleTtlRefresh as runTtlRefresh } from "../../shared/ttl-refresh";
 import { hubspot } from "../hubspot/hubspot.client";
 import { mapHubspotCompanyToRow } from "../hubspot/hubspot.mapper";
 import type { Company } from "../../db/schema";
 import {
+  cursorValueForRow,
   findCompanyById,
   findCompanyByHubspotId,
   listCompanies,
@@ -51,11 +52,11 @@ export type CompanyListPage = PageResult<CompanyPublic>;
 
 export async function searchCompanies(args: ListCompaniesArgs): Promise<CompanyListPage> {
   // Fetch limit+1 to detect whether more rows exist beyond this page;
-  // buildPage trims to `limit` and emits a cursor pointing at the
-  // last kept row. See shared/build-page.ts.
+  // buildSortedPage trims to `limit` and emits a cursor pointing at
+  // the last kept row.
   const rows = await listCompanies({ ...args, limit: args.limit + 1 });
-  return buildPage(rows, args.limit, toPublic, row => ({
-    createdAt: row.createdAt.toISOString(),
+  return buildSortedPage(rows, args.limit, args.sort, toPublic, row => ({
+    value: cursorValueForRow(row, args.sort.field),
     id: row.id
   }));
 }

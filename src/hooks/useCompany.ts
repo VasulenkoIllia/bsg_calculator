@@ -9,7 +9,12 @@
  */
 
 import { useMemo } from "react";
-import { useInfiniteQuery, useQuery, type InfiniteData } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useQuery,
+  type InfiniteData
+} from "@tanstack/react-query";
 import * as companiesApi from "../api/companies.js";
 import { ApiError } from "../api/client.js";
 import type { CursorPage, PublicCompany, PublicDeal } from "../api/types.js";
@@ -33,7 +38,22 @@ export interface UseCompanyDealsResult {
   isFetchingNextPage: boolean;
 }
 
-export function useCompanyDeals(companyId: string | undefined): UseCompanyDealsResult {
+export interface UseCompanyDealsOptions {
+  /**
+   * Sprint 7.2: per-column sort. Format "field:dir"; default
+   * "createdAt:desc". Mirrors the backend default so explicit and
+   * implicit calls share one TanStack cache entry.
+   */
+  sort?: companiesApi.CompanyDealSortSpec;
+}
+
+const DEFAULT_COMPANY_DEALS_SORT: companiesApi.CompanyDealSortSpec = "createdAt:desc";
+
+export function useCompanyDeals(
+  companyId: string | undefined,
+  options: UseCompanyDealsOptions = {}
+): UseCompanyDealsResult {
+  const sort = options.sort ?? DEFAULT_COMPANY_DEALS_SORT;
   const query = useInfiniteQuery<
     CursorPage<PublicDeal>,
     ApiError,
@@ -41,12 +61,16 @@ export function useCompanyDeals(companyId: string | undefined): UseCompanyDealsR
     unknown[],
     string | undefined
   >({
-    queryKey: ["companies", companyId, "deals"],
+    queryKey: ["companies", companyId, "deals", { sort }],
     enabled: typeof companyId === "string" && companyId.length > 0,
     initialPageParam: undefined,
     queryFn: ({ pageParam }) =>
-      companiesApi.listCompanyDeals(companyId!, { cursor: pageParam }),
-    getNextPageParam: lastPage => lastPage.nextCursor ?? undefined
+      companiesApi.listCompanyDeals(companyId!, { sort, cursor: pageParam }),
+    getNextPageParam: lastPage => lastPage.nextCursor ?? undefined,
+    // Sprint 7.2: keep stale data visible during sort-change refetch
+    // to eliminate the table page-jump. Same pattern as the other
+    // listing hooks.
+    placeholderData: keepPreviousData
   });
 
   // Memoised — see useCompanies for rationale.

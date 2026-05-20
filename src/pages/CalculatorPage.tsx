@@ -2,7 +2,6 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildOfferSummaryText } from "../domain/calculator/index.js";
 import {
-  CalculatorActionsPanel,
   HardcodedConstantsPanel,
   Zone0CalculatorType,
   Zone1PayinTraffic,
@@ -372,6 +371,10 @@ export function CalculatorPage() {
         draftTitle={toolbarDraftTitle}
         onOpenWizard={handleOpenWizardFromToolbar}
         onSaveCalculator={handleSaveFromToolbar}
+        showHardcodedConstants={calc.showHardcodedConstants}
+        onToggleConstantsAndFormulas={calc.toggleHardcodedConstantsAndZoneFormulas}
+        onReset={calc.resetAllValuesToZero}
+        onApplyDefaults={calc.applyDefaultValues}
       />
 
       {editModeBanner}
@@ -394,12 +397,10 @@ export function CalculatorPage() {
         visible={calc.showHardcodedConstants}
         groups={calc.hardcodedConstantGroups}
       />
-      <CalculatorActionsPanel
-        showHardcodedConstants={calc.showHardcodedConstants}
-        onToggleConstantsAndFormulas={calc.toggleHardcodedConstantsAndZoneFormulas}
-        onReset={calc.resetAllValuesToZero}
-        onApplyDefaults={calc.applyDefaultValues}
-      />
+      {/* Sprint 7.2: CalculatorActionsPanel (Show formulas / Reset 0
+          / Apply defaults) moved INTO the sticky toolbar above, next
+          to Open Contract Wizard. The standalone panel used to live
+          here. */}
 
       <Zone0CalculatorType
         expanded={calc.zoneExpanded.zone0}

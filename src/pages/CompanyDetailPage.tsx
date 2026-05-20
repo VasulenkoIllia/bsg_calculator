@@ -21,16 +21,33 @@
 
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client.js";
+import type { CalculatorConfigSortField } from "../api/calculator-configs.js";
+import type { CompanyDealSortField } from "../api/companies.js";
+import type { DocumentSortField } from "../api/documents.js";
 import { LoadMoreButton } from "../components/LoadMoreButton.js";
+import { SortableTh, type SortDirection } from "../components/SortableTh.js";
 import { useCalculatorConfigs } from "../hooks/useCalculatorConfig.js";
 import { useCompany, useCompanyDeals } from "../hooks/useCompany.js";
 import { useDocuments } from "../hooks/useDocuments.js";
+import { useSortState } from "../hooks/useSortState.js";
 import type {
   PublicCalculatorConfig,
   PublicDeal,
   PublicDocument
 } from "../api/types.js";
 import { formatDateTime, formatScopeLabel } from "../shared/format.js";
+
+/**
+ * Sprint 7.2: each nested table on CompanyDetailPage owns its own
+ * sort state. We pass the trio (field / direction / change handler)
+ * down via a single typed object so the table components stay
+ * presentational. Reused for all three tabs via a generic `TField`.
+ */
+interface SortControls<TField extends string> {
+  field: TField;
+  direction: SortDirection;
+  onChange: (field: TField, direction: SortDirection) => void;
+}
 
 function formatAmount(deal: PublicDeal): string {
   if (!deal.amount) return "—";
@@ -64,16 +81,40 @@ export function CompanyDetailPage() {
   // is likely to switch tabs anyway. If this becomes a perf concern
   // for companies with hundreds of records, gate each query on
   // `activeTab === "<tab>"` so only the visible tab fires.
-  const deals = useCompanyDeals(id);
+  // Sprint 7.2: per-tab sort state. Three independent useSortState
+  // hooks keep each table's column-order memory separate — switching
+  // tabs back and forth doesn't reset the operator's chosen sort.
+  const dealsSort = useSortState<CompanyDealSortField>("createdAt", "desc");
+  const calcsSort = useSortState<CalculatorConfigSortField>("createdAt", "desc");
+  const docsSort = useSortState<DocumentSortField>("createdAt", "desc");
+
+  const deals = useCompanyDeals(id, { sort: dealsSort.sortSpec });
   // Sprint 6.6: useCalculatorConfigs no longer gates on companyId
   // alone (that mode is now reserved for the top-level /calculators
   // discovery page). On CompanyDetailPage we only want the listing
   // once the route param has resolved — explicit `enabled` flag.
   const configs = useCalculatorConfigs({
     companyId: id,
+    sort: calcsSort.sortSpec,
     enabled: typeof id === "string" && id.length > 0
   });
-  const documents = useDocuments({ companyId: id });
+  const documents = useDocuments({ companyId: id, sort: docsSort.sortSpec });
+
+  const dealsSortControls: SortControls<CompanyDealSortField> = {
+    field: dealsSort.sortField,
+    direction: dealsSort.sortDir,
+    onChange: dealsSort.handleSortChange
+  };
+  const calcsSortControls: SortControls<CalculatorConfigSortField> = {
+    field: calcsSort.sortField,
+    direction: calcsSort.sortDir,
+    onChange: calcsSort.handleSortChange
+  };
+  const docsSortControls: SortControls<DocumentSortField> = {
+    field: docsSort.sortField,
+    direction: docsSort.sortDir,
+    onChange: docsSort.handleSortChange
+  };
 
   const renderHeader = () => {
     if (companyQuery.isLoading) {
@@ -156,9 +197,15 @@ export function CompanyDetailPage() {
           />
         </div>
 
-        {activeTab === "deals" ? <DealsTable deals={deals} /> : null}
-        {activeTab === "calcs" ? <CalcsTable configs={configs} /> : null}
-        {activeTab === "documents" ? <DocumentsTable documents={documents} /> : null}
+        {activeTab === "deals" ? (
+          <DealsTable deals={deals} sort={dealsSortControls} />
+        ) : null}
+        {activeTab === "calcs" ? (
+          <CalcsTable configs={configs} sort={calcsSortControls} />
+        ) : null}
+        {activeTab === "documents" ? (
+          <DocumentsTable documents={documents} sort={docsSortControls} />
+        ) : null}
       </div>
 
       {activeTab === "deals" ? (
@@ -225,16 +272,58 @@ function TabButton({
   );
 }
 
-function DealsTable({ deals }: { deals: ReturnType<typeof useCompanyDeals> }) {
+function DealsTable({
+  deals,
+  sort
+}: {
+  deals: ReturnType<typeof useCompanyDeals>;
+  sort: SortControls<CompanyDealSortField>;
+}) {
   return (
     <table className="min-w-full divide-y divide-slate-200 text-sm">
-      <thead className="bg-white text-xs font-semibold uppercase tracking-wide text-slate-600">
+      <thead className="bg-white">
         <tr>
-          <th className="px-4 py-3 text-left">Name</th>
-          <th className="px-4 py-3 text-left">Stage</th>
-          <th className="px-4 py-3 text-left">Vertical</th>
-          <th className="px-4 py-3 text-right">Amount</th>
-          <th className="px-4 py-3 text-left">HubSpot updated</th>
+          <SortableTh
+            field="name"
+            activeField={sort.field}
+            activeDirection={sort.direction}
+            onSortChange={sort.onChange}
+          >
+            Name
+          </SortableTh>
+          <SortableTh
+            field="stage"
+            activeField={sort.field}
+            activeDirection={sort.direction}
+            onSortChange={sort.onChange}
+          >
+            Stage
+          </SortableTh>
+          <SortableTh
+            field="businessVertical"
+            activeField={sort.field}
+            activeDirection={sort.direction}
+            onSortChange={sort.onChange}
+          >
+            Vertical
+          </SortableTh>
+          <SortableTh
+            field="amount"
+            activeField={sort.field}
+            activeDirection={sort.direction}
+            onSortChange={sort.onChange}
+            align="right"
+          >
+            Amount
+          </SortableTh>
+          <SortableTh
+            field="hubspotModifiedAt"
+            activeField={sort.field}
+            activeDirection={sort.direction}
+            onSortChange={sort.onChange}
+          >
+            HubSpot updated
+          </SortableTh>
         </tr>
       </thead>
       <tbody className="divide-y divide-slate-100">
@@ -281,15 +370,44 @@ function DealsTable({ deals }: { deals: ReturnType<typeof useCompanyDeals> }) {
   );
 }
 
-function CalcsTable({ configs }: { configs: ReturnType<typeof useCalculatorConfigs> }) {
+function CalcsTable({
+  configs,
+  sort
+}: {
+  configs: ReturnType<typeof useCalculatorConfigs>;
+  sort: SortControls<CalculatorConfigSortField>;
+}) {
   return (
     <table className="min-w-full divide-y divide-slate-200 text-sm">
-      <thead className="bg-white text-xs font-semibold uppercase tracking-wide text-slate-600">
+      <thead className="bg-white">
         <tr>
-          <th className="px-4 py-3 text-left">Title</th>
-          <th className="px-4 py-3 text-left">Deal pin</th>
-          <th className="px-4 py-3 text-left">Updated</th>
-          <th className="px-4 py-3" />
+          <SortableTh
+            field="title"
+            activeField={sort.field}
+            activeDirection={sort.direction}
+            onSortChange={sort.onChange}
+          >
+            Title
+          </SortableTh>
+          <SortableTh
+            field="hubspotDealId"
+            activeField={sort.field}
+            activeDirection={sort.direction}
+            onSortChange={sort.onChange}
+            tooltip="HubSpot deal ID if the draft is pinned to a specific deal, or 'company-level' if it's available to any deal of the parent company."
+          >
+            Deal
+          </SortableTh>
+          <SortableTh
+            field="updatedAt"
+            activeField={sort.field}
+            activeDirection={sort.direction}
+            onSortChange={sort.onChange}
+          >
+            Updated
+          </SortableTh>
+          {/* Actions column has no sortable header */}
+          <th className="px-4 py-3" aria-label="Actions" />
         </tr>
       </thead>
       <tbody className="divide-y divide-slate-100">
@@ -347,15 +465,42 @@ function CalcsTable({ configs }: { configs: ReturnType<typeof useCalculatorConfi
   );
 }
 
-function DocumentsTable({ documents }: { documents: ReturnType<typeof useDocuments> }) {
+function DocumentsTable({
+  documents,
+  sort
+}: {
+  documents: ReturnType<typeof useDocuments>;
+  sort: SortControls<DocumentSortField>;
+}) {
   return (
     <table className="min-w-full divide-y divide-slate-200 text-sm">
-      <thead className="bg-white text-xs font-semibold uppercase tracking-wide text-slate-600">
+      <thead className="bg-white">
         <tr>
-          <th className="px-4 py-3 text-left">Number</th>
-          <th className="px-4 py-3 text-left">Scope</th>
-          <th className="px-4 py-3 text-left">Created</th>
-          <th className="px-4 py-3" />
+          <SortableTh
+            field="number"
+            activeField={sort.field}
+            activeDirection={sort.direction}
+            onSortChange={sort.onChange}
+          >
+            Number
+          </SortableTh>
+          <SortableTh
+            field="scope"
+            activeField={sort.field}
+            activeDirection={sort.direction}
+            onSortChange={sort.onChange}
+          >
+            Scope
+          </SortableTh>
+          <SortableTh
+            field="createdAt"
+            activeField={sort.field}
+            activeDirection={sort.direction}
+            onSortChange={sort.onChange}
+          >
+            Created
+          </SortableTh>
+          <th className="px-4 py-3" aria-label="Actions" />
         </tr>
       </thead>
       <tbody className="divide-y divide-slate-100">

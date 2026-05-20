@@ -15,11 +15,15 @@ export const listCompaniesQuerySchema = z.object({
   // queries can't use the index and fall back to a sequential scan.
   // Capped at 200 to defang DoS-by-huge-pattern.
   q: z.string().min(2).max(200).optional(),
-  // NOTE: a `companyType` filter used to live here. It was removed
-  // once HUBSPOT_COMPANY_TYPE_FILTER restricted the DB to a single
-  // type — runtime filter on `direct_client` was effectively a
-  // no-op. If the storage filter is ever loosened, re-add this.
-  // Opaque cursor — base64-encoded `{ createdAt, id }` (see shared/pagination.ts).
+  // Sprint 7.2: per-column sort. Allowed values whitelisted by
+  // the service via `parseSortQuery`. Default: "createdAt:desc".
+  sort: z
+    .string()
+    .max(64)
+    .regex(/^[a-zA-Z][\w]*:(asc|desc)$/, {
+      message: "sort must be in 'field:asc' or 'field:desc' form"
+    })
+    .optional(),
   cursor: z.string().max(500).optional(),
   // Hard ceiling 50 — keeps query work bounded.
   limit: z.coerce.number().int().min(1).max(50).default(25)

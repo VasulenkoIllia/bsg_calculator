@@ -154,7 +154,10 @@ describe("CompanyDetailPage — deals table", () => {
     await waitFor(() => {
       expect(screen.getByText("Deal-Two")).toBeInTheDocument();
     });
+    // Sprint 7.2: deals listing now carries the active sort spec on
+    // every request (default createdAt:desc), alongside the cursor.
     expect(spy).toHaveBeenNthCalledWith(2, "11111111-1111-1111-1111-111111111111", {
+      sort: "createdAt:desc",
       cursor: "deal-cursor-2"
     });
     expect(screen.queryByRole("button", { name: /load more deals/i })).not.toBeInTheDocument();

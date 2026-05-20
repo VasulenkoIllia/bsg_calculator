@@ -134,6 +134,42 @@ describe("GET /api/v1/companies — listing + search + filter", () => {
     const page2Ids = page2.body.items.map((c: { id: string }) => c.id);
     for (const id of page2Ids) expect(page1Ids).not.toContain(id);
   });
+
+  it("Sprint 7.2: ?sort=name:asc orders companies A-Z regardless of insert order", async () => {
+    const token = await setupAuth();
+    await db.insert(companies).values(companyFixture({
+      name: "Charlie LLC",
+      hubspotCompanyId: "777777111100"
+    }));
+    await db.insert(companies).values(companyFixture({
+      name: "Acme Inc",
+      hubspotCompanyId: "777777111101"
+    }));
+    await db.insert(companies).values(companyFixture({
+      name: "Bravo Corp",
+      hubspotCompanyId: "777777111102"
+    }));
+
+    const res = await request(app)
+      .get("/api/v1/companies?sort=name:asc&limit=10")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    const names = res.body.items.map((c: { name: string }) => c.name);
+    const idxA = names.indexOf("Acme Inc");
+    const idxB = names.indexOf("Bravo Corp");
+    const idxC = names.indexOf("Charlie LLC");
+    expect(idxA).toBeGreaterThanOrEqual(0);
+    expect(idxA).toBeLessThan(idxB);
+    expect(idxB).toBeLessThan(idxC);
+  });
+
+  it("Sprint 7.2: unknown sort field is rejected with 400", async () => {
+    const token = await setupAuth();
+    const res = await request(app)
+      .get("/api/v1/companies?sort=bogus:asc")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("GET /api/v1/companies/:id — single", () => {
@@ -257,6 +293,48 @@ describe("GET /api/v1/deals — listing + stage filter", () => {
         (d: { businessVertical: string }) => d.businessVertical === "iGaming / Betting"
       )
     ).toBe(true);
+  });
+
+  it("Sprint 7.2: ?sort=name:asc orders deals A-Z", async () => {
+    const token = await setupAuth();
+    const [c] = await db.insert(companies).values(companyFixture()).returning();
+    await db.insert(deals).values([
+      dealFixture(c.hubspotCompanyId, { name: "Zeta deal", hubspotDealId: "888880000001" }),
+      dealFixture(c.hubspotCompanyId, { name: "Alpha deal", hubspotDealId: "888880000002" }),
+      dealFixture(c.hubspotCompanyId, { name: "Mike deal", hubspotDealId: "888880000003" })
+    ]);
+
+    const res = await request(app)
+      .get(`/api/v1/deals?hubspotCompanyId=${c.hubspotCompanyId}&sort=name:asc&limit=10`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    const names = res.body.items.map((d: { name: string }) => d.name);
+    expect(names).toEqual(["Alpha deal", "Mike deal", "Zeta deal"]);
+  });
+
+  it("Sprint 7.2: ?sort=amount:desc orders deals by numeric amount", async () => {
+    const token = await setupAuth();
+    const [c] = await db.insert(companies).values(companyFixture()).returning();
+    await db.insert(deals).values([
+      dealFixture(c.hubspotCompanyId, { amount: "1000", hubspotDealId: "888881111111" }),
+      dealFixture(c.hubspotCompanyId, { amount: "200", hubspotDealId: "888881111112" }),
+      dealFixture(c.hubspotCompanyId, { amount: "50000", hubspotDealId: "888881111113" })
+    ]);
+
+    const res = await request(app)
+      .get(`/api/v1/deals?hubspotCompanyId=${c.hubspotCompanyId}&sort=amount:desc&limit=10`)
+      .set("Authorization", `Bearer ${token}`);
+    const amounts = res.body.items.map((d: { amount: string }) => d.amount);
+    // Numeric (not lex) order: 50000 > 1000 > 200.
+    expect(amounts).toEqual(["50000.00", "1000.00", "200.00"]);
+  });
+
+  it("Sprint 7.2: unknown sort field rejected with 400", async () => {
+    const token = await setupAuth();
+    const res = await request(app)
+      .get("/api/v1/deals?sort=evil:asc")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(400);
   });
 });
 

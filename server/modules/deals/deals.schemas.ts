@@ -15,6 +15,14 @@ export const listDealsQuerySchema = z.object({
   // Filter by HubSpot business_vertical enum (iGaming / Crypto / …).
   // Free-text up to 64 chars to absorb a future HubSpot rename.
   businessVertical: z.string().min(1).max(64).optional(),
+  // Sprint 7.2: per-column sort. Default createdAt:desc.
+  sort: z
+    .string()
+    .max(64)
+    .regex(/^[a-zA-Z][\w]*:(asc|desc)$/, {
+      message: "sort must be in 'field:asc' or 'field:desc' form"
+    })
+    .optional(),
   cursor: z.string().max(500).optional(),
   limit: z.coerce.number().int().min(1).max(50).default(25)
 });

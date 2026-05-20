@@ -5,7 +5,7 @@
 import { env } from "../../config/env";
 import { parseDtoOrInternalError } from "../../shared/dto-parse";
 import { NotFoundError } from "../../shared/errors";
-import { buildPage, type PageResult } from "../../shared/build-page";
+import { buildSortedPage, type PageResult } from "../../shared/sorted-pagination";
 import { scheduleTtlRefresh as runTtlRefresh } from "../../shared/ttl-refresh";
 import { logger } from "../../middleware/logger";
 import { getCompany, loadCompanyByHubspotIdOrNull } from "../companies/companies.service";
@@ -17,6 +17,7 @@ import {
 import type { Deal } from "../../db/schema";
 import type { HubspotObject } from "../hubspot/hubspot.types";
 import {
+  cursorValueForRow,
   findDealById,
   listDeals,
   upsertDeal,
@@ -66,10 +67,11 @@ export async function searchDealsByCompanyUuid(
 }
 
 export async function searchDeals(args: ListDealsArgs): Promise<DealListPage> {
-  // Fetch limit+1 to detect a next-page; buildPage handles trimming.
+  // Fetch limit+1 to detect a next-page; buildSortedPage handles
+  // trimming and minting the cursor for the active sort spec.
   const rows = await listDeals({ ...args, limit: args.limit + 1 });
-  return buildPage(rows, args.limit, toPublic, row => ({
-    createdAt: row.createdAt.toISOString(),
+  return buildSortedPage(rows, args.limit, args.sort, toPublic, row => ({
+    value: cursorValueForRow(row, args.sort.field),
     id: row.id
   }));
 }

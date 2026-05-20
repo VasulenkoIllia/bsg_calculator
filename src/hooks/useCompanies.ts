@@ -14,7 +14,11 @@
  */
 
 import { useMemo } from "react";
-import { useInfiniteQuery, type InfiniteData } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  type InfiniteData
+} from "@tanstack/react-query";
 import * as companiesApi from "../api/companies.js";
 import { ApiError } from "../api/client.js";
 import type { CursorPage, PublicCompany } from "../api/types.js";
@@ -30,6 +34,13 @@ export const COMPANIES_SEARCH_MIN_LENGTH = 2;
 export interface UseCompaniesOptions {
   /** Trimmed substring search; pass undefined / "" for no filter. */
   q?: string;
+  /**
+   * Sprint 7.2: per-column sort. Format: "field:dir" (e.g.
+   * "name:asc"). Default "createdAt:desc". TanStack Query treats
+   * sort as part of the cache key, so flipping sort starts a fresh
+   * page chain.
+   */
+  sort?: companiesApi.CompanySortSpec;
   /** Page size; defaults to backend default (25), capped server-side at 50. */
   limit?: number;
 }
@@ -59,12 +70,21 @@ function normaliseSearch(q: string | undefined): string | undefined {
   return trimmed && trimmed.length >= COMPANIES_SEARCH_MIN_LENGTH ? trimmed : undefined;
 }
 
-function buildKey(q: string | undefined, limit: number | undefined): unknown[] {
-  return ["companies", "list", { q: normaliseSearch(q), limit }];
+/** Sprint 7.2: backend default — mirror it so explicit-default and
+ * implicit-default callers share a single TanStack cache entry. */
+const DEFAULT_COMPANIES_SORT: companiesApi.CompanySortSpec = "createdAt:desc";
+
+function buildKey(
+  q: string | undefined,
+  sort: companiesApi.CompanySortSpec,
+  limit: number | undefined
+): unknown[] {
+  return ["companies", "list", { q: normaliseSearch(q), sort, limit }];
 }
 
-export function useCompanies({ q, limit }: UseCompaniesOptions = {}): UseCompaniesResult {
+export function useCompanies({ q, sort, limit }: UseCompaniesOptions = {}): UseCompaniesResult {
   const normalisedQ = normaliseSearch(q);
+  const effectiveSort = sort ?? DEFAULT_COMPANIES_SORT;
 
   const query = useInfiniteQuery<
     CursorPage<PublicCompany>,
@@ -73,15 +93,18 @@ export function useCompanies({ q, limit }: UseCompaniesOptions = {}): UseCompani
     unknown[],
     string | undefined
   >({
-    queryKey: buildKey(normalisedQ, limit),
+    queryKey: buildKey(normalisedQ, effectiveSort, limit),
     initialPageParam: undefined,
     queryFn: async ({ pageParam }) =>
       companiesApi.listCompanies({
         q: normalisedQ,
+        sort: effectiveSort,
         cursor: pageParam,
         limit
       }),
-    getNextPageParam: lastPage => lastPage.nextCursor ?? undefined
+    getNextPageParam: lastPage => lastPage.nextCursor ?? undefined,
+    // Sprint 7.2: same anti-jump pattern as documents + calc-configs.
+    placeholderData: keepPreviousData
   });
 
   // Memoised so consumers don't get a new array reference (and thus

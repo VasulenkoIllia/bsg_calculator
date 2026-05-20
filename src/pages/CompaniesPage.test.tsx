@@ -108,9 +108,16 @@ describe("CompaniesPage", () => {
 
     renderPage();
 
-    // Initial call has no q.
+    // Initial call has no q. Sprint 7.2: sort is wired with the
+    // backend default ("createdAt:desc") so the FE explicit-default
+    // matches the implicit-default backend behaviour.
     await waitFor(() => {
-      expect(spy).toHaveBeenCalledWith({ q: undefined, cursor: undefined, limit: undefined });
+      expect(spy).toHaveBeenCalledWith({
+        q: undefined,
+        sort: "createdAt:desc",
+        cursor: undefined,
+        limit: undefined
+      });
     });
 
     fireEvent.change(screen.getByPlaceholderText(/name contains/i), {
@@ -153,9 +160,11 @@ describe("CompaniesPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Page2")).toBeInTheDocument();
     });
-    // Second call carried the cursor returned by the first.
+    // Second call carried the cursor returned by the first. Sprint
+    // 7.2: sort param is part of every request now.
     expect(spy).toHaveBeenNthCalledWith(2, {
       q: undefined,
+      sort: "createdAt:desc",
       cursor: "cursor-2",
       limit: undefined
     });

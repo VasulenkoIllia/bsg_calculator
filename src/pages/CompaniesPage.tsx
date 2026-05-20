@@ -1,27 +1,31 @@
 /**
- * Companies listing — search + cursor pagination.
+ * Companies listing — search + cursor pagination + per-column sort.
  *
- * UX choices:
- *   - The search input throttles via useDebouncedValue (300ms). The
- *     backend requires q.length >= 2, so anything shorter is treated
- *     as "no filter" (avoids 422 spam from one-character searches).
- *   - "Load more" button (rather than infinite scroll) keeps the UI
- *     deterministic for operators reviewing long lists.
- *   - Each row links to /companies/:id (the detail page lands in 2.8.E).
+ * Sprint 7.2: added clickable sortable column headers via
+ * `SortableTh` + `useSortState`, matching the UX shipped earlier
+ * for /documents and /calculators. Default sort `createdAt:desc`
+ * preserves pre-7.2 ordering.
  */
 
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api/client.js";
+import type { CompanySortField } from "../api/companies.js";
 import { LoadMoreButton } from "../components/LoadMoreButton.js";
+import { SortableTh } from "../components/SortableTh.js";
 import { useCompanies } from "../hooks/useCompanies.js";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
+import { useSortState } from "../hooks/useSortState.js";
 import { SEARCH_DEBOUNCE_MS } from "../shared/constants.js";
 import { formatDateTime } from "../shared/format.js";
 
 export function CompaniesPage() {
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
+  // Sprint 7.2: shared sort-state hook. Default createdAt:desc
+  // matches the backend default.
+  const { sortField, sortDir, sortSpec, handleSortChange } =
+    useSortState<CompanySortField>("createdAt", "desc");
 
   const {
     items,
@@ -32,7 +36,7 @@ export function CompaniesPage() {
     hasNextPage,
     fetchNextPage,
     isFetchingNextPage
-  } = useCompanies({ q: debouncedSearch });
+  } = useCompanies({ q: debouncedSearch, sort: sortSpec });
 
   // Background re-fetch indicator (e.g. when the user toggles back
   // to the tab and the data has gone stale). Distinct from the
@@ -64,12 +68,40 @@ export function CompaniesPage() {
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-600">
+          <thead className="bg-slate-50">
             <tr>
-              <th className="px-4 py-3 text-left">Name</th>
-              <th className="px-4 py-3 text-left">Segment</th>
-              <th className="px-4 py-3 text-left">Lifecycle</th>
-              <th className="px-4 py-3 text-left">HubSpot updated</th>
+              <SortableTh
+                field="name"
+                activeField={sortField}
+                activeDirection={sortDir}
+                onSortChange={handleSortChange}
+              >
+                Name
+              </SortableTh>
+              <SortableTh
+                field="segmentType"
+                activeField={sortField}
+                activeDirection={sortDir}
+                onSortChange={handleSortChange}
+              >
+                Segment
+              </SortableTh>
+              <SortableTh
+                field="lifecycleStage"
+                activeField={sortField}
+                activeDirection={sortDir}
+                onSortChange={handleSortChange}
+              >
+                Lifecycle
+              </SortableTh>
+              <SortableTh
+                field="hubspotModifiedAt"
+                activeField={sortField}
+                activeDirection={sortDir}
+                onSortChange={handleSortChange}
+              >
+                HubSpot updated
+              </SortableTh>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">

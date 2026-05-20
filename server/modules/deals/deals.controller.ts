@@ -4,18 +4,30 @@
  */
 
 import type { Request, Response } from "express";
-import { decodeCursor } from "../../shared/pagination";
+import {
+  decodeSortedCursor,
+  encodeSortKey,
+  parseSortQuery
+} from "../../shared/sorted-pagination";
 import { parseUuidParam } from "../../shared/uuid-param";
+import { dealSortFields } from "./deals.repository";
 import { listDealsQuerySchema } from "./deals.schemas";
 import { getDeal, searchDeals, searchDealsByCompanyUuid } from "./deals.service";
 
 export async function listController(req: Request, res: Response): Promise<void> {
   const query = listDealsQuerySchema.parse(req.query);
+  // Sprint 7.2: per-column sort. Default createdAt:desc.
+  const sort = parseSortQuery(query.sort, dealSortFields, {
+    field: "createdAt",
+    dir: "desc"
+  });
+  const cursor = decodeSortedCursor(query.cursor, encodeSortKey(sort));
   const page = await searchDeals({
     stage: query.stage,
     hubspotCompanyId: query.hubspotCompanyId,
     businessVertical: query.businessVertical,
-    cursor: decodeCursor(query.cursor),
+    sort,
+    cursor,
     limit: query.limit
   });
   res.status(200).json(page);
@@ -41,10 +53,16 @@ export async function dealsByCompanyController(
 ): Promise<void> {
   const companyUuid = parseUuidParam(req, "id");
   const query = listDealsQuerySchema.parse(req.query);
+  const sort = parseSortQuery(query.sort, dealSortFields, {
+    field: "createdAt",
+    dir: "desc"
+  });
+  const cursor = decodeSortedCursor(query.cursor, encodeSortKey(sort));
   const page = await searchDealsByCompanyUuid(companyUuid, {
     stage: query.stage,
     businessVertical: query.businessVertical,
-    cursor: decodeCursor(query.cursor),
+    sort,
+    cursor,
     limit: query.limit
   });
   res.status(200).json(page);

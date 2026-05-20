@@ -9,11 +9,54 @@
  *   backfill + webhook paths.
  */
 
-import { and, desc, eq, ilike, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, ilike, lt, or, sql } from "drizzle-orm";
 import { db, type DbOrTx } from "../../db/client";
 import { companies, type Company, type NewCompany } from "../../db/schema";
 import { expectSingle } from "../../shared/db-helpers";
-import type { Cursor } from "../../shared/pagination";
+import {
+  assertCursorValueIsIsoDate,
+  type SortSpec,
+  type SortedCursor
+} from "../../shared/sorted-pagination";
+
+/**
+ * Sprint 7.2: whitelist of sortable columns on /companies. Same
+ * pattern as documents + calculator-configs (see those repositories
+ * for the design notes around case-insensitive LOWER() sorts and
+ * the cursor predicate that mirrors the ORDER BY).
+ */
+export const companySortFields = [
+  "name",
+  "segmentType",
+  "lifecycleStage",
+  "hubspotModifiedAt",
+  "createdAt"
+] as const;
+export type CompanySortField = (typeof companySortFields)[number];
+
+/**
+ * Emit the cursor value for a row given the active sort field.
+ * Mirrors `LOWER(COALESCE(col, ''))` used in ORDER BY so the
+ * cursor predicate composes with the stored value.
+ */
+export function cursorValueForRow(row: Company, field: CompanySortField): string {
+  switch (field) {
+    case "name":
+      return row.name.toLowerCase();
+    case "segmentType":
+      return (row.segmentType ?? "").toLowerCase();
+    case "lifecycleStage":
+      return (row.lifecycleStage ?? "").toLowerCase();
+    case "hubspotModifiedAt":
+      return row.hubspotModifiedAt.toISOString();
+    case "createdAt":
+      return row.createdAt.toISOString();
+    default: {
+      const _exhaustive: never = field;
+      throw new Error(`cursorValueForRow: unhandled sort field ${String(_exhaustive)}`);
+    }
+  }
+}
 
 export async function findCompanyById(id: string): Promise<Company | undefined> {
   const rows = await db.select().from(companies).where(eq(companies.id, id)).limit(1);
@@ -33,7 +76,9 @@ export async function findCompanyByHubspotId(
 
 export interface ListCompaniesArgs {
   q?: string;
-  cursor: Cursor | null;
+  /** Sprint 7.2: clickable-header per-column sort. */
+  sort: SortSpec<CompanySortField>;
+  cursor: SortedCursor | null;
   limit: number;
 }
 
@@ -44,15 +89,39 @@ export async function listCompanies(args: ListCompaniesArgs): Promise<Company[]>
     // when the predicate contains a literal-substring pattern.
     conditions.push(ilike(companies.name, `%${args.q}%`));
   }
+
+  // Sprint 7.2: per-column sort. ORDER BY (chosen, id) keeps
+  // pagination stable; the cursor predicate mirrors the ORDER BY.
+  // String columns use LOWER() so a-z and A-Z interleave correctly
+  // (case-insensitive A-Z UX). Nullable columns COALESCE to '' so
+  // NULL/empty rows cluster at one end without breaking the
+  // tuple comparison.
+  const sortExprByField: Record<CompanySortField, ReturnType<typeof sql>> = {
+    name: sql`LOWER(${companies.name})`,
+    segmentType: sql`LOWER(COALESCE(${companies.segmentType}, ''))`,
+    lifecycleStage: sql`LOWER(COALESCE(${companies.lifecycleStage}, ''))`,
+    hubspotModifiedAt: sql`${companies.hubspotModifiedAt}`,
+    createdAt: sql`${companies.createdAt}`
+  };
+  const sortExpr = sortExprByField[args.sort.field];
+  const dirCol = args.sort.dir === "asc" ? asc : desc;
+  const dirCmp = args.sort.dir === "asc" ? gt : lt;
+
   if (args.cursor) {
-    // Strict less-than on (createdAt, id) — keyset pagination.
+    const isDateSort =
+      args.sort.field === "createdAt" || args.sort.field === "hubspotModifiedAt";
+    let cursorValueExpr;
+    if (isDateSort) {
+      assertCursorValueIsIsoDate(args.cursor.value);
+      cursorValueExpr = sql`${new Date(args.cursor.value)}::timestamptz`;
+    } else {
+      cursorValueExpr = sql`${args.cursor.value}`;
+    }
+
     conditions.push(
       or(
-        lt(companies.createdAt, new Date(args.cursor.createdAt)),
-        and(
-          eq(companies.createdAt, new Date(args.cursor.createdAt)),
-          lt(companies.id, args.cursor.id)
-        )
+        dirCmp(sortExpr, cursorValueExpr),
+        and(eq(sortExpr, cursorValueExpr), dirCmp(companies.id, args.cursor.id))
       )
     );
   }
@@ -63,7 +132,7 @@ export async function listCompanies(args: ListCompaniesArgs): Promise<Company[]>
     .select()
     .from(companies)
     .where(where)
-    .orderBy(desc(companies.createdAt), desc(companies.id))
+    .orderBy(dirCol(sortExpr), dirCol(companies.id))
     .limit(args.limit);
 }
 

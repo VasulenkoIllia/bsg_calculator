@@ -52,6 +52,18 @@ export interface CalculatorStickyToolbarProps {
    */
   onSaveCalculator?: () => void;
   /**
+   * Sprint 7.2: toggle for the "Hardcoded constants & formulas"
+   * panel + the labelled current state. Migrated from the standalone
+   * CalculatorActionsPanel so the calculator's three secondary
+   * actions live next to the primary wizard/save CTAs.
+   */
+  showHardcodedConstants: boolean;
+  onToggleConstantsAndFormulas: () => void;
+  /** Sprint 7.2: reset every input back to 0 (formerly CalculatorActionsPanel). */
+  onReset: () => void;
+  /** Sprint 7.2: apply the production defaults (formerly CalculatorActionsPanel). */
+  onApplyDefaults: () => void;
+  /**
    * Optional status content rendered between the title and the
    * action buttons (e.g. an inline auto-save indicator). Keeps
    * this component dumb about what state it might show.
@@ -63,11 +75,23 @@ export function CalculatorStickyToolbar({
   draftTitle,
   onOpenWizard,
   onSaveCalculator,
+  showHardcodedConstants,
+  onToggleConstantsAndFormulas,
+  onReset,
+  onApplyDefaults,
   statusSlot
 }: CalculatorStickyToolbarProps) {
+  // Shared button class for the SECONDARY (slate-bordered) actions
+  // group. Kept inline rather than extracted to a styled component
+  // because the variation surface is tiny (only the label differs).
+  const secondaryBtn =
+    "rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50";
+
   return (
     <div className="sticky top-12 z-30 -mx-4 mb-4 border-b border-slate-200 bg-white/95 px-4 py-2 shadow-sm backdrop-blur md:-mx-8 md:px-8">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
+        {/* Left: identity. Calculator label + title chip + optional
+            inline status (e.g. saved-status indicator). */}
         <div className="flex min-w-0 items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             Calculator
@@ -84,7 +108,39 @@ export function CalculatorStickyToolbar({
             <span className="text-xs text-slate-500">{statusSlot}</span>
           ) : null}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Right: action group, two visual rows on narrow viewports.
+            Sprint 7.2: secondary actions (Show constants / Reset 0 /
+            Apply defaults) sit BEFORE the primary CTAs (Save / Wizard)
+            so the eye reads the page-altering actions first and the
+            commit-flow actions last. */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {/* Secondary actions — migrated from CalculatorActionsPanel
+              (Sprint 7.2 — was a separate panel that pushed the zones
+              down; now lives alongside the wizard CTA so the calc
+              has a single action surface). */}
+          <button
+            type="button"
+            onClick={onToggleConstantsAndFormulas}
+            className={secondaryBtn}
+            aria-pressed={showHardcodedConstants}
+          >
+            {showHardcodedConstants
+              ? "Hide constants & formulas"
+              : "Show constants & formulas"}
+          </button>
+          <button type="button" onClick={onReset} className={secondaryBtn}>
+            Reset all to 0
+          </button>
+          <button
+            type="button"
+            onClick={onApplyDefaults}
+            className={secondaryBtn}
+          >
+            Apply defaults
+          </button>
+          {/* Visual divider between secondary cluster and primary CTAs. */}
+          <span aria-hidden="true" className="mx-1 hidden h-5 w-px bg-slate-200 md:block" />
+          {/* Primary CTAs. */}
           {onSaveCalculator ? (
             <button
               type="button"

@@ -16,9 +16,10 @@ import { Link } from "react-router-dom";
 import { ApiError } from "../api/client.js";
 import { CompanyTypeahead } from "../components/CompanyTypeahead.js";
 import { LoadMoreButton } from "../components/LoadMoreButton.js";
-import { SortableTh, type SortDirection } from "../components/SortableTh.js";
+import { SortableTh } from "../components/SortableTh.js";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
 import { useDocuments } from "../hooks/useDocuments.js";
+import { useSortState } from "../hooks/useSortState.js";
 import { SEARCH_DEBOUNCE_MS } from "../shared/constants.js";
 import { formatDateTime, formatScopeLabel } from "../shared/format.js";
 import type { DocumentSortField } from "../api/documents.js";
@@ -51,19 +52,14 @@ function CompanyFilter({
 export function DocumentsListPage() {
   const [search, setSearch] = useState("");
   const [selectedCompany, setSelectedCompany] = useState<PublicCompany | null>(null);
-  // Sprint 6.8: per-column sort state — default mirrors the backend
-  // default (`createdAt:desc`), so the initial render matches the
-  // pre-6.8 ordering exactly. Flipping sort triggers a fresh
-  // TanStack-Query page chain via the queryKey.
-  const [sortField, setSortField] = useState<DocumentSortField>("createdAt");
-  const [sortDir, setSortDir] = useState<SortDirection>("desc");
+  // Sprint 7.2: shared sort-state hook (was 7 lines of repetitive
+  // useState pairs in 6.8). Default createdAt:desc mirrors backend
+  // default. Flipping sort triggers a fresh TanStack-Query page
+  // chain via the queryKey on the hook side.
+  const { sortField, sortDir, sortSpec, handleSortChange } =
+    useSortState<DocumentSortField>("createdAt", "desc");
   const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
   const trimmed = debouncedSearch.trim();
-
-  const handleSortChange = (field: DocumentSortField, dir: SortDirection) => {
-    setSortField(field);
-    setSortDir(dir);
-  };
 
   const {
     items,
@@ -77,7 +73,7 @@ export function DocumentsListPage() {
   } = useDocuments({
     q: trimmed.length > 0 ? trimmed : undefined,
     companyId: selectedCompany?.id,
-    sort: `${sortField}:${sortDir}`
+    sort: sortSpec
   });
 
   const isBackgroundRefetching = isFetching && !isLoading;

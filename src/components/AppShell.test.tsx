@@ -55,8 +55,8 @@ describe("AppShell IdentityStrip", () => {
     renderShell();
 
     await waitFor(() => {
-      // CalculatorHeader renders its own copy of the calculator title;
-      // we assert specifically on the IdentityStrip's text.
+      // Sprint 7.1: hero header is gone; only the AppHeader's
+      // identity slot carries the signed-in label.
       expect(screen.getByText(/signed in as/i)).toBeInTheDocument();
       expect(screen.getByText(/alice doe/i)).toBeInTheDocument();
       expect(

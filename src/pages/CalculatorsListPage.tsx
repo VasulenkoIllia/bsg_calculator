@@ -27,9 +27,10 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api/client.js";
 import { LoadMoreButton } from "../components/LoadMoreButton.js";
-import { SortableTh, type SortDirection } from "../components/SortableTh.js";
+import { SortableTh } from "../components/SortableTh.js";
 import { useCalculatorConfigs } from "../hooks/useCalculatorConfig.js";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
+import { useSortState } from "../hooks/useSortState.js";
 import { formatDateTime } from "../shared/format.js";
 import type { CalculatorConfigSortField } from "../api/calculator-configs.js";
 
@@ -39,17 +40,11 @@ export function CalculatorsListPage() {
   // doesn't fire a request per keystroke. Mirrors the pattern used
   // on /documents (DocumentsListPage) and the company-typeahead.
   const q = useDebouncedValue(searchInput, 300);
-  // Sprint 6.8: per-column sort state. Default mirrors backend
-  // default (createdAt:desc) so the initial render matches pre-6.8.
-  const [sortField, setSortField] = useState<CalculatorConfigSortField>("createdAt");
-  const [sortDir, setSortDir] = useState<SortDirection>("desc");
+  // Sprint 7.2: shared sort-state hook (was 6 lines of useState pairs).
+  const { sortField, sortDir, sortSpec, handleSortChange } =
+    useSortState<CalculatorConfigSortField>("createdAt", "desc");
 
-  const handleSortChange = (field: CalculatorConfigSortField, dir: SortDirection) => {
-    setSortField(field);
-    setSortDir(dir);
-  };
-
-  const configs = useCalculatorConfigs({ q, sort: `${sortField}:${sortDir}` });
+  const configs = useCalculatorConfigs({ q, sort: sortSpec });
   // Sprint 6.7 audit fix (S9): mirror the DocumentsListPage UX —
   // when TanStack Query is re-fetching the listing (e.g. after a
   // window-focus or a mutation invalidates the cache) show a
