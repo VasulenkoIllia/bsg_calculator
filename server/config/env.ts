@@ -132,6 +132,12 @@ const EnvSchema = z.object({
   // Document numbering
   DOCUMENT_NUMBER_START: z.coerce.number().int().min(1).default(7100001),
 
+  // Sprint 7.3.A — single-container deploy. Where Express looks for
+  // the built SPA. Default `/srv/spa` matches the Dockerfile that
+  // copies the Vite build output to that path. Override for tests
+  // or for a custom path; leave unset in dev (Vite serves the SPA).
+  SPA_DIST_DIR: z.string().optional(),
+
   // Logging
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
   LOG_HTTP_REQUESTS: z.coerce.boolean().default(true)
@@ -182,6 +188,38 @@ const EnvSchema = z.object({
       path: ["APP_PUBLIC_URL"],
       message:
         "must be a public https URL in production (HubSpot Notes will embed it as a clickable link)."
+    });
+  }
+
+  // Sprint 7.3.C — block well-known placeholder JWT secrets that
+  // happen to satisfy the `min(32)` validator. Copying .env.example
+  // verbatim to .env in prod must crash the boot, not boot with a
+  // public-knowledge secret.
+  const wellKnownPlaceholders = [
+    "replace_me_with_openssl_rand_base64_48_dev_only",
+    "change_me_in_production",
+    "dev_secret",
+    "test_secret"
+  ];
+  if (wellKnownPlaceholders.includes(data.JWT_ACCESS_SECRET)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["JWT_ACCESS_SECRET"],
+      message:
+        "is a well-known placeholder value — refuse to boot. Generate a fresh secret with `openssl rand -base64 48`."
+    });
+  }
+
+  // Sprint 7.3.C — require HUBSPOT_API_TOKEN in prod. Without it,
+  // the webhook processor silently retries every event 5 times,
+  // marks it failed, and operators don't notice until a sales
+  // person can't find a deal. Better to fail at boot.
+  if (!data.HUBSPOT_API_TOKEN || data.HUBSPOT_API_TOKEN.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["HUBSPOT_API_TOKEN"],
+      message:
+        "must be set in production (Private App pat- token; without it the webhook processor silently 401's every event)."
     });
   }
 });

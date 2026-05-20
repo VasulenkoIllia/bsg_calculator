@@ -198,10 +198,52 @@ class HubspotClient {
     return this.request<T>(path, "GET", undefined, options);
   }
 
-  /** Internal — used by get() and post(). Holds the retry/backoff logic. */
+  /**
+   * Sprint 7.3.D — DELETE helper, used by the Phase 8 document
+   * deletion flow that tears down the linked HubSpot Note. Returns
+   * void because HubSpot Note delete responds with 204 No Content.
+   */
+  private async delete(path: string, options: RequestOptions = {}): Promise<void> {
+    await this.request<void>(path, "DELETE", undefined, options);
+  }
+
+  /**
+   * Sprint 7.3.D — DELETE /crm/v3/objects/notes/:id. Resolves on 204
+   * (HubSpot's success response). On 404 we treat it as already-gone
+   * and resolve (idempotent delete). All other failure modes
+   * surface as `HubspotUnreachableError` via the standard retry
+   * pipeline. Phase 8 deletion controller calls this AFTER
+   * confirming `documents.hubspot_note_id` exists.
+   */
+  async deleteNote(noteId: string): Promise<void> {
+    try {
+      await this.delete(`/crm/v3/objects/notes/${encodeURIComponent(noteId)}`);
+    } catch (err) {
+      // 404 = note already gone in HubSpot. Treat the delete as
+      // idempotent so a retry on `delete_failed` row doesn't fail
+      // forever once HubSpot side has been cleaned up out-of-band.
+      const status =
+        err instanceof HubspotUnreachableError &&
+        typeof err.details === "object" &&
+        err.details !== null &&
+        "status" in err.details
+          ? (err.details as { status?: number }).status
+          : undefined;
+      if (status === 404) {
+        logger.warn(
+          { noteId },
+          "[hubspot] deleteNote: HubSpot returned 404 — note already deleted upstream."
+        );
+        return;
+      }
+      throw err;
+    }
+  }
+
+  /** Internal — used by get() / delete() / future post(). Holds the retry/backoff logic. */
   private async request<T>(
     path: string,
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "DELETE",
     body: unknown,
     options: RequestOptions = {}
   ): Promise<T> {
@@ -247,6 +289,24 @@ class HubspotClient {
           );
         }
 
+        // Sprint 7.3.D — 401 means our Private App token is invalid
+        // or revoked. This is operationally distinct from "4xx — bad
+        // request": every subsequent webhook event will fail in the
+        // exact same way until the operator rotates the token. We
+        // log at ERROR level with a stable `TOKEN_INVALID` tag so an
+        // ops alerting rule can pattern-match on it.
+        if (response.status === 401) {
+          const body = await response.text();
+          logger.error(
+            { url, body: body.slice(0, 200), code: "HUBSPOT_TOKEN_INVALID" },
+            "[hubspot] HUBSPOT_TOKEN_INVALID — Private App token rejected by HubSpot. Rotate the token and restart the app."
+          );
+          throw new HubspotUnreachableError(
+            "HubSpot rejected our Private App token (401). Operator action required: rotate HUBSPOT_API_TOKEN.",
+            { status: 401, url }
+          );
+        }
+
         // Any other 4xx — surface immediately, not retryable.
         if (response.status >= 400 && response.status < 500) {
           const body = await response.text();
@@ -273,6 +333,12 @@ class HubspotClient {
           });
         }
 
+        // Sprint 7.3.D — handle 204 No Content (used by DELETE).
+        // Returning undefined-as-T is safe because the typed
+        // wrappers (`deleteNote`) declare the void return shape.
+        if (response.status === 204) {
+          return undefined as T;
+        }
         return (await response.json()) as T;
       } catch (err) {
         clearTimeout(timer);

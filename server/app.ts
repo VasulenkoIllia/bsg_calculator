@@ -21,7 +21,10 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { env, isDev } from "./config/env";
+import { logger } from "./middleware/logger";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler";
 import { apiLimiter } from "./middleware/rate-limit";
 import { requestId } from "./middleware/request-id";
@@ -51,16 +54,43 @@ export function createApp(): express.Express {
   app.set("trust proxy", env.TRUST_PROXY_HOPS);
 
   // 1a. Security headers via helmet.
-  //     - contentSecurityPolicy disabled here: prod serves the SPA's
-  //       built bundle with its own meta CSP set during Vite build,
-  //       and the API endpoints return JSON with no scripts. Phase
-  //       8.7 hardening may re-enable per route once we own the SPA
-  //       serving config.
-  //     - crossOriginEmbedderPolicy disabled because we serve no
-  //       cross-origin embeds.
+  //     Sprint 7.3.E — enabled CSP as a header (was previously off).
+  //     CSP applies to every response Express emits. The SPA's Vite
+  //     build doesn't inject scripts from third-party origins, so a
+  //     restrictive default-src 'self' policy fits cleanly.
+  //
+  //     `style-src` allows `'unsafe-inline'` because:
+  //       - Tailwind's JIT output may inline styles via <style> tags
+  //         in dev mode.
+  //       - The PDF builder's HTML contains lots of inline `style=`
+  //         attrs — but the PDF flow doesn't go through this app
+  //         middleware (Puppeteer fetches HTML via setContent, not
+  //         via HTTP), so the CSP header doesn't apply there.
+  //     `connect-src 'self'` keeps API calls strictly same-origin.
+  //     `frame-ancestors 'none'` (via Helmet default) blocks
+  //     clickjacking.
+  //
+  //     crossOriginEmbedderPolicy stays off because we don't embed
+  //     cross-origin resources — turning it on can break dev tools.
   app.use(
     helmet({
-      contentSecurityPolicy: false,
+      contentSecurityPolicy: {
+        useDefaults: true,
+        directives: {
+          // 'self' = same origin. Block all third-party scripts.
+          "default-src": ["'self'"],
+          "script-src": ["'self'"],
+          "style-src": ["'self'", "'unsafe-inline'"],
+          "img-src": ["'self'", "data:", "blob:"],
+          "connect-src": ["'self'"],
+          "font-src": ["'self'", "data:"],
+          // PDF preview opens a blob: URL from the same origin —
+          // keep blob: allowed for object-src.
+          "object-src": ["'self'", "blob:"],
+          // No external embeds.
+          "frame-src": ["'none'"]
+        }
+      },
       crossOriginEmbedderPolicy: false
     })
   );
@@ -139,6 +169,55 @@ export function createApp(): express.Express {
   app.use("/api/v1/numbering", numberingRouter);
   // Sprint 5 routes (POST /api/v1/hubspot/webhooks + POST /api/v1/hubspot/refresh)
   // are mounted as children of hubspotRouter above.
+
+  // Sprint 7.3.A — single-container deploy. Express serves the
+  // built SPA static assets so we don't need a separate nginx.
+  // The build stage in Dockerfile copies `dist/` to `/srv/spa/`;
+  // in dev the SPA is served by `vite` on a different port and
+  // these handlers are skipped (the directory doesn't exist).
+  //
+  // Two handlers mounted after the API routes:
+  //   1. express.static — serves the actual files (index.html,
+  //      assets/*, etc.) with `index: false` so we control the
+  //      fallback in step 2.
+  //   2. The SPA-history fallback — any non-API request that
+  //      didn't match a static file gets `index.html`, letting
+  //      React Router handle the route on the client.
+  //
+  // SPA_DIST_DIR env override exists so tests can point at a
+  // fixture; default `/srv/spa` matches the Dockerfile layout.
+  const spaDistDir = env.SPA_DIST_DIR ?? "/srv/spa";
+  if (existsSync(spaDistDir)) {
+    app.use(
+      express.static(spaDistDir, {
+        index: false,
+        // Cache hashed assets (Vite produces content-hashed
+        // filenames like `index-abc123.js`) for a year; the
+        // entry HTML is served fresh below.
+        maxAge: "1y",
+        immutable: true
+      })
+    );
+    app.get("*", (req, res, next) => {
+      // Only serve the SPA shell for navigations that didn't
+      // match a static file AND aren't an API call. The /api/*
+      // routes are mounted above; a missed /api/* path falls
+      // through to the 404 handler at the end of this stack.
+      if (req.path.startsWith("/api/")) return next();
+      // No-cache on index.html so a deploy is picked up by every
+      // tab on the next navigation without a hard refresh.
+      res.set("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.sendFile(path.join(spaDistDir, "index.html"));
+    });
+    logger.info({ spaDistDir }, "[app] serving SPA static from this dir");
+  } else if (!isDev) {
+    // Prod boot WITHOUT the SPA build is a misconfiguration —
+    // warn loudly. In dev this is normal (Vite serves the SPA).
+    logger.warn(
+      { spaDistDir },
+      "[app] SPA dist dir not found — Express will serve API only"
+    );
+  }
 
   // 8. 404 catch-all + 9. Error envelope — must be last.
   app.use(notFoundHandler);

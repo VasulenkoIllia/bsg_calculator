@@ -45,21 +45,29 @@ let launchInFlight: Promise<PoolState> | null = null;
 async function launch(): Promise<PoolState> {
   // Puppeteer reads PUPPETEER_EXECUTABLE_PATH from env if set — we
   // forward it explicitly so the typed env loader is the SoT.
+  //
+  // Sprint 7.3.E — sandbox model:
+  //   - The Dockerfile installs `chromium-sandbox` (setuid helper)
+  //     and runs the container as the non-root `node` user. Under
+  //     that setup Chromium can engage its built-in sandbox, so
+  //     `--no-sandbox` is NOT required.
+  //   - The previous flags (`--no-sandbox`, `--disable-setuid-sandbox`)
+  //     were a workaround for running as root in containers without
+  //     userns mapping. They opened a meaningful XSS-to-RCE
+  //     amplifier — flagged by the deployment security audit.
+  //   - In dev (running outside a container as your laptop user)
+  //     Chromium's sandbox falls back gracefully — you may see a
+  //     warning in the console; it's expected.
+  //
+  // `--disable-dev-shm-usage` stays because /dev/shm in Docker is
+  // tmpfs-capped at 64MB by default and Chromium hits the limit on
+  // larger PDF renders.
   const browser = await puppeteer.launch({
     headless: env.PUPPETEER_HEADLESS,
     executablePath: env.PUPPETEER_EXECUTABLE_PATH || undefined,
     args: [
-      // `--no-sandbox` is required when running as root in a Docker
-      // container without a seccomp-friendly user namespace. Safe
-      // because we only render trusted HTML built from our own
-      // templates — no third-party scripts execute.
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      // Skip extension auto-install / search indexing — saves ~200ms
-      // on cold start.
       "--disable-extensions",
       "--disable-default-apps",
-      // Tighter memory footprint per page.
       "--disable-dev-shm-usage"
     ]
   });
