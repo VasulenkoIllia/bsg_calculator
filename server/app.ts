@@ -77,13 +77,29 @@ export function createApp(): express.Express {
       contentSecurityPolicy: {
         useDefaults: true,
         directives: {
-          // 'self' = same origin. Block all third-party scripts.
+          // 'self' = same origin. Block all third-party scripts by default.
           "default-src": ["'self'"],
-          "script-src": ["'self'"],
-          "style-src": ["'self'", "'unsafe-inline'"],
+          // Sprint 7.5 — allow Cloudflare Insights beacon. Cloudflare
+          // auto-injects `static.cloudflareinsights.com/beacon.min.js`
+          // when traffic transits the CF CDN. First-party CF analytics
+          // pixel, no real risk surface, but the CSP blocked it which
+          // produced a noisy console error on every page load.
+          "script-src": ["'self'", "https://static.cloudflareinsights.com"],
+          // Sprint 7.5 — allow Google Fonts CSS. Manrope is pulled via
+          // `@import url(https://fonts.googleapis.com/css2?...)` in
+          // src/index.css; without this whitelist entry Manrope
+          // silently falls back to the system sans-serif.
+          "style-src": [
+            "'self'",
+            "'unsafe-inline'",
+            "https://fonts.googleapis.com"
+          ],
           "img-src": ["'self'", "data:", "blob:"],
           "connect-src": ["'self'"],
-          "font-src": ["'self'", "data:"],
+          // Sprint 7.5 — allow Google Fonts font files
+          // (`fonts.gstatic.com` is where the .woff2 binaries live;
+          // the .css from googleapis above references them).
+          "font-src": ["'self'", "data:", "https://fonts.gstatic.com"],
           // PDF preview opens a blob: URL from the same origin —
           // keep blob: allowed for object-src.
           "object-src": ["'self'", "blob:"],
