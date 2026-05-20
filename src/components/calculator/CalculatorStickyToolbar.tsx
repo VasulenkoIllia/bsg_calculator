@@ -11,23 +11,22 @@
  * CTA in new-draft mode) into a sticky strip that pins to the top
  * of the scroll viewport.
  *
- * Sprint 6.9 S5 / N9: positioning notes —
- *   - The AppShell renders IdentityStrip + CalculatorHeader +
- *     WorkspaceTabs above the route Outlet, NONE of which are
- *     position:sticky. So `sticky top-0` here means "stick to the
- *     literal top of the viewport once the content above has
- *     scrolled away". On long pages this works well: the operator
- *     scrolls past Zone 0 and the toolbar follows.
- *   - On SHORT viewports (mobile, or all zones collapsed) the
- *     content doesn't overflow, sticky never engages, and the
- *     toolbar renders inline. That's the correct fallback — there's
+ * Sprint 7.1 positioning notes (revised):
+ *   - The AppHeader at z-40 + `sticky top-0` pins the workspace
+ *     navigation to the literal viewport top.
+ *   - This toolbar at z-30 + `sticky top-12` pins DIRECTLY UNDER
+ *     the AppHeader. `top-12` (48px in Tailwind) matches the
+ *     AppHeader's measured height on desktop; on mobile the
+ *     AppHeader is slightly shorter so the toolbar may show a
+ *     1–2px gap below the bar, which reads as a clean divider
+ *     rather than a defect.
+ *   - z-30 < z-40 means if either pins overlap visually at any
+ *     scroll position, the AppHeader stays on top — the toolbar
+ *     never covers the workspace tabs.
+ *   - On SHORT viewports / all-zones-collapsed pages the content
+ *     doesn't overflow, sticky never engages, and the toolbar
+ *     renders inline. That's the correct fallback — there's
  *     nothing to scroll past, so nothing to pin.
- *   - z-30 sits above the zone panels but BELOW the AppShell
- *     header chrome (which is non-stacking-positioned, so z-index
- *     doesn't actually compete — DOM order takes over once you
- *     scroll into the route content). If the AppShell were ever
- *     made sticky too, the toolbar's `top-0` would need to be
- *     bumped to `top-[<header-height>]`.
  */
 
 import { type ReactNode } from "react";
@@ -67,7 +66,7 @@ export function CalculatorStickyToolbar({
   statusSlot
 }: CalculatorStickyToolbarProps) {
   return (
-    <div className="sticky top-0 z-30 -mx-4 mb-4 border-b border-slate-200 bg-white/95 px-4 py-2 shadow-sm backdrop-blur md:-mx-8 md:px-8">
+    <div className="sticky top-12 z-30 -mx-4 mb-4 border-b border-slate-200 bg-white/95 px-4 py-2 shadow-sm backdrop-blur md:-mx-8 md:px-8">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
