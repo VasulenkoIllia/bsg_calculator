@@ -13,6 +13,8 @@
 
 import { eq } from "drizzle-orm";
 import { db } from "../../db/client";
+import { env } from "../../config/env";
+import { logger } from "../../middleware/logger";
 import { parseDtoOrInternalError } from "../../shared/dto-parse";
 import { buildSortedPage, type PageResult } from "../../shared/sorted-pagination";
 import { NotFoundError, ValidationError } from "../../shared/errors";
@@ -161,6 +163,46 @@ export async function createDocument(
       addendum: body.addendum ?? null,
       createdByUserId: actorUserId
     });
+
+    // Phase 9.G — auto-sync to HubSpot AFTER the TX commits.
+    // We schedule the fire-and-forget sync via setImmediate so it runs
+    // AFTER drizzle's transaction commit completes — never inside the
+    // TX (which would conflate response latency with HubSpot RTT) and
+    // never blocking the response (the operator gets 201 instantly,
+    // the badge flips from "Not synced" → "Syncing…" → "Synced" via
+    // a follow-up GET on the listings the FE invalidates).
+    //
+    // Failure path: syncDocumentToHubspot persists state='failed'
+    // BEFORE re-throwing — operator clicks the manual Sync button
+    // (kept for exactly this reason) for a Retry.
+    if (env.AUTO_SYNC_DOCUMENTS_TO_HUBSPOT) {
+      const documentNumber = inserted.number;
+      setImmediate(() => {
+        // Lazy import to break the circular service ↔ sync dependency
+        // and to keep the dev path (HUBSPOT_API_TOKEN absent) from
+        // pulling in the sync module on the hot save path.
+        void import("./sync.service").then(async ({ syncDocumentToHubspot }) => {
+          try {
+            await syncDocumentToHubspot(documentNumber);
+          } catch (err) {
+            // syncDocumentToHubspot already persisted state='failed'
+            // and logged the upstream error in detail. We add one
+            // INFO line here so a routine `docker compose logs` trace
+            // shows the auto-sync touch-point. Don't re-throw — the
+            // request has long since returned 201 to the operator and
+            // an unhandled rejection would crash the worker.
+            logger.info(
+              {
+                documentNumber,
+                err: (err as Error).message
+              },
+              "[documents:auto-sync] background sync failed (already logged in sync.service); document marked 'failed' — operator can Retry from the UI"
+            );
+          }
+        });
+      });
+    }
+
     return toPublic(inserted);
   });
 }
