@@ -121,6 +121,24 @@ const EnvSchema = z.object({
   // When true AND companies table is empty at server start, run
   // hubspot:backfill in background. Production first-deploy default.
   HUBSPOT_AUTO_BACKFILL: z.coerce.boolean().default(false),
+  /**
+   * Phase 9.G — auto-sync new documents to HubSpot in background.
+   *
+   * When true, every successful `POST /documents` schedules a
+   * fire-and-forget `syncDocumentToHubspot()` via `setImmediate`
+   * AFTER the DB transaction commits. The operator gets a clean
+   * 201 immediately; the document's `hubspot_sync_state` flips
+   * from `not_synced` → `synced` (or `failed`) in the background.
+   *
+   * In dev: default `false` so operators iterating on the wizard
+   * don't spam HubSpot with notes. In prod: set to `true` in
+   * `.env.production.example` for the standard CRM-write behaviour.
+   *
+   * On failure: the sync service persists `state='failed'` BEFORE
+   * the background promise rejects; the manual "Sync to HubSpot"
+   * button on /documents/:number is the operator-facing retry.
+   */
+  AUTO_SYNC_DOCUMENTS_TO_HUBSPOT: z.coerce.boolean().default(false),
 
   // PDF rendering (Puppeteer)
   PUPPETEER_EXECUTABLE_PATH: z.string().optional(),

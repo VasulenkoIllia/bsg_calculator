@@ -33,6 +33,8 @@ const fixtureConfig = (
   createdByUserId: "user-1",
   createdAt: "2026-05-17T00:00:00.000Z",
   updatedAt: "2026-05-17T00:00:00.000Z",
+  hubspotNoteId: null,
+  hubspotSyncState: "not_synced",
   ...overrides
 });
 

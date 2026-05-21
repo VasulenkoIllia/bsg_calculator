@@ -98,6 +98,22 @@ export async function deleteCalculatorConfig(id: string): Promise<void> {
   await apiClient.delete(`/calculator-configs/${id}`);
 }
 
+/**
+ * Phase 9.I — POST /calculator-configs/:id/sync.
+ *
+ * Manual HubSpot Note write-back for a saved calc-config. Each call
+ * creates a fresh Note (audit trail in HubSpot). Auto-saves on
+ * /calc/:id (PUT) do NOT trigger sync — only this endpoint does.
+ */
+export async function syncCalculatorConfigToHubspot(
+  id: string
+): Promise<PublicCalculatorConfig> {
+  const { data } = await apiClient.post<PublicCalculatorConfig>(
+    `/calculator-configs/${id}/sync`
+  );
+  return data;
+}
+
 export async function listCalculatorConfigs(
   params: ListCalculatorConfigsParams
 ): Promise<CursorPage<PublicCalculatorConfig>> {

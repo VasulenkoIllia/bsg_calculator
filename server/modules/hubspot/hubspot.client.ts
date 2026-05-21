@@ -273,6 +273,34 @@ class HubspotClient {
   }
 
   /**
+   * Phase 9.K — PATCH /crm/v3/objects/notes/{id}. Updates an
+   * existing Note's body in place.
+   *
+   * Used by the calculator sync flow (one Note per calc, refreshed
+   * on each manual Sync click). Documents stay on the
+   * create-new-each-time policy.
+   *
+   * If HubSpot returns 404 the caller should fall back to
+   * `createNote()` — operator may have manually deleted the Note in
+   * HubSpot UI, in which case we want to recover by minting a new
+   * one rather than failing forever.
+   */
+  async updateNote(input: {
+    noteId: string;
+    body: string;
+  }): Promise<{ id: string }> {
+    const raw = await this.patch<{ id: string }>(
+      `/crm/v3/objects/notes/${encodeURIComponent(input.noteId)}`,
+      {
+        properties: {
+          hs_note_body: input.body
+        }
+      }
+    );
+    return { id: raw.id };
+  }
+
+  /**
    * Phase 9 — PUT /crm/v3/objects/notes/{id}/associations/{toType}/{toId}/{type}
    *
    * Links a Note to a deal or company. We use the v3 "default"
@@ -317,10 +345,18 @@ class HubspotClient {
     return this.request<T>(path, "PUT", body, options);
   }
 
-  /** Internal — used by get() / delete() / post() / put(). Holds the retry/backoff logic. */
+  /**
+   * Phase 9.K — internal PATCH helper for partial-update endpoints
+   * (HubSpot uses PATCH for `/crm/v3/objects/notes/:id` updates).
+   */
+  private async patch<T>(path: string, body: unknown, options: RequestOptions = {}): Promise<T> {
+    return this.request<T>(path, "PATCH", body, options);
+  }
+
+  /** Internal — used by get() / delete() / post() / put() / patch(). Holds the retry/backoff logic. */
   private async request<T>(
     path: string,
-    method: "GET" | "POST" | "DELETE" | "PUT",
+    method: "GET" | "POST" | "DELETE" | "PUT" | "PATCH",
     body: unknown,
     options: RequestOptions = {}
   ): Promise<T> {

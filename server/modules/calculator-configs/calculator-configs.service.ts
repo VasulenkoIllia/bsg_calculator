@@ -14,6 +14,8 @@
  * `created_by_user_id`.
  */
 
+import { env } from "../../config/env";
+import { logger } from "../../middleware/logger";
 import { parseDtoOrInternalError } from "../../shared/dto-parse";
 import { buildSortedPage, type PageResult } from "../../shared/sorted-pagination";
 import { NotFoundError, ValidationError } from "../../shared/errors";
@@ -63,7 +65,10 @@ function toPublic(
       payload: row.payload,
       createdByUserId: row.createdByUserId,
       createdAt: row.createdAt.toISOString(),
-      updatedAt: row.updatedAt.toISOString()
+      updatedAt: row.updatedAt.toISOString(),
+      // Phase 9.I — HubSpot sync state surfaced on the public DTO.
+      hubspotNoteId: row.hubspotNoteId,
+      hubspotSyncState: row.hubspotSyncState
     },
     "calculator-configs.toPublic"
   );
@@ -110,6 +115,29 @@ export async function createCalculatorConfig(
     payload: body.payload,
     createdByUserId: actorUserId
   });
+
+  // Phase 9.I — auto-sync to HubSpot AFTER the row is committed.
+  // Same fire-and-forget pattern as documents (Phase 9.G): the
+  // operator gets 201 immediately; HubSpot Note creation happens
+  // in the background. Subsequent auto-saves (PUT) DO NOT trigger
+  // sync per operator brief — the Note's link opens our SPA which
+  // always renders the freshest state, so there's nothing to push.
+  if (env.AUTO_SYNC_DOCUMENTS_TO_HUBSPOT) {
+    const calcId = row.id;
+    setImmediate(() => {
+      void import("./sync.service").then(async ({ syncCalculatorConfigToHubspot }) => {
+        try {
+          await syncCalculatorConfigToHubspot(calcId);
+        } catch (err) {
+          logger.info(
+            { calculatorConfigId: calcId, err: (err as Error).message },
+            "[calc-config:auto-sync] background sync failed; operator can Retry from /calc/:id"
+          );
+        }
+      });
+    });
+  }
+
   return toPublic(row);
 }
 

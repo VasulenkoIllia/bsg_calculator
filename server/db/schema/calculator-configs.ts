@@ -64,7 +64,18 @@ export const calculatorConfigs = pgTable(
     // Application-managed: bumped on PUT (full payload replace).
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
-      .defaultNow()
+      .defaultNow(),
+    // Phase 9.I — HubSpot Note write-back state. Mirrors the same
+    // pair on `documents`. The auto-sync flow creates exactly one
+    // Note per calc-config on first save (POST); subsequent auto-
+    // saves (PUT) update only the local row, never HubSpot. The
+    // operator-facing manual Sync button on /calc/:id is the only
+    // path that creates a second/replacement Note.
+    hubspotNoteId: text("hubspot_note_id"),
+    hubspotSyncState: text("hubspot_sync_state")
+      .notNull()
+      .default("not_synced")
+      .$type<"not_synced" | "synced" | "failed">()
   },
   table => ({
     // Drives the wizard Step 1 picker: configs filtered by company,

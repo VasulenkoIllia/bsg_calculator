@@ -30,12 +30,16 @@ import {
 } from "../../shared/errors";
 import { logger } from "../../middleware/logger";
 import { hubspot } from "../hubspot/hubspot.client";
-import { buildHubspotNoteBody } from "./note-builder";
+import {
+  buildHubspotNoteBody,
+  noteKindFromDocumentScope
+} from "./note-builder";
 import {
   findByNumber,
   updateDocumentHubspotSync
 } from "./documents.repository";
 import { getDocumentByNumber } from "./documents.service";
+import { findUserById } from "../users/users.repository";
 import type { DocumentPublic } from "./documents.schemas";
 
 /**
@@ -78,7 +82,23 @@ export async function syncDocumentToHubspot(
     throw new NotFoundError("Parent company");
   }
 
-  const body = buildHubspotNoteBody({ document, companyName: company.name });
+  // Phase 9.H — Note body now carries `Created … by <displayName>
+  // (<email>)`. Look up the operator who created the document.
+  const actor = await findUserById(document.createdByUserId);
+  if (!actor) {
+    // Same defensive 404 — created_by_user_id is a non-null FK so
+    // this only fires if a row was hand-deleted out of band.
+    throw new NotFoundError("Document author");
+  }
+
+  const body = buildHubspotNoteBody({
+    kind: noteKindFromDocumentScope(document.scope as "offer" | "agreement" | "offer_and_agreement"),
+    identifier: document.number,
+    companyName: company.name,
+    createdAt: document.createdAt,
+    actor: { displayName: actor.displayName, email: actor.email },
+    detailPath: `/documents/${encodeURIComponent(document.number)}`
+  });
 
   // Step 1: create the Note (no association yet).
   let noteId: string;

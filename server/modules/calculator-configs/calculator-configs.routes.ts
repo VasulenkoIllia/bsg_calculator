@@ -11,13 +11,15 @@
 
 import { Router } from "express";
 import { requireAuth } from "../../middleware/require-auth";
-import { listingLimiter } from "../../middleware/rate-limit";
+import { hubspotProxyLimiter, listingLimiter } from "../../middleware/rate-limit";
+import { requireRole } from "../../middleware/require-role";
 import { asyncHandler } from "../../shared/async-handler";
 import {
   createController,
   deleteController,
   getController,
   listController,
+  syncController,
   updateController
 } from "./calculator-configs.controller";
 
@@ -32,3 +34,12 @@ calculatorConfigsRouter.post("/", asyncHandler(createController));
 calculatorConfigsRouter.get("/:id", asyncHandler(getController));
 calculatorConfigsRouter.put("/:id", asyncHandler(updateController));
 calculatorConfigsRouter.delete("/:id", asyncHandler(deleteController));
+// Phase 9.I — manual HubSpot Note write-back. Admin role + tight
+// rate-limit (10/min/IP via hubspotProxyLimiter) so a spammy retry
+// can't exhaust the per-Private-App HubSpot budget.
+calculatorConfigsRouter.post(
+  "/:id/sync",
+  requireRole("admin"),
+  hubspotProxyLimiter,
+  asyncHandler(syncController)
+);

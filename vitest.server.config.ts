@@ -1,4 +1,3 @@
-/// <reference types="vitest/config" />
 /**
  * Vitest config — backend tests.
  *
@@ -8,6 +7,12 @@
  *
  *   npm run test:server
  *   npm run test:server -- --watch
+ *
+ * NOTE: the legacy `/// <reference types="vitest/config" />` triple-
+ * slash directive that used to live at line 1 was removed — modern
+ * vitest exports its `defineConfig` types directly from the package,
+ * and ESLint flags the triple-slash form as deprecated. The named
+ * import below covers the same type augmentation cleanly.
  */
 
 import { defineConfig } from "vitest/config";

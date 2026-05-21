@@ -1,154 +1,150 @@
 /**
  * Phase 9 — HubSpot Note body builder.
  *
- * Produces plain-text Note content for the document → HubSpot Note
- * write-back path. Plain text (not HTML) so it renders identically
- * across the HubSpot web UI, the iOS app, the email digests, and
- * the API consumer view.
+ * Phase 9.H redesign (2026-05-21) replaced the long pseudo-summary
+ * format with a compact one-liner per the operator brief:
  *
- * Format (operator-confirmed in Phase 9 design questions):
- *   - Header with BSG number + scope + timestamp
- *   - Clickable URL back to our SPA's /documents/:number
- *   - Key contract terms picked from the persisted payload (best
- *     effort — payload is jsonb so we can't strictly type it; the
- *     builder is defensive about missing fields)
- *   - Optional addendum text if the document carries one
+ *   Offer BSG-7100001-099930 // Company: (A) TEST 1 // Created 21.05.2026, 15:40 by Admin (admin@bsg.test)
+ *   Link (as href)
  *
- * The output stays well under HubSpot's 65 KB Note body cap — even
- * for the heaviest realistic document we land under ~3 KB.
+ * Same builder shape is reused for both documents AND calc-configs
+ * (Phase 9.I) via the `EntityKind` discriminator — they share the
+ * "type prefix + identifier + company + created + clickable link"
+ * skeleton.
+ *
+ * HTML body (rather than plain text) so the "Link" label renders as
+ * a clickable hyperlink in HubSpot UI. HubSpot's hs_note_body
+ * accepts arbitrary HTML and sanitises on read.
+ *
+ * The body is small (< 1 KB even with long company names) so we
+ * don't worry about HubSpot's 65 KB cap.
  */
 
-import type { Document } from "../../db/schema";
 import { env } from "../../config/env";
 
-/** Match the documents.scope enum from the schema. */
-type DocumentScope = "offer" | "agreement" | "offer_and_agreement";
+/**
+ * What the Note describes. Drives the type label that prefixes
+ * the identifier on line 1.
+ */
+type EntityKind =
+  | "document_offer"
+  | "document_agreement"
+  | "document_offer_and_agreement"
+  | "calculator";
 
-const SCOPE_LABEL: Record<DocumentScope, string> = {
-  offer: "Offer",
-  agreement: "Agreement",
-  offer_and_agreement: "Offer + Agreement"
+const KIND_LABEL: Record<EntityKind, string> = {
+  document_offer: "Offer",
+  document_agreement: "Agreement",
+  document_offer_and_agreement: "Offer + Agreement",
+  calculator: "Calculator"
 };
 
 /**
- * Best-effort field extractor from the document payload. The payload
- * is `jsonb` (typed `unknown` at the row level) — we narrow at the
- * field boundary so a missing / malformed shape just yields an empty
- * line rather than a hard 500.
+ * Operator identity rendered as `display_name (email)` so the
+ * HubSpot reader can see WHO from our system produced the
+ * document/calc.
  */
-function pickString(obj: unknown, ...path: string[]): string | undefined {
-  let cur: unknown = obj;
-  for (const key of path) {
-    if (typeof cur !== "object" || cur === null) return undefined;
-    cur = (cur as Record<string, unknown>)[key];
-  }
-  return typeof cur === "string" && cur.length > 0 ? cur : undefined;
+export interface NoteActor {
+  displayName: string;
+  email: string;
 }
 
-function pickNumber(obj: unknown, ...path: string[]): number | undefined {
-  let cur: unknown = obj;
-  for (const key of path) {
-    if (typeof cur !== "object" || cur === null) return undefined;
-    cur = (cur as Record<string, unknown>)[key];
-  }
-  return typeof cur === "number" && Number.isFinite(cur) ? cur : undefined;
-}
-
-function formatPercent(value: number | undefined): string | undefined {
-  if (value === undefined) return undefined;
-  return `${value.toFixed(2)}%`;
+export interface NoteBuilderInput {
+  kind: EntityKind;
+  /**
+   * Identifier shown after the type label. For documents: the BSG
+   * number. For calculators: the title (or "(untitled)" fallback).
+   */
+  identifier: string;
+  companyName: string;
+  /**
+   * Source of the timestamp + actor. Pass `created_at` for the
+   * document/calc creation; the renderer formats it as
+   * `21.05.2026, 15:40`.
+   */
+  createdAt: Date;
+  actor: NoteActor;
+  /**
+   * Absolute path under the SPA. The builder prefixes with
+   * `APP_PUBLIC_URL`. Examples:
+   *   `/documents/BSG-7100001-099930`
+   *   `/calc/<uuid>`
+   */
+  detailPath: string;
 }
 
 /**
- * Build the Note body for a freshly-saved document.
- *
- * Inputs:
- *   - `document`: the persisted row (already validated by Drizzle).
- *   - `companyName`: parent company display name, joined in by the
- *     sync service before calling this builder. Optional because the
- *     repo may surface a NULL row in pathological cases.
- *
- * Returns a `\n`-joined plain-text body ready to ship as
- * `properties.hs_note_body` on the HubSpot Note POST.
+ * Format `Date` as `dd.MM.yyyy, HH:mm` (Ukrainian operator habit).
+ * Manual to avoid the JS engine's locale subtleties on the server
+ * (Node may not have the right ICU bundle in slim containers).
  */
-export function buildHubspotNoteBody(input: {
-  document: Document;
-  companyName?: string;
-}): string {
-  const { document, companyName } = input;
-  const scope = document.scope as DocumentScope;
-  const scopeLabel = SCOPE_LABEL[scope] ?? scope;
-  const docUrl = `${env.APP_PUBLIC_URL.replace(/\/$/, "")}/documents/${encodeURIComponent(document.number)}`;
-  const generatedAt = document.createdAt.toISOString().replace("T", " ").slice(0, 16);
-  // Note: `payload` is `jsonb` → `unknown`. All extractions below
-  // are defensive — missing fields just don't render their line.
-  const payload = document.payload;
+function formatDateTime(d: Date): string {
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  return (
+    `${pad(d.getUTCDate())}.${pad(d.getUTCMonth() + 1)}.${d.getUTCFullYear()}, ` +
+    `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
+  );
+}
 
-  const lines: string[] = [];
+/**
+ * Escape minimal HTML special chars so a company name like "A & B"
+ * or a title with `<` doesn't break the markup. We control every
+ * field interpolated, but the builder is paranoid as defence in
+ * depth.
+ */
+function escapeHtml(raw: string): string {
+  return raw
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
-  // ─── Header ──────────────────────────────────────────────────────
-  lines.push(`📄 ${document.number} — ${scopeLabel}`);
-  lines.push("");
-  if (companyName) lines.push(`Company: ${companyName}`);
-  if (document.hubspotDealId) lines.push(`Deal: ${document.hubspotDealId}`);
-  lines.push(`Generated: ${generatedAt} UTC`);
-  lines.push("");
+/**
+ * Build the HTML Note body for HubSpot.
+ *
+ * Output shape (verbatim):
+ *   <p>{label} {identifier} // Company: {co} // Created {date} by {actor.displayName} ({actor.email})</p>
+ *   <p><a href="{absUrl}" target="_blank" rel="noopener">Link</a></p>
+ *
+ * HubSpot's rich-text renderer collapses adjacent `<p>` into a
+ * compact two-line block in the activity feed.
+ */
+export function buildHubspotNoteBody(input: NoteBuilderInput): string {
+  const label = KIND_LABEL[input.kind];
+  const id = escapeHtml(input.identifier);
+  const co = escapeHtml(input.companyName);
+  const actor = `${escapeHtml(input.actor.displayName)} (${escapeHtml(input.actor.email)})`;
+  const dateStr = formatDateTime(input.createdAt);
+  const absUrl =
+    env.APP_PUBLIC_URL.replace(/\/$/, "") +
+    input.detailPath;
 
-  // ─── Pricing snapshot (best-effort from payload) ─────────────────
-  const calcType = pickString(payload, "calculatorType", "kind");
-  if (calcType) {
-    lines.push(`Calculator type: ${calcType}`);
-  }
-  const payinEnabled = (payload as { calculatorType?: { payin?: boolean } })?.calculatorType?.payin;
-  const payoutEnabled = (payload as { calculatorType?: { payout?: boolean } })?.calculatorType?.payout;
-  if (payinEnabled !== undefined || payoutEnabled !== undefined) {
-    const modes = [
-      payinEnabled ? "Payin" : null,
-      payoutEnabled ? "Payout" : null
-    ].filter((x): x is string => x !== null);
-    if (modes.length > 0) lines.push(`Modes: ${modes.join(", ")}`);
-  }
+  const header = `${label} ${id} // Company: ${co} // Created ${dateStr} by ${actor}`;
+  return [
+    `<p>${header}</p>`,
+    `<p><a href="${escapeHtml(absUrl)}" target="_blank" rel="noopener">Link</a></p>`
+  ].join("\n");
+}
 
-  // Split percentages — under `payload.payin`
-  const eu = formatPercent(pickNumber(payload, "payin", "euPercent"));
-  const ww = formatPercent(pickNumber(payload, "payin", "wwPercent"));
-  const cc = formatPercent(pickNumber(payload, "payin", "ccPercent"));
-  const apm = formatPercent(pickNumber(payload, "payin", "apmPercent"));
-  if (eu || ww || cc || apm) {
-    lines.push("");
-    lines.push("── Payin split ──");
-    if (eu) lines.push(`  EU: ${eu}`);
-    if (ww) lines.push(`  Worldwide: ${ww}`);
-    if (cc) lines.push(`  CC: ${cc}`);
-    if (apm) lines.push(`  APM: ${apm}`);
-  }
-
-  // Contract summary — under `payload.contractSummary`
-  const settlementPeriod = pickString(payload, "contractSummary", "settlementPeriod");
-  const rrPercent = formatPercent(pickNumber(payload, "contractSummary", "rollingReservePercent"));
-  const rrHoldDays = pickNumber(payload, "contractSummary", "rollingReserveHoldDays");
-  if (settlementPeriod || rrPercent || rrHoldDays !== undefined) {
-    lines.push("");
-    lines.push("── Contract terms ──");
-    if (settlementPeriod) lines.push(`  Settlement: ${settlementPeriod}`);
-    if (rrPercent) {
-      lines.push(
-        `  Rolling reserve: ${rrPercent}${rrHoldDays !== undefined ? ` (hold ${rrHoldDays} days)` : ""}`
-      );
+/**
+ * Convenience: build a `NoteBuilderInput.kind` from a document's
+ * scope enum. Kept here so callers don't duplicate the mapping.
+ */
+export function noteKindFromDocumentScope(
+  scope: "offer" | "agreement" | "offer_and_agreement"
+): EntityKind {
+  switch (scope) {
+    case "offer":
+      return "document_offer";
+    case "agreement":
+      return "document_agreement";
+    case "offer_and_agreement":
+      return "document_offer_and_agreement";
+    default: {
+      const _exhaustive: never = scope;
+      throw new Error(`noteKindFromDocumentScope: unhandled scope ${String(_exhaustive)}`);
     }
   }
-
-  // ─── Addendum (if present) ───────────────────────────────────────
-  const addendum = document.addendum?.trim();
-  if (addendum) {
-    lines.push("");
-    lines.push("── Addendum ──");
-    lines.push(addendum);
-  }
-
-  // ─── Footer ──────────────────────────────────────────────────────
-  lines.push("");
-  lines.push(`View full document: ${docUrl}`);
-
-  return lines.join("\n");
 }

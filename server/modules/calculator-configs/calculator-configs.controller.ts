@@ -27,6 +27,7 @@ import {
   listCalculatorConfigsPage,
   updateCalculatorConfigById
 } from "./calculator-configs.service";
+import { syncCalculatorConfigToHubspot } from "./sync.service";
 
 export async function listController(req: Request, res: Response): Promise<void> {
   const query = listCalculatorConfigsQuerySchema.parse(req.query);
@@ -84,4 +85,25 @@ export async function deleteController(req: Request, res: Response): Promise<voi
   const id = parseUuidParam(req, "id");
   await deleteCalculatorConfigById(id);
   res.status(204).end();
+}
+
+/**
+ * Phase 9.I — POST /api/v1/calculator-configs/:id/sync.
+ *
+ * Manual HubSpot Note write-back for calc-configs. Mirrors the
+ * documents sync endpoint: each call creates a FRESH Note in
+ * HubSpot. The calc-config's hubspot_note_id is updated to the most
+ * recent. Previous Notes stay in HubSpot (audit trail) — operator
+ * can clean them up by hand if they don't want the clutter.
+ *
+ * Auto-saves on /calc/:id (PUT /calculator-configs/:id) deliberately
+ * DO NOT touch HubSpot per operator brief.
+ *
+ * Auth: requireRole('admin') on the route — regular users can't
+ * push to the customer's CRM timeline.
+ */
+export async function syncController(req: Request, res: Response): Promise<void> {
+  const id = parseUuidParam(req, "id");
+  const updated = await syncCalculatorConfigToHubspot(id);
+  res.status(200).json(updated);
 }
