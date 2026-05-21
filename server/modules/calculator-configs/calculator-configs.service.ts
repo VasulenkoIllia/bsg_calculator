@@ -18,12 +18,12 @@ import { env } from "../../config/env";
 import { logger } from "../../middleware/logger";
 import { parseDtoOrInternalError } from "../../shared/dto-parse";
 import { buildSortedPage, type PageResult } from "../../shared/sorted-pagination";
-import { NotFoundError, ValidationError } from "../../shared/errors";
+import { NotFoundError } from "../../shared/errors";
+import { ensureDealBelongsToCompany } from "../../shared/deal-guard";
 import type { CalculatorConfig } from "../../db/schema";
 import type { CalculatorConfigWithCompanyName } from "./calculator-configs.repository";
 import {
   cursorValueForRow,
-  dealBelongsToCompany,
   deleteCalculatorConfig as deleteRow,
   findById,
   insertCalculatorConfig,
@@ -76,32 +76,6 @@ function toPublic(
 
 export type CalculatorConfigListPage = PageResult<CalculatorConfigPublic>;
 
-/**
- * Cross-company-deal guard. Throws ValidationError if the given deal
- * (by HubSpot id) does not belong to the given company. Used by both
- * create and update.
- *
- * `dealId` is the HubSpot natural key; `companyId` is the UUID PK.
- */
-async function ensureDealBelongsToCompany(
-  hubspotDealId: string | null | undefined,
-  companyId: string
-): Promise<void> {
-  if (!hubspotDealId) return;
-  const ok = await dealBelongsToCompany(hubspotDealId, companyId);
-  if (!ok) {
-    throw new ValidationError(
-      [
-        {
-          path: ["hubspotDealId"],
-          message: "Deal does not belong to the specified company"
-        }
-      ],
-      "Cross-company deal reference"
-    );
-  }
-}
-
 export async function createCalculatorConfig(
   body: CreateCalculatorConfigRequest,
   actorUserId: string
@@ -122,7 +96,7 @@ export async function createCalculatorConfig(
   // in the background. Subsequent auto-saves (PUT) DO NOT trigger
   // sync per operator brief — the Note's link opens our SPA which
   // always renders the freshest state, so there's nothing to push.
-  if (env.AUTO_SYNC_DOCUMENTS_TO_HUBSPOT) {
+  if (env.AUTO_SYNC_TO_HUBSPOT) {
     const calcId = row.id;
     setImmediate(() => {
       void import("./sync.service").then(async ({ syncCalculatorConfigToHubspot }) => {

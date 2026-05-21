@@ -8,33 +8,22 @@
  */
 
 /**
- * Render an ISO timestamp as a locale-formatted date. Wrapped in
- * try/catch so a malformed input (theoretically possible from a
- * misbehaving HubSpot sync) doesn't crash the row — we display the
- * raw string instead so the operator can still see what's there.
+ * Sprint 7.0: render an ISO timestamp as locale-formatted date + HH:MM.
+ * Used by the listing tables where two saves on the same day are
+ * easy to confuse without minute-precision context.
  *
- * Intentionally calls `toLocaleDateString()` without a locale arg —
- * the browser's locale wins. If we ever need a fixed locale (e.g.
- * for printing receipts), introduce a second helper rather than
- * changing this one.
- */
-export function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString();
-  } catch {
-    return iso;
-  }
-}
-
-/**
- * Sprint 7.0: same as `formatDate` but appends HH:MM. Used by the
- * listing tables where two saves on the same day are easy to
- * confuse without minute-precision context. Detail-page headers
- * keep using `formatDate` because the minute usually shows up
- * elsewhere (e.g. "Saved · 2m ago" badge on /calc/:id).
+ * Wrapped in try/catch so a malformed input (theoretically possible
+ * from a misbehaving HubSpot sync) doesn't crash the row — we
+ * display the raw string instead so the operator can still see
+ * what's there.
  *
- * Format example: "19.05.2026, 21:59" (locale-driven, just like
- * `formatDate`; the browser picks separators and hour notation).
+ * Format example: "19.05.2026, 21:59" (locale-driven; the browser
+ * picks separators and hour notation).
+ *
+ * Sprint 9.L N1 — the original `formatDate` (date-only) variant was
+ * removed; every call site now passes through `formatDateTime`. The
+ * comment that referenced "the minute usually shows up elsewhere"
+ * is stale: detail pages display the full timestamp too.
  */
 export function formatDateTime(iso: string): string {
   try {

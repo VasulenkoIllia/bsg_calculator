@@ -31,20 +31,11 @@ import {
 import { ApiError, setAccessToken, setSessionLostHandler } from "../api/client.js";
 import * as authApi from "../api/auth.js";
 import type { PublicUser, UserRole } from "../api/types.js";
-
-/**
- * Phase 8 Stage 1: numeric tier for the hierarchical role enum.
- * Mirrors `server/middleware/require-role.ts → ROLE_TIER` so the
- * frontend and backend agree on what "≥ admin" means. Adding a new
- * role here without updating the backend (or vice versa) is a
- * compile error on the union type — the table just slots the new
- * value in.
- */
-const ROLE_TIER: Record<UserRole, number> = {
-  user: 0,
-  admin: 1,
-  super_admin: 2
-};
+// Sprint 9.L D6 — hierarchical tier table extracted to src/shared/roles.ts
+// so the frontend and backend stop independently maintaining the same
+// `{ user: 0, admin: 1, super_admin: 2 }` literal. The helper guarantees
+// `hasRole('admin')` returns true for both admins AND super_admins.
+import { hasRoleAtLeast } from "../shared/roles.js";
 
 interface AuthState {
   /** Public user object, or null when logged out. */
@@ -167,7 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
   const hasRole = useCallback(
     (min: UserRole): boolean => {
       if (!state.user) return false;
-      return ROLE_TIER[state.user.role] >= ROLE_TIER[min];
+      return hasRoleAtLeast(state.user.role, min);
     },
     [state.user]
   );

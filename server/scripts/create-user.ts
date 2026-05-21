@@ -5,16 +5,25 @@
  * Usage:
  *   npm run create-user -- --email=jane@bsg.com --password=secret --display="Jane Doe"
  *   npm run create-user -- --email=admin@bsg.com --password=adm --admin
- *   npm run create-user -- --email=user@bsg.com --password=pw --login=user
+ *   npm run create-user -- --email=sa@bsg.com    --password=sa  --role=super_admin
+ *   npm run create-user -- --email=user@bsg.com  --password=pw  --login=user
  *
  * Required:
  *   --email      Unique, case-insensitive (citext)
  *   --password   Min 8 chars
  *
  * Optional:
- *   --login      Short login. Unique, citext. NULL if omitted.
- *   --display    Display name. Empty string if omitted.
- *   --admin      Flag — grants is_admin = true. Default: false.
+ *   --login          Short login. Unique, citext. NULL if omitted.
+ *   --display        Display name. Empty string if omitted.
+ *   --role           One of: user / admin / super_admin. Default: user.
+ *   --admin          Legacy shortcut for `--role=admin`.
+ *   --super-admin    Legacy shortcut for `--role=super_admin`.
+ *
+ * Sprint 9.L N3 — Phase 8 Stage 1 replaced the `is_admin` boolean
+ * column with a 3-value `role` enum (user / admin / super_admin).
+ * The doc-comment above had a stale reference to `is_admin = true`;
+ * `--admin` now sets `role='admin'`, and `--super-admin` (or
+ * `--role=super_admin`) is the path for the top tier.
  *
  * No interactive prompt; intended for piped / scripted use (e.g.
  * inside a Docker container during first deploy).

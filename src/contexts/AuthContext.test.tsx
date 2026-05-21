@@ -198,6 +198,69 @@ describe("AuthContext — wrong usage", () => {
   });
 });
 
+/**
+ * Sprint 9.L T1 — `hasRole()` is the gate every admin-only button on
+ * the FE delegates to. It's a thin wrapper over `hasRoleAtLeast` from
+ * `src/shared/roles.ts`, but it also has to fold in the logged-out
+ * state (no user → no permissions). Coverage matrix:
+ *
+ *   actor       min=user  min=admin  min=super_admin
+ *   user        true      false      false
+ *   admin       true      true       false
+ *   super_admin true      true       true
+ *   <null>      false     false      false
+ */
+describe("AuthContext — hasRole (hierarchical role check)", () => {
+  async function bootAs(
+    role: "user" | "admin" | "super_admin" | null
+  ): Promise<ReturnType<typeof renderHook<ReturnType<typeof useAuth>, unknown>>> {
+    if (role === null) {
+      vi.spyOn(authApi, "refresh").mockRejectedValue(
+        new clientModule.ApiError("AUTH_INVALID", "no", 401)
+      );
+    } else {
+      vi.spyOn(authApi, "refresh").mockResolvedValue({ accessToken: "boot" });
+      vi.spyOn(authApi, "me").mockResolvedValue({ ...fixtureUser, role });
+    }
+    const { result, rerender, unmount } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => {
+      expect(result.current.isBooting).toBe(false);
+    });
+    return { result, rerender, unmount } as ReturnType<
+      typeof renderHook<ReturnType<typeof useAuth>, unknown>
+    >;
+  }
+
+  it("user role: only ≥user passes", async () => {
+    const { result } = await bootAs("user");
+    expect(result.current.hasRole("user")).toBe(true);
+    expect(result.current.hasRole("admin")).toBe(false);
+    expect(result.current.hasRole("super_admin")).toBe(false);
+  });
+
+  it("admin role: ≥user AND ≥admin pass; super_admin gate stays closed", async () => {
+    const { result } = await bootAs("admin");
+    expect(result.current.hasRole("user")).toBe(true);
+    expect(result.current.hasRole("admin")).toBe(true);
+    expect(result.current.hasRole("super_admin")).toBe(false);
+  });
+
+  it("super_admin role: every gate opens", async () => {
+    const { result } = await bootAs("super_admin");
+    expect(result.current.hasRole("user")).toBe(true);
+    expect(result.current.hasRole("admin")).toBe(true);
+    expect(result.current.hasRole("super_admin")).toBe(true);
+  });
+
+  it("logged-out: every gate is closed (no soft-fail to 'user')", async () => {
+    const { result } = await bootAs(null);
+    expect(result.current.user).toBeNull();
+    expect(result.current.hasRole("user")).toBe(false);
+    expect(result.current.hasRole("admin")).toBe(false);
+    expect(result.current.hasRole("super_admin")).toBe(false);
+  });
+});
+
 function Consumer() {
   useAuth();
   return <div />;

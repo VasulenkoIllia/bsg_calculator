@@ -18,19 +18,11 @@
  */
 
 import type { NextFunction, Request, Response } from "express";
-import { USER_ROLES, type UserRole } from "../db/schema";
 import { ForbiddenError, TokenInvalidError } from "../shared/errors";
-
-/**
- * Map each role to a numeric tier so hierarchical comparisons stay
- * a single `>=` rather than a chain of equality checks. New roles
- * just slot into this table; the rest of the gate logic is unchanged.
- */
-const ROLE_TIER: Record<UserRole, number> = {
-  user: 0,
-  admin: 1,
-  super_admin: 2
-};
+// Sprint 9.L D6 — ROLE_TIER + USER_ROLES now live in shared/roles.ts
+// so the middleware and the frontend's AuthContext.hasRole both pull
+// from a named helper instead of inlining the literal table.
+import { USER_ROLES, hasRoleAtLeast, type UserRole } from "../shared/roles";
 
 export function requireRole(min: UserRole) {
   // Validate at module-load time so a typo in `requireRole('SuperAdmin')`
@@ -40,7 +32,6 @@ export function requireRole(min: UserRole) {
       `[requireRole] unknown role '${min}'. Allowed: ${USER_ROLES.join(", ")}`
     );
   }
-  const minTier = ROLE_TIER[min];
 
   return (req: Request, _res: Response, next: NextFunction): void => {
     if (!req.user) {
@@ -48,8 +39,7 @@ export function requireRole(min: UserRole) {
       next(new TokenInvalidError());
       return;
     }
-    const actorTier = ROLE_TIER[req.user.role];
-    if (actorTier < minTier) {
+    if (!hasRoleAtLeast(req.user.role, min)) {
       next(
         new ForbiddenError(
           `${min === "admin" ? "Admin" : "Super-admin"} role required.`

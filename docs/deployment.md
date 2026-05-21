@@ -358,7 +358,7 @@ On HubSpot failure → `hubspot_sync_state='failed'` is persisted BEFORE the err
 
 **Operator policy**: each manual Sync click creates a NEW Note in HubSpot (audit trail). `hubspot_note_id` always points to the most recent. Older Notes from previous syncs stay in HubSpot — operator can clean them up manually if they don't want clutter.
 
-**Auto-sync (Phase 9.G)**: with `AUTO_SYNC_DOCUMENTS_TO_HUBSPOT=true` in `.env`, every successful `POST /documents` schedules a fire-and-forget sync via `setImmediate` AFTER the DB transaction commits. The operator gets a clean 201 immediately; the badge flips `not_synced → synced` (or `failed`) in the background. Same flag also auto-syncs calc-configs on first save (Phase 9.I).
+**Auto-sync (Phase 9.G / 9.I)**: with `AUTO_SYNC_TO_HUBSPOT=true` in `.env` (renamed from `AUTO_SYNC_DOCUMENTS_TO_HUBSPOT` in Sprint 9.L; the old name is still accepted as a fallback), every successful `POST /documents` AND every first save of a calc-config schedules a fire-and-forget sync via `setImmediate` AFTER the DB transaction commits. The operator gets a clean 201/200 immediately; the badge flips `not_synced → synced` (or `failed`) in the background.
 
 **Calculator sync (Phase 9.I + 9.K)**: TWO operator-confirmed differences from documents:
 1. Auto-saves (`PUT /calculator-configs/:id`) DO NOT touch HubSpot. The Note's `Link` always opens our SPA which renders the freshest state.

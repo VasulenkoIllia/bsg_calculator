@@ -39,6 +39,15 @@ export function requireAuth() {
       // (NOT repository directly) per backend_conventions.md §1.
       const user = await loadActiveUser(payload.sub);
 
+      // Sprint 9.L N5 — IMPORTANT: req.user.role comes from the live
+      // DB row (`loadActiveUser`), NOT from the JWT claim. The JWT
+      // also carries a `role` claim (Phase 8 Stage 1) used by the
+      // refresh path + ergonomic logging, but route-level decisions
+      // must trust the DB so a role demotion takes effect on the
+      // NEXT request rather than after the access token's 15-minute
+      // TTL expires. A future regression would be: forwarding
+      // `payload.role` here instead of `user.role` — that would let
+      // a downgraded admin keep admin privileges until token expiry.
       req.user = {
         id: user.id,
         email: user.email,

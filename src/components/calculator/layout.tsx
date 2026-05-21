@@ -1,29 +1,13 @@
-import type { HardcodedConstantGroup } from "./types.js";
+// Sprint 9.L N2 — `CalculatorHeader` (the legacy gradient hero) was
+// removed: Sprint 7.1 stopped rendering it from AppShell and Sprint 9.L
+// confirmed no surface remounts it. If a future landing surface
+// wants a hero again, it's two minutes to rebuild.
+//
+// `CalculatorActionsPanel` was likewise removed (Sprint 7.2 inlined
+// its three buttons into CalculatorStickyToolbar — the standalone
+// panel was unused by 9.L).
 
-/**
- * @deprecated Sprint 7.1 — no longer rendered by AppShell. Kept as a
- * named export in case a future landing surface wants to mount the
- * gradient hero. If still unused at the next cleanup pass (Sprint
- * 7.3+), remove this function and the barrel re-export.
- */
-export function CalculatorHeader() {
-  return (
-    <header className="panel mb-6 overflow-hidden">
-      <div className="bg-gradient-to-r from-blue-900 via-blue-800 to-cyan-700 px-6 py-8 text-white md:px-8">
-        <p className="mb-2 text-sm font-semibold uppercase tracking-[0.16em] text-blue-100">
-          BSG Pricing Workspace
-        </p>
-        <h1 className="text-3xl font-extrabold tracking-tight md:text-5xl">
-          Calculator v4
-        </h1>
-        <p className="mt-3 max-w-3xl text-base text-blue-50 md:text-lg">
-          Zone 0/1 foundation with clear Payin and Payout separation, dynamic
-          recalculation, and production-style readable input layout.
-        </p>
-      </div>
-    </header>
-  );
-}
+import type { HardcodedConstantGroup } from "./types.js";
 
 export function HardcodedConstantsPanel({
   visible,
@@ -65,50 +49,3 @@ export function HardcodedConstantsPanel({
   );
 }
 
-/**
- * @deprecated Sprint 7.2 — the three buttons (Show formulas / Reset 0
- * / Apply defaults) moved into CalculatorStickyToolbar so the sticky
- * bar carries every calculator action. If the standalone panel
- * surface is still unused at the next cleanup pass, remove this
- * function and the barrel re-export.
- */
-export function CalculatorActionsPanel({
-  showHardcodedConstants,
-  onToggleConstantsAndFormulas,
-  onReset,
-  onApplyDefaults
-}: {
-  showHardcodedConstants: boolean;
-  onToggleConstantsAndFormulas: () => void;
-  onReset: () => void;
-  onApplyDefaults: () => void;
-}) {
-  return (
-    <section
-      aria-label="Calculator actions"
-      className="panel mb-6 flex flex-col gap-3 p-5 sm:flex-row sm:justify-end md:p-7"
-    >
-      <button
-        type="button"
-        onClick={onToggleConstantsAndFormulas}
-        className="inline-flex w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 sm:w-auto"
-      >
-        {showHardcodedConstants ? "Hide constants & formulas" : "Show constants & formulas"}
-      </button>
-      <button
-        type="button"
-        onClick={onReset}
-        className="inline-flex w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 sm:w-auto"
-      >
-        Reset all to 0
-      </button>
-      <button
-        type="button"
-        onClick={onApplyDefaults}
-        className="inline-flex w-full items-center justify-center rounded-xl border border-blue-500 bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 sm:w-auto"
-      >
-        Apply defaults
-      </button>
-    </section>
-  );
-}

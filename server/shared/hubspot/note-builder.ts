@@ -18,9 +18,17 @@
  *
  * The body is small (< 1 KB even with long company names) so we
  * don't worry about HubSpot's 65 KB cap.
+ *
+ * Sprint 9.L D3 — moved here from `modules/documents/note-builder.ts`.
+ * The original location implied "this is a documents-only helper",
+ * but Phase 9.I started reusing it for calc-configs too. Living
+ * under `shared/hubspot/` makes the cross-module ownership explicit
+ * and keeps the import path symmetric between callers (no
+ * `../documents/...` traversals from a calc-configs sync file).
  */
 
 import { env } from "../../config/env";
+import { escapeHtml, escapeUrlAttr } from "../html";
 
 /**
  * What the Note describes. Drives the type label that prefixes
@@ -87,21 +95,6 @@ function formatDateTime(d: Date): string {
 }
 
 /**
- * Escape minimal HTML special chars so a company name like "A & B"
- * or a title with `<` doesn't break the markup. We control every
- * field interpolated, but the builder is paranoid as defence in
- * depth.
- */
-function escapeHtml(raw: string): string {
-  return raw
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-/**
  * Build the HTML Note body for HubSpot.
  *
  * Output shape (verbatim):
@@ -124,7 +117,7 @@ export function buildHubspotNoteBody(input: NoteBuilderInput): string {
   const header = `${label} ${id} // Company: ${co} // Created ${dateStr} by ${actor}`;
   return [
     `<p>${header}</p>`,
-    `<p><a href="${escapeHtml(absUrl)}" target="_blank" rel="noopener">Link</a></p>`
+    `<p><a href="${escapeUrlAttr(absUrl)}" target="_blank" rel="noopener">Link</a></p>`
   ].join("\n");
 }
 

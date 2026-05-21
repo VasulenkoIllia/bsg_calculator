@@ -18,8 +18,8 @@ import { logger } from "../../middleware/logger";
 import { parseDtoOrInternalError } from "../../shared/dto-parse";
 import { buildSortedPage, type PageResult } from "../../shared/sorted-pagination";
 import { NotFoundError, ValidationError } from "../../shared/errors";
+import { ensureDealBelongsToCompany } from "../../shared/deal-guard";
 import { companies, type Document } from "../../db/schema";
-import { dealBelongsToCompany } from "../calculator-configs/calculator-configs.repository";
 import { insertCalculatorConfig } from "../calculator-configs/calculator-configs.repository";
 import {
   cursorValueForRow,
@@ -69,28 +69,6 @@ function toPublic(row: Document | DocumentWithCompanyName): DocumentPublic {
 export type DocumentListPage = PageResult<DocumentPublic>;
 
 /**
- * Cross-company-deal guard — same logic as calculator-configs.
- */
-async function ensureDealBelongsToCompany(
-  hubspotDealId: string | null | undefined,
-  companyId: string
-): Promise<void> {
-  if (!hubspotDealId) return;
-  const ok = await dealBelongsToCompany(hubspotDealId, companyId);
-  if (!ok) {
-    throw new ValidationError(
-      [
-        {
-          path: ["hubspotDealId"],
-          message: "Deal does not belong to the specified company"
-        }
-      ],
-      "Cross-company deal reference"
-    );
-  }
-}
-
-/**
  * Create a document. Wraps `allocateNextNumber` + `INSERT documents`
  * in a single transaction so a rollback returns the BSG-XXXXX number
  * to the pool (no gaps from failed FK checks etc.).
@@ -108,7 +86,14 @@ export async function createDocument(
 ): Promise<DocumentPublic> {
   await ensureDealBelongsToCompany(body.hubspotDealId, body.companyId);
 
-  return db.transaction(async tx => {
+  // Sprint 9.L B2 — only the INSERT + numbering allocation happens
+  // inside the TX. The auto-sync setImmediate schedule was previously
+  // inside the TX callback, where a fast Node event-loop tick could
+  // fire the sync BEFORE drizzle's COMMIT round-trip completed; the
+  // sync's findByNumber then saw no row and persisted state='failed'
+  // even though the document landed cleanly. Hoisting it AFTER the
+  // db.transaction() promise resolves guarantees the row is visible.
+  const inserted = await db.transaction(async tx => {
     // If a calc was provided, validate it belongs to the same company.
     // The calc itself is informational — we don't merge its payload
     // server-side; the frontend supplies the merged payload in body.
@@ -153,7 +138,7 @@ export async function createDocument(
     }
 
     const number = await allocateNextNumber(tx, hubspotCompanyId);
-    const inserted = await insertDocumentWithNumber(tx, {
+    return insertDocumentWithNumber(tx, {
       number,
       companyId: body.companyId,
       hubspotDealId: body.hubspotDealId ?? null,
@@ -163,48 +148,47 @@ export async function createDocument(
       addendum: body.addendum ?? null,
       createdByUserId: actorUserId
     });
-
-    // Phase 9.G — auto-sync to HubSpot AFTER the TX commits.
-    // We schedule the fire-and-forget sync via setImmediate so it runs
-    // AFTER drizzle's transaction commit completes — never inside the
-    // TX (which would conflate response latency with HubSpot RTT) and
-    // never blocking the response (the operator gets 201 instantly,
-    // the badge flips from "Not synced" → "Syncing…" → "Synced" via
-    // a follow-up GET on the listings the FE invalidates).
-    //
-    // Failure path: syncDocumentToHubspot persists state='failed'
-    // BEFORE re-throwing — operator clicks the manual Sync button
-    // (kept for exactly this reason) for a Retry.
-    if (env.AUTO_SYNC_DOCUMENTS_TO_HUBSPOT) {
-      const documentNumber = inserted.number;
-      setImmediate(() => {
-        // Lazy import to break the circular service ↔ sync dependency
-        // and to keep the dev path (HUBSPOT_API_TOKEN absent) from
-        // pulling in the sync module on the hot save path.
-        void import("./sync.service").then(async ({ syncDocumentToHubspot }) => {
-          try {
-            await syncDocumentToHubspot(documentNumber);
-          } catch (err) {
-            // syncDocumentToHubspot already persisted state='failed'
-            // and logged the upstream error in detail. We add one
-            // INFO line here so a routine `docker compose logs` trace
-            // shows the auto-sync touch-point. Don't re-throw — the
-            // request has long since returned 201 to the operator and
-            // an unhandled rejection would crash the worker.
-            logger.info(
-              {
-                documentNumber,
-                err: (err as Error).message
-              },
-              "[documents:auto-sync] background sync failed (already logged in sync.service); document marked 'failed' — operator can Retry from the UI"
-            );
-          }
-        });
-      });
-    }
-
-    return toPublic(inserted);
   });
+
+  // Phase 9.G / Sprint 9.L B2 — auto-sync to HubSpot AFTER the TX
+  // commits. We schedule the fire-and-forget sync via setImmediate so
+  // it runs on a later event-loop tick (never blocking the response
+  // — the operator gets 201 instantly, the badge flips from "Not
+  // synced" → "Syncing…" → "Synced" via a follow-up GET on the
+  // listings the FE invalidates).
+  //
+  // Failure path: syncDocumentToHubspot persists state='failed'
+  // BEFORE re-throwing — operator clicks the manual Sync button
+  // (kept for exactly this reason) for a Retry.
+  if (env.AUTO_SYNC_TO_HUBSPOT) {
+    const documentNumber = inserted.number;
+    setImmediate(() => {
+      // Lazy import to break the circular service ↔ sync dependency
+      // and to keep the dev path (HUBSPOT_API_TOKEN absent) from
+      // pulling in the sync module on the hot save path.
+      void import("./sync.service").then(async ({ syncDocumentToHubspot }) => {
+        try {
+          await syncDocumentToHubspot(documentNumber);
+        } catch (err) {
+          // syncDocumentToHubspot already persisted state='failed'
+          // and logged the upstream error in detail. We add one
+          // INFO line here so a routine `docker compose logs` trace
+          // shows the auto-sync touch-point. Don't re-throw — the
+          // request has long since returned 201 to the operator and
+          // an unhandled rejection would crash the worker.
+          logger.info(
+            {
+              documentNumber,
+              err: (err as Error).message
+            },
+            "[documents:auto-sync] background sync failed (already logged in sync.service); document marked 'failed' — operator can Retry from the UI"
+          );
+        }
+      });
+    });
+  }
+
+  return toPublic(inserted);
 }
 
 export async function getDocumentByNumber(number: string): Promise<DocumentPublic> {

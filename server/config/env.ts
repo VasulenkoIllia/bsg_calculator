@@ -122,23 +122,36 @@ const EnvSchema = z.object({
   // hubspot:backfill in background. Production first-deploy default.
   HUBSPOT_AUTO_BACKFILL: z.coerce.boolean().default(false),
   /**
-   * Phase 9.G — auto-sync new documents to HubSpot in background.
+   * Phase 9.G / 9.I — auto-sync new documents AND calc-configs to
+   * HubSpot in background.
    *
-   * When true, every successful `POST /documents` schedules a
-   * fire-and-forget `syncDocumentToHubspot()` via `setImmediate`
-   * AFTER the DB transaction commits. The operator gets a clean
-   * 201 immediately; the document's `hubspot_sync_state` flips
-   * from `not_synced` → `synced` (or `failed`) in the background.
+   * When true:
+   *   - Every successful `POST /documents` schedules a fire-and-forget
+   *     `syncDocumentToHubspot()` via `setImmediate` AFTER the DB
+   *     transaction commits.
+   *   - Every successful first save of a calc-config (Phase 9.I)
+   *     schedules `syncCalculatorConfigToHubspot()` the same way.
+   *
+   * The operator gets a clean 201/200 immediately; the row's
+   * `hubspot_sync_state` flips from `not_synced` → `synced` (or
+   * `failed`) in the background, surfaced via the standard listing
+   * invalidation on the FE.
    *
    * In dev: default `false` so operators iterating on the wizard
    * don't spam HubSpot with notes. In prod: set to `true` in
    * `.env.production.example` for the standard CRM-write behaviour.
    *
-   * On failure: the sync service persists `state='failed'` BEFORE
+   * On failure: the sync services persist `state='failed'` BEFORE
    * the background promise rejects; the manual "Sync to HubSpot"
-   * button on /documents/:number is the operator-facing retry.
+   * buttons (calculator + document detail) are the operator-facing
+   * retry path.
+   *
+   * Sprint 9.L D4 — renamed from `AUTO_SYNC_DOCUMENTS_TO_HUBSPOT`
+   * to reflect that the same flag also drives calc-config auto-sync
+   * (added in Phase 9.I). The old name is still accepted as a
+   * fallback below so existing prod .env files don't break.
    */
-  AUTO_SYNC_DOCUMENTS_TO_HUBSPOT: z.coerce.boolean().default(false),
+  AUTO_SYNC_TO_HUBSPOT: z.coerce.boolean().default(false),
 
   // PDF rendering (Puppeteer)
   PUPPETEER_EXECUTABLE_PATH: z.string().optional(),
@@ -263,6 +276,19 @@ const EnvSchema = z.object({
     });
   }
 });
+
+// Sprint 9.L D4 — back-compat shim. The flag was renamed from
+// AUTO_SYNC_DOCUMENTS_TO_HUBSPOT to AUTO_SYNC_TO_HUBSPOT (it now
+// gates calc-config auto-sync too). Operators whose .env still
+// has the old name keep working — we mirror it to the new name
+// here, before the Zod parse, only when the new one isn't already
+// explicitly set.
+if (
+  process.env.AUTO_SYNC_TO_HUBSPOT === undefined &&
+  process.env.AUTO_SYNC_DOCUMENTS_TO_HUBSPOT !== undefined
+) {
+  process.env.AUTO_SYNC_TO_HUBSPOT = process.env.AUTO_SYNC_DOCUMENTS_TO_HUBSPOT;
+}
 
 // Parse + freeze. Parse throws ZodError on invalid input which we
 // reshape into a human-readable message before exiting.

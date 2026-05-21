@@ -258,17 +258,42 @@ class HubspotClient {
    * text in Phase 9 for fidelity across the HubSpot UI + email
    * digests + mobile app rendering.
    */
+  /**
+   * Sprint 9.L bug B1 — explicit `maxRetries: 0` for the POST call.
+   *
+   * POST /notes is NOT idempotent: every successful call mints a
+   * brand-new Note id. Retrying after a HubSpot 5xx is dangerous
+   * because the server may have created the Note but the response
+   * was dropped — a retry then creates a SECOND Note for the same
+   * document/calc. The auto-sync background path AND the manual
+   * Sync button both feed through this method, so a retried POST
+   * would silently double up Notes in the customer's CRM timeline.
+   *
+   * Trade-off: a transient HubSpot 5xx now fails the sync on the
+   * first attempt. The document/calc lands in `state='failed'` and
+   * the operator clicks Retry. That's preferable to silent
+   * duplication. Network-level retries (DNS failure, connection
+   * refused before HubSpot received the bytes) are also disabled
+   * by maxRetries=0 — but with createNote being non-idempotent,
+   * we can't safely tell apart "request never reached HubSpot"
+   * from "request reached, HubSpot processed, response lost".
+   */
   async createNote(input: {
     body: string;
     /** Unix millis timestamp; defaults to now. */
     timestamp?: number;
   }): Promise<{ id: string }> {
-    const raw = await this.post<{ id: string }>(`/crm/v3/objects/notes`, {
-      properties: {
-        hs_note_body: input.body,
-        hs_timestamp: input.timestamp ?? Date.now()
-      }
-    });
+    const raw = await this.post<{ id: string }>(
+      `/crm/v3/objects/notes`,
+      {
+        properties: {
+          hs_note_body: input.body,
+          hs_timestamp: input.timestamp ?? Date.now()
+        }
+      },
+      // Sprint 9.L B1: NO retries — see header comment.
+      { maxRetries: 0 }
+    );
     return { id: raw.id };
   }
 

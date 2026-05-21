@@ -6,8 +6,8 @@
  */
 
 import { Router } from "express";
-import { requireAdmin } from "../../middleware/require-admin";
 import { requireAuth } from "../../middleware/require-auth";
+import { requireRole } from "../../middleware/require-role";
 import { asyncHandler } from "../../shared/async-handler";
 import {
   createController,
@@ -20,7 +20,11 @@ import {
 export const usersRouter = Router();
 
 // Apply both guards once on the router instead of repeating per route.
-usersRouter.use(requireAuth(), requireAdmin());
+// Sprint 9.L D5 — call `requireRole('admin')` directly rather than
+// the deleted `requireAdmin()` shim. Semantics are identical
+// (admin OR super_admin; `requireRole` uses the hierarchical tier
+// table).
+usersRouter.use(requireAuth(), requireRole("admin"));
 
 usersRouter.get("/", asyncHandler(listController));
 usersRouter.post("/", asyncHandler(createController));

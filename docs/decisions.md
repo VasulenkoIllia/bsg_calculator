@@ -4321,3 +4321,131 @@ Use this file to record meaningful technical decisions for the project.
     `admin`) only requires adding the row to `USER_ROLES` const
     + the `ROLE_TIER` table (both frontend and backend) + a
     migration to widen the CHECK constraint.
+
+### Decision: Phase 9.K — Calc Sync uses PATCH (one Note per calc, no spam) (2026-05-21)
+
+- Context:
+  - Phase 9.I introduced HubSpot Note write-back for calc-configs
+    using the same CREATE-each-time policy as documents. Operators
+    pressing the manual Sync button on `/calc/:id` more than once
+    saw their HubSpot Activity feed clutter with duplicate Notes
+    pointing at the same calc.
+  - The documents flow is intentionally CREATE-each-time: every
+    `POST /documents` is a frozen point-in-time artifact (a signed
+    Offer / Agreement) and the audit trail is a feature. Calculators
+    are LIVING drafts the operator iterates on; the Note's `Link`
+    opens our SPA which already renders the freshest state.
+- Decision:
+  - Switch the calc-config sync to PATCH-first:
+      - If `hubspotNoteId IS NOT NULL` AND last `hubspotSyncState ===
+        'synced'` → `PATCH /crm/v3/objects/notes/:id` (refreshes the
+        body in place; the original association persists).
+      - Otherwise → `POST /crm/v3/objects/notes` + association (first
+        sync, or recovery after a previous failure that left the
+        prior noteId stale).
+      - If PATCH returns 404 (operator deleted the Note manually in
+        HubSpot UI) → self-heal: fall back to CREATE so the next
+        Sync click restores a working association.
+  - Documents stay on the CREATE-each-time policy. Each document is
+    its own committed artifact; the audit chain matters.
+- Trade-off:
+  - The PATCH path silently overwrites the previous Note body. We
+    accept that — the body is recomputed from the calc's current
+    state and the operator never sees the prior version anyway.
+  - A pathological race (two concurrent manual Sync clicks for a
+    not-yet-synced calc) could create duplicate Notes. Addressed in
+    Sprint 9.L below.
+- Consequence:
+  - HubSpot Activity feed for a heavy-use calc stays a single Note.
+  - The `hubspot_note_id` column always points to the LIVE Note;
+    no stale-pointer reconciliation needed on read.
+
+### Decision: Sprint 9.L — Phase-9 audit closure (2026-05-21)
+
+- Context:
+  - End-of-Phase-9 audit (4 parallel review agents — Phase 9
+    correctness / Phase 8 correctness / decomposition / security)
+    surfaced 22+ findings spanning bugs (5), decomposition (7),
+    test gaps (4), and polish (8).
+  - Operator confirmed full scope ("Повний") before opening
+    Stage 5 (admin documents tab) so the new code lands on a clean
+    foundation rather than compounding tech debt.
+- Decision (bug fixes — applied):
+  - **B1** `hubspot.client.createNote` no longer retries on 5xx.
+    POST `/crm/v3/objects/notes` is not idempotent — retry-on-5xx
+    could create duplicate Notes when HubSpot already accepted the
+    first write but returned a gateway error. PATCH / DELETE keep
+    the default retry behaviour (idempotent by HTTP semantics).
+  - **B2** `documents.service.createDocument` hoists `setImmediate`
+    OUT of the open transaction. Was inside the `db.transaction(...)`
+    callback — a fast Node tick could fire the sync before drizzle's
+    COMMIT round-trip, so `findByNumber` saw no row and marked the
+    doc `state='failed'` even though it landed cleanly.
+  - **B3** Note body URL escape: introduced `escapeUrlAttr` (only
+    `"` + `&`, per HTML5 spec) for the `<a href="…">` attribute.
+    Previous `escapeHtml(absUrl)` over-escaped (`'` → `&#39;`).
+    Latent — current paths have no query strings — but the cleaner
+    helper guards future `?from=…` paths.
+  - **B4** Calc-config sync TOCTOU race: serialize concurrent Sync
+    clicks for the same calc via Postgres advisory transaction lock
+    (`pg_try_advisory_xact_lock(hashtext('calc-sync:' || id))`). A
+    second concurrent click gets `409 HUBSPOT_SYNC_IN_PROGRESS`
+    rather than starting a duplicate flow. Companion to Phase 9.K.
+  - **B5** Error-handler scrubs `HubspotUnreachableError.details.url`
+    before responding 502. The upstream URL stays in the structured
+    log line (ops debugging) but never leaks to the client.
+- Decision (decomposition — applied):
+  - **D1** `ensureDealBelongsToCompany` extracted to
+    `server/shared/deal-guard.ts` (was duplicated across documents +
+    calc-configs services).
+  - **D2** `escapeHtml` + `escapeUrlAttr` extracted to
+    `server/shared/html.ts` (was inlined in the Note builder; the
+    frontend already had a sibling at `src/shared/html.ts`).
+  - **D3** Note builder moved to `server/shared/hubspot/note-builder.ts`
+    (out of `modules/documents/` because Phase 9.I made it
+    cross-module — both documents AND calc-config sync consume it).
+  - **D4** Env flag renamed `AUTO_SYNC_DOCUMENTS_TO_HUBSPOT` →
+    `AUTO_SYNC_TO_HUBSPOT`. The old name is still read as a
+    fallback at env-parse time so existing prod `.env` files don't
+    break. Old name retired on next rotation.
+  - **D5** Deleted `middleware/require-admin.ts` shim. Only caller
+    (`users.routes.ts`) now uses `requireRole('admin')` directly.
+  - **D6** Extracted `ROLE_TIER` + `hasRoleAtLeast` helper to
+    `server/shared/roles.ts` + `src/shared/roles.ts`. The two trees
+    intentionally mirror (no shared bundle between Vite and tsx);
+    new tier additions update both files.
+  - **D7** Sync-helpers extraction deferred — the existing
+    try/catch + persist-failed-state pattern is short enough that
+    extracting risks bigger refactor surface than it pays back.
+- Decision (tests — applied):
+  - **T1** `useAuth().hasRole` covered with a full 3×3 actor×min
+    matrix + logged-out case. Standalone unit tests for the
+    `src/shared/roles.ts` and `server/shared/roles.ts` helpers
+    document the role-tier semantics.
+- Decision (polish — applied):
+  - **N1** Removed unused `formatDate` (date-only) helper from
+    `src/shared/format.ts` — every call site uses `formatDateTime`.
+  - **N2** Removed unused `CalculatorHeader` (Sprint 7.1) and
+    `CalculatorActionsPanel` (Sprint 7.2) exports — both were
+    `@deprecated` for two sprints with no remounts.
+  - **N3** `server/scripts/create-user.ts` JSDoc updated from
+    `is_admin = true` (pre-Stage-1 boolean) to the
+    `--role={user|admin|super_admin}` shape.
+  - **N5** `middleware/require-auth.ts` now has an explicit comment
+    documenting that `req.user.role` is read from the live DB row
+    (not the JWT claim) so a role demotion takes effect on the
+    NEXT request rather than after the 15-minute access TTL.
+- Trade-off:
+  - The advisory-lock approach to B4 holds a Postgres transaction
+    around the entire HubSpot round-trip. Acceptable for the
+    operator-driven Sync use case (low concurrency, low frequency);
+    revisit if Sync becomes a hot path.
+  - The `AUTO_SYNC_TO_HUBSPOT` rename keeps the old env name working
+    "forever" via a back-compat shim. Plan to drop the old name on
+    the next major env-config rotation so the schema stays minimal.
+- Consequence:
+  - Phase-9 surface is internally consistent and reviewed end-to-end.
+  - 273 frontend tests pass; server typecheck clean. Server
+    integration tests need DB up (docker compose dev) to run —
+    verified via the test setup the prior sprint.
+  - Stage 5 (admin documents tab) opens against a stable codebase.

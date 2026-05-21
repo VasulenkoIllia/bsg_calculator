@@ -18,16 +18,19 @@
  * fallback. The Note body uses the new Phase 9.H one-liner format.
  */
 
+import { sql } from "drizzle-orm";
+import { db } from "../../db/client";
 import { findCompanyById } from "../companies/companies.repository";
 import { findUserById } from "../users/users.repository";
 import {
+  ConflictError,
   HubspotUnreachableError,
   NotFoundError,
   ValidationError
 } from "../../shared/errors";
 import { logger } from "../../middleware/logger";
 import { hubspot } from "../hubspot/hubspot.client";
-import { buildHubspotNoteBody } from "../documents/note-builder";
+import { buildHubspotNoteBody } from "../../shared/hubspot/note-builder";
 import {
   findById,
   updateCalculatorConfigHubspotSync
@@ -48,6 +51,41 @@ import type { CalculatorConfigPublic } from "./calculator-configs.schemas";
  *     badge.
  */
 export async function syncCalculatorConfigToHubspot(
+  id: string
+): Promise<CalculatorConfigPublic> {
+  // Sprint 9.L B4 — serialize concurrent Sync clicks for the same
+  // calc via a Postgres advisory transaction lock keyed on the
+  // calc id. Without this, two clicks landing in the same event
+  // loop tick could both pass the findById → shouldPatch check
+  // before either had finished writing back state — duplicating
+  // createNote calls and leaking duplicate Notes into HubSpot.
+  //
+  // `pg_try_advisory_xact_lock` returns false instead of blocking
+  // when the lock is already held; we surface that as a 409 so the
+  // operator's second click renders a polite "sync already in
+  // progress" error rather than starting a parallel run.
+  return db.transaction(async tx => {
+    const claim = await tx.execute<{ acquired: boolean }>(sql`
+      SELECT pg_try_advisory_xact_lock(hashtext('calc-sync:' || ${id}::text)) AS acquired
+    `);
+    if (!claim.rows[0]?.acquired) {
+      throw new ConflictError(
+        "HUBSPOT_SYNC_IN_PROGRESS",
+        "Another sync for this calculator is already in progress. Try again in a moment."
+      );
+    }
+    return syncCalculatorConfigToHubspotLocked(id);
+  });
+}
+
+/**
+ * Sprint 9.L B4 — internal worker invoked under the advisory lock.
+ * Split out so the lock-acquire/release scope is small and obvious
+ * at the entrypoint, while the existing flow continues to read +
+ * write via the global `db` (the lock guards CONCURRENT entries,
+ * not the per-statement transactionality of the writes).
+ */
+async function syncCalculatorConfigToHubspotLocked(
   id: string
 ): Promise<CalculatorConfigPublic> {
   const calc = await findById(id);

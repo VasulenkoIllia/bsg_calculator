@@ -33,7 +33,7 @@ import { hubspot } from "../hubspot/hubspot.client";
 import {
   buildHubspotNoteBody,
   noteKindFromDocumentScope
-} from "./note-builder";
+} from "../../shared/hubspot/note-builder";
 import {
   findByNumber,
   updateDocumentHubspotSync

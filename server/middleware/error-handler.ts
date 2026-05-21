@@ -12,11 +12,39 @@ import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
 import {
   AppError,
+  HubspotUnreachableError,
   InternalError,
   ValidationError,
   isAppError
 } from "../shared/errors";
 import { logger } from "./logger";
+
+/**
+ * Sprint 9.L B5 — scrub fields from an error's `details` that should
+ * be logged server-side but never exposed in the client envelope.
+ *
+ * HubspotUnreachableError.details currently carries `{ status, url }`
+ * for ops debugging — exposing the URL leaks our HubSpot endpoint
+ * path (e.g. `/crm/v3/objects/notes/12345`) to the client. We strip
+ * it here while keeping the field in the structured log line above.
+ *
+ * Returns the original details unchanged when nothing needed scrubbing.
+ */
+function scrubDetailsForClient(appError: AppError): unknown {
+  if (appError.details === undefined || appError.details === null) {
+    return appError.details;
+  }
+  if (
+    appError instanceof HubspotUnreachableError &&
+    typeof appError.details === "object" &&
+    !Array.isArray(appError.details)
+  ) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { url: _url, ...rest } = appError.details as Record<string, unknown>;
+    return rest;
+  }
+  return appError.details;
+}
 
 interface ErrorEnvelope {
   error: {
@@ -73,11 +101,15 @@ export function errorHandler(
   }
 
   // Build response envelope. `details` is only included when present.
+  // Sprint 9.L B5 — run scrubDetailsForClient() on the way out so
+  // upstream-URL leaks (HubspotUnreachableError) stay in the log
+  // but never reach the client.
+  const safeDetails = scrubDetailsForClient(appError);
   const envelope: ErrorEnvelope = {
     error: {
       code: appError.code,
       message: appError.message,
-      ...(appError.details !== undefined ? { details: appError.details } : {})
+      ...(safeDetails !== undefined ? { details: safeDetails } : {})
     }
   };
 

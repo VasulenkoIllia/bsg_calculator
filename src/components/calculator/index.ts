@@ -11,7 +11,7 @@ export type {
 export { MetricCard, FormulaLine } from "./cards.js";
 export { ZoneSection } from "./ZoneSection.js";
 export { UnifiedProfitabilityRow } from "./UnifiedProfitabilityRow.js";
-export { CalculatorHeader, HardcodedConstantsPanel, CalculatorActionsPanel } from "./layout.js";
+export { HardcodedConstantsPanel } from "./layout.js";
 
 export {
   formatInputNumber,
