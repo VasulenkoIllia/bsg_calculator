@@ -1,27 +1,18 @@
 /**
- * Admin-only middleware.
+ * Admin-only middleware — Phase 8 Stage 1 backward-compat shim.
  *
- * Mounted AFTER `requireAuth()` on routes that need admin role.
- * `requireAuth` populates `req.user.isAdmin`; we just gate on it.
+ * Pre-Stage-1 this file held the actual gate logic and branched on
+ * `req.user.isAdmin`. Stage 1 introduced a hierarchical role enum
+ * (`user` ⊂ `admin` ⊂ `super_admin`) and a generic `requireRole(min)`
+ * middleware; `requireAdmin()` is now just `requireRole('admin')`.
  *
- * Used by all `/api/v1/users/*` endpoints (per auth matrix in
- * `phase_08_backend_plan.md` §4.0).
+ * New code SHOULD import `requireRole` directly. This re-export
+ * keeps existing route files that import `requireAdmin` working
+ * without a churning rename in the same commit.
  */
 
-import type { NextFunction, Request, Response } from "express";
-import { ForbiddenError, TokenInvalidError } from "../shared/errors";
+import { requireRole } from "./require-role";
 
 export function requireAdmin() {
-  return (req: Request, _res: Response, next: NextFunction): void => {
-    if (!req.user) {
-      // requireAuth must run before this; absent user is a wiring bug.
-      next(new TokenInvalidError());
-      return;
-    }
-    if (!req.user.isAdmin) {
-      next(new ForbiddenError("Admin role required."));
-      return;
-    }
-    next();
-  };
+  return requireRole("admin");
 }

@@ -6,6 +6,7 @@
  */
 
 import { z } from "zod";
+import { USER_ROLES } from "../../db/schema";
 
 // ─── Request bodies ─────────────────────────────────────────────────
 
@@ -20,12 +21,18 @@ export type LoginRequest = z.infer<typeof loginRequestSchema>;
 
 // ─── Response bodies ────────────────────────────────────────────────
 
+/**
+ * Phase 8 Stage 1: `role` replaces `isAdmin`. The hierarchical enum
+ * (`user` ⊂ `admin` ⊂ `super_admin`) is mirrored on the frontend
+ * (src/api/types.ts) so a stale token shape on either side surfaces
+ * as a Zod error rather than silent corruption.
+ */
 export const userPublicSchema = z.object({
   id: z.string().uuid(),
   email: z.string(),
   login: z.string().nullable(),
   displayName: z.string(),
-  isAdmin: z.boolean(),
+  role: z.enum(USER_ROLES),
   isActive: z.boolean()
 });
 

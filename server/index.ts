@@ -20,6 +20,7 @@ import {
   stopWebhookProcessor
 } from "./modules/hubspot/webhooks/webhooks.processor";
 import { shutdownBrowserPool } from "./modules/pdf/browser-pool";
+import { bootstrapSuperAdmin } from "./scripts/bootstrap-super-admin";
 import { backendStartupBackfillIfEmpty } from "./scripts/hubspot-backfill";
 
 const app = createApp();
@@ -33,6 +34,18 @@ const server = app.listen(env.PORT, () => {
     },
     `[${env.APP_NAME}] API listening`
   );
+
+  // Phase 8 Stage 1: promote BOOTSTRAP_SUPER_ADMIN_EMAIL to
+  // super_admin if set. Runs once per boot; idempotent + never
+  // demotes. Awaited via .catch so an error doesn't block the
+  // server listening — bootstrap is best-effort, the operator can
+  // re-trigger by restarting once they've created the user.
+  bootstrapSuperAdmin().catch(err => {
+    logger.error(
+      { err: (err as Error).message },
+      "[startup] super-admin bootstrap hook threw"
+    );
+  });
 
   // Background: if HUBSPOT_AUTO_BACKFILL=true and companies table
   // empty, paginate HubSpot once. /health responds normally during

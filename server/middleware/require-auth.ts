@@ -42,7 +42,7 @@ export function requireAuth() {
       req.user = {
         id: user.id,
         email: user.email,
-        isAdmin: user.isAdmin
+        role: user.role
       };
       next();
     } catch (err) {

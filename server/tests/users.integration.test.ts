@@ -53,14 +53,14 @@ describe("POST /api/v1/users (admin creates a new user)", () => {
         email: "new@bsg.test",
         password: "newPassword1",
         displayName: "New Hire",
-        isAdmin: false
+        role: "user"
       });
 
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({
       email: "new@bsg.test",
       displayName: "New Hire",
-      isAdmin: false,
+      role: "user",
       isActive: true
     });
   });

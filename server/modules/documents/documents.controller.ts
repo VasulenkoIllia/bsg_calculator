@@ -11,7 +11,7 @@ import {
   encodeSortKey,
   parseSortQuery
 } from "../../shared/sorted-pagination";
-import { NotImplementedError, TokenInvalidError } from "../../shared/errors";
+import { TokenInvalidError } from "../../shared/errors";
 import { documentSortFields } from "./documents.repository";
 import {
   createDocumentSchema,
@@ -23,6 +23,7 @@ import {
   listDocumentsPage,
   useDocumentAsTemplate
 } from "./documents.service";
+import { syncDocumentToHubspot } from "./sync.service";
 import { peekNextNumber } from "./numbering.service";
 
 export async function listController(req: Request, res: Response): Promise<void> {
@@ -100,17 +101,32 @@ export async function peekNumberController(
 }
 
 /**
- * Sprint 4 stub for the Phase 9 HubSpot Note write-back. Returns 501
- * so the frontend can ship the sync-trigger UI without crashing —
- * Phase 9 swaps in the real implementation. `_req` / `_res` naming
- * acknowledges the unused parameters without the awkward `void`
- * suppression idiom.
+ * Phase 9 — POST /api/v1/documents/:number/sync.
+ *
+ * Writes a HubSpot Note (text + link to our SPA) for this document
+ * and associates it with the document's HubSpot deal (if pinned) or
+ * its parent company (fallback). See `sync.service.ts` for the
+ * step-by-step flow.
+ *
+ * Response: `200 OK` + updated document DTO (carries the new
+ * `hubspotSyncState` + `hubspotNoteId`). The frontend uses these
+ * to flip the status badge from "Not synced" → "Synced".
+ *
+ * Errors:
+ *   - 404 if document or parent company missing
+ *   - 502 HubspotUnreachableError on any HubSpot API failure (the
+ *     document row is updated to `hubspot_sync_state='failed'`
+ *     BEFORE the error re-throws, so a subsequent GET shows the
+ *     failed badge + Retry CTA).
  */
 export async function syncController(
-  _req: Request,
-  _res: Response
+  req: Request,
+  res: Response
 ): Promise<void> {
-  throw new NotImplementedError(
-    "HubSpot sync is not yet enabled. Will ship in Phase 9."
-  );
+  if (!req.user) {
+    throw new TokenInvalidError("Token references a deleted user.");
+  }
+  const number = req.params.number;
+  const updated = await syncDocumentToHubspot(number);
+  res.status(200).json(updated);
 }

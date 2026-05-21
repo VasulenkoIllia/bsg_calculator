@@ -4280,3 +4280,44 @@ Use this file to record meaningful technical decisions for the project.
 - Open for Sprint 8 (optional hardening):
   - E2E Playwright tests — unlock deferred S3 PDF builder move.
   - WizardSeedSource refactor when Phase 9 needs it.
+
+### Decision: Phase 8 Stage 1 — hierarchical role enum (2026-05-21)
+
+- Context:
+  - `users.is_admin boolean` could not express a third tier needed
+    for the Phase 8 super-admin user-management surface (see
+    `docs/phase_8_security_admin_audit.md`). A single boolean also
+    couldn't represent the `user` tier introduced by the same
+    spec — accounts with view-only access to documents.
+- Decision:
+  - Migrate to a hierarchical `role` enum (`user` ⊂ `admin` ⊂
+    `super_admin`). Replace `is_admin: boolean` everywhere with
+    `role: UserRole`. Migration 0007 backfills existing
+    `is_admin=true` rows to `role='admin'`.
+  - JWT access token carries `role` (not `isAdmin`). Stale
+    pre-migration tokens surface as
+    `AccessTokenVerificationError("invalid")` so the FE refresh
+    pipeline picks up the new shape within 15 min (access TTL).
+  - New `requireRole(min)` middleware with a numeric tier table
+    (user=0, admin=1, super_admin=2). `requireAdmin()` becomes a
+    thin shim over `requireRole('admin')` to avoid churning every
+    existing route file in the same commit.
+  - `BOOTSTRAP_SUPER_ADMIN_EMAIL` env: optional, when set the
+    matching user is promoted to `super_admin` on every server
+    boot. Idempotent, never demotes — clearing the env doesn't
+    strip privileges.
+  - Frontend `useAuth().hasRole(min)` helper mirrors the backend
+    tier table so a `role !== 'admin'` typo can't accidentally
+    miss `super_admin`.
+- Trade-off:
+  - Stale JWT tokens (issued before Stage 1 deploy) are invalidated
+    on the next request — operators see a single refresh hiccup
+    after deploy. Acceptable: 15-min access TTL + refresh-cookie
+    chain handles it transparently.
+- Consequence:
+  - Stages 2–6 of Phase 8 can now gate UIs on `hasRole('admin')`
+    or `hasRole('super_admin')` without further schema work.
+  - Future tier insertion (e.g. `viewer` between `user` and
+    `admin`) only requires adding the row to `USER_ROLES` const
+    + the `ROLE_TIER` table (both frontend and backend) + a
+    migration to widen the CHECK constraint.

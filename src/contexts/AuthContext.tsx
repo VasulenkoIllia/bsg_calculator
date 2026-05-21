@@ -30,7 +30,21 @@ import {
 } from "react";
 import { ApiError, setAccessToken, setSessionLostHandler } from "../api/client.js";
 import * as authApi from "../api/auth.js";
-import type { PublicUser } from "../api/types.js";
+import type { PublicUser, UserRole } from "../api/types.js";
+
+/**
+ * Phase 8 Stage 1: numeric tier for the hierarchical role enum.
+ * Mirrors `server/middleware/require-role.ts → ROLE_TIER` so the
+ * frontend and backend agree on what "≥ admin" means. Adding a new
+ * role here without updating the backend (or vice versa) is a
+ * compile error on the union type — the table just slots the new
+ * value in.
+ */
+const ROLE_TIER: Record<UserRole, number> = {
+  user: 0,
+  admin: 1,
+  super_admin: 2
+};
 
 interface AuthState {
   /** Public user object, or null when logged out. */
@@ -49,6 +63,17 @@ interface AuthContextValue extends AuthState {
   login: (identifier: string, password: string) => Promise<void>;
   /** Server-side revoke + client-side state clear. */
   logout: () => Promise<void>;
+  /**
+   * Phase 8 Stage 1: hierarchical role check. `hasRole('admin')`
+   * returns true for both admins AND super-admins (admins are a
+   * subset of super-admins' capabilities, not a sibling). Returns
+   * false when logged out.
+   *
+   * Components that previously did `user?.isAdmin` should now use
+   * `hasRole('admin')` — both correctness (catches super_admin too)
+   * and forward-compat for any future Stage-3 super_admin gates.
+   */
+  hasRole: (min: UserRole) => boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -139,9 +164,23 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
     }
   }, []);
 
+  const hasRole = useCallback(
+    (min: UserRole): boolean => {
+      if (!state.user) return false;
+      return ROLE_TIER[state.user.role] >= ROLE_TIER[min];
+    },
+    [state.user]
+  );
+
   const value = useMemo<AuthContextValue>(
-    () => ({ user: state.user, isBooting: state.isBooting, login, logout }),
-    [state.user, state.isBooting, login, logout]
+    () => ({
+      user: state.user,
+      isBooting: state.isBooting,
+      login,
+      logout,
+      hasRole
+    }),
+    [state.user, state.isBooting, login, logout, hasRole]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

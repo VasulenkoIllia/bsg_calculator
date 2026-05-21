@@ -148,6 +148,18 @@ const EnvSchema = z.object({
   // or for a custom path; leave unset in dev (Vite serves the SPA).
   SPA_DIST_DIR: z.string().optional(),
 
+  // Phase 8 Stage 1: optional email of the user to promote to
+  // `super_admin` on every server start. Idempotent — won't demote
+  // an existing super-admin if the env var is cleared. See
+  // server/scripts/bootstrap-super-admin.ts for the runtime logic.
+  // Leave unset in dev / when super-admin is already provisioned.
+  // Empty string treated as "not set" for ergonomic .env templates.
+  BOOTSTRAP_SUPER_ADMIN_EMAIL: z
+    .string()
+    .email()
+    .optional()
+    .or(z.literal("")),
+
   // Logging
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
   LOG_HTTP_REQUESTS: z.coerce.boolean().default(true)

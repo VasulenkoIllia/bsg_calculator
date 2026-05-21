@@ -34,16 +34,21 @@ export interface ApiErrorEnvelope {
  * add it here in the SAME PR. The api client uses generic-cast (not
  * runtime validation) so the type system is our only contract check.
  *
- * Historical: pre-2.8.F this interface declared `role/active/createdAt`,
- * none of which the backend actually emits. UI happened to only read
- * `displayName` so the mismatch was invisible — fixed in 2.8.F.
+ * Phase 8 Stage 1 (2026-05-21): the legacy `isAdmin: boolean` was
+ * replaced with the hierarchical `role` enum. `user` ⊂ `admin` ⊂
+ * `super_admin` — higher tiers inherit lower-tier permissions.
+ * Components that need an admin gate use the `hasRole(min)` helper
+ * exposed by `useAuth()`, not `role === 'admin'` (which would miss
+ * super_admin).
  */
+export type UserRole = "user" | "admin" | "super_admin";
+
 export interface PublicUser {
   id: string;
   email: string;
   login: string | null;
   displayName: string;
-  isAdmin: boolean;
+  role: UserRole;
   isActive: boolean;
 }
 

@@ -51,7 +51,8 @@ function toUserPublic(user: User): UserPublic {
     email: user.email,
     login: user.login,
     displayName: user.displayName,
-    isAdmin: user.isAdmin,
+    // Phase 8 Stage 1: `role` enum replaces the old `isAdmin: boolean`.
+    role: user.role,
     isActive: user.isActive
   };
 }
@@ -116,7 +117,7 @@ export async function login(input: {
   });
 
   return {
-    accessToken: signAccessToken(user.id, user.isAdmin),
+    accessToken: signAccessToken(user.id, user.role),
     refreshTokenRaw,
     user: toUserPublic(user)
   };
@@ -193,14 +194,14 @@ export async function refresh(refreshTokenRaw: string): Promise<RefreshOutcome> 
     await touchRefreshToken(outcome.oldRow.id);
     return {
       kind: "graced",
-      accessToken: signAccessToken(userRow.id, userRow.isAdmin)
+      accessToken: signAccessToken(userRow.id, userRow.role)
     };
   }
 
   // Fresh rotation succeeded inside the TX above.
   return {
     kind: "rotated",
-    accessToken: signAccessToken(userRow.id, userRow.isAdmin),
+    accessToken: signAccessToken(userRow.id, userRow.role),
     refreshTokenRaw: newRefreshRaw
   };
 }

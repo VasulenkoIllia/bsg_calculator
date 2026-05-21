@@ -153,17 +153,33 @@ curl -I https://bsg.workflo.space/
 
 ### 4.5 Create the bootstrap admin user
 
-The fresh DB has no users. Create the first admin from inside the running container:
+The fresh DB has no users. Create the first one — typically a
+super-admin so they can later invite the rest via the (Stage 3) UI:
 
 ```bash
+# Phase 8 Stage 1+ style: explicit --role.
 docker compose exec app npx tsx server/scripts/create-user.ts \
   --email=admin@your-domain.com \
   --password='use-a-strong-pw' \
   --display='Admin' \
-  --admin
+  --role=super_admin
 ```
 
+Backward-compat shortcuts still work:
+- `--admin` ≡ `--role=admin`
+- `--super-admin` ≡ `--role=super_admin`
+- no flag ≡ `--role=user` (least privileged)
+
 You can now log in at `https://bsg.workflo.space/login`.
+
+#### Optional: bootstrap super-admin via env
+
+If you'd rather promote an existing user via env (e.g. after they
+were created with `--admin` initially), set
+`BOOTSTRAP_SUPER_ADMIN_EMAIL=admin@your-domain.com` in `.env` and
+restart the app. The script promotes that user on every boot. It
+is idempotent (already-super-admin = no-op) and never demotes, so
+removing the env later doesn't strip privileges.
 
 ### 4.6 First HubSpot pull
 
@@ -314,7 +330,7 @@ Default 64MB is fine for offer + agreement renders. If you bump it, set `shm_siz
 - No 2FA on login yet (Phase 8 Stage 2).
 - No alerting on sustained outage — failures show only in container logs.
 
-## 9. HubSpot synchronization — current state (Sprint 7.4)
+## 9. HubSpot synchronization — current state (Phase 9 / 2026-05-21)
 
 ### Inbound (HubSpot → our DB) — ✅ WORKS
 Three pull paths, all production-ready:
@@ -324,10 +340,25 @@ Three pull paths, all production-ready:
 
 Sprint 7.4 also fixed a correctness bug where deals whose primary HubSpot company association was filtered out (`WORLDFY OY` style) would silently land as `filtered_out` instead of using the fallback company from `associations.companies.results`.
 
-### Outbound (our DB → HubSpot) — ❌ NOT IMPLEMENTED (Phase 9)
-There is no `createNote` / `updateNote` method on the HubSpot client. The `POST /api/v1/documents/:number/sync` route is wired but the controller throws `NotImplementedError`. The `hubspotSyncState` column on `documents` will stay `not_synced` for every document until Phase 9 lands.
+### Outbound (our DB → HubSpot Notes) — ✅ WORKS (Phase 9)
 
-`hubspot.client.deleteNote()` exists (Sprint 7.3.D) — added for Phase 8 document-deletion flow — but is not invoked by any current code path.
+**`POST /api/v1/documents/:number/sync`** is now wired:
+
+1. Loads the document by BSG number + its parent company.
+2. Builds a plain-text Note body via `server/modules/documents/note-builder.ts` (BSG number, scope, key contract terms from payload, addendum if any, clickable link back to `/documents/:number`).
+3. Calls HubSpot **POST /crm/v3/objects/notes** with the body.
+4. Calls HubSpot **PUT /crm/v4/objects/notes/{noteId}/associations/default/{deal|company}/{id}** to attach the Note to either the document's `hubspotDealId` (preferred) or the parent company's `hubspot_company_id` (fallback).
+5. Updates `documents.hubspot_note_id` + `hubspot_sync_state='synced'`.
+
+On HubSpot failure → `hubspot_sync_state='failed'` is persisted BEFORE the error propagates, so the next GET shows the failed badge + Retry CTA in the UI.
+
+**Operator policy**: each Sync click creates a NEW Note in HubSpot (audit trail). `documents.hubspot_note_id` always points to the most recent. Older Notes from previous syncs stay in HubSpot — operator can clean them up manually if they don't want clutter.
+
+**Required HubSpot scope**: `crm.objects.notes.write` MUST be added to the Private App. Without it, every sync returns 403 → the document is marked `failed`.
+
+**Frontend trigger**: the "Sync to HubSpot" button on `/documents/:number` calls this endpoint. Visible to admins + super-admins (gated by `requireRole('admin')` on the backend, mirrored by `hasRole('admin')` on the frontend so regular users don't see a button that would 403).
+
+**Rate limit**: `hubspotProxyLimiter` = 10/min/IP. Comfortably under HubSpot's per-Private-App 100 req / 10s ceiling even when a single operator spams Sync.
 
 ### Pipeline stages — pulled on app boot
 The deal pipeline + stage labels are fetched once at server startup via `hubspot.listPipelineStages()` and cached for 1 hour in-memory. To pick up new stages added in HubSpot before the TTL expires, restart the app container (`docker compose restart app`).
@@ -338,3 +369,53 @@ The deal pipeline + stage labels are fetched once at server startup via `hubspot
 3. `docker compose up -d app` (restart picks up the new env).
 4. Watch logs: `docker compose logs -f app | grep -i hubspot`.
 5. Verify: `curl https://bsg.workflo.space/ready` should show `"hubspot":"ok"`. If it shows `"fail"`, the new token was rejected — re-check.
+
+## 10. Upgrading from pre-Stage-1 to Stage 1 (one-time)
+
+If you're upgrading an existing deploy that was running before Phase 8
+Stage 1 (`is_admin` boolean era), here's what happens automatically
+and what (if anything) you need to do manually.
+
+### 10.1 What auto-applies on `docker compose up -d --build app`
+
+1. New image runs entrypoint → migration `0007_user_role_enum.sql`
+   applies in the same TX:
+   - ADD `role text NOT NULL DEFAULT 'user'`
+   - Backfill: every row where `is_admin=true` becomes `role='admin'`
+   - DROP `is_admin` column
+2. Server boots with the new JWT shape. Existing logged-in users
+   have stale tokens (claim `isAdmin: bool` instead of
+   `role: enum`). On their next API call:
+   - The access token fails `verifyAccessToken()` → 401 INVALID
+   - Frontend axios interceptor triggers `/auth/refresh`
+   - Refresh succeeds (the cookie is unaffected) and mints a NEW
+     access token with the `role` claim
+   - The original request retries transparently
+3. Net effect on existing operators: **zero downtime, single ~50ms
+   hiccup on the first request after deploy.**
+
+### 10.2 Promote existing admin to super-admin (optional)
+
+If you want to promote your existing admin (now `role='admin'` post-
+migration) to `super_admin`:
+
+**Option A — via env (recommended for repeatability):**
+
+```bash
+nano /var/www/projects/bsg_calculator/.env
+# Add the line:
+BOOTSTRAP_SUPER_ADMIN_EMAIL=admin@your-domain.com
+docker compose up -d app
+```
+
+Boot logs will show `[bootstrap-super-admin] promoted user to super_admin`.
+
+**Option B — direct SQL (one-shot):**
+
+```bash
+docker compose exec postgres psql -U bsg -d bsg_calculator -c \
+  "UPDATE users SET role='super_admin' WHERE email='admin@your-domain.com';"
+```
+
+Either way, on the operator's next API call they'll have super-admin
+privileges (Phase 8 Stages 3+).

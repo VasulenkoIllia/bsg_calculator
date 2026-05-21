@@ -14,12 +14,14 @@
  */
 
 import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../api/client.js";
 import * as documentsApi from "../api/documents.js";
 import { downloadSavedPdf, triggerPdfDownload } from "../api/pdf.js";
 import { buildOfferPdfHtml } from "../components/document-wizard/index.js";
 import type { DocumentTemplatePayload } from "../components/document-wizard/index.js";
+import { useAuth } from "../contexts/AuthContext.js";
 import { useToast } from "../contexts/ToastContext.js";
 import { useDocument } from "../hooks/useDocuments.js";
 import { formatDateTime, formatScopeLabel } from "../shared/format.js";
@@ -64,8 +66,11 @@ export function DocumentViewPage() {
   const { number } = useParams<{ number: string }>();
   const navigate = useNavigate();
   const toast = useToast();
+  const { hasRole } = useAuth();
+  const queryClient = useQueryClient();
   const docQuery = useDocument(number);
   const [templatePending, setTemplatePending] = useState(false);
+  const [syncPending, setSyncPending] = useState(false);
   const [showRawPayload, setShowRawPayload] = useState(false);
 
   async function handleUseAsTemplate(): Promise<void> {
@@ -114,6 +119,40 @@ export function DocumentViewPage() {
     }
   }
 
+  /**
+   * Phase 9 — Sync this document to HubSpot as a Note. The backend
+   * mints a NEW Note each time (audit trail in HubSpot); we
+   * invalidate the documents listings so the badge update propagates
+   * to /documents and any nested company tab.
+   */
+  async function handleSyncToHubspot(): Promise<void> {
+    if (!number) return;
+    setSyncPending(true);
+    try {
+      const updated = await documentsApi.syncDocumentToHubspot(number);
+      // Optimistically replace the cached single-doc query with the
+      // new state so the badge flips without a round-trip. Query key
+      // shape: ["documents", "get", number] — see useDocument().
+      // Then invalidate the listings so the badge in /documents +
+      // any nested company tab catches up.
+      queryClient.setQueryData(["documents", "get", number], updated);
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
+      toast.success("Document synced to HubSpot.");
+    } catch (err) {
+      // The backend has ALREADY persisted hubspot_sync_state='failed'
+      // before throwing — invalidate so the badge flips to "failed"
+      // on the next render.
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
+      toast.error(
+        err instanceof ApiError
+          ? `Sync failed: ${err.message}`
+          : "Sync failed — try again."
+      );
+    } finally {
+      setSyncPending(false);
+    }
+  }
+
   if (docQuery.isLoading) {
     return <p className="text-sm text-slate-500">Loading document…</p>;
   }
@@ -138,14 +177,45 @@ export function DocumentViewPage() {
       </Link>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-6">
-        <header className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            {formatScopeLabel(doc.scope)}
-          </p>
-          <h1 className="font-mono text-xl font-semibold text-slate-900">
-            {doc.number}
-          </h1>
-          <p className="text-sm text-slate-500">Created {formatDateTime(doc.createdAt)}</p>
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              {formatScopeLabel(doc.scope)}
+            </p>
+            <h1 className="font-mono text-xl font-semibold text-slate-900">
+              {doc.number}
+            </h1>
+            <p className="text-sm text-slate-500">Created {formatDateTime(doc.createdAt)}</p>
+          </div>
+          {/*
+            Phase 9 — HubSpot sync status badge. Three states:
+              - not_synced: neutral grey "Not synced"
+              - synced: green "✓ Synced to HubSpot"
+              - failed: red "Sync failed"
+            Mirrors the badge on the /documents listing row but
+            larger + more prominent here on the detail page.
+          */}
+          <span
+            className={[
+              "rounded-full px-3 py-1 text-xs font-semibold",
+              doc.hubspotSyncState === "synced"
+                ? "bg-green-100 text-green-700"
+                : doc.hubspotSyncState === "failed"
+                  ? "bg-red-100 text-red-700"
+                  : "bg-slate-100 text-slate-600"
+            ].join(" ")}
+            title={
+              doc.hubspotNoteId
+                ? `Latest HubSpot Note id: ${doc.hubspotNoteId}`
+                : undefined
+            }
+          >
+            {doc.hubspotSyncState === "synced"
+              ? "✓ Synced to HubSpot"
+              : doc.hubspotSyncState === "failed"
+                ? "× Sync failed"
+                : "Not synced"}
+          </span>
         </header>
 
         {doc.addendum ? (
@@ -171,6 +241,31 @@ export function DocumentViewPage() {
           >
             {templatePending ? "Creating draft…" : "Use as Template"}
           </button>
+          {/*
+            Phase 9 — HubSpot Note write-back. Admin-only on the
+            backend (requireRole('admin')); same gate here so the
+            button is hidden for plain `user` accounts that would
+            get a 403 anyway. Label reflects current sync state +
+            whether this would create a fresh Note (the backend's
+            "create new each time" policy) or retry after a
+            previous failure.
+          */}
+          {hasRole("admin") ? (
+            <button
+              type="button"
+              onClick={handleSyncToHubspot}
+              disabled={syncPending}
+              className="rounded-lg border border-blue-500 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {syncPending
+                ? "Syncing…"
+                : doc.hubspotSyncState === "synced"
+                  ? "Sync again to HubSpot"
+                  : doc.hubspotSyncState === "failed"
+                    ? "Retry HubSpot sync"
+                    : "Sync to HubSpot"}
+            </button>
+          ) : null}
         </div>
         {/*
           Sprint 6.3: PDF + template errors now flow through the
