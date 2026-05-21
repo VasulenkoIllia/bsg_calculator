@@ -61,6 +61,18 @@ export type CalculatorConfigSortField = (typeof calculatorConfigSortFields)[numb
  */
 export interface CalculatorConfigWithCompanyName extends CalculatorConfig {
   companyName: string;
+  // Sprint 9.N — last action surfaced from `calculator_config_events`
+  // for the "Last action" column on the FE listing. NULL when no
+  // events exist yet (shouldn't happen in normal flow since
+  // createCalculatorConfig emits a 'created' event in the same TX,
+  // but the LEFT JOIN keeps the schema honest).
+  lastEvent: {
+    eventType: string;
+    createdAt: Date;
+    actorUserId: string | null;
+    actorDisplayName: string | null;
+    actorEmail: string | null;
+  } | null;
 }
 
 export async function findById(id: string): Promise<CalculatorConfig | undefined> {
@@ -323,18 +335,55 @@ export async function listCalculatorConfigs(
   // Sprint 6.7 audit fix (S4): JOIN companies so each row carries
   // `companyName`. Cheap (FK indexed) and saves the frontend from
   // N+1 lookups when rendering the cross-company list.
+  // Sprint 9.N — also LATERAL JOIN the latest `calculator_config_events`
+  // row per calc so the "Last action" column on the FE listing
+  // works without an N+1 fetch. LIMIT 1 + ORDER BY DESC keeps the
+  // planner cheap (events table is indexed on `(calc_id, created_at DESC)`).
   const rows = await db
     .select({
       config: calculatorConfigs,
-      companyName: companies.name
+      companyName: companies.name,
+      lastEventType: sql<string | null>`le.event_type`,
+      lastEventCreatedAt: sql<Date | null>`le.created_at`,
+      lastEventActorUserId: sql<string | null>`le.actor_user_id`,
+      lastEventActorDisplayName: sql<string | null>`le.actor_display_name`,
+      lastEventActorEmail: sql<string | null>`le.actor_email`
     })
     .from(calculatorConfigs)
     .innerJoin(companies, eq(calculatorConfigs.companyId, companies.id))
+    .leftJoin(
+      sql`LATERAL (
+        SELECT
+          e.event_type,
+          e.created_at,
+          e.actor_user_id,
+          u.display_name AS actor_display_name,
+          u.email AS actor_email
+        FROM calculator_config_events e
+        LEFT JOIN users u ON u.id = e.actor_user_id
+        WHERE e.calculator_config_id = ${calculatorConfigs.id}
+        ORDER BY e.created_at DESC, e.id DESC
+        LIMIT 1
+      ) le`,
+      sql`TRUE`
+    )
     .where(definedFilters.length > 0 ? and(...definedFilters) : undefined)
     .orderBy(dirCol(sortExpr), dirCol(calculatorConfigs.id))
     .limit(args.limit);
 
-  return rows.map(r => ({ ...r.config, companyName: r.companyName }));
+  return rows.map(r => ({
+    ...r.config,
+    companyName: r.companyName,
+    lastEvent: r.lastEventType
+      ? {
+          eventType: r.lastEventType,
+          createdAt: r.lastEventCreatedAt as Date,
+          actorUserId: r.lastEventActorUserId,
+          actorDisplayName: r.lastEventActorDisplayName,
+          actorEmail: r.lastEventActorEmail
+        }
+      : null
+  }));
 }
 
 /**

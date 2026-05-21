@@ -148,6 +148,22 @@ export const documentPublicSchema = z.object({
     ])
     .nullable(),
   deletionNote: z.string().nullable(),
+  /**
+   * Sprint 9.N — last action surfaced from `document_events` via
+   * LATERAL subquery on the listing endpoint. Null on single-doc
+   * fetch (different code path doesn't JOIN events). Powers the
+   * "Last action" column on the FE listing.
+   */
+  lastEvent: z
+    .object({
+      eventType: z.string(),
+      createdAt: z.string(),
+      actorUserId: z.string().uuid().nullable(),
+      actorDisplayName: z.string().nullable(),
+      actorEmail: z.string().nullable()
+    })
+    .nullable()
+    .optional(),
   createdAt: z.string(),
   updatedAt: z.string()
 });

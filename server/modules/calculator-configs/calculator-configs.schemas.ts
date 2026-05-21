@@ -175,6 +175,18 @@ export const calculatorConfigPublicSchema = z.object({
   // CalculatorPage uses these to render the Sync-status badge + the
   // "Sync to HubSpot" CTA.
   hubspotNoteId: z.string().nullable(),
-  hubspotSyncState: z.enum(["not_synced", "synced", "failed"])
+  hubspotSyncState: z.enum(["not_synced", "synced", "failed"]),
+  // Sprint 9.N — last action from the events log. Null on
+  // single-row endpoints; populated on the listing's LATERAL JOIN.
+  lastEvent: z
+    .object({
+      eventType: z.string(),
+      createdAt: z.string(),
+      actorUserId: z.string().uuid().nullable(),
+      actorDisplayName: z.string().nullable(),
+      actorEmail: z.string().nullable()
+    })
+    .nullable()
+    .optional()
 });
 export type CalculatorConfigPublic = z.infer<typeof calculatorConfigPublicSchema>;

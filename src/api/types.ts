@@ -151,6 +151,28 @@ export interface PublicCalculatorConfig {
    */
   hubspotNoteId: string | null;
   hubspotSyncState: "not_synced" | "synced" | "failed";
+  /**
+   * Sprint 9.N — last action surfaced from the events log by the
+   * listing endpoint's LATERAL JOIN. Drives the "Last action"
+   * column on /calculators. Null on single-row endpoints + when
+   * no events have been recorded yet.
+   */
+  lastEvent?: PublicLastEvent | null;
+}
+
+/**
+ * Sprint 9.N — shape of the "last action" surrogate carried by
+ * the listing endpoints (documents + calculator-configs). The
+ * actor fields are nullable: actor_user_id is null for system
+ * events (background auto-sync) or after the user was deleted
+ * (ON DELETE SET NULL on the FK).
+ */
+export interface PublicLastEvent {
+  eventType: string;
+  createdAt: string; // ISO timestamp
+  actorUserId: string | null;
+  actorDisplayName: string | null;
+  actorEmail: string | null;
 }
 
 /**
@@ -212,6 +234,13 @@ export interface PublicDocument {
   deletedByUserId: string | null;
   deletionReason: DocumentDeletionReason | null;
   deletionNote: string | null;
+  /**
+   * Sprint 9.N — last action surfaced from the events log by the
+   * listing endpoint's LATERAL JOIN. Drives the "Last action"
+   * column on /documents. Null on single-row endpoints + when no
+   * events have been recorded yet.
+   */
+  lastEvent?: PublicLastEvent | null;
   createdAt: string;
   updatedAt: string;
 }

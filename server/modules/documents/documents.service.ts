@@ -54,8 +54,27 @@ import { allocateNextNumber } from "./numbering.service";
  * `Document` (single-fetch endpoints) omits companyName; the
  * `DocumentWithCompanyName` shape (list endpoint) surfaces it.
  */
-function toPublic(row: Document | DocumentWithCompanyName): DocumentPublic {
+/**
+ * Sprint 9.N — `toPublic` now accepts options:
+ *   - `canSeeDeletionNote`: when false (default), strip
+ *     `deletionNote` from the DTO. Regular users see the reason
+ *     ("Duplicate", "Client request") but NOT the free-text note
+ *     which may contain sensitive operator commentary.
+ *
+ * The `lastEvent` field is added for the listing DTO; single-doc
+ * fetch paths get null since they don't JOIN events.
+ */
+interface ToPublicOptions {
+  canSeeDeletionNote?: boolean;
+}
+
+function toPublic(
+  row: Document | DocumentWithCompanyName,
+  options: ToPublicOptions = {}
+): DocumentPublic {
   const companyName = "companyName" in row ? row.companyName : undefined;
+  const lastEvent = "lastEvent" in row ? row.lastEvent : null;
+  const canSeeDeletionNote = options.canSeeDeletionNote ?? false;
   // Sprint 9.M S4 — Drizzle `.$type<>()` annotations on `scope`,
   // `hubspotSyncState`, `deletionReason` now narrow the column types
   // so the previous `as DocumentPublic["..."]` casts at this site
@@ -77,12 +96,35 @@ function toPublic(row: Document | DocumentWithCompanyName): DocumentPublic {
       hubspotNoteId: row.hubspotNoteId,
       createdByUserId: row.createdByUserId,
       // Phase 8 Stage 5 — surface soft-delete metadata on the public
-      // DTO so the FE can render the "Deleted" badge + reason + note
+      // DTO so the FE can render the "Deleted" badge + reason
       // on the row without a follow-up admin lookup.
+      // Sprint 9.N — `deletionNote` is gated on caller role
+      // (admin+ sees the note text; regular users see only the
+      // reason). Note carries free-text operator commentary which
+      // may include sensitive details.
       deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
       deletedByUserId: row.deletedByUserId,
       deletionReason: row.deletionReason,
-      deletionNote: row.deletionNote,
+      deletionNote: canSeeDeletionNote ? row.deletionNote : null,
+      // Sprint 9.N — last action surfaced from the events log via
+      // a LATERAL subquery. NULL on single-doc fetches that don't
+      // JOIN events (they don't need it — the History panel
+      // fetches the full event list separately).
+      //
+      // `createdAt` arrives as either a Date (node-pg's default for
+      // timestamptz) OR a string (Drizzle's raw `sql<Date | null>`
+      // expression occasionally drops the parser). Defensive wrap
+      // with `new Date(...)` accepts both — the resulting ISO
+      // string is what the DTO expects either way.
+      lastEvent: lastEvent
+        ? {
+            eventType: lastEvent.eventType,
+            createdAt: new Date(lastEvent.createdAt).toISOString(),
+            actorUserId: lastEvent.actorUserId,
+            actorDisplayName: lastEvent.actorDisplayName,
+            actorEmail: lastEvent.actorEmail
+          }
+        : null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString()
     },
@@ -242,20 +284,19 @@ export async function createDocument(
 }
 
 /**
- * Sprint 9.M B5 — single-doc fetch with soft-delete visibility gate.
+ * Sprint 9.N — soft-deleted documents are now visible to every
+ * authenticated user via the single-doc fetch. The Sprint 9.M B5
+ * gate (404 for non-super_admin) was reverted per operator brief:
+ * "документ в нашій системі має бути з відповідною поміткою" —
+ * the goal is "visible with a status badge" rather than "hidden
+ * from regular users". The detail page renders a red banner with
+ * the reason + (admin+ only) the deletion note.
  *
- * The listing endpoint hides soft-deleted rows for non-super_admin
- * callers, but until this fix `GET /documents/:number` returned the
- * full DTO — including `deletionReason` + `deletionNote` (free-text
- * operator commentary) — to any authenticated user. Now we 404
- * deleted rows for callers below super_admin so the data exposure
- * matches the listing's hide policy.
- *
- * super_admin keeps the ability to fetch deleted rows (for audit /
- * Restore flow).
- *
- * Backwards-compat: `actorRole` defaults to "user" (least privileged
- * tier) so a caller that forgets to pass it gets the safer behaviour.
+ * The `actorRole` parameter is kept on the signature for the
+ * deletionNote-visibility branch in `toPublic` (admin+ sees the
+ * note text; regular users see only the reason). The note's
+ * content can still carry sensitive operator commentary so the
+ * narrowing happens at the DTO level, not the row level.
  */
 export async function getDocumentByNumber(
   number: string,
@@ -263,10 +304,7 @@ export async function getDocumentByNumber(
 ): Promise<DocumentPublic> {
   const row = await findByNumber(number);
   if (!row) throw new NotFoundError("Document");
-  if (row.deletedAt && actorRole !== "super_admin") {
-    throw new NotFoundError("Document");
-  }
-  return toPublic(row);
+  return toPublic(row, { canSeeDeletionNote: actorRole !== "user" });
 }
 
 /** Internal helper — same as getByNumber but returns the raw row for the PDF service. */
@@ -563,7 +601,11 @@ async function deleteDocumentLocked(
     "[documents:delete] document soft-deleted"
   );
 
-  return toPublic(updated);
+  // Sprint 9.N — admin who just submitted the delete sees the note
+  // they themselves typed in the response. The visibility narrowing
+  // (`canSeeDeletionNote: false` for regular users) only applies to
+  // GET fetches by OTHER users.
+  return toPublic(updated, { canSeeDeletionNote: true });
 }
 
 /**

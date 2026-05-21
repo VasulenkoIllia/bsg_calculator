@@ -4816,3 +4816,88 @@ Use this file to record meaningful technical decisions for the project.
   - 299 server tests pass (was 296; +3 from new guard tests in
     documents-delete: soft-deleted Sync/use-as-template/single-doc).
   - TypeScript clean (frontend + server).
+
+### Decision: Sprint 9.N — Documents listing redesign (status + last action + filters) (2026-05-21)
+
+- Context:
+  - Operator brief after seeing the live `/documents` page:
+    "документ ми маємо видаляти не з нашої системи а фактично з
+    хабспота — в нас в системі має бути цей документ але з
+    відповідною поміткою". The Sprint 9.M B5/B6 hide policy was
+    over-correction — operators want to SEE retracted documents
+    in-place with a clear marker, not have them hidden.
+  - Two follow-up requests: a Last-action column (who did what
+    with the doc most recently) and a Scope filter
+    (Offer / Agreement / Offer + Agreement).
+- Decision (policy reversal):
+  - Soft-deleted documents are NOW visible in the main listing
+    for every authenticated user. Default `deletedScope` flipped
+    from `'alive'` to `'include_deleted'`. A Status filter on the
+    FE narrows (All / Active only / Deleted only).
+  - Single-doc fetch (`GET /documents/:number`) + events endpoint
+    are accessible too (revert of Sprint 9.M B5/B6 access gates).
+  - `deletionNote` content is STILL narrowed at the DTO level:
+    regular `user` sees null; admin+ sees the actual text. Keeps
+    potentially sensitive operator commentary off the regular
+    operator's detail view but lets them see reason + timestamp +
+    deleter identity.
+  - The DELETE endpoint response always returns the note (the
+    submitting admin is the only viewer at that moment).
+  - Sprint 9.M B6 (don't store `note` in event meta) stays — that's
+    an audit-log surface area concern, separate from per-user gating.
+- Decision (new columns/filters):
+  - **Status column**: badge "Active" / "Deleted: <reason>".
+    Deleted rows render with `bg-red-50/40` tint so they stand
+    out at a glance.
+  - **Last action column**: most-recent event from the audit log
+    via LATERAL subquery on the listing endpoint. Format:
+    `<event badge>` + `<actor> · <X ago>`. Colour-coded matching
+    EventHistoryPanel (green = success, red = failure, slate =
+    neutral).
+  - **Scope filter** dropdown: All / Offer / Agreement / Offer +
+    Agreement.
+  - **Status filter** dropdown: All / Active only / Deleted only.
+- Decision (backend):
+  - `listDocuments` repo gains a LATERAL subquery joining
+    `document_events` ordered DESC LIMIT 1 → `lastEvent` summary
+    per row. Index-only scan via
+    `document_events_document_id_created_at_idx` keeps the cost
+    flat (~µs per row).
+  - Same LATERAL JOIN added to `listCalculatorConfigs` for the
+    calc-configs listing's Last action column.
+  - `DocumentPublic` + `CalculatorConfigPublic` DTOs gain optional
+    `lastEvent: PublicLastEvent | null` field.
+  - `toPublic(row, { canSeeDeletionNote })` options pattern so the
+    controller can narrow note visibility per actor role.
+  - `listDocumentsQuerySchema.includeDeleted` accepts a third
+    value `"false"` (alive-only filter from the Status dropdown).
+- Decision (UI):
+  - `<LastActionCell event={...}>` shared component used in both
+    documents and calc-configs listings.
+  - DocumentsListPage gains four UI surfaces (Status column, Last
+    action column, Scope filter, Status filter).
+  - CalculatorsListPage gains the Last action column (calc-configs
+    don't have soft-delete or scope so no other filters).
+- Decision (cleanup):
+  - Removed `AdminDeletedDocumentsPage` + its test + AppHeader
+    "Deleted docs" tab + App.tsx route. The Status filter on the
+    main listing covers the same use case for any role.
+- Trade-off:
+  - LATERAL subquery adds 1 index lookup per listing row. For a
+    page of 25 docs that's 25 µs-scale reads via the partial
+    index — cheaper than fetching events separately + merging on
+    the FE.
+  - Default listing is now longer (alive + deleted together).
+    Status filter "Active only" is the escape hatch.
+- Consequence:
+  - Stage 6 can add `deletion_reason_edited` events without further
+    FE work — Last action cell renders any new event type via
+    the EVENT_LABEL map.
+  - One screen now covers the whole document lifecycle; no need
+    for a separate super_admin admin view.
+- Verification:
+  - 313 frontend tests pass (was 319; -6 from removed
+    AdminDeletedDocumentsPage suite; +0 net for shape changes).
+  - 302 server tests pass (was 299; +6 Sprint 9.N visibility +
+    lastEvent rendering tests; -3 dead-letter B5/B6 gate tests).
+  - TypeScript clean (frontend + server).

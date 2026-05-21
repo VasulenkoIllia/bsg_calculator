@@ -26,6 +26,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api/client.js";
+import { LastActionCell } from "../components/LastActionCell.js";
 import { LoadMoreButton } from "../components/LoadMoreButton.js";
 import { SortableTh } from "../components/SortableTh.js";
 import { useCalculatorConfigs } from "../hooks/useCalculatorConfig.js";
@@ -127,6 +128,12 @@ export function CalculatorsListPage() {
               >
                 Updated
               </SortableTh>
+              {/* Sprint 9.N — Last action column populated from
+                  calculator_config_events via LATERAL subquery on
+                  the listing endpoint. */}
+              <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Last action
+              </th>
               {/* Right-most action column has no header label and is
                   not sortable — the Open → link is row-level. */}
               <th className="px-4 py-3" aria-label="Actions" />
@@ -135,7 +142,7 @@ export function CalculatorsListPage() {
           <tbody className="divide-y divide-slate-100">
             {configs.isLoading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-500">
+                <td colSpan={6} className="px-4 py-6 text-center text-sm text-slate-500">
                   Loading saved calculators…
                 </td>
               </tr>
@@ -143,7 +150,7 @@ export function CalculatorsListPage() {
 
             {configs.isError ? (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-sm text-red-600">
+                <td colSpan={6} className="px-4 py-6 text-center text-sm text-red-600">
                   Failed to load calculators
                   {configs.error instanceof ApiError ? `: ${configs.error.message}` : "."}
                 </td>
@@ -152,7 +159,7 @@ export function CalculatorsListPage() {
 
             {!configs.isLoading && !configs.isError && configs.items.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-500">
+                <td colSpan={6} className="px-4 py-6 text-center text-sm text-slate-500">
                   {q.trim()
                     ? `No saved calculators match "${q.trim()}".`
                     : "No saved calculators yet. Open the calculator and click Save calculator to persist one."}
@@ -193,6 +200,9 @@ export function CalculatorsListPage() {
                   )}
                 </td>
                 <td className="px-4 py-3 text-slate-500">{formatDateTime(cfg.updatedAt)}</td>
+                <td className="px-4 py-3">
+                  <LastActionCell event={cfg.lastEvent} />
+                </td>
                 <td className="px-4 py-3 text-right">
                   <Link
                     to={`/calc/${cfg.id}`}

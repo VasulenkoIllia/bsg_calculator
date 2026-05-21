@@ -34,9 +34,24 @@ import {
  * Sprint 6.8: list-endpoint row shape that carries the parent company
  * name alongside the document row. Surfaced on the listing DTO so the
  * /documents page can render a Company column without N+1 lookups.
+ *
+ * Sprint 9.N — also carries `lastEvent` for the new "Last action"
+ * column on the FE listing. NULL on a freshly-inserted row that has
+ * NO `document_events` yet (shouldn't happen in normal flow since
+ * createDocument inserts a 'created' event in the same TX, but the
+ * LEFT JOIN keeps the schema honest).
  */
+export interface LastEventSummary {
+  eventType: string;
+  createdAt: Date;
+  actorUserId: string | null;
+  actorDisplayName: string | null;
+  actorEmail: string | null;
+}
+
 export interface DocumentWithCompanyName extends Document {
   companyName: string;
+  lastEvent: LastEventSummary | null;
 }
 
 /**
@@ -268,11 +283,19 @@ export async function listDocuments(
     args.cursor
   );
 
-  // Phase 8 Stage 5 — soft-delete filter. Default "alive" hides
-  // deleted rows from every listing. The route layer gates
-  // "deleted_only" / "include_deleted" to super_admin so a regular
-  // operator can't peek at soft-deleted artefacts.
-  const scope = args.deletedScope ?? "alive";
+  // Sprint 9.N — policy reversal: soft-deleted documents are NOW
+  // visible to every authenticated user in the main listing (the
+  // user wants a "deleted" badge + reason, not invisibility). The
+  // legacy `deletedScope` filter still honours "alive" / "deleted_only"
+  // for the FE Status filter dropdown ("All / Active / Deleted"),
+  // but the default changed from "alive" to "include_deleted" so the
+  // out-of-box behaviour matches the new product policy.
+  //
+  // The previous super_admin gate at the controller layer is dropped
+  // — `deletionReason` is operator-readable context (not sensitive
+  // commentary). `deletionNote` content is still visible only to
+  // admin+ on the detail page (separate concern, handled there).
+  const scope = args.deletedScope ?? "include_deleted";
   const deletedFilter =
     scope === "alive"
       ? sql`${documents.deletedAt} IS NULL`
@@ -294,18 +317,62 @@ export async function listDocuments(
 
   // Sprint 6.8: JOIN companies — needed both for the companyName
   // column on the DTO and for `ORDER BY companies.name` sort.
+  // Sprint 9.N — also fetch the most-recent `document_events` row
+  // per document via a correlated subquery (LEFT JOIN LATERAL).
+  // This powers the "Last action" column on the listing without
+  // an N+1 follow-up fetch per row. LIMIT 1 + ORDER BY DESC keeps
+  // the planner cheap; the events table is partial-indexed on
+  // (document_id, created_at DESC) — index-only scan path.
+  //
+  // Reads from PostgreSQL's LATERAL subquery — Drizzle exposes this
+  // via `sql.raw` since the typed `.leftJoinLateral` helper isn't in
+  // our drizzle-orm version. The raw fragment is parameter-free
+  // (only references column refs, no user input) → no SQL injection.
   const rows = await db
     .select({
       doc: documents,
-      companyName: companies.name
+      companyName: companies.name,
+      lastEventType: sql<string | null>`le.event_type`,
+      lastEventCreatedAt: sql<Date | null>`le.created_at`,
+      lastEventActorUserId: sql<string | null>`le.actor_user_id`,
+      lastEventActorDisplayName: sql<string | null>`le.actor_display_name`,
+      lastEventActorEmail: sql<string | null>`le.actor_email`
     })
     .from(documents)
     .innerJoin(companies, eq(documents.companyId, companies.id))
+    .leftJoin(
+      sql`LATERAL (
+        SELECT
+          e.event_type,
+          e.created_at,
+          e.actor_user_id,
+          u.display_name AS actor_display_name,
+          u.email AS actor_email
+        FROM document_events e
+        LEFT JOIN users u ON u.id = e.actor_user_id
+        WHERE e.document_id = ${documents.id}
+        ORDER BY e.created_at DESC, e.id DESC
+        LIMIT 1
+      ) le`,
+      sql`TRUE`
+    )
     .where(filters.length > 0 ? and(...filters) : undefined)
     .orderBy(...orderBy)
     .limit(args.limit);
 
-  return rows.map(r => ({ ...r.doc, companyName: r.companyName }));
+  return rows.map(r => ({
+    ...r.doc,
+    companyName: r.companyName,
+    lastEvent: r.lastEventType
+      ? {
+          eventType: r.lastEventType,
+          createdAt: r.lastEventCreatedAt as Date,
+          actorUserId: r.lastEventActorUserId,
+          actorDisplayName: r.lastEventActorDisplayName,
+          actorEmail: r.lastEventActorEmail
+        }
+      : null
+  }));
 }
 
 /**

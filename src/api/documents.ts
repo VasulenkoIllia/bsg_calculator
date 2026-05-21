@@ -59,15 +59,19 @@ export interface ListDocumentsParams {
   cursor?: string;
   limit?: number;
   /**
-   * Phase 8 Stage 5 — soft-delete visibility:
-   *   - "false" (default): hide deleted rows (regular operators).
-   *   - "true": include alive + deleted rows (super_admin debugging).
-   *   - "only": ONLY deleted rows (super_admin /admin/documents/deleted).
-   * The server silently coerces 'true'/'only' to 'false' for
-   * non-super_admin callers — so passing it from a regular admin
-   * just returns the alive set.
+   * Sprint 9.N — soft-delete visibility filter for the Status
+   * dropdown:
+   *   - undefined (default): backend default — alive + deleted rows
+   *     are returned together (the FE renders a "Deleted" badge per
+   *     row to disambiguate).
+   *   - "false": alive only.
+   *   - "true": alive + deleted (same as undefined; kept for
+   *     explicit-intent callers).
+   *   - "only": deleted only.
+   * Previously this was a permission-gated flag (Sprint 9.M B5);
+   * Sprint 9.N moves to a product filter accessible to all users.
    */
-  includeDeleted?: "true" | "only";
+  includeDeleted?: "true" | "false" | "only";
 }
 
 export async function createDocument(

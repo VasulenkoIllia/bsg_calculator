@@ -56,6 +56,10 @@ function toPublic(
   row: CalculatorConfig | CalculatorConfigWithCompanyName
 ): CalculatorConfigPublic {
   const companyName = "companyName" in row ? row.companyName : undefined;
+  // Sprint 9.N — `lastEvent` from the listing path's LATERAL JOIN
+  // is forwarded to the public DTO so the FE "Last action" column
+  // can render `actor · event · time-ago` without an N+1.
+  const lastEvent = "lastEvent" in row ? row.lastEvent : null;
   return parseDtoOrInternalError(
     calculatorConfigPublicSchema,
     {
@@ -70,7 +74,19 @@ function toPublic(
       updatedAt: row.updatedAt.toISOString(),
       // Phase 9.I — HubSpot sync state surfaced on the public DTO.
       hubspotNoteId: row.hubspotNoteId,
-      hubspotSyncState: row.hubspotSyncState
+      hubspotSyncState: row.hubspotSyncState,
+      lastEvent: lastEvent
+        ? {
+            eventType: lastEvent.eventType,
+            // Sprint 9.N — same defensive Date() wrap as documents
+            // toPublic (LATERAL `sql<Date | null>` can drop the
+            // node-pg parser).
+            createdAt: new Date(lastEvent.createdAt).toISOString(),
+            actorUserId: lastEvent.actorUserId,
+            actorDisplayName: lastEvent.actorDisplayName,
+            actorEmail: lastEvent.actorEmail
+          }
+        : null
     },
     "calculator-configs.toPublic"
   );

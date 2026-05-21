@@ -26,7 +26,6 @@ import { AppShell } from "./components/AppShell.js";
 import { PrivateRoute } from "./components/PrivateRoute.js";
 import { RequireRole } from "./components/RequireRole.js";
 import { CalculatorProvider } from "./contexts/CalculatorContext.js";
-import { AdminDeletedDocumentsPage } from "./pages/AdminDeletedDocumentsPage.js";
 import { AdminUsersPage } from "./pages/AdminUsersPage.js";
 import { CalculatorPage } from "./pages/CalculatorPage.js";
 import { CalculatorsListPage } from "./pages/CalculatorsListPage.js";
@@ -72,10 +71,11 @@ export default function App() {
                 message. */}
             <Route element={<RequireRole min="super_admin" />}>
               <Route path="/admin/users" element={<AdminUsersPage />} />
-              <Route
-                path="/admin/documents/deleted"
-                element={<AdminDeletedDocumentsPage />}
-              />
+              {/* Sprint 9.N — /admin/documents/deleted removed. The
+                  main Documents listing now shows soft-deleted docs
+                  with a Status filter, so the dedicated super_admin
+                  page was redundant. A super_admin who wants the
+                  "deleted only" view just picks the Status filter. */}
             </Route>
             <Route path="*" element={<NotFoundPage />} />
           </Route>

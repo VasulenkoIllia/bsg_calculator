@@ -40,6 +40,15 @@ export interface UseDocumentsOptions {
   sort?: documentsApi.DocumentSortSpec;
   limit?: number;
   /**
+   * Sprint 9.N — soft-delete visibility filter for the Status
+   * dropdown on /documents. Mirrors the server query enum:
+   *   - undefined (default): backend includes deleted rows
+   *   - "false": alive only
+   *   - "true": alive + deleted
+   *   - "only": deleted only
+   */
+  includeDeleted?: "true" | "false" | "only";
+  /**
    * Sprint 6.4: gate the underlying query. Defaults to true (matches
    * pre-6.4 behaviour). Set to false from callers that mount the hook
    * conditionally — e.g. /calc/:id only wants to fetch
@@ -96,6 +105,9 @@ export function useDocuments(options: UseDocumentsOptions = {}): UseDocumentsRes
         // surfaces as a new query rather than reusing the cursor
         // chain — the backend would 400 on a sort/cursor mismatch.
         sort,
+        // Sprint 9.N — include in cache key so flipping Status filter
+        // triggers a fresh fetch.
+        includeDeleted: options.includeDeleted,
         limit: options.limit
       }
     ],
@@ -110,7 +122,11 @@ export function useDocuments(options: UseDocumentsOptions = {}): UseDocumentsRes
         q: normalisedQ,
         sort,
         cursor: pageParam,
-        limit: options.limit
+        limit: options.limit,
+        // Sprint 9.N — Status filter passthrough. The api/client
+        // layer only sends defined params, so undefined drops out
+        // (backend default = include_deleted).
+        includeDeleted: options.includeDeleted
       }),
     getNextPageParam: lastPage => lastPage.nextCursor ?? undefined,
     // Sprint 7.0: keep previous data visible while the sort-change

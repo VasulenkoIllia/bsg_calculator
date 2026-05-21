@@ -50,9 +50,10 @@ const TABS: Array<{ to: string; label: string; end?: boolean; minRole?: UserRole
   { to: "/calculators", label: "Saved calculators" },
   { to: "/wizard", label: "Contract Wizard & PDF" },
   // Phase 8 Stage 3 — super_admin user management.
-  { to: "/admin/users", label: "Users", minRole: "super_admin" },
-  // Phase 8 Stage 5 — super_admin deleted-documents review.
-  { to: "/admin/documents/deleted", label: "Deleted docs", minRole: "super_admin" }
+  { to: "/admin/users", label: "Users", minRole: "super_admin" }
+  // Sprint 9.N — Deleted docs tab removed. The Documents listing
+  // now shows soft-deleted rows with a Status filter, replacing the
+  // dedicated super_admin-only page.
 ];
 
 export function AppHeader() {

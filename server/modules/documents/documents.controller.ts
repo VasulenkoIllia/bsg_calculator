@@ -13,7 +13,6 @@ import {
 } from "../../shared/sorted-pagination";
 import { TokenInvalidError } from "../../shared/errors";
 import { documentSortFields } from "./documents.repository";
-import { hasRoleAtLeast } from "../../shared/roles";
 import {
   createDocumentSchema,
   deleteDocumentSchema,
@@ -42,21 +41,23 @@ export async function listController(req: Request, res: Response): Promise<void>
   });
   const cursor = decodeSortedCursor(query.cursor, encodeSortKey(sort));
 
-  // Phase 8 Stage 5 — gate the soft-delete visibility flag on
-  // super_admin. A regular operator who hand-crafts `?includeDeleted=`
-  // gets silently coerced to 'alive' rather than 403 (the flag is
-  // a debugging tool, not a permission scope).
-  const wantsDeleted = query.includeDeleted ?? "false";
-  const isSuperAdmin =
-    req.user !== undefined && hasRoleAtLeast(req.user.role, "super_admin");
+  // Sprint 9.N — `includeDeleted` is now a regular product filter,
+  // not a permission scope. The Status dropdown on the FE listing
+  // sends one of: undefined (= all rows), "false" (= alive only),
+  // "true" (= alive + deleted, same as undefined), "only" (=
+  // deleted only). Any authenticated user can pass any value.
+  //
+  // Reasoning: Sprint 9.M's super_admin gate was an over-correction;
+  // the operator brief calls for "video всі документи з відміткою",
+  // and `deletionNote` (the sensitive bit) is still narrowed at the
+  // single-doc fetch level via `toPublic`'s canSeeDeletionNote flag.
+  const wantsDeleted = query.includeDeleted ?? "true";
   const deletedScope =
-    !isSuperAdmin
+    wantsDeleted === "false"
       ? ("alive" as const)
-      : wantsDeleted === "true"
-        ? ("include_deleted" as const)
-        : wantsDeleted === "only"
-          ? ("deleted_only" as const)
-          : ("alive" as const);
+      : wantsDeleted === "only"
+        ? ("deleted_only" as const)
+        : ("include_deleted" as const);
 
   const page = await listDocumentsPage({
     companyId: query.companyId,
@@ -77,10 +78,10 @@ export async function getByNumberController(
   res: Response
 ): Promise<void> {
   const number = req.params.number;
-  // Sprint 9.M B5 — gate soft-deleted documents to super_admin.
-  // Non-super_admin callers get 404 when the row is soft-deleted,
-  // matching the listing endpoint's hide policy + preventing
-  // deletion-metadata leakage to regular operators.
+  // Sprint 9.N — soft-deleted documents are visible to all authenticated
+  // users (revert of Sprint 9.M B5). The `actorRole` arg now only
+  // narrows `deletionNote` visibility inside `toPublic` — regular
+  // users see the reason but not the free-text note content.
   const doc = await getDocumentByNumber(number, req.user?.role ?? "user");
   res.status(200).json(doc);
 }

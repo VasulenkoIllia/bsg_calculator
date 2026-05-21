@@ -179,12 +179,12 @@ describe("DELETE /api/v1/documents/:number — happy paths", () => {
   });
 
   /**
-   * Sprint 9.M B5/B6 — visibility gate on soft-deleted docs.
-   * Verifies that an `admin` who deleted the document can NO LONGER
-   * fetch its events: the gate hides deletion-metadata leak even
-   * to the deleter. Only super_admin retains access.
+   * Sprint 9.N policy reversal — soft-deleted documents are now
+   * visible to all authenticated users. The deleter (admin) still
+   * sees the row + events with a "Deleted" badge + reason.
+   * `deletionNote` content is narrowed to admin+ inside `toPublic`.
    */
-  it("hides deleted-doc events from non-super_admin via 404", async () => {
+  it("Sprint 9.N — deleted-doc events readable by the deleter (admin)", async () => {
     await createTestUser({
       email: "admin@bsg.test",
       password: "admin12345",
@@ -203,27 +203,32 @@ describe("DELETE /api/v1/documents/:number — happy paths", () => {
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
 
-    // Delete (admin allowed).
     await request(app)
       .delete(`/api/v1/documents/${number}`)
       .set("Authorization", `Bearer ${token}`)
       .send({ reason: "duplicate" })
       .expect(200);
 
-    // AFTER delete, admin (non-super_admin) gets 404 on events.
+    // Sprint 9.N — admin STILL sees events after delete (policy
+    // reversal of Sprint 9.M). The 'deleted' event row is the
+    // newest entry and carries reason/hasNote breadcrumb in meta.
     const res = await request(app)
       .get(`/api/v1/documents/${number}/events`)
       .set("Authorization", `Bearer ${token}`);
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(200);
+    expect(res.body.items[0]).toMatchObject({
+      eventType: "deleted",
+      meta: expect.objectContaining({ reason: "duplicate" })
+    });
   });
 
   /**
-   * Sprint 9.M B5 — `GET /documents/:number` returns 404 for
-   * non-super_admin on a soft-deleted document. Without this gate,
-   * the regular operator would see `deletionReason` + `deletionNote`
-   * fields in the public DTO.
+   * Sprint 9.N policy reversal — single-doc fetch returns the row
+   * for any authenticated user, including soft-deleted ones. Note
+   * content is gated on actorRole inside `toPublic`: regular user
+   * sees the row WITHOUT the deletionNote field; admin+ sees it.
    */
-  it("hides deleted-doc single-fetch from non-super_admin via 404", async () => {
+  it("Sprint 9.N — deleted-doc single-fetch returns 200 with reason for admin", async () => {
     await createTestUser({
       email: "admin@bsg.test",
       password: "admin12345",
@@ -239,13 +244,50 @@ describe("DELETE /api/v1/documents/:number — happy paths", () => {
     await request(app)
       .delete(`/api/v1/documents/${number}`)
       .set("Authorization", `Bearer ${token}`)
-      .send({ reason: "duplicate" })
+      .send({ reason: "duplicate", note: "internal context" })
       .expect(200);
 
     const res = await request(app)
       .get(`/api/v1/documents/${number}`)
       .set("Authorization", `Bearer ${token}`);
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(200);
+    expect(res.body.deletedAt).not.toBeNull();
+    expect(res.body.deletionReason).toBe("duplicate");
+    // admin sees the note text (gated to admin+ at the DTO layer).
+    expect(res.body.deletionNote).toBe("internal context");
+  });
+
+  it("Sprint 9.N — regular `user` sees the row but NOT the deletionNote text", async () => {
+    await createTestUser({
+      email: "admin@bsg.test",
+      password: "admin12345",
+      role: "admin"
+    });
+    await createTestUser({
+      email: "user@bsg.test",
+      password: "user12345"
+    });
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "del000000097" }))
+      .returning();
+    const adminToken = await loginAs("admin@bsg.test", "admin12345");
+    const userToken = await loginAs("user@bsg.test", "user12345");
+    const { number } = await createDocAs(adminToken, company.id);
+
+    await request(app)
+      .delete(`/api/v1/documents/${number}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ reason: "client_request", note: "Sensitive internal context" })
+      .expect(200);
+
+    const res = await request(app)
+      .get(`/api/v1/documents/${number}`)
+      .set("Authorization", `Bearer ${userToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.deletionReason).toBe("client_request");
+    // Regular user sees reason but NOT the free-text note.
+    expect(res.body.deletionNote).toBeNull();
   });
 });
 
@@ -428,16 +470,14 @@ describe("Soft-deleted guards across write paths", () => {
   });
 });
 
-describe("Listing: deleted rows are hidden by default", () => {
-  it("excludes soft-deleted rows from GET /documents for plain users", async () => {
+describe("Listing: Sprint 9.N visibility policy", () => {
+  it("INCLUDES soft-deleted rows by default for any authenticated user", async () => {
     await createTestUser({ email: "admin@bsg.test", password: "admin12345", role: "admin" });
     await createTestUser({ email: "user@bsg.test", password: "user12345" });
     const [company] = await db.insert(companies).values(companyFixture({ hubspotCompanyId: "del000000011" })).returning();
     const adminToken = await loginAs("admin@bsg.test", "admin12345");
     const userToken = await loginAs("user@bsg.test", "user12345");
 
-    // Create + delete one document so the listing exercise has
-    // ALIVE + DELETED rows side by side.
     const { number: aliveNumber } = await createDocAs(adminToken, company.id);
     const { number: deletedNumber } = await createDocAs(adminToken, company.id);
     await request(app)
@@ -446,45 +486,46 @@ describe("Listing: deleted rows are hidden by default", () => {
       .send({ reason: "duplicate" })
       .expect(200);
 
+    // Sprint 9.N — default behaviour shows BOTH alive and deleted
+    // (regular user uses the Status filter on the FE to narrow).
     const list = await request(app)
       .get("/api/v1/documents")
       .set("Authorization", `Bearer ${userToken}`);
     expect(list.status).toBe(200);
     const numbers = list.body.items.map((d: { number: string }) => d.number);
     expect(numbers).toContain(aliveNumber);
+    expect(numbers).toContain(deletedNumber);
+  });
+
+  it("includeDeleted=false → alive only (Status: Active filter)", async () => {
+    await createTestUser({ email: "admin@bsg.test", password: "admin12345", role: "admin" });
+    const [company] = await db.insert(companies).values(companyFixture({ hubspotCompanyId: "del000000012" })).returning();
+    const token = await loginAs("admin@bsg.test", "admin12345");
+    const { number: aliveNumber } = await createDocAs(token, company.id);
+    const { number: deletedNumber } = await createDocAs(token, company.id);
+    await request(app)
+      .delete(`/api/v1/documents/${deletedNumber}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ reason: "duplicate" })
+      .expect(200);
+
+    const list = await request(app)
+      .get("/api/v1/documents?includeDeleted=false")
+      .set("Authorization", `Bearer ${token}`);
+    expect(list.status).toBe(200);
+    const numbers = list.body.items.map((d: { number: string }) => d.number);
+    expect(numbers).toContain(aliveNumber);
     expect(numbers).not.toContain(deletedNumber);
   });
 
-  it("super_admin can request includeDeleted=only to see deleted rows", async () => {
-    await createTestUser({
-      email: "sa@bsg.test",
-      password: "sa12345678",
-      role: "super_admin"
-    });
-    const [company] = await db.insert(companies).values(companyFixture({ hubspotCompanyId: "del000000012" })).returning();
-    const token = await loginAs("sa@bsg.test", "sa12345678");
-    const { number } = await createDocAs(token, company.id);
-    await request(app)
-      .delete(`/api/v1/documents/${number}`)
-      .set("Authorization", `Bearer ${token}`)
-      .send({ reason: "duplicate" })
-      .expect(200);
-
-    const list = await request(app)
-      .get("/api/v1/documents?includeDeleted=only")
-      .set("Authorization", `Bearer ${token}`);
-    expect(list.status).toBe(200);
-    const numbers = list.body.items.map((d: { number: string }) => d.number);
-    expect(numbers).toContain(number);
-  });
-
-  it("plain admin's includeDeleted=only is silently coerced to 'alive'", async () => {
+  it("includeDeleted=only → deleted only (any role, Status: Deleted filter)", async () => {
     await createTestUser({ email: "admin@bsg.test", password: "admin12345", role: "admin" });
     const [company] = await db.insert(companies).values(companyFixture({ hubspotCompanyId: "del000000013" })).returning();
     const token = await loginAs("admin@bsg.test", "admin12345");
-    const { number } = await createDocAs(token, company.id);
+    const { number: aliveNumber } = await createDocAs(token, company.id);
+    const { number: deletedNumber } = await createDocAs(token, company.id);
     await request(app)
-      .delete(`/api/v1/documents/${number}`)
+      .delete(`/api/v1/documents/${deletedNumber}`)
       .set("Authorization", `Bearer ${token}`)
       .send({ reason: "duplicate" })
       .expect(200);
@@ -493,9 +534,28 @@ describe("Listing: deleted rows are hidden by default", () => {
       .get("/api/v1/documents?includeDeleted=only")
       .set("Authorization", `Bearer ${token}`);
     expect(list.status).toBe(200);
-    // admin doesn't get super_admin privileges — the deleted row
-    // is filtered out regardless of the query param.
     const numbers = list.body.items.map((d: { number: string }) => d.number);
-    expect(numbers).not.toContain(number);
+    expect(numbers).not.toContain(aliveNumber);
+    expect(numbers).toContain(deletedNumber);
+  });
+
+  it("listing rows carry lastEvent surrogate from the events log", async () => {
+    await createTestUser({ email: "admin@bsg.test", password: "admin12345", role: "admin" });
+    const [company] = await db.insert(companies).values(companyFixture({ hubspotCompanyId: "del000000014" })).returning();
+    const token = await loginAs("admin@bsg.test", "admin12345");
+    const { number } = await createDocAs(token, company.id);
+
+    const list = await request(app)
+      .get("/api/v1/documents")
+      .set("Authorization", `Bearer ${token}`);
+    expect(list.status).toBe(200);
+    const row = list.body.items.find((d: { number: string }) => d.number === number);
+    expect(row).toBeDefined();
+    // Sprint 9.N — every freshly-created doc has at least one event
+    // (the 'created' event written in the same TX as the insert).
+    expect(row.lastEvent).toMatchObject({
+      eventType: "created",
+      actorDisplayName: expect.any(String)
+    });
   });
 });

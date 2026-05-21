@@ -81,7 +81,12 @@ describe("DocumentsListPage — base rendering", () => {
 
     await waitFor(() => {
       expect(screen.getByText("BSG-7100001-512587")).toBeInTheDocument();
-      expect(screen.getByText("Offer")).toBeInTheDocument();
+      // Sprint 9.N — page has a Scope filter <option value="offer">
+      // labelled "Offer". The row's scope cell also renders "Offer".
+      // Two matches → use the table-cell scoping to disambiguate.
+      const row = screen.getByText("BSG-7100001-512587").closest("tr");
+      expect(row).toBeTruthy();
+      expect(row?.textContent).toContain("Offer");
     });
   });
 
