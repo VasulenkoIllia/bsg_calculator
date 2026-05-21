@@ -58,6 +58,16 @@ export interface ListDocumentsParams {
   sort?: DocumentSortSpec;
   cursor?: string;
   limit?: number;
+  /**
+   * Phase 8 Stage 5 — soft-delete visibility:
+   *   - "false" (default): hide deleted rows (regular operators).
+   *   - "true": include alive + deleted rows (super_admin debugging).
+   *   - "only": ONLY deleted rows (super_admin /admin/documents/deleted).
+   * The server silently coerces 'true'/'only' to 'false' for
+   * non-super_admin callers — so passing it from a regular admin
+   * just returns the alive set.
+   */
+  includeDeleted?: "true" | "only";
 }
 
 export async function createDocument(
@@ -110,6 +120,43 @@ export async function syncDocumentToHubspot(
 ): Promise<PublicDocument> {
   const { data } = await apiClient.post<PublicDocument>(
     `/documents/${number}/sync`
+  );
+  return data;
+}
+
+/**
+ * Phase 8 Stage 5 — DELETE /documents/:number.
+ *
+ * Admin role required on the backend. Soft-deletes the local row
+ * and (if applicable) hard-deletes the linked HubSpot Note.
+ * `note` is REQUIRED when reason='other' (server-side Zod refine
+ * enforces it).
+ *
+ * Errors:
+ *   - 409 DOCUMENT_ALREADY_DELETED on second delete of same row.
+ *   - 502 HUBSPOT_UNREACHABLE on upstream HubSpot DELETE failure;
+ *     local row stays alive with state='delete_failed'.
+ */
+export async function deleteDocument(
+  number: string,
+  body: { reason: import("./types.js").DocumentDeletionReason; note?: string | null }
+): Promise<PublicDocument> {
+  const { data } = await apiClient.delete<PublicDocument>(
+    `/documents/${encodeURIComponent(number)}`,
+    { data: body }
+  );
+  return data;
+}
+
+/**
+ * Phase 8 Stage 5 — POST /documents/:number/restore.
+ *
+ * super_admin role required. Clears the soft-delete fields; does
+ * NOT re-create the HubSpot Note (operator manually re-syncs).
+ */
+export async function restoreDocument(number: string): Promise<PublicDocument> {
+  const { data } = await apiClient.post<PublicDocument>(
+    `/documents/${encodeURIComponent(number)}/restore`
   );
   return data;
 }

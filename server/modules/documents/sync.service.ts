@@ -73,6 +73,13 @@ export async function syncDocumentToHubspot(
   if (!document) {
     throw new NotFoundError("Document");
   }
+  // Phase 8 Stage 5 — soft-deleted documents are NOT syncable. The
+  // FE Sync button is hidden on the detail page when deletedAt is
+  // set; this 404 catches a stale tab / direct-API caller that
+  // missed the soft-delete.
+  if (document.deletedAt) {
+    throw new NotFoundError("Document");
+  }
 
   if (!hubspot.isConfigured()) {
     throw new ValidationError(

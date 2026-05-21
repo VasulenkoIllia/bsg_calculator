@@ -21,7 +21,34 @@ import * as documentsApi from "../api/documents.js";
 import { downloadSavedPdf, triggerPdfDownload } from "../api/pdf.js";
 import { buildOfferPdfHtml } from "../components/document-wizard/index.js";
 import type { DocumentTemplatePayload } from "../components/document-wizard/index.js";
+import { DeleteDocumentModal } from "../components/DeleteDocumentModal.js";
 import { EventHistoryPanel } from "../components/EventHistoryPanel.js";
+import type { DocumentDeletionReason } from "../api/types.js";
+
+/**
+ * Phase 8 Stage 5 — human-readable label for the deletion reason
+ * enum. Mirrors the labels in DeleteDocumentModal's REASON_OPTIONS;
+ * extracted here because the deleted-state banner needs to render
+ * a reason that came back from the server.
+ */
+function humanReason(reason: DocumentDeletionReason): string {
+  switch (reason) {
+    case "client_request":
+      return "Client request";
+    case "created_in_error":
+      return "Created in error";
+    case "replaced_by_new_version":
+      return "Replaced by new version";
+    case "duplicate":
+      return "Duplicate";
+    case "other":
+      return "Other";
+    default: {
+      const _exhaustive: never = reason;
+      return String(_exhaustive);
+    }
+  }
+}
 import { useAuth } from "../contexts/AuthContext.js";
 import { useToast } from "../contexts/ToastContext.js";
 import { useDocument } from "../hooks/useDocuments.js";
@@ -81,7 +108,30 @@ export function DocumentViewPage() {
   });
   const [templatePending, setTemplatePending] = useState(false);
   const [syncPending, setSyncPending] = useState(false);
+  const [restorePending, setRestorePending] = useState(false);
   const [showRawPayload, setShowRawPayload] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+
+  // Phase 8 Stage 5 — super_admin restore action.
+  async function handleRestore(): Promise<void> {
+    if (!number) return;
+    setRestorePending(true);
+    try {
+      await documentsApi.restoreDocument(number);
+      toast.success(`Restored ${number}`);
+      // Invalidate the doc + events caches so the page re-renders
+      // with the soft-delete metadata cleared.
+      await queryClient.invalidateQueries({ queryKey: ["document", number] });
+      await queryClient.invalidateQueries({
+        queryKey: ["document-events", number]
+      });
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "Restore failed.";
+      toast.error(msg);
+    } finally {
+      setRestorePending(false);
+    }
+  }
 
   async function handleUseAsTemplate(): Promise<void> {
     if (!number) return;
@@ -234,6 +284,33 @@ export function DocumentViewPage() {
           </div>
         ) : null}
 
+        {/* Phase 8 Stage 5 — soft-delete banner. Shows when the
+            document has been retracted. Carries reason + note for
+            context; super_admin sees a Restore button below. */}
+        {doc.deletedAt ? (
+          <div className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+            <p className="font-semibold">
+              Deleted · {new Date(doc.deletedAt).toLocaleString()}
+            </p>
+            {doc.deletionReason ? (
+              <p className="mt-1">
+                <span className="font-semibold">Reason: </span>
+                {humanReason(doc.deletionReason)}
+              </p>
+            ) : null}
+            {doc.deletionNote ? (
+              <p className="mt-1 whitespace-pre-wrap text-red-800">
+                <span className="font-semibold">Note: </span>
+                {doc.deletionNote}
+              </p>
+            ) : null}
+            <p className="mt-2 text-xs text-red-700">
+              The BSG number stays reserved. PDF download is still allowed for
+              audit purposes.
+            </p>
+          </div>
+        ) : null}
+
         <div className="mt-5 flex flex-wrap items-center gap-3">
           <button
             type="button"
@@ -260,7 +337,9 @@ export function DocumentViewPage() {
             "create new each time" policy) or retry after a
             previous failure.
           */}
-          {hasRole("admin") ? (
+          {/* Sync button hidden when the doc is soft-deleted —
+              server would 404 anyway. */}
+          {hasRole("admin") && !doc.deletedAt ? (
             <button
               type="button"
               onClick={handleSyncToHubspot}
@@ -273,10 +352,48 @@ export function DocumentViewPage() {
                   ? "Sync again to HubSpot"
                   : doc.hubspotSyncState === "failed"
                     ? "Retry HubSpot sync"
-                    : "Sync to HubSpot"}
+                    : doc.hubspotSyncState === "delete_failed"
+                      ? "Retry delete"
+                      : "Sync to HubSpot"}
+            </button>
+          ) : null}
+          {/* Phase 8 Stage 5 — Delete (admin) / Restore (super_admin)
+              swap based on the doc's deleted_at state. */}
+          {hasRole("admin") && !doc.deletedAt ? (
+            <button
+              type="button"
+              onClick={() => setDeleteModalOpen(true)}
+              className="rounded-lg border border-red-500 bg-white px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50"
+            >
+              Delete document
+            </button>
+          ) : null}
+          {hasRole("super_admin") && doc.deletedAt ? (
+            <button
+              type="button"
+              onClick={handleRestore}
+              disabled={restorePending}
+              className="rounded-lg border border-green-500 bg-green-50 px-4 py-2 text-sm font-semibold text-green-700 transition hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {restorePending ? "Restoring…" : "Restore document"}
             </button>
           ) : null}
         </div>
+        {/* Phase 8 Stage 5 — modal lives at page root so the form
+            unmounts cleanly on close. */}
+        {number ? (
+          <DeleteDocumentModal
+            open={deleteModalOpen}
+            documentNumber={number}
+            hasHubspotNote={doc.hubspotNoteId !== null}
+            onClose={() => setDeleteModalOpen(false)}
+            onDeleted={() => {
+              setDeleteModalOpen(false);
+              toast.success(`Deleted ${number}`);
+              navigate("/documents");
+            }}
+          />
+        ) : null}
         {/*
           Sprint 6.3: PDF + template errors now flow through the
           global toast viewport (top-right) instead of inline beside

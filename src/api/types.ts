@@ -194,9 +194,24 @@ export interface PublicDocument {
   scope: "offer" | "agreement" | "offer_and_agreement";
   payload: unknown;
   addendum: string | null;
-  hubspotSyncState: "not_synced" | "synced" | "failed";
+  // Phase 8 Stage 5 widened the enum with the delete-flow transition
+  // states. The detail-page badge renders each value with its own
+  // colour ('delete_pending' = neutral spinner, 'delete_failed' = red).
+  hubspotSyncState:
+    | "not_synced"
+    | "synced"
+    | "failed"
+    | "delete_pending"
+    | "delete_failed";
   hubspotNoteId: string | null;
   createdByUserId: string;
+  // Phase 8 Stage 5 — soft-delete metadata. All four nullable; the
+  // backend's CHECK constraint enforces that deletedAt + deletedBy
+  // move together (both null = alive, both non-null = soft-deleted).
+  deletedAt: string | null;
+  deletedByUserId: string | null;
+  deletionReason: DocumentDeletionReason | null;
+  deletionNote: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -212,6 +227,18 @@ export interface PublicDocument {
 export type PublicDocumentListItem = PublicDocument & {
   companyName: string;
 };
+
+/**
+ * Phase 8 Stage 5 — soft-delete reason enum mirrors the server
+ * `documents.deletion_reason` CHECK constraint. The FE delete
+ * modal exposes these as a dropdown.
+ */
+export type DocumentDeletionReason =
+  | "client_request"
+  | "created_in_error"
+  | "replaced_by_new_version"
+  | "duplicate"
+  | "other";
 
 // ─── Event log (Phase 8 Stage 4) ──────────────────────────────────
 /**

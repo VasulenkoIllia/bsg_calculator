@@ -50,7 +50,9 @@ const TABS: Array<{ to: string; label: string; end?: boolean; minRole?: UserRole
   { to: "/calculators", label: "Saved calculators" },
   { to: "/wizard", label: "Contract Wizard & PDF" },
   // Phase 8 Stage 3 — super_admin user management.
-  { to: "/admin/users", label: "Users", minRole: "super_admin" }
+  { to: "/admin/users", label: "Users", minRole: "super_admin" },
+  // Phase 8 Stage 5 — super_admin deleted-documents review.
+  { to: "/admin/documents/deleted", label: "Deleted docs", minRole: "super_admin" }
 ];
 
 export function AppHeader() {

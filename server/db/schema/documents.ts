@@ -53,13 +53,27 @@ export const documents = pgTable(
     payload: jsonb("payload").notNull(),
     // Optional addendum text rendered into the PDF.
     addendum: text("addendum"),
-    // 'not_synced' | 'synced' | 'failed' — Phase 9 write-back fills this.
+    // 'not_synced' | 'synced' | 'failed' | 'delete_pending' | 'delete_failed'
+    // — Phase 9 wrote the first three; Phase 8 Stage 5 added the last
+    // two for the delete-flow transition states.
     hubspotSyncState: text("hubspot_sync_state").notNull().default("not_synced"),
     // Set by Phase 9 once a HubSpot Note exists for this document.
     hubspotNoteId: text("hubspot_note_id"),
     createdByUserId: uuid("created_by_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
+    // Phase 8 Stage 5 — soft-delete metadata. Null fields indicate
+    // the row is alive (the migration adds a consistency CHECK so
+    // these three either move together or all stay null).
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deletedByUserId: uuid("deleted_by_user_id").references(
+      () => users.id,
+      { onDelete: "set null" }
+    ),
+    // 'client_request' | 'created_in_error' | 'replaced_by_new_version'
+    // | 'duplicate' | 'other' — see migration for the CHECK enum.
+    deletionReason: text("deletion_reason"),
+    deletionNote: text("deletion_note"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -100,8 +114,26 @@ export const documents = pgTable(
     ),
     syncStateCheck: check(
       "documents_sync_state_check",
-      sql`${table.hubspotSyncState} IN ('not_synced', 'synced', 'failed')`
-    )
+      sql`${table.hubspotSyncState} IN ('not_synced', 'synced', 'failed', 'delete_pending', 'delete_failed')`
+    ),
+    // Phase 8 Stage 5 — soft-delete reason enum (NULL on alive rows).
+    deletionReasonCheck: check(
+      "documents_deletion_reason_check",
+      sql`${table.deletionReason} IS NULL OR ${table.deletionReason} IN ('client_request', 'created_in_error', 'replaced_by_new_version', 'duplicate', 'other')`
+    ),
+    // Phase 8 Stage 5 — soft-delete consistency: deleted_at and
+    // deleted_by must both be NULL (alive) or both NON-NULL (deleted).
+    softDeleteConsistencyCheck: check(
+      "documents_soft_delete_consistency_check",
+      sql`(${table.deletedAt} IS NULL AND ${table.deletedByUserId} IS NULL) OR (${table.deletedAt} IS NOT NULL AND ${table.deletedByUserId} IS NOT NULL)`
+    ),
+    // Phase 8 Stage 5 — partial index for the "alive docs only"
+    // listing hot path. Cheaper than a regular index because
+    // soft-deleted rows (eventually the long-tail majority) don't
+    // bloat the b-tree.
+    aliveCreatedIdx: index("documents_alive_created_idx")
+      .on(table.createdAt)
+      .where(sql`${table.deletedAt} IS NULL`)
   })
 );
 

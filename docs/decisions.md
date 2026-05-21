@@ -4619,3 +4619,102 @@ Use this file to record meaningful technical decisions for the project.
   - 282 server tests pass (was 275; +7 from new events integration
     suite covering created events + auth + 404 + CASCADE delete).
   - TypeScript clean (frontend + server).
+
+### Decision: Phase 8 Stage 5 — Document soft-delete + HubSpot tear-down (2026-05-21)
+
+- Context:
+  - BSG-XXXXX numbers are reserved forever (HubSpot audit trail
+    references them; ops doesn't want gaps). Hard-delete in our
+    DB would silently lose context + create reservable gaps in
+    the BSG number sequence reading.
+  - Operators occasionally need to retract a document (client
+    request, wrong company, replacement issued). HubSpot side
+    must be cleaned up too — leaving a stale "Offer BSG-..." Note
+    on the customer's timeline after we deleted it locally is bad
+    audit hygiene.
+- Decision (semantics):
+  - **Soft-delete** in our DB via `deleted_at` + `deleted_by_user_id`
+    + `deletion_reason` (5-value enum) + `deletion_note` (max 8KB).
+  - **Hard-delete** the linked HubSpot Note via `hubspot.deleteNote`.
+  - **Transactional honesty**: if the HubSpot DELETE fails we DO
+    NOT soft-delete locally — instead set `state='delete_failed'`
+    and surface a retry CTA on the detail page.
+  - **Restore** clears the soft-delete fields. super_admin only.
+    HubSpot side is NOT re-created — operator manually re-syncs
+    via the existing Sync button if needed.
+- Decision (schema):
+  - Migration 0010 adds the four soft-delete columns to `documents`.
+  - Soft-delete consistency CHECK: `deleted_at` + `deleted_by`
+    must both be NULL (alive) or both NON-NULL (deleted).
+  - Reason CHECK: enum of 5 values; 'other' makes note semantically
+    required (FE form enforces; DB doesn't, so a future bulk-fix
+    SQL still works).
+  - `hubspot_sync_state` CHECK widened with `delete_pending` +
+    `delete_failed` (two transition states).
+  - `document_events.event_type` widened with `deleted`, `restored`,
+    `deletion_reason_edited`.
+  - Partial index `documents_alive_created_idx` so the "alive
+    docs only" listing (the hot path) stays cheap as deleted rows
+    accumulate over time.
+- Decision (auth):
+  - DELETE `/documents/:number` — `requireRole('admin')`. Regular
+    users can't retract artefacts. Admin OR super_admin can.
+  - POST `/documents/:number/restore` — `requireRole('super_admin')`.
+    The restore decision is the single chokepoint that crosses
+    the soft-delete boundary; we want a SHORT list of operators
+    who can do it.
+  - `?includeDeleted={true,only}` on the listing — silently coerced
+    to 'alive' for non-super_admin (debugging flag, not a permission
+    scope; we don't want 403 to leak the existence of the feature).
+- Decision (frontend):
+  - **`<DeleteDocumentModal />`** — reason dropdown + note textarea.
+    'Other' makes the note required (client-side guard + server
+    Zod refine). Warning copy adapts based on whether the doc has
+    a HubSpot Note.
+  - **DocumentViewPage** gets the Delete button (admin) / Restore
+    button (super_admin) swap based on `doc.deletedAt`. Soft-deleted
+    docs show a red banner with reason + note + timestamp; Sync
+    button is hidden (server would 404 anyway).
+  - **`/admin/documents/deleted`** new super_admin-only page listing
+    soft-deleted rows. Per-row "Open →" link to the detail page
+    (where the Restore button lives — single chokepoint for that
+    action keeps the audit trail unified).
+  - **AppHeader** filters tabs by minRole; adds "Deleted docs"
+    only for super_admin.
+- Decision (deferred):
+  - Editing `deletion_reason` post-delete (the
+    `deletion_reason_edited` event_type is added to the enum so
+    Stage 6 can add this without another migration; the endpoint
+    itself isn't wired in Stage 5).
+  - Bulk-delete UI — operators rarely retract more than one doc
+    at a time; per-row delete from the detail page is sufficient.
+- Trade-off:
+  - CASCADE on `document_events.document_id` — events disappear
+    when the row is hard-deleted. Today only super_admin's DELETE
+    FROM SQL can trigger that; soft-delete keeps events alive
+    next to the row. We accept the trade-off: a future
+    "purge truly old rows" operator action will explicitly delete
+    the audit trail too.
+  - The `hubspot_sync_state` enum now carries 5 values; the FE
+    has to know about `delete_pending` + `delete_failed`. The
+    DocumentViewPage's Sync button label adapts to 'Retry delete'
+    when state is delete_failed so the operator can recover.
+- Consequence:
+  - Stage 6 (admin_actions cross-cutting audit log) can drop the
+    restore action into its log without further schema work
+    (event_type 'restored' is already in `document_events`; the
+    cross-entity log lives in a separate table for super_admin
+    operations on users + bulk doc deletes).
+  - The deletion_reason metadata flows through the History panel
+    on /documents/:number, the deleted-docs page, and any future
+    Stage 4+ reporting.
+- Verification:
+  - 313 frontend tests pass (was 304; +9 from new DeleteDocumentModal
+    suite).
+  - 296 server tests pass (was 282; +14 from new documents-delete
+    integration suite covering auth + 4 happy paths + HubSpot
+    tear-down + restore + listing filter). One pre-existing flake
+    in companies-deals pagination test (unrelated to Stage 5;
+    passes in isolation, fails ~1/3 of full-suite runs under
+    parallel TX load).
+  - TypeScript clean (frontend + server).

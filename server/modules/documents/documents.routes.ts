@@ -13,9 +13,11 @@ import { requireRole } from "../../middleware/require-role";
 import { asyncHandler } from "../../shared/async-handler";
 import {
   createController,
+  deleteController,
   getByNumberController,
   listController,
   peekNumberController,
+  restoreController,
   syncController,
   useAsTemplateController
 } from "./documents.controller";
@@ -52,6 +54,23 @@ documentsRouter.post(
 documentsRouter.get(
   "/:number/events",
   asyncHandler(listDocumentEventsController)
+);
+
+// Phase 8 Stage 5 — soft-delete (admin) + restore (super_admin).
+// DELETE uses the body for reason+note (not query params) per
+// REST convention for non-idempotent destructive ops with payload.
+// hubspotProxyLimiter applies the same rate-limit as Sync because
+// delete also hits HubSpot (one call per delete).
+documentsRouter.delete(
+  "/:number",
+  requireRole("admin"),
+  hubspotProxyLimiter,
+  asyncHandler(deleteController)
+);
+documentsRouter.post(
+  "/:number/restore",
+  requireRole("super_admin"),
+  asyncHandler(restoreController)
 );
 
 /**

@@ -13,14 +13,18 @@ import {
 } from "../../shared/sorted-pagination";
 import { TokenInvalidError } from "../../shared/errors";
 import { documentSortFields } from "./documents.repository";
+import { hasRoleAtLeast } from "../../shared/roles";
 import {
   createDocumentSchema,
+  deleteDocumentSchema,
   listDocumentsQuerySchema
 } from "./documents.schemas";
 import {
   createDocument,
+  deleteDocument,
   getDocumentByNumber,
   listDocumentsPage,
+  restoreDocument,
   useDocumentAsTemplate
 } from "./documents.service";
 import { syncDocumentToHubspot } from "./sync.service";
@@ -37,6 +41,23 @@ export async function listController(req: Request, res: Response): Promise<void>
     dir: "desc"
   });
   const cursor = decodeSortedCursor(query.cursor, encodeSortKey(sort));
+
+  // Phase 8 Stage 5 — gate the soft-delete visibility flag on
+  // super_admin. A regular operator who hand-crafts `?includeDeleted=`
+  // gets silently coerced to 'alive' rather than 403 (the flag is
+  // a debugging tool, not a permission scope).
+  const wantsDeleted = query.includeDeleted ?? "false";
+  const isSuperAdmin =
+    req.user !== undefined && hasRoleAtLeast(req.user.role, "super_admin");
+  const deletedScope =
+    !isSuperAdmin
+      ? ("alive" as const)
+      : wantsDeleted === "true"
+        ? ("include_deleted" as const)
+        : wantsDeleted === "only"
+          ? ("deleted_only" as const)
+          : ("alive" as const);
+
   const page = await listDocumentsPage({
     companyId: query.companyId,
     hubspotDealId: query.hubspotDealId,
@@ -45,7 +66,8 @@ export async function listController(req: Request, res: Response): Promise<void>
     q: query.q,
     sort,
     cursor,
-    limit: query.limit
+    limit: query.limit,
+    deletedScope
   });
   res.status(200).json(page);
 }
@@ -132,5 +154,66 @@ export async function syncController(
   // BSG-XXX". Auto-sync from createDocument's setImmediate passes
   // null (no req.user there) and the event reads as "system".
   const updated = await syncDocumentToHubspot(number, req.user.id);
+  res.status(200).json(updated);
+}
+
+/**
+ * Phase 8 Stage 5 — DELETE /api/v1/documents/:number.
+ *
+ * Soft-deletes the document locally + hard-deletes the linked
+ * HubSpot Note (if one exists). Admin role required (regular
+ * users can't retract documents).
+ *
+ * Body: { reason, note? } — `note` REQUIRED when reason='other'
+ * (enforced by the Zod refine).
+ *
+ * Errors:
+ *   - 404 if the document doesn't exist
+ *   - 409 DOCUMENT_ALREADY_DELETED if it's already soft-deleted
+ *   - 502 HUBSPOT_UNREACHABLE on HubSpot DELETE failure — local
+ *     row stays alive with state='delete_failed' so operator
+ *     can Retry.
+ */
+export async function deleteController(
+  req: Request,
+  res: Response
+): Promise<void> {
+  if (!req.user) {
+    throw new TokenInvalidError("Token references a deleted user.");
+  }
+  const number = req.params.number;
+  const body = deleteDocumentSchema.parse(req.body);
+  const updated = await deleteDocument(
+    number,
+    req.user.id,
+    body.reason,
+    body.note ?? null
+  );
+  res.status(200).json(updated);
+}
+
+/**
+ * Phase 8 Stage 5 — POST /api/v1/documents/:number/restore.
+ *
+ * Clears the soft-delete fields on a previously-deleted document.
+ * super_admin role required (audit-trail integrity — restore
+ * decisions are a single chokepoint).
+ *
+ * Does NOT re-create the HubSpot Note. Operator manually re-syncs
+ * via the existing Sync button if they want the document back on
+ * the customer timeline.
+ *
+ * Errors:
+ *   - 404 if the document doesn't exist OR isn't currently deleted
+ */
+export async function restoreController(
+  req: Request,
+  res: Response
+): Promise<void> {
+  if (!req.user) {
+    throw new TokenInvalidError("Token references a deleted user.");
+  }
+  const number = req.params.number;
+  const updated = await restoreDocument(number, req.user.id);
   res.status(200).json(updated);
 }

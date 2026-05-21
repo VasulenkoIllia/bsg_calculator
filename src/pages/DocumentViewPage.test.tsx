@@ -31,6 +31,11 @@ const fixtureDocument = (overrides: Partial<PublicDocument> = {}): PublicDocumen
   hubspotSyncState: "not_synced",
   hubspotNoteId: null,
   createdByUserId: "user-1",
+  // Phase 8 Stage 5 — soft-delete columns. Default to alive.
+  deletedAt: null,
+  deletedByUserId: null,
+  deletionReason: null,
+  deletionNote: null,
   createdAt: "2026-05-17T00:00:00.000Z",
   updatedAt: "2026-05-17T00:00:00.000Z",
   ...overrides

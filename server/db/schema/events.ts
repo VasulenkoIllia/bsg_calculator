@@ -48,7 +48,11 @@ export const DOCUMENT_EVENT_TYPES = [
   "created",
   "pdf_downloaded",
   "synced_to_hubspot",
-  "sync_failed"
+  "sync_failed",
+  // Phase 8 Stage 5 — soft-delete + super_admin restore.
+  "deleted",
+  "restored",
+  "deletion_reason_edited"
 ] as const;
 export type DocumentEventType = (typeof DOCUMENT_EVENT_TYPES)[number];
 
@@ -80,7 +84,7 @@ export const documentEvents = pgTable(
     ),
     eventTypeCheck: check(
       "document_events_event_type_check",
-      sql`${table.eventType} IN ('created', 'pdf_downloaded', 'synced_to_hubspot', 'sync_failed')`
+      sql`${table.eventType} IN ('created', 'pdf_downloaded', 'synced_to_hubspot', 'sync_failed', 'deleted', 'restored', 'deletion_reason_edited')`
     )
   })
 );

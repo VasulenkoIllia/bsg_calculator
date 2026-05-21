@@ -26,6 +26,7 @@ import { AppShell } from "./components/AppShell.js";
 import { PrivateRoute } from "./components/PrivateRoute.js";
 import { RequireRole } from "./components/RequireRole.js";
 import { CalculatorProvider } from "./contexts/CalculatorContext.js";
+import { AdminDeletedDocumentsPage } from "./pages/AdminDeletedDocumentsPage.js";
 import { AdminUsersPage } from "./pages/AdminUsersPage.js";
 import { CalculatorPage } from "./pages/CalculatorPage.js";
 import { CalculatorsListPage } from "./pages/CalculatorsListPage.js";
@@ -71,6 +72,10 @@ export default function App() {
                 message. */}
             <Route element={<RequireRole min="super_admin" />}>
               <Route path="/admin/users" element={<AdminUsersPage />} />
+              <Route
+                path="/admin/documents/deleted"
+                element={<AdminDeletedDocumentsPage />}
+              />
             </Route>
             <Route path="*" element={<NotFoundPage />} />
           </Route>

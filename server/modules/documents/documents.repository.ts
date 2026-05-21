@@ -79,7 +79,15 @@ export async function findByNumber(number: string): Promise<Document | undefined
 export async function updateDocumentHubspotSync(
   id: string,
   patch: {
-    hubspotSyncState: "not_synced" | "synced" | "failed";
+    // Phase 8 Stage 5 widened the enum with the two delete-flow
+    // transition states. The caller passes whichever is appropriate
+    // for the operation in flight.
+    hubspotSyncState:
+      | "not_synced"
+      | "synced"
+      | "failed"
+      | "delete_pending"
+      | "delete_failed";
     hubspotNoteId: string | null;
   }
 ): Promise<Document | undefined> {
@@ -122,6 +130,16 @@ export interface ListDocumentsArgs {
   sort: SortSpec<DocumentSortField>;
   cursor: SortedCursor | null;
   limit: number;
+  /**
+   * Phase 8 Stage 5 — soft-delete visibility:
+   *   - "alive" (default): hide soft-deleted rows
+   *   - "deleted_only": return ONLY soft-deleted rows (for the
+   *     /admin/documents/deleted page)
+   *   - "include_deleted": return both (super_admin debugging path)
+   * The route layer gates "deleted_only" and "include_deleted" to
+   * super_admin only.
+   */
+  deletedScope?: "alive" | "deleted_only" | "include_deleted";
 }
 
 /**
@@ -250,6 +268,18 @@ export async function listDocuments(
     args.cursor
   );
 
+  // Phase 8 Stage 5 — soft-delete filter. Default "alive" hides
+  // deleted rows from every listing. The route layer gates
+  // "deleted_only" / "include_deleted" to super_admin so a regular
+  // operator can't peek at soft-deleted artefacts.
+  const scope = args.deletedScope ?? "alive";
+  const deletedFilter =
+    scope === "alive"
+      ? sql`${documents.deletedAt} IS NULL`
+      : scope === "deleted_only"
+        ? sql`${documents.deletedAt} IS NOT NULL`
+        : undefined; // include_deleted → no filter
+
   const filters = [
     args.companyId ? eq(documents.companyId, args.companyId) : undefined,
     args.hubspotDealId ? eq(documents.hubspotDealId, args.hubspotDealId) : undefined,
@@ -258,6 +288,7 @@ export async function listDocuments(
       : undefined,
     args.scope ? eq(documents.scope, args.scope) : undefined,
     args.q ? ilike(documents.number, `%${escapeLikePattern(args.q)}%`) : undefined,
+    deletedFilter,
     cursorPredicate
   ].filter((f): f is Exclude<typeof f, undefined> => f !== undefined);
 
@@ -292,6 +323,64 @@ export async function findCalculatorConfigById(
     .from(calculatorConfigs)
     .where(eq(calculatorConfigs.id, id))
     .limit(1);
+  return rows[0];
+}
+
+/**
+ * Phase 8 Stage 5 — soft-delete a document.
+ *
+ * Sets `deleted_at = now()` + actor + reason + note in one UPDATE.
+ * Also clears the HubSpot Note pointer (the linked Note has just
+ * been hard-deleted via the HubSpot API by the service caller) and
+ * resets sync state to 'not_synced' so the row reads as "nothing
+ * upstream" rather than carrying a stale 'synced' badge.
+ *
+ * The CHECK constraint added in migration 0010 enforces that
+ * deleted_at + deleted_by_user_id move together; passing only one
+ * would fail at the DB layer.
+ */
+export async function softDeleteDocument(
+  id: string,
+  actorUserId: string,
+  reason: string,
+  note: string | null
+): Promise<Document | undefined> {
+  const rows = await db
+    .update(documents)
+    .set({
+      deletedAt: new Date(),
+      deletedByUserId: actorUserId,
+      deletionReason: reason,
+      deletionNote: note,
+      hubspotSyncState: "not_synced",
+      hubspotNoteId: null,
+      updatedAt: new Date()
+    })
+    .where(eq(documents.id, id))
+    .returning();
+  return rows[0];
+}
+
+/**
+ * Phase 8 Stage 5 — clear the soft-delete fields. Used by the
+ * restore endpoint (super_admin only). HubSpot side is NOT
+ * re-created — operator manually re-syncs via the existing Sync
+ * button if they want the document back on the customer timeline.
+ */
+export async function restoreDocument(
+  id: string
+): Promise<Document | undefined> {
+  const rows = await db
+    .update(documents)
+    .set({
+      deletedAt: null,
+      deletedByUserId: null,
+      deletionReason: null,
+      deletionNote: null,
+      updatedAt: new Date()
+    })
+    .where(eq(documents.id, id))
+    .returning();
   return rows[0];
 }
 

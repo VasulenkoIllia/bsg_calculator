@@ -95,7 +95,14 @@ export const listDocumentsQuerySchema = z.object({
     })
     .optional(),
   cursor: z.string().max(500).optional(),
-  limit: z.coerce.number().int().min(1).max(50).default(25)
+  limit: z.coerce.number().int().min(1).max(50).default(25),
+  // Phase 8 Stage 5 — soft-delete visibility. 'alive' (default)
+  // hides deleted rows. 'deleted_only' / 'include_deleted' are
+  // gated to super_admin at the controller layer (regular operators
+  // would otherwise see retracted documents on /documents).
+  includeDeleted: z
+    .enum(["false", "true", "only"])
+    .optional()
 });
 export type ListDocumentsQuery = z.infer<typeof listDocumentsQuerySchema>;
 
@@ -115,10 +122,61 @@ export const documentPublicSchema = z.object({
   scope: documentScopeSchema,
   payload: z.unknown(),
   addendum: z.string().nullable(),
-  hubspotSyncState: z.enum(["not_synced", "synced", "failed"]),
+  // Phase 8 Stage 5 widened the enum with the delete-flow transition
+  // states. The FE renders each value with its own badge colour.
+  hubspotSyncState: z.enum([
+    "not_synced",
+    "synced",
+    "failed",
+    "delete_pending",
+    "delete_failed"
+  ]),
   hubspotNoteId: z.string().nullable(),
   createdByUserId: z.string().uuid(),
+  // Phase 8 Stage 5 — soft-delete metadata. All four fields are
+  // null on alive rows. The migration's consistency CHECK enforces
+  // that deletedAt + deletedByUserId move together.
+  deletedAt: z.string().nullable(),
+  deletedByUserId: z.string().uuid().nullable(),
+  deletionReason: z
+    .enum([
+      "client_request",
+      "created_in_error",
+      "replaced_by_new_version",
+      "duplicate",
+      "other"
+    ])
+    .nullable(),
+  deletionNote: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string()
 });
 export type DocumentPublic = z.infer<typeof documentPublicSchema>;
+
+// ─── Delete body ────────────────────────────────────────────────────
+/**
+ * Phase 8 Stage 5 — DELETE /api/v1/documents/:number body.
+ *
+ * `note` is REQUIRED (≥ 1 char) when reason='other'. The Zod refine
+ * encodes that contract at the schema layer so the service body just
+ * destructures the validated values.
+ */
+export const deleteDocumentSchema = z
+  .object({
+    reason: z.enum([
+      "client_request",
+      "created_in_error",
+      "replaced_by_new_version",
+      "duplicate",
+      "other"
+    ]),
+    note: z.string().trim().max(8_000).nullable().optional()
+  })
+  .refine(
+    data => data.reason !== "other" || (data.note && data.note.length > 0),
+    {
+      path: ["note"],
+      message: "Note is required when reason is 'other'"
+    }
+  );
+export type DeleteDocumentRequest = z.infer<typeof deleteDocumentSchema>;
