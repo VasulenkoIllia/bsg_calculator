@@ -1,6 +1,6 @@
 # Phase 8 — Security, Admin Management, Document Audit & Deletion
 
-**Status**: Stage 1 complete (2026-05-21). Stages 2–6 planned.
+**Status**: Stages 1 + 3 complete (2026-05-21). Stages 2, 4–6 planned.
 **Date created**: 2026-05-20
 **Confirmed by**: operator brief 2026-05-20 (this conversation)
 
@@ -14,7 +14,7 @@ doesn't drift across sprints.
 |---|---|---|
 | 1 | Roles foundation (`users.role` enum + `requireRole` middleware + bootstrap) | ✅ **DONE 2026-05-21** (Phase 8 Stage 1.A–D) |
 | 2 | TOTP 2FA + `/me` personal cabinet | ⏳ planned |
-| 3 | Super-admin user management (`/admin/users`, invite copy-link, block, password reset) | ⏳ planned (needs Stage 1+2) |
+| 3 | Super-admin user management (`/admin/users`, block, password reset) | ✅ **DONE 2026-05-21** (Phase 8 Stage 3.A–D; invite copy-link deferred — super_admin sets initial password directly and forwards it manually) |
 | 4 | Per-document event log | ⏳ planned (needs Stage 1 for actor name) |
 | 5 | Document soft-delete with HubSpot Note tear-down | ⏳ planned (needs Stage 1+4; `deleteNote()` client method ready since Sprint 7.3.D) |
 | 6 | `admin_actions` audit log + admin sub-shell | ⏳ planned (needs Stages 1-5) |

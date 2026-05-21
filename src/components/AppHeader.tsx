@@ -26,6 +26,7 @@
  */
 
 import { NavLink, Link, useNavigate } from "react-router-dom";
+import type { UserRole } from "../api/types.js";
 import { useAuth } from "../contexts/AuthContext.js";
 
 /**
@@ -33,20 +34,33 @@ import { useAuth } from "../contexts/AuthContext.js";
  * in the 48px-tall sticky bar even at narrow viewports; overflow
  * scrolls horizontally on mobile rather than wrapping (wrapping
  * would break the sticky bar's height assumption).
+ *
+ * Phase 8 Stage 3 — tabs gated by minimum role (`minRole`) are
+ * filtered out for users below that tier. The "Users" tab today
+ * is the only super_admin-only entry; rendering it for regular
+ * operators would dead-end at our `RequireRole` 403 page and
+ * confuse the UX.
  */
-const TABS: Array<{ to: string; label: string; end?: boolean }> = [
+const TABS: Array<{ to: string; label: string; end?: boolean; minRole?: UserRole }> = [
   // /companies first — natural entry from "open a company" → "open
   // a calculator/wizard from there".
   { to: "/companies", label: "Companies" },
   { to: "/documents", label: "Documents" },
   { to: "/calculator", label: "Calculator" },
   { to: "/calculators", label: "Saved calculators" },
-  { to: "/wizard", label: "Contract Wizard & PDF" }
+  { to: "/wizard", label: "Contract Wizard & PDF" },
+  // Phase 8 Stage 3 — super_admin user management.
+  { to: "/admin/users", label: "Users", minRole: "super_admin" }
 ];
 
 export function AppHeader() {
-  const { user, logout } = useAuth();
+  const { user, hasRole, logout } = useAuth();
   const navigate = useNavigate();
+
+  // Phase 8 Stage 3 — filter tabs by role tier so non-super_admin
+  // operators don't see the Users entry at all (clicking it would
+  // dead-end at the RequireRole 403 page).
+  const visibleTabs = TABS.filter(tab => (tab.minRole ? hasRole(tab.minRole) : true));
 
   const handleLogout = async (): Promise<void> => {
     // Same pattern as the pre-7.1 IdentityStrip: try/finally so the
@@ -82,7 +96,7 @@ export function AppHeader() {
           className="flex-1 overflow-x-auto"
         >
           <ul className="flex items-center gap-1 whitespace-nowrap">
-            {TABS.map(tab => (
+            {visibleTabs.map(tab => (
               <li key={tab.to}>
                 <NavLink
                   to={tab.to}

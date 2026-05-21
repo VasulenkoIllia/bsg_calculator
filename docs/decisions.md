@@ -4449,3 +4449,85 @@ Use this file to record meaningful technical decisions for the project.
     integration tests need DB up (docker compose dev) to run —
     verified via the test setup the prior sprint.
   - Stage 5 (admin documents tab) opens against a stable codebase.
+
+### Decision: Phase 8 Stage 3 — Super-admin user management UI (2026-05-21)
+
+- Context:
+  - Stage 1 (2026-05-21) shipped the hierarchical `role` enum +
+    `requireRole(min)` middleware + every `POST/GET/PATCH /users`
+    endpoint, but with `requireRole('admin')` as a placeholder
+    guard while no UI existed. Phase 8 capability matrix calls for
+    `super_admin` exclusivity on user management.
+  - Operator brief (2026-05-21) selected Stage 3 over Stage 2 (TOTP
+    2FA) — the team is small enough that 2FA can wait, but the
+    super_admin needs a browser UI for routine onboarding without
+    SSH'ing to the container to run `create-user.ts`.
+- Decision (backend tightening):
+  - `/api/v1/users/*` guard switched from `requireRole('admin')`
+    to `requireRole('super_admin')`. Regular admins now get 403,
+    matching the capability matrix.
+  - `users.service.patchUser` gained THREE lock-out guards, each
+    returning `422 UNPROCESSABLE` with a stable FE-readable code:
+      1. `USER_CANNOT_SELF_BLOCK` — actor sets own `isActive=false`.
+         No higher tier exists who could undo it.
+      2. `USER_CANNOT_SELF_DOWNGRADE` — actor changes own role.
+         Next request would 403 out of `/admin/users`.
+      3. `LAST_SUPER_ADMIN` — patch would demote or block the last
+         active super_admin. We require at least one OTHER active
+         super_admin to remain so the admin surface stays reachable.
+  - `countActiveUsersByRoleExcluding(role, excludeId)` repo helper
+    backs guard 3. Counts active users matching `role` excluding a
+    specific id — used to ask "would zero OTHER super_admins remain
+    after this patch?".
+- Decision (frontend):
+  - New `src/api/users.ts` mirrors backend schemas: `listUsers`,
+    `getUser`, `createUser`, `patchUser`, `resetUserPassword`.
+  - New `src/components/RequireRole.tsx` layout-route guard renders
+    a 403 page (NOT a redirect — the user IS authenticated, just
+    insufficient role) inside the AppShell. Composes inside
+    PrivateRoute.
+  - New `src/pages/AdminUsersPage.tsx` at `/admin/users`:
+      - Table with email + login + display name + role badge + status
+        badge + per-row Edit / Reset password buttons.
+      - "You" badge on the actor's own row so the operator never
+        accidentally clicks Edit on themselves expecting it to be a
+        different account.
+      - Three modals (Create, Edit, Reset password). Each is a thin
+        form over the corresponding api wrapper.
+      - Lock-out 422 codes surface inline in the Edit modal without
+        closing it — operator keeps form state and can correct.
+  - Navigation: `AppHeader` filters tabs by `minRole` and only
+    renders the "Users" tab when `hasRole('super_admin')`. Non-
+    super_admin operators never see the entry; even if they
+    manually type `/admin/users` the RequireRole guard catches it.
+- Decision (deferred from the original spec):
+  - Invite copy-link flow + `user_invites` table — replaced by
+    super_admin-sets-initial-password-and-forwards-manually. The
+    invite-link flow adds a `user_invites` table + `/accept-invite`
+    page + token expiry handling, which doubles the surface for
+    very little operator UX gain at our team size. Re-open if the
+    headcount grows and onboarding becomes routine.
+  - "Sign out everywhere" (per `/me` cabinet design) — waits for
+    Stage 2 (`/me` doesn't exist yet).
+  - Force-disable 2FA — N/A until Stage 2 introduces 2FA at all.
+- Trade-off:
+  - Plaintext password is rendered in the Create + Reset modals so
+    the super_admin can copy it. We treat that as acceptable — the
+    super_admin is the only viewer, the modal closes after action,
+    and there's no DOM mutation tracking the value beyond the
+    React state that React already manages.
+  - LAST_SUPER_ADMIN guard runs ONLY when the target is currently
+    super_admin AND the patch would demote/block. This skips a
+    redundant query on common non-super_admin edits.
+- Consequence:
+  - The bootstrap-super-admin CLI flow (Stage 1) remains the FIRST
+    super_admin path; the UI flow handles subsequent operators.
+  - Stage 4 (document event log) and Stage 5 (admin documents tab)
+    can now reliably read the actor's `displayName` for event rows
+    because the user-management UI keeps `users.display_name` fresh.
+
+- Verification:
+  - 290 frontend tests pass (was 281; +9 from new AdminUsersPage suite).
+  - 275 server tests pass (was 271; +4 from new super_admin guard
+    tests in `users.integration.test.ts`).
+  - TypeScript clean (frontend + server).

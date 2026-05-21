@@ -7,7 +7,7 @@
  * intentionally separate so business contexts don't cross.
  */
 
-import { desc, eq, or } from "drizzle-orm";
+import { desc, eq, or, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { users, type User, type UserRole } from "../../db/schema";
 import { expectSingle } from "../../shared/db-helpers";
@@ -67,6 +67,44 @@ export async function updateUser(
     .where(eq(users.id, id))
     .returning();
   return rows[0]; // legitimately empty when id doesn't exist
+}
+
+/**
+ * Phase 8 Stage 3 — count active users matching the given role.
+ * Used by the "last super_admin" guard: a PATCH that would demote
+ * the last remaining super_admin must be rejected so the operator
+ * can't lock themselves out of the admin surface.
+ *
+ * "Active" here means `is_active = true` — blocked users don't
+ * count toward the survival floor because they can't log in.
+ */
+export async function countActiveUsersByRole(role: UserRole): Promise<number> {
+  const result = await db.execute<{ n: number }>(sql`
+    SELECT COUNT(*)::int AS n
+    FROM users
+    WHERE role = ${role} AND is_active = true
+  `);
+  return result.rows[0]?.n ?? 0;
+}
+
+/**
+ * Phase 8 Stage 3 — count active users matching the given role
+ * EXCLUDING a specific user id. Used by the last-super_admin guard
+ * when we know we're about to demote `excludeId`: returns how many
+ * OTHER active super_admins would remain.
+ */
+export async function countActiveUsersByRoleExcluding(
+  role: UserRole,
+  excludeId: string
+): Promise<number> {
+  const result = await db.execute<{ n: number }>(sql`
+    SELECT COUNT(*)::int AS n
+    FROM users
+    WHERE role = ${role}
+      AND is_active = true
+      AND id <> ${excludeId}
+  `);
+  return result.rows[0]?.n ?? 0;
 }
 
 export async function updatePasswordHash(id: string, passwordHash: string): Promise<User | undefined> {
