@@ -14,13 +14,14 @@
  */
 
 import { useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../api/client.js";
 import * as documentsApi from "../api/documents.js";
 import { downloadSavedPdf, triggerPdfDownload } from "../api/pdf.js";
 import { buildOfferPdfHtml } from "../components/document-wizard/index.js";
 import type { DocumentTemplatePayload } from "../components/document-wizard/index.js";
+import { EventHistoryPanel } from "../components/EventHistoryPanel.js";
 import { useAuth } from "../contexts/AuthContext.js";
 import { useToast } from "../contexts/ToastContext.js";
 import { useDocument } from "../hooks/useDocuments.js";
@@ -69,6 +70,15 @@ export function DocumentViewPage() {
   const { hasRole } = useAuth();
   const queryClient = useQueryClient();
   const docQuery = useDocument(number);
+  // Phase 8 Stage 4 — events list, used by the History panel below
+  // the document body. `enabled: !!number` guards against a hook
+  // call before the route param hydrates.
+  const eventsQuery = useQuery({
+    queryKey: ["document-events", number],
+    queryFn: () => documentsApi.listDocumentEvents(number!),
+    enabled: !!number,
+    staleTime: 15_000
+  });
   const [templatePending, setTemplatePending] = useState(false);
   const [syncPending, setSyncPending] = useState(false);
   const [showRawPayload, setShowRawPayload] = useState(false);
@@ -282,6 +292,15 @@ export function DocumentViewPage() {
           (e.g. a calc-only snapshot from an earlier save) doesn't
           crash the page — we fall back to the raw JSON view. */}
       <DocumentPreviewSection payload={doc.payload} number={doc.number} />
+
+      {/* Phase 8 Stage 4 — collapsible audit-trail panel. Collapsed
+          by default so it doesn't push the debug view further down
+          on an unrelated page-load. Click the header to expand. */}
+      <EventHistoryPanel
+        events={eventsQuery.data?.items ?? []}
+        isLoading={eventsQuery.isLoading}
+        isError={eventsQuery.isError}
+      />
 
       <div className="rounded-2xl border border-slate-200 bg-white p-6">
         <details

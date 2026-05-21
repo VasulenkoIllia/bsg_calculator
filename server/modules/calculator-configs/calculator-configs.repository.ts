@@ -25,7 +25,7 @@
  */
 
 import { and, asc, desc, eq, gt, isNull, lt, or, sql, type SQL } from "drizzle-orm";
-import { db } from "../../db/client";
+import { db, type DbOrTx } from "../../db/client";
 import {
   calculatorConfigs,
   companies,
@@ -73,9 +73,15 @@ export async function findById(id: string): Promise<CalculatorConfig | undefined
 }
 
 export async function insertCalculatorConfig(
-  row: NewCalculatorConfig
+  row: NewCalculatorConfig,
+  /**
+   * Phase 8 Stage 4 — optional `tx` so the caller can attach the
+   * insert to a transaction that also writes the 'created'
+   * event-log row atomically.
+   */
+  tx: DbOrTx = db
 ): Promise<CalculatorConfig> {
-  const inserted = await db.insert(calculatorConfigs).values(row).returning();
+  const inserted = await tx.insert(calculatorConfigs).values(row).returning();
   if (inserted.length !== 1) {
     throw new Error("expected exactly one row from INSERT");
   }

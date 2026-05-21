@@ -1,6 +1,6 @@
 import { useNavigate, useParams } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../contexts/AuthContext.js";
 import * as configsApi from "../api/calculator-configs.js";
 import { ApiError } from "../api/client.js";
@@ -22,6 +22,7 @@ import {
   seedCalculatorStateFromSnapshot
 } from "../components/calculator/snapshotShape.js";
 import { CalculatorStickyToolbar } from "../components/calculator/CalculatorStickyToolbar.js";
+import { EventHistoryPanel } from "../components/EventHistoryPanel.js";
 import { SaveCalculatorModal } from "../components/SaveCalculatorModal.js";
 import {
   BannerStatus,
@@ -53,6 +54,14 @@ export function CalculatorPage() {
   const { id: configId } = useParams<{ id: string }>();
   const isEditMode = typeof configId === "string" && configId.length > 0;
   const configQuery = useCalculatorConfig(configId);
+  // Phase 8 Stage 4 — calc-config events for the History panel
+  // (only meaningful in edit mode — no row exists yet otherwise).
+  const eventsQuery = useQuery({
+    queryKey: ["calc-config-events", configId],
+    queryFn: () => configsApi.listCalculatorConfigEvents(configId!),
+    enabled: isEditMode,
+    staleTime: 15_000
+  });
 
   // ─── Hydrate live state from the loaded payload (once per id) ────
   // We track which id we've hydrated so re-renders or the auto-save
@@ -440,6 +449,16 @@ export function CalculatorPage() {
 
       {isEditMode && docsFromCalc.items.length > 0 ? (
         <DocumentsFromCalcSection docs={docsFromCalc.items} />
+      ) : null}
+
+      {/* Phase 8 Stage 4 — calc-config history. Edit-mode only; the
+          new-draft mode has nothing to track yet. */}
+      {isEditMode ? (
+        <EventHistoryPanel
+          events={eventsQuery.data?.items ?? []}
+          isLoading={eventsQuery.isLoading}
+          isError={eventsQuery.isError}
+        />
       ) : null}
 
       <HardcodedConstantsPanel

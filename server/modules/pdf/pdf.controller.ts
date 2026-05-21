@@ -32,6 +32,7 @@ import type { DocumentTemplatePayload } from "../../../src/components/document-w
 import { logger } from "../../middleware/logger";
 import { ValidationError } from "../../shared/errors";
 import { getRawDocumentByNumber } from "../documents/documents.service";
+import { insertDocumentEvent } from "../events/events.repository";
 import { renderHtmlToPdf } from "./pdf.service";
 
 /**
@@ -144,6 +145,32 @@ export async function downloadPdfController(
   // browser cache for the same Bearer.
   res.setHeader("Cache-Control", "private, max-age=300");
   res.status(200).end(buffer);
+
+  // Phase 8 Stage 4 — record the download AFTER the buffer is shipped
+  // so a slow event-log INSERT doesn't delay the PDF response. We
+  // fire-and-forget; an event-log outage doesn't degrade the user's
+  // primary action. The browser cache-revalidate (within 5 min)
+  // would NOT re-hit this controller, so each unique download
+  // produces exactly one event.
+  if (req.user?.id) {
+    const actorUserId = req.user.id;
+    const documentId = doc.id;
+    void (async () => {
+      try {
+        await insertDocumentEvent({
+          documentId,
+          eventType: "pdf_downloaded",
+          actorUserId,
+          meta: { number, download }
+        });
+      } catch (err) {
+        logger.warn(
+          { documentId, err: (err as Error).message },
+          "[pdf] failed to record pdf_downloaded event (best-effort)"
+        );
+      }
+    })();
+  }
 }
 
 /**

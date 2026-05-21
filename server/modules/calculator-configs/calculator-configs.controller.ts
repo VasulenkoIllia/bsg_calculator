@@ -104,6 +104,10 @@ export async function deleteController(req: Request, res: Response): Promise<voi
  */
 export async function syncController(req: Request, res: Response): Promise<void> {
   const id = parseUuidParam(req, "id");
-  const updated = await syncCalculatorConfigToHubspot(id);
+  // Phase 8 Stage 4 — pass req.user.id so the History panel attributes
+  // the manual sync click to a real person. Auto-sync background path
+  // (createCalculatorConfig setImmediate) calls the service with
+  // `actorUserId=null` so it shows as "system".
+  const updated = await syncCalculatorConfigToHubspot(id, req.user?.id ?? null);
   res.status(200).json(updated);
 }

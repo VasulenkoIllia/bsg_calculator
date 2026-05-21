@@ -4531,3 +4531,91 @@ Use this file to record meaningful technical decisions for the project.
   - 275 server tests pass (was 271; +4 from new super_admin guard
     tests in `users.integration.test.ts`).
   - TypeScript clean (frontend + server).
+
+### Decision: Phase 8 Stage 4 — per-entity event log (2026-05-21)
+
+- Context:
+  - End-of-operations brief asked for a per-document "History" panel
+    so the team can see who created / synced / downloaded each
+    artifact. Per follow-up, the same trail should also live on
+    `/calc/:id` for calculator-configs (operator: "додай events
+    для calc-configs теж").
+  - Stage 5 will need a similar trail for soft-delete /restore;
+    Stage 4 lays the table + write hooks first so Stage 5 just
+    widens the event_type enum.
+- Decision (schema):
+  - TWO parallel tables (`document_events`, `calculator_config_events`)
+    instead of a single polymorphic `audit_events`. Postgres doesn't
+    support polymorphic FKs and a shared CHECK enum would conflate
+    document-only events (`pdf_downloaded`) with calc-only ones.
+    Each table has its own event_type vocabulary.
+  - `ON DELETE CASCADE` on the entity FK (interim — Stage 5 will
+    introduce soft-delete via `deleted_at` UPDATE rather than DELETE,
+    keeping events alongside the soft-deleted row). The CASCADE
+    keeps the events tree consistent with the entity tree today.
+  - `actor_user_id` FK → users with `ON DELETE SET NULL` — deleting
+    a user keeps their events but reads as "system" rather than
+    leaving a dangling pointer.
+  - `meta jsonb DEFAULT '{}'` — context-specific (noteId for
+    synced_to_hubspot, error for sync_failed, download flag for
+    pdf_downloaded). Schema doesn't validate; FE reads optimistically.
+- Decision (write paths):
+  - **`createDocument`** writes `created` in the SAME TX as the
+    documents INSERT so rollback wipes both together.
+  - **`syncDocumentToHubspot`** writes `synced_to_hubspot` on
+    success and `sync_failed` (with `{stage, error, ...}` meta) on
+    each of the 3 failure paths. Each event-log INSERT is wrapped
+    in try/catch — a failure here logs WARN but doesn't swap in for
+    the operator-visible HubSpot error.
+  - **`downloadPdfController`** writes `pdf_downloaded` AFTER
+    `res.end(buffer)` so a slow event INSERT doesn't delay the PDF
+    response. Best-effort; 5-min browser cache means same operator
+    repeated clicks within the cache window don't re-hit.
+  - **`createCalculatorConfig`** wraps insert + event in `db.transaction`.
+  - **`syncCalculatorConfigToHubspot`** writes events on the same
+    success + 3 failure paths as the document sync.
+  - Each sync entrypoint gained an `actorUserId` arg: manual sync
+    from controller passes `req.user.id`; auto-sync from
+    `setImmediate` passes `null` (event reads as "system").
+- Decision (frontend):
+  - One generic `EventHistoryPanel` component on both detail pages.
+    Backend speaks the same `PublicEvent` DTO; the panel is
+    entity-agnostic.
+  - Collapsed by default — operators iterating the calc don't see
+    the history every load. Click header to expand.
+  - Row format: `<event badge>` · `<actor>` · `<X ago>` with an
+    optional inline meta line.
+  - Event-type colour mapping (green = success, red = failure,
+    slate = neutral) makes the timeline glanceable.
+- Decision (deferred):
+  - No event log yet for `companies` / `deals` / `users` —
+    out-of-scope per the original spec; trivial to add later by
+    spinning up a third `<entity>_events` table.
+  - Auto-save events for calc-configs DELIBERATELY NOT recorded —
+    every 2-second tick would drown the History panel in noise.
+- Trade-off:
+  - The pdf_downloaded event-log INSERT runs AFTER `res.end()`
+    which means in a server-crash window (process exits before the
+    INSERT completes) we lose the record. We accept it — losing the
+    audit row of a download that already happened is strictly
+    better than blocking the PDF response on the audit write.
+  - Best-effort sync_failed event writes (wrapped in try/catch) can
+    miss a row if the DB itself is down. The outer HubSpot error
+    still propagates to the operator with the failed badge; the
+    History panel just won't show a row for that particular
+    failure. Acceptable.
+- Consequence:
+  - Stage 5 (soft-delete + HubSpot Note tear-down) widens the
+    event_type CHECK enum with `deleted` / `restored` /
+    `deletion_reason_edited` — no further schema migration needed.
+  - Stage 6 (admin_actions cross-cutting audit log for super_admin
+    operations like role changes) gets its own table; it does NOT
+    repurpose document_events / calc_config_events because the
+    SHAPE of an admin action differs (target_user_id vs.
+    entity-FK).
+- Verification:
+  - 304 frontend tests pass (was 290; +14 from new EventHistoryPanel
+    suite).
+  - 282 server tests pass (was 275; +7 from new events integration
+    suite covering created events + auth + 404 + CASCADE delete).
+  - TypeScript clean (frontend + server).

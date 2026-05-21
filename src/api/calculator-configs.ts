@@ -6,7 +6,11 @@
  */
 
 import { apiClient } from "./client.js";
-import type { CursorPage, PublicCalculatorConfig } from "./types.js";
+import type {
+  CursorPage,
+  PublicCalculatorConfig,
+  PublicEventsListResponse
+} from "./types.js";
 
 /**
  * POST body shape. `companyId` is the UUID PK on companies; backend
@@ -120,6 +124,21 @@ export async function listCalculatorConfigs(
   const { data } = await apiClient.get<CursorPage<PublicCalculatorConfig>>(
     "/calculator-configs",
     { params }
+  );
+  return data;
+}
+
+/**
+ * Phase 8 Stage 4 — GET /calculator-configs/:id/events.
+ * Returns the per-calc audit trail in DESC order (newest first).
+ * Any authenticated user can read; the History panel on /calc/:id
+ * (edit mode) consumes this.
+ */
+export async function listCalculatorConfigEvents(
+  id: string
+): Promise<PublicEventsListResponse> {
+  const { data } = await apiClient.get<PublicEventsListResponse>(
+    `/calculator-configs/${encodeURIComponent(id)}/events`
   );
   return data;
 }

@@ -213,6 +213,32 @@ export type PublicDocumentListItem = PublicDocument & {
   companyName: string;
 };
 
+// ─── Event log (Phase 8 Stage 4) ──────────────────────────────────
+/**
+ * Mirrors server/modules/events/events.schemas.ts:publicEventSchema.
+ * One shape on the wire for both document_events and
+ * calculator_config_events; the FE History panel renders both with
+ * the same component.
+ *
+ * `actorUserId / actorDisplayName / actorEmail` are nullable because:
+ *   - some events are recorded by the background auto-sync (actor=null)
+ *   - if the original actor user is later deleted, ON DELETE SET NULL
+ *     in the FK keeps the event row alive with a null actor pointer
+ */
+export interface PublicEvent {
+  id: string;
+  eventType: string;
+  meta: Record<string, unknown>;
+  actorUserId: string | null;
+  actorDisplayName: string | null;
+  actorEmail: string | null;
+  createdAt: string; // ISO timestamp
+}
+
+export interface PublicEventsListResponse {
+  items: PublicEvent[];
+}
+
 // ─── HubSpot ──────────────────────────────────────────────────────
 export interface HubspotPipeline {
   id: string;

@@ -34,6 +34,7 @@ import {
   buildHubspotNoteBody,
   noteKindFromDocumentScope
 } from "../../shared/hubspot/note-builder";
+import { insertDocumentEvent } from "../events/events.repository";
 import {
   findByNumber,
   updateDocumentHubspotSync
@@ -58,7 +59,15 @@ import type { DocumentPublic } from "./documents.schemas";
  *     the operator UI can show the failed badge + Retry button.
  */
 export async function syncDocumentToHubspot(
-  number: string
+  number: string,
+  /**
+   * Phase 8 Stage 4 — actor for the recorded sync event.
+   * - manual sync (controller) passes `req.user.id` so the History
+   *   panel shows who clicked.
+   * - auto-sync (createDocument's setImmediate) passes null so the
+   *   event reads as "system".
+   */
+  actorUserId: string | null = null
 ): Promise<DocumentPublic> {
   const document = await findByNumber(number);
   if (!document) {
@@ -113,6 +122,23 @@ export async function syncDocumentToHubspot(
       hubspotSyncState: "failed",
       hubspotNoteId: null
     });
+    // Phase 8 Stage 4 — best-effort sync_failed event. Wrapped in
+    // try/catch because the OUTER throw is the operator-visible
+    // error; an event-log failure here is recoverable noise we don't
+    // want to swap in.
+    try {
+      await insertDocumentEvent({
+        documentId: document.id,
+        eventType: "sync_failed",
+        actorUserId,
+        meta: { stage: "createNote", error: (err as Error).message }
+      });
+    } catch (eventErr) {
+      logger.warn(
+        { documentId: document.id, err: (eventErr as Error).message },
+        "[documents:sync] failed to record sync_failed event"
+      );
+    }
     logger.error(
       {
         documentId: document.id,
@@ -149,6 +175,25 @@ export async function syncDocumentToHubspot(
       hubspotSyncState: "failed",
       hubspotNoteId: noteId
     });
+    // Phase 8 Stage 4 — record the partial failure on the timeline.
+    try {
+      await insertDocumentEvent({
+        documentId: document.id,
+        eventType: "sync_failed",
+        actorUserId,
+        meta: {
+          stage: "associate",
+          noteId,
+          target,
+          error: (err as Error).message
+        }
+      });
+    } catch (eventErr) {
+      logger.warn(
+        { documentId: document.id, err: (eventErr as Error).message },
+        "[documents:sync] failed to record sync_failed event"
+      );
+    }
     logger.error(
       {
         documentId: document.id,
@@ -183,6 +228,21 @@ export async function syncDocumentToHubspot(
     // concurrent delete in Stage 5).
     throw new Error(
       `[documents:sync] document ${document.number} disappeared mid-sync`
+    );
+  }
+
+  // Phase 8 Stage 4 — record the success on the History timeline.
+  try {
+    await insertDocumentEvent({
+      documentId: updated.id,
+      eventType: "synced_to_hubspot",
+      actorUserId,
+      meta: { noteId, target }
+    });
+  } catch (eventErr) {
+    logger.warn(
+      { documentId: updated.id, err: (eventErr as Error).message },
+      "[documents:sync] failed to record synced_to_hubspot event"
     );
   }
 

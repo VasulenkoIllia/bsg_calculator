@@ -6,7 +6,11 @@
  */
 
 import { apiClient } from "./client.js";
-import type { CursorPage, PublicDocument } from "./types.js";
+import type {
+  CursorPage,
+  PublicDocument,
+  PublicEventsListResponse
+} from "./types.js";
 
 export type DocumentScope = "offer" | "agreement" | "offer_and_agreement";
 
@@ -106,6 +110,21 @@ export async function syncDocumentToHubspot(
 ): Promise<PublicDocument> {
   const { data } = await apiClient.post<PublicDocument>(
     `/documents/${number}/sync`
+  );
+  return data;
+}
+
+/**
+ * Phase 8 Stage 4 — GET /documents/:number/events.
+ * Returns the per-document audit trail in DESC order (newest first).
+ * Any authenticated user can read; the History panel on
+ * DocumentViewPage consumes this.
+ */
+export async function listDocumentEvents(
+  number: string
+): Promise<PublicEventsListResponse> {
+  const { data } = await apiClient.get<PublicEventsListResponse>(
+    `/documents/${encodeURIComponent(number)}/events`
   );
   return data;
 }

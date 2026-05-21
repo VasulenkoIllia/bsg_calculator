@@ -22,6 +22,7 @@ import {
   syncController,
   updateController
 } from "./calculator-configs.controller";
+import { listCalcConfigEventsController } from "../events/events.controller";
 
 export const calculatorConfigsRouter = Router();
 
@@ -42,4 +43,11 @@ calculatorConfigsRouter.post(
   requireRole("admin"),
   hubspotProxyLimiter,
   asyncHandler(syncController)
+);
+
+// Phase 8 Stage 4 — calc-config history. Read-only, any authenticated
+// user can list.
+calculatorConfigsRouter.get(
+  "/:id/events",
+  asyncHandler(listCalcConfigEventsController)
 );

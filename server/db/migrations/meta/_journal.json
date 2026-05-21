@@ -64,6 +64,13 @@
       "when": 1779707000000,
       "tag": "0008_calc_configs_hubspot_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1779723600000,
+      "tag": "0009_event_logs",
+      "breakpoints": true
     }
   ]
 }

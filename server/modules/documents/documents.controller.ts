@@ -127,6 +127,10 @@ export async function syncController(
     throw new TokenInvalidError("Token references a deleted user.");
   }
   const number = req.params.number;
-  const updated = await syncDocumentToHubspot(number);
+  // Phase 8 Stage 4 — pass the clicker's id so the recorded sync
+  // event in the History panel reads as "<displayName> synced
+  // BSG-XXX". Auto-sync from createDocument's setImmediate passes
+  // null (no req.user there) and the event reads as "system".
+  const updated = await syncDocumentToHubspot(number, req.user.id);
   res.status(200).json(updated);
 }

@@ -19,6 +19,7 @@ import {
   syncController,
   useAsTemplateController
 } from "./documents.controller";
+import { listDocumentEventsController } from "../events/events.controller";
 
 export const documentsRouter = Router();
 documentsRouter.use(requireAuth());
@@ -43,6 +44,14 @@ documentsRouter.post(
   requireRole("admin"),
   hubspotProxyLimiter,
   asyncHandler(syncController)
+);
+
+// Phase 8 Stage 4 — document history. Read-only, any authenticated
+// user can list. Wired here (not on a separate /events router) so
+// the URL hierarchy reads entity-first.
+documentsRouter.get(
+  "/:number/events",
+  asyncHandler(listDocumentEventsController)
 );
 
 /**

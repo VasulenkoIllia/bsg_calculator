@@ -20,6 +20,7 @@ import { buildSortedPage, type PageResult } from "../../shared/sorted-pagination
 import { NotFoundError, ValidationError } from "../../shared/errors";
 import { ensureDealBelongsToCompany } from "../../shared/deal-guard";
 import { companies, type Document } from "../../db/schema";
+import { insertDocumentEvent } from "../events/events.repository";
 import { insertCalculatorConfig } from "../calculator-configs/calculator-configs.repository";
 import {
   cursorValueForRow,
@@ -138,7 +139,7 @@ export async function createDocument(
     }
 
     const number = await allocateNextNumber(tx, hubspotCompanyId);
-    return insertDocumentWithNumber(tx, {
+    const row = await insertDocumentWithNumber(tx, {
       number,
       companyId: body.companyId,
       hubspotDealId: body.hubspotDealId ?? null,
@@ -148,6 +149,21 @@ export async function createDocument(
       addendum: body.addendum ?? null,
       createdByUserId: actorUserId
     });
+
+    // Phase 8 Stage 4 — write the 'created' event in the SAME TX so
+    // we never have a documents row without its initial audit entry
+    // (rollback wipes both together, commit publishes both together).
+    await insertDocumentEvent(
+      {
+        documentId: row.id,
+        eventType: "created",
+        actorUserId,
+        meta: { number: row.number, scope: row.scope }
+      },
+      tx
+    );
+
+    return row;
   });
 
   // Phase 9.G / Sprint 9.L B2 — auto-sync to HubSpot AFTER the TX

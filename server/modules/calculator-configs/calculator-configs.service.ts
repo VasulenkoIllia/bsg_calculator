@@ -14,12 +14,14 @@
  * `created_by_user_id`.
  */
 
+import { db } from "../../db/client";
 import { env } from "../../config/env";
 import { logger } from "../../middleware/logger";
 import { parseDtoOrInternalError } from "../../shared/dto-parse";
 import { buildSortedPage, type PageResult } from "../../shared/sorted-pagination";
 import { NotFoundError } from "../../shared/errors";
 import { ensureDealBelongsToCompany } from "../../shared/deal-guard";
+import { insertCalcConfigEvent } from "../events/events.repository";
 import type { CalculatorConfig } from "../../db/schema";
 import type { CalculatorConfigWithCompanyName } from "./calculator-configs.repository";
 import {
@@ -82,12 +84,30 @@ export async function createCalculatorConfig(
 ): Promise<CalculatorConfigPublic> {
   await ensureDealBelongsToCompany(body.hubspotDealId, body.companyId);
 
-  const row = await insertCalculatorConfig({
-    companyId: body.companyId,
-    hubspotDealId: body.hubspotDealId ?? null,
-    title: body.title ?? null,
-    payload: body.payload,
-    createdByUserId: actorUserId
+  // Phase 8 Stage 4 — atomically write the calc + its 'created'
+  // event in one TX so rollback wipes both together and the History
+  // panel never shows a calc-config without an initial creation row.
+  const row = await db.transaction(async tx => {
+    const inserted = await insertCalculatorConfig(
+      {
+        companyId: body.companyId,
+        hubspotDealId: body.hubspotDealId ?? null,
+        title: body.title ?? null,
+        payload: body.payload,
+        createdByUserId: actorUserId
+      },
+      tx
+    );
+    await insertCalcConfigEvent(
+      {
+        calculatorConfigId: inserted.id,
+        eventType: "created",
+        actorUserId,
+        meta: { title: inserted.title }
+      },
+      tx
+    );
+    return inserted;
   });
 
   // Phase 9.I — auto-sync to HubSpot AFTER the row is committed.

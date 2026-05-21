@@ -14,3 +14,4 @@ export * from "./deals";
 export * from "./calculator-configs";
 export * from "./documents";
 export * from "./hubspot-webhook-events";
+export * from "./events";
