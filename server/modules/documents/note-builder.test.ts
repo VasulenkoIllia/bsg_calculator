@@ -1,152 +1,131 @@
 /**
- * Phase 9 — unit tests for the HubSpot Note body builder.
+ * Phase 9.H — unit tests for the redesigned HubSpot Note body
+ * builder. The builder is pure (no DB, no HTTP) so we can exercise
+ * it with plain in-memory inputs.
  *
- * The builder is pure (no DB, no HTTP) so we can exercise it with
- * plain in-memory `Document`-shaped fixtures. The assertions focus
- * on the SHAPE of the output (presence of key sections, URL form,
- * scope label) rather than exact string matches — so future polish
- * to the template doesn't break the suite.
+ * The expected output shape:
+ *   <p>{Label} {identifier} // Company: {co} // Created {dd.MM.yyyy, HH:mm} by {actor.displayName} ({actor.email})</p>
+ *   <p><a href="{absUrl}" target="_blank" rel="noopener">Link</a></p>
+ *
+ * The assertions focus on the SHAPE — adjacent whitespace / line
+ * breaks may evolve without breaking the suite.
  */
 
 import { describe, expect, it } from "vitest";
-import type { Document } from "../../db/schema";
-import { buildHubspotNoteBody } from "./note-builder";
+import {
+  buildHubspotNoteBody,
+  noteKindFromDocumentScope
+} from "./note-builder";
 
-// ─── Fixture helper ─────────────────────────────────────────────────
-function makeDoc(overrides: Partial<Document> = {}): Document {
-  return {
-    id: "11111111-1111-4111-8111-111111111111",
-    number: "BSG-7100001-512587",
-    companyId: "22222222-2222-4222-8222-222222222222",
-    hubspotDealId: null,
-    calculatorConfigId: null,
-    scope: "offer",
-    payload: {
-      schemaVersion: 1,
-      calculatorType: { kind: "card", payin: true, payout: false },
-      payin: { euPercent: 80, wwPercent: 20, ccPercent: 70, apmPercent: 30 },
-      contractSummary: {
-        settlementPeriod: "T+1",
-        rollingReservePercent: 5,
-        rollingReserveHoldDays: 180
-      }
-    },
-    addendum: null,
-    hubspotSyncState: "not_synced",
-    hubspotNoteId: null,
-    createdByUserId: "33333333-3333-4333-8333-333333333333",
-    createdAt: new Date("2026-05-21T12:34:56.789Z"),
-    updatedAt: new Date("2026-05-21T12:34:56.789Z"),
-    ...overrides
-  };
-}
+const ACTOR = {
+  displayName: "Admin",
+  email: "admin@bsg.test"
+};
 
-describe("buildHubspotNoteBody", () => {
-  it("includes the BSG number + scope label in the header", () => {
+describe("buildHubspotNoteBody — new one-liner format (Phase 9.H)", () => {
+  it("renders Offer document with BSG number + company + actor + clickable link", () => {
     const body = buildHubspotNoteBody({
-      document: makeDoc({ scope: "offer" }),
-      companyName: "Acme Inc"
+      kind: "document_offer",
+      identifier: "BSG-7100001-099930",
+      companyName: "(A) TEST 1",
+      createdAt: new Date(Date.UTC(2026, 4, 21, 15, 40)),
+      actor: ACTOR,
+      detailPath: "/documents/BSG-7100001-099930"
     });
-    expect(body).toContain("BSG-7100001-512587");
-    expect(body).toContain("Offer");
+    // Header line
+    expect(body).toContain("Offer BSG-7100001-099930");
+    expect(body).toContain("// Company: (A) TEST 1");
+    expect(body).toContain("// Created 21.05.2026, 15:40");
+    expect(body).toContain("by Admin (admin@bsg.test)");
+    // Clickable link
+    expect(body).toMatch(/<a href="https:\/\/[^"]+\/documents\/BSG-7100001-099930"[^>]*>Link<\/a>/);
   });
 
-  it("renders the agreement scope label correctly", () => {
+  it("renders Agreement scope correctly", () => {
     const body = buildHubspotNoteBody({
-      document: makeDoc({ scope: "agreement" }),
-      companyName: "Acme Inc"
+      kind: "document_agreement",
+      identifier: "BSG-7100002-XXXXXX",
+      companyName: "Acme",
+      createdAt: new Date(),
+      actor: ACTOR,
+      detailPath: "/documents/BSG-7100002-XXXXXX"
     });
-    expect(body).toContain("Agreement");
+    expect(body).toContain("Agreement BSG-7100002-XXXXXX");
   });
 
-  it("renders the offer_and_agreement scope label as 'Offer + Agreement'", () => {
+  it("renders Offer + Agreement label correctly", () => {
     const body = buildHubspotNoteBody({
-      document: makeDoc({ scope: "offer_and_agreement" }),
-      companyName: "Acme Inc"
+      kind: "document_offer_and_agreement",
+      identifier: "BSG-7100003-XXX",
+      companyName: "Acme",
+      createdAt: new Date(),
+      actor: ACTOR,
+      detailPath: "/documents/BSG-7100003-XXX"
     });
-    expect(body).toContain("Offer + Agreement");
+    expect(body).toContain("Offer + Agreement BSG-7100003-XXX");
   });
 
-  it("includes the company name when provided", () => {
+  it("renders Calculator with title identifier", () => {
     const body = buildHubspotNoteBody({
-      document: makeDoc(),
-      companyName: "Acme Payments BV"
+      kind: "calculator",
+      identifier: "Pricing draft v2",
+      companyName: "Acme",
+      createdAt: new Date(),
+      actor: ACTOR,
+      detailPath: "/calc/abc-def"
     });
-    expect(body).toMatch(/Company:\s+Acme Payments BV/);
+    expect(body).toContain("Calculator Pricing draft v2");
+    expect(body).toMatch(/<a href="https:\/\/[^"]+\/calc\/abc-def"[^>]*>Link<\/a>/);
   });
 
-  it("includes the hubspotDealId when the document is pinned to a deal", () => {
+  it("escapes HTML special chars in company name + actor name", () => {
     const body = buildHubspotNoteBody({
-      document: makeDoc({ hubspotDealId: "499577072839" }),
-      companyName: "Acme Inc"
+      kind: "document_offer",
+      identifier: "BSG-X",
+      companyName: "A & <Tricky> Co",
+      createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0)),
+      actor: { displayName: 'Ivan "boss" Petrov', email: "ip@bsg" },
+      detailPath: "/documents/BSG-X"
     });
-    expect(body).toMatch(/Deal:\s+499577072839/);
+    expect(body).toContain("A &amp; &lt;Tricky&gt; Co");
+    expect(body).toContain("Ivan &quot;boss&quot; Petrov");
+    // Make sure we didn't ALSO escape inside the URL (already encoded).
+    expect(body).toMatch(/href="https:\/\/.*\/documents\/BSG-X"/);
   });
 
-  it("omits the Deal line when document has no hubspotDealId", () => {
+  it("emits the standard 2-paragraph HTML structure", () => {
     const body = buildHubspotNoteBody({
-      document: makeDoc({ hubspotDealId: null }),
-      companyName: "Acme Inc"
+      kind: "document_offer",
+      identifier: "BSG-X",
+      companyName: "Acme",
+      createdAt: new Date(),
+      actor: ACTOR,
+      detailPath: "/documents/BSG-X"
     });
-    expect(body).not.toMatch(/^Deal:/m);
+    // Two <p> tags expected: header + link.
+    const paragraphCount = (body.match(/<p>/g) ?? []).length;
+    expect(paragraphCount).toBe(2);
   });
 
-  it("includes the payin split percentages when the payload carries them", () => {
+  it("formats single-digit days/months with leading zero", () => {
     const body = buildHubspotNoteBody({
-      document: makeDoc(),
-      companyName: "Acme Inc"
+      kind: "document_offer",
+      identifier: "X",
+      companyName: "Y",
+      createdAt: new Date(Date.UTC(2026, 0, 3, 9, 5)),
+      actor: ACTOR,
+      detailPath: "/documents/X"
     });
-    expect(body).toContain("Payin split");
-    expect(body).toMatch(/EU:\s+80\.00%/);
-    expect(body).toMatch(/Worldwide:\s+20\.00%/);
+    expect(body).toContain("03.01.2026, 09:05");
   });
+});
 
-  it("includes contract terms (settlement, rolling reserve) when present", () => {
-    const body = buildHubspotNoteBody({
-      document: makeDoc(),
-      companyName: "Acme Inc"
-    });
-    expect(body).toContain("Contract terms");
-    expect(body).toContain("Settlement: T+1");
-    expect(body).toMatch(/Rolling reserve:\s+5\.00%/);
-    expect(body).toContain("hold 180 days");
-  });
-
-  it("includes the addendum when present", () => {
-    const body = buildHubspotNoteBody({
-      document: makeDoc({ addendum: "Custom payment terms apply." }),
-      companyName: "Acme Inc"
-    });
-    expect(body).toContain("Addendum");
-    expect(body).toContain("Custom payment terms apply.");
-  });
-
-  it("does NOT render the Addendum section when document has none", () => {
-    const body = buildHubspotNoteBody({
-      document: makeDoc({ addendum: null }),
-      companyName: "Acme Inc"
-    });
-    expect(body).not.toContain("── Addendum ──");
-  });
-
-  it("emits a clickable footer link with the BSG number", () => {
-    const body = buildHubspotNoteBody({
-      document: makeDoc(),
-      companyName: "Acme Inc"
-    });
-    expect(body).toMatch(/View full document:\s+https?:\/\/.*\/documents\/BSG-7100001-512587/);
-  });
-
-  it("handles missing payload fields gracefully (no crash, just empty sections)", () => {
-    const body = buildHubspotNoteBody({
-      document: makeDoc({ payload: { schemaVersion: 1 } }),
-      companyName: "Acme Inc"
-    });
-    // Header + footer still render — pricing/contract sections quietly
-    // skipped because nothing in the payload to fill them.
-    expect(body).toContain("BSG-7100001-512587");
-    expect(body).toMatch(/View full document:/);
-    expect(body).not.toContain("Payin split");
-    expect(body).not.toContain("Contract terms");
+describe("noteKindFromDocumentScope", () => {
+  it("maps each scope value to the matching kind", () => {
+    expect(noteKindFromDocumentScope("offer")).toBe("document_offer");
+    expect(noteKindFromDocumentScope("agreement")).toBe("document_agreement");
+    expect(noteKindFromDocumentScope("offer_and_agreement")).toBe(
+      "document_offer_and_agreement"
+    );
   });
 });

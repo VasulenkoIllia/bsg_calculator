@@ -1,5 +1,9 @@
 import { useNavigate, useParams } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "../contexts/AuthContext.js";
+import * as configsApi from "../api/calculator-configs.js";
+import { ApiError } from "../api/client.js";
 import { buildOfferSummaryText } from "../domain/calculator/index.js";
 import {
   HardcodedConstantsPanel,
@@ -211,6 +215,38 @@ export function CalculatorPage() {
   // mutation success message.
   const toast = useToast();
 
+  // Phase 9.I — manual HubSpot sync for the calc-config. Visible
+  // only in edit mode for admin/super_admin operators (mirror of
+  // the documents Sync button). Auto-save (PUT) does NOT trigger
+  // sync per operator brief; this button is the only path that
+  // creates a fresh Note in HubSpot for the calc.
+  const { hasRole } = useAuth();
+  const queryClient = useQueryClient();
+  const [calcSyncPending, setCalcSyncPending] = useState(false);
+
+  async function handleSyncCalcToHubspot(): Promise<void> {
+    if (!configId) return;
+    setCalcSyncPending(true);
+    try {
+      const updated = await configsApi.syncCalculatorConfigToHubspot(configId);
+      // Optimistic single-config cache update + invalidate listings
+      // so the "Saved calculators" pages re-render with the new
+      // sync state.
+      queryClient.setQueryData(["calculator-configs", "get", configId], updated);
+      queryClient.invalidateQueries({ queryKey: ["calculator-configs"] });
+      toast.success("Calculator synced to HubSpot.");
+    } catch (err) {
+      queryClient.invalidateQueries({ queryKey: ["calculator-configs"] });
+      toast.error(
+        err instanceof ApiError
+          ? `Sync failed: ${err.message}`
+          : "Sync failed — try again."
+      );
+    } finally {
+      setCalcSyncPending(false);
+    }
+  }
+
   // Capture the snapshot LAZILY when the modal opens — extracting on
   // every render would clone the whole calculator state needlessly.
   // We pass a stable reference into the modal; the modal owns its
@@ -375,6 +411,19 @@ export function CalculatorPage() {
         onToggleConstantsAndFormulas={calc.toggleHardcodedConstantsAndZoneFormulas}
         onReset={calc.resetAllValuesToZero}
         onApplyDefaults={calc.applyDefaultValues}
+        // Phase 9.I — HubSpot sync controls. Only render in edit
+        // mode (we need a calc id) AND only for admins (the BE
+        // route is admin-gated; hiding here matches the
+        // hasRole('admin') gate on /documents/:number).
+        hubspotSyncState={
+          isEditMode ? configQuery.data?.hubspotSyncState : undefined
+        }
+        onSyncToHubspot={
+          isEditMode && hasRole("admin") && configId
+            ? handleSyncCalcToHubspot
+            : undefined
+        }
+        syncPending={calcSyncPending}
       />
 
       {editModeBanner}

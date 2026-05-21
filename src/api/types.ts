@@ -142,6 +142,15 @@ export interface PublicCalculatorConfig {
   createdByUserId: string;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Phase 9.I — HubSpot Note write-back state. Same enum as on
+   * `PublicDocument`. `not_synced` is the default before any
+   * sync attempt; `synced` after a successful POST/PUT chain;
+   * `failed` after a HubSpot error (operator can Retry from the
+   * UI).
+   */
+  hubspotNoteId: string | null;
+  hubspotSyncState: "not_synced" | "synced" | "failed";
 }
 
 /**

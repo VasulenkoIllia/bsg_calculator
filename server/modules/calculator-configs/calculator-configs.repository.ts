@@ -123,6 +123,36 @@ export async function deleteCalculatorConfig(id: string): Promise<boolean> {
   return rows.length > 0;
 }
 
+/**
+ * Phase 9.I — patch a calc-config's HubSpot sync state + note id
+ * after a write-back attempt. Mirrors documents.repository
+ * `updateDocumentHubspotSync`.
+ *
+ * Used by the sync.service to persist the outcome of the
+ * createNote + association API calls AFTER the underlying TX.
+ *
+ * Returns the updated row (undefined if no row matched — caller
+ * surfaces NotFoundError).
+ */
+export async function updateCalculatorConfigHubspotSync(
+  id: string,
+  patch: {
+    hubspotSyncState: "not_synced" | "synced" | "failed";
+    hubspotNoteId: string | null;
+  }
+): Promise<CalculatorConfig | undefined> {
+  const rows = await db
+    .update(calculatorConfigs)
+    .set({
+      hubspotSyncState: patch.hubspotSyncState,
+      hubspotNoteId: patch.hubspotNoteId,
+      updatedAt: new Date()
+    })
+    .where(eq(calculatorConfigs.id, id))
+    .returning();
+  return rows[0];
+}
+
 export interface ListCalculatorConfigsArgs {
   /**
    * Sprint 6.6: optional. When absent → returns every config across

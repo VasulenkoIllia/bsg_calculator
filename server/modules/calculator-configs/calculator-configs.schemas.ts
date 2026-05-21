@@ -170,6 +170,11 @@ export const calculatorConfigPublicSchema = z.object({
   payload: z.unknown(),
   createdByUserId: z.string().uuid(),
   createdAt: z.string(),
-  updatedAt: z.string()
+  updatedAt: z.string(),
+  // Phase 9.I — HubSpot sync state mirror of the schema columns. The
+  // CalculatorPage uses these to render the Sync-status badge + the
+  // "Sync to HubSpot" CTA.
+  hubspotNoteId: z.string().nullable(),
+  hubspotSyncState: z.enum(["not_synced", "synced", "failed"])
 });
 export type CalculatorConfigPublic = z.infer<typeof calculatorConfigPublicSchema>;

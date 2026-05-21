@@ -69,6 +69,21 @@ export interface CalculatorStickyToolbarProps {
    * this component dumb about what state it might show.
    */
   statusSlot?: ReactNode;
+  /**
+   * Phase 9.I — HubSpot sync state. Used to render the colored
+   * status pill on the left + label-shift the Sync button on the
+   * right ("Sync to HubSpot" / "Sync again" / "Retry"). Pass
+   * `undefined` when not in edit mode (no calc id exists yet).
+   */
+  hubspotSyncState?: "not_synced" | "synced" | "failed";
+  /**
+   * Phase 9.I — click handler for the manual Sync. Pass null /
+   * undefined to hide the button entirely (non-admin operators,
+   * or new-draft mode where there's no saved calc yet).
+   */
+  onSyncToHubspot?: () => void;
+  /** Phase 9.I — while the Sync mutation is in flight, disable the button. */
+  syncPending?: boolean;
 }
 
 export function CalculatorStickyToolbar({
@@ -79,7 +94,10 @@ export function CalculatorStickyToolbar({
   onToggleConstantsAndFormulas,
   onReset,
   onApplyDefaults,
-  statusSlot
+  statusSlot,
+  hubspotSyncState,
+  onSyncToHubspot,
+  syncPending = false
 }: CalculatorStickyToolbarProps) {
   // Shared button class for the SECONDARY (slate-bordered) actions
   // group. Kept inline rather than extracted to a styled component
@@ -106,6 +124,28 @@ export function CalculatorStickyToolbar({
           ) : null}
           {statusSlot ? (
             <span className="text-xs text-slate-500">{statusSlot}</span>
+          ) : null}
+          {/* Phase 9.I — HubSpot sync state pill. Mirrors the badge
+              on DocumentViewPage. Only renders in edit mode (where
+              we have a real syncState from the server). */}
+          {hubspotSyncState ? (
+            <span
+              className={[
+                "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                hubspotSyncState === "synced"
+                  ? "bg-green-100 text-green-700"
+                  : hubspotSyncState === "failed"
+                    ? "bg-red-100 text-red-700"
+                    : "bg-slate-100 text-slate-500"
+              ].join(" ")}
+              title="HubSpot sync state for this calc-config"
+            >
+              {hubspotSyncState === "synced"
+                ? "✓ HubSpot"
+                : hubspotSyncState === "failed"
+                  ? "× HubSpot"
+                  : "HubSpot: off"}
+            </span>
           ) : null}
         </div>
         {/* Right: action group, two visual rows on narrow viewports.
@@ -148,6 +188,27 @@ export function CalculatorStickyToolbar({
               className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
             >
               Save calculator
+            </button>
+          ) : null}
+          {/* Phase 9.I — manual HubSpot sync. Edit mode + admin
+              only (parent decides whether to pass the handler).
+              Label adapts to current state for the operator: fresh
+              "Sync", "Sync again" for already-synced (audit trail),
+              "Retry" for failed. */}
+          {onSyncToHubspot ? (
+            <button
+              type="button"
+              onClick={onSyncToHubspot}
+              disabled={syncPending}
+              className="rounded-lg border border-blue-500 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {syncPending
+                ? "Syncing…"
+                : hubspotSyncState === "synced"
+                  ? "Sync again"
+                  : hubspotSyncState === "failed"
+                    ? "Retry HubSpot"
+                    : "Sync to HubSpot"}
             </button>
           ) : null}
           <button

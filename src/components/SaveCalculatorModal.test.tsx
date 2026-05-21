@@ -161,7 +161,9 @@ describe("SaveCalculatorModal — submit", () => {
       payload: samplePayload,
       createdByUserId: "user-id",
       createdAt: "2026-05-17T00:00:00.000Z",
-      updatedAt: "2026-05-17T00:00:00.000Z"
+      updatedAt: "2026-05-17T00:00:00.000Z",
+      hubspotNoteId: null,
+      hubspotSyncState: "not_synced" as const
     });
 
     const onClose = vi.fn();
@@ -208,7 +210,9 @@ describe("SaveCalculatorModal — submit", () => {
       payload: samplePayload,
       createdByUserId: "u",
       createdAt: "2026-05-17T00:00:00.000Z",
-      updatedAt: "2026-05-17T00:00:00.000Z"
+      updatedAt: "2026-05-17T00:00:00.000Z",
+      hubspotNoteId: null,
+      hubspotSyncState: "not_synced" as const
     });
 
     renderModal();

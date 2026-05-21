@@ -342,7 +342,11 @@ Sprint 7.4 also fixed a correctness bug where deals whose primary HubSpot compan
 
 ### Outbound (our DB → HubSpot Notes) — ✅ WORKS (Phase 9)
 
-**`POST /api/v1/documents/:number/sync`** is now wired:
+**Two surfaces sync to HubSpot Notes:**
+1. `POST /api/v1/documents/:number/sync` — frozen documents (Offer/Agreement)
+2. `POST /api/v1/calculator-configs/:id/sync` — saved calc-configs (Phase 9.I)
+
+**Both flows:**
 
 1. Loads the document by BSG number + its parent company.
 2. Builds a plain-text Note body via `server/modules/documents/note-builder.ts` (BSG number, scope, key contract terms from payload, addendum if any, clickable link back to `/documents/:number`).
@@ -352,13 +356,27 @@ Sprint 7.4 also fixed a correctness bug where deals whose primary HubSpot compan
 
 On HubSpot failure → `hubspot_sync_state='failed'` is persisted BEFORE the error propagates, so the next GET shows the failed badge + Retry CTA in the UI.
 
-**Operator policy**: each Sync click creates a NEW Note in HubSpot (audit trail). `documents.hubspot_note_id` always points to the most recent. Older Notes from previous syncs stay in HubSpot — operator can clean them up manually if they don't want clutter.
+**Operator policy**: each manual Sync click creates a NEW Note in HubSpot (audit trail). `hubspot_note_id` always points to the most recent. Older Notes from previous syncs stay in HubSpot — operator can clean them up manually if they don't want clutter.
 
-**Required HubSpot scope**: `crm.objects.notes.write` MUST be added to the Private App. Without it, every sync returns 403 → the document is marked `failed`.
+**Auto-sync (Phase 9.G)**: with `AUTO_SYNC_DOCUMENTS_TO_HUBSPOT=true` in `.env`, every successful `POST /documents` schedules a fire-and-forget sync via `setImmediate` AFTER the DB transaction commits. The operator gets a clean 201 immediately; the badge flips `not_synced → synced` (or `failed`) in the background. Same flag also auto-syncs calc-configs on first save (Phase 9.I).
 
-**Frontend trigger**: the "Sync to HubSpot" button on `/documents/:number` calls this endpoint. Visible to admins + super-admins (gated by `requireRole('admin')` on the backend, mirrored by `hasRole('admin')` on the frontend so regular users don't see a button that would 403).
+**Calculator sync (Phase 9.I)**: same flow as documents, with one operator-confirmed difference — auto-saves (`PUT /calculator-configs/:id`) DO NOT touch HubSpot. The Note's `Link` always opens our SPA which renders the freshest state, so there's nothing meaningful to re-push on every keystroke. Manual Sync button on `/calc/:id` creates a fresh Note (audit trail) the same way as documents.
 
-**Rate limit**: `hubspotProxyLimiter` = 10/min/IP. Comfortably under HubSpot's per-Private-App 100 req / 10s ceiling even when a single operator spams Sync.
+**Note body format (Phase 9.H)**: compact one-liner + clickable link:
+```
+Offer BSG-7100001-099930 // Company: (A) TEST 1 // Created 21.05.2026, 15:40 by Admin (admin@bsg.test)
+Link  (href: https://bsg.workflo.space/documents/BSG-7100001-099930)
+```
+Plus `Calculator: <title> // …` variant for calc-configs.
+
+**Required HubSpot scope**: `crm.objects.contacts.write` is sufficient per HubSpot Notes API docs ([developers.hubspot.com/docs/api/crm/notes](https://developers.hubspot.com/docs/api/crm/notes)). The Private App's existing scopes cover it — verified against `(A) TEST 1 c` in production 2026-05-21. No standalone `crm.objects.notes.*` scope is required by HubSpot.
+
+**Frontend triggers**:
+- `/documents/:number` → "Sync to HubSpot" button (admin+).
+- `/calc/:id` → "Sync to HubSpot" button in the sticky toolbar (admin+).
+Both gated by `requireRole('admin')` BE + `hasRole('admin')` FE so regular users don't see buttons that would 403.
+
+**Rate limit**: `hubspotProxyLimiter` = 10/min/IP per sync endpoint. Comfortably under HubSpot's per-Private-App 100 req / 10s ceiling even when an operator spams Sync.
 
 ### Pipeline stages — pulled on app boot
 The deal pipeline + stage labels are fetched once at server startup via `hubspot.listPipelineStages()` and cached for 1 hour in-memory. To pick up new stages added in HubSpot before the TTL expires, restart the app container (`docker compose restart app`).
