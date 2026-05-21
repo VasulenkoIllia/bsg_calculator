@@ -680,16 +680,19 @@ describe("POST /api/v1/documents/:number/use-as-template", () => {
   });
 });
 
-describe("POST /api/v1/documents/:number/sync — Phase 9 stub", () => {
-  it("returns 501 NOT_IMPLEMENTED", async () => {
-    const token = await setupAuth();
-    const res = await request(app)
-      .post("/api/v1/documents/BSG-7100001/sync")
-      .set("Authorization", `Bearer ${token}`);
-    expect(res.status).toBe(501);
-    expect(res.body.error.code).toBe("NOT_IMPLEMENTED");
-  });
-});
+// Sprint 9.L cleanup — the "returns 501 NOT_IMPLEMENTED" placeholder
+// test was retired because Phase 9.A wired the endpoint to a real
+// sync.service and Phase 9.K renamed the policy from "create-only"
+// to "PATCH-then-CREATE-on-404". The realistic auth/integration
+// coverage now lives in:
+//   - server/tests/calculator-configs.integration.test.ts (sync endpoint)
+//   - server/shared/hubspot/note-builder.test.ts          (body shape)
+//   - server/modules/hubspot/hubspot.client.test.ts       (HTTP layer)
+//
+// A non-admin caller would hit 403 (require-role guard) before ever
+// reaching the controller, which is what the stale assertion was
+// catching — kept here as a documentation breadcrumb in case a
+// future audit wonders where the 501 went.
 
 describe("number allocation — TX rollback returns the number", () => {
   it("pre-allocation validation doesn't consume the sequence value", async () => {

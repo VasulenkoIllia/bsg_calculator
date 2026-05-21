@@ -37,8 +37,11 @@ describe("buildHubspotNoteBody — new one-liner format (Phase 9.H)", () => {
     expect(body).toContain("// Company: (A) TEST 1");
     expect(body).toContain("// Created 21.05.2026, 15:40");
     expect(body).toContain("by Admin (admin@bsg.test)");
-    // Clickable link
-    expect(body).toMatch(/<a href="https:\/\/[^"]+\/documents\/BSG-7100001-099930"[^>]*>Link<\/a>/);
+    // Clickable link. Sprint 9.L — regex stays protocol-agnostic
+    // (`https?://`) so the same assertion passes against the dev
+    // env (APP_PUBLIC_URL=http://localhost:5173) and prod
+    // (APP_PUBLIC_URL=https://bsg.workflo.space).
+    expect(body).toMatch(/<a href="https?:\/\/[^"]+\/documents\/BSG-7100001-099930"[^>]*>Link<\/a>/);
   });
 
   it("renders Agreement scope correctly", () => {
@@ -75,7 +78,7 @@ describe("buildHubspotNoteBody — new one-liner format (Phase 9.H)", () => {
       detailPath: "/calc/abc-def"
     });
     expect(body).toContain("Calculator Pricing draft v2");
-    expect(body).toMatch(/<a href="https:\/\/[^"]+\/calc\/abc-def"[^>]*>Link<\/a>/);
+    expect(body).toMatch(/<a href="https?:\/\/[^"]+\/calc\/abc-def"[^>]*>Link<\/a>/);
   });
 
   it("escapes HTML special chars in company name + actor name", () => {
@@ -90,7 +93,7 @@ describe("buildHubspotNoteBody — new one-liner format (Phase 9.H)", () => {
     expect(body).toContain("A &amp; &lt;Tricky&gt; Co");
     expect(body).toContain("Ivan &quot;boss&quot; Petrov");
     // Make sure we didn't ALSO escape inside the URL (already encoded).
-    expect(body).toMatch(/href="https:\/\/.*\/documents\/BSG-X"/);
+    expect(body).toMatch(/href="https?:\/\/.*\/documents\/BSG-X"/);
   });
 
   it("emits the standard 2-paragraph HTML structure", () => {
