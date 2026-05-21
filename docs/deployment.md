@@ -153,17 +153,33 @@ curl -I https://bsg.workflo.space/
 
 ### 4.5 Create the bootstrap admin user
 
-The fresh DB has no users. Create the first admin from inside the running container:
+The fresh DB has no users. Create the first one — typically a
+super-admin so they can later invite the rest via the (Stage 3) UI:
 
 ```bash
+# Phase 8 Stage 1+ style: explicit --role.
 docker compose exec app npx tsx server/scripts/create-user.ts \
   --email=admin@your-domain.com \
   --password='use-a-strong-pw' \
   --display='Admin' \
-  --admin
+  --role=super_admin
 ```
 
+Backward-compat shortcuts still work:
+- `--admin` ≡ `--role=admin`
+- `--super-admin` ≡ `--role=super_admin`
+- no flag ≡ `--role=user` (least privileged)
+
 You can now log in at `https://bsg.workflo.space/login`.
+
+#### Optional: bootstrap super-admin via env
+
+If you'd rather promote an existing user via env (e.g. after they
+were created with `--admin` initially), set
+`BOOTSTRAP_SUPER_ADMIN_EMAIL=admin@your-domain.com` in `.env` and
+restart the app. The script promotes that user on every boot. It
+is idempotent (already-super-admin = no-op) and never demotes, so
+removing the env later doesn't strip privileges.
 
 ### 4.6 First HubSpot pull
 
@@ -338,3 +354,53 @@ The deal pipeline + stage labels are fetched once at server startup via `hubspot
 3. `docker compose up -d app` (restart picks up the new env).
 4. Watch logs: `docker compose logs -f app | grep -i hubspot`.
 5. Verify: `curl https://bsg.workflo.space/ready` should show `"hubspot":"ok"`. If it shows `"fail"`, the new token was rejected — re-check.
+
+## 10. Upgrading from pre-Stage-1 to Stage 1 (one-time)
+
+If you're upgrading an existing deploy that was running before Phase 8
+Stage 1 (`is_admin` boolean era), here's what happens automatically
+and what (if anything) you need to do manually.
+
+### 10.1 What auto-applies on `docker compose up -d --build app`
+
+1. New image runs entrypoint → migration `0007_user_role_enum.sql`
+   applies in the same TX:
+   - ADD `role text NOT NULL DEFAULT 'user'`
+   - Backfill: every row where `is_admin=true` becomes `role='admin'`
+   - DROP `is_admin` column
+2. Server boots with the new JWT shape. Existing logged-in users
+   have stale tokens (claim `isAdmin: bool` instead of
+   `role: enum`). On their next API call:
+   - The access token fails `verifyAccessToken()` → 401 INVALID
+   - Frontend axios interceptor triggers `/auth/refresh`
+   - Refresh succeeds (the cookie is unaffected) and mints a NEW
+     access token with the `role` claim
+   - The original request retries transparently
+3. Net effect on existing operators: **zero downtime, single ~50ms
+   hiccup on the first request after deploy.**
+
+### 10.2 Promote existing admin to super-admin (optional)
+
+If you want to promote your existing admin (now `role='admin'` post-
+migration) to `super_admin`:
+
+**Option A — via env (recommended for repeatability):**
+
+```bash
+nano /var/www/projects/bsg_calculator/.env
+# Add the line:
+BOOTSTRAP_SUPER_ADMIN_EMAIL=admin@your-domain.com
+docker compose up -d app
+```
+
+Boot logs will show `[bootstrap-super-admin] promoted user to super_admin`.
+
+**Option B — direct SQL (one-shot):**
+
+```bash
+docker compose exec postgres psql -U bsg -d bsg_calculator -c \
+  "UPDATE users SET role='super_admin' WHERE email='admin@your-domain.com';"
+```
+
+Either way, on the operator's next API call they'll have super-admin
+privileges (Phase 8 Stages 3+).

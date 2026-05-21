@@ -15,16 +15,24 @@ import { users, type User } from "../db/schema";
 
 export const app = createApp();
 
+/**
+ * Phase 8 Stage 1: tests can now pass either the new `role` field
+ * OR the legacy `isAdmin` boolean (for backward-compat with the
+ * older test suites that haven't been touched yet). When both are
+ * absent the user lands at `role='user'` (least privileged).
+ */
 export async function createTestUser(input: {
   email: string;
   password: string;
   login?: string;
   displayName?: string;
+  role?: "user" | "admin" | "super_admin";
   isAdmin?: boolean;
   isActive?: boolean;
 }): Promise<User> {
   // bcrypt cost is forced to 4 in tests via setup.ts → BCRYPT_COST.
   const passwordHash = await bcrypt.hash(input.password, 4);
+  const resolvedRole = input.role ?? (input.isAdmin ? "admin" : "user");
   const [row] = await db
     .insert(users)
     .values({
@@ -32,7 +40,7 @@ export async function createTestUser(input: {
       login: input.login ?? null,
       passwordHash,
       displayName: input.displayName ?? "Test",
-      isAdmin: input.isAdmin ?? false,
+      role: resolvedRole,
       isActive: input.isActive ?? true
     })
     .returning();

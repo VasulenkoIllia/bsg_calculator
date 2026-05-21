@@ -43,7 +43,7 @@ export async function renderApp(initialPath: string = "/calculator") {
     email: "tester@bsg.test",
     login: "tester",
     displayName: "Tester",
-    isAdmin: false,
+    role: "user" as const,
     isActive: true
   });
   setAccessToken("test-token");

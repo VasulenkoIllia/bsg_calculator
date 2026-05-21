@@ -10,21 +10,28 @@ import {
 
 describe("auth.tokens — JWT access token", () => {
   it("signs + verifies a valid access token round-trip", () => {
+    // Phase 8 Stage 1: role enum replaces the legacy isAdmin boolean.
     const userId = "550e8400-e29b-41d4-a716-446655440000";
-    const token = signAccessToken(userId, /* isAdmin */ true);
+    const token = signAccessToken(userId, "admin");
     const payload = verifyAccessToken(token);
     expect(payload.sub).toBe(userId);
-    expect(payload.isAdmin).toBe(true);
+    expect(payload.role).toBe("admin");
   });
 
-  it("preserves the isAdmin flag (false)", () => {
+  it("preserves the role claim (user)", () => {
     const userId = "550e8400-e29b-41d4-a716-446655440001";
-    const token = signAccessToken(userId, false);
-    expect(verifyAccessToken(token).isAdmin).toBe(false);
+    const token = signAccessToken(userId, "user");
+    expect(verifyAccessToken(token).role).toBe("user");
+  });
+
+  it("preserves the role claim (super_admin)", () => {
+    const userId = "550e8400-e29b-41d4-a716-446655440002";
+    const token = signAccessToken(userId, "super_admin");
+    expect(verifyAccessToken(token).role).toBe("super_admin");
   });
 
   it("rejects a tampered token", () => {
-    const token = signAccessToken("550e8400-e29b-41d4-a716-446655440000", false);
+    const token = signAccessToken("550e8400-e29b-41d4-a716-446655440000", "user");
     const tampered = token.slice(0, -5) + "XXXXX";
     expect(() => verifyAccessToken(tampered)).toThrow(AccessTokenVerificationError);
   });
@@ -33,13 +40,8 @@ describe("auth.tokens — JWT access token", () => {
     expect(() => verifyAccessToken("not.a.jwt")).toThrow(AccessTokenVerificationError);
   });
 
-  it("marks expired tokens with reason='expired'", () => {
-    // jwt.sign accepts negative expiresIn for "already expired" tokens
-    // — easier than waiting. We sign with the SAME secret used by
-    // verifyAccessToken, but cast through SignOptions['expiresIn'].
-    // Easier: just verify our normal token works, and trust
-    // jsonwebtoken to raise the right error on real expiry.
-    const token = signAccessToken("550e8400-e29b-41d4-a716-446655440000", false);
+  it("normal token verifies successfully (smoke for expiry pipeline)", () => {
+    const token = signAccessToken("550e8400-e29b-41d4-a716-446655440000", "user");
     expect(verifyAccessToken(token).sub).toBe("550e8400-e29b-41d4-a716-446655440000");
   });
 });

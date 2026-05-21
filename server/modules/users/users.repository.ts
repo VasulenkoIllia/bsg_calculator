@@ -9,7 +9,7 @@
 
 import { desc, eq, or } from "drizzle-orm";
 import { db } from "../../db/client";
-import { users, type User } from "../../db/schema";
+import { users, type User, type UserRole } from "../../db/schema";
 import { expectSingle } from "../../shared/db-helpers";
 
 export async function listUsers(): Promise<User[]> {
@@ -42,7 +42,8 @@ export async function insertUser(input: {
   login: string | null;
   passwordHash: string;
   displayName: string;
-  isAdmin: boolean;
+  // Phase 8 Stage 1: hierarchical role instead of boolean isAdmin.
+  role: UserRole;
 }): Promise<User> {
   const rows = await db.insert(users).values(input).returning();
   return expectSingle(rows, "insertUser");
@@ -55,7 +56,7 @@ export async function insertUser(input: {
  */
 export async function updateUser(
   id: string,
-  patch: Partial<Pick<User, "displayName" | "isActive" | "isAdmin">>
+  patch: Partial<Pick<User, "displayName" | "isActive" | "role">>
 ): Promise<User | undefined> {
   if (Object.keys(patch).length === 0) {
     return findUserById(id);

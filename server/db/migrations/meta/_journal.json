@@ -50,6 +50,13 @@
       "when": 1779050000000,
       "tag": "0006_lazy_jamie_braddock",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779583200000,
+      "tag": "0007_user_role_enum",
+      "breakpoints": true
     }
   ]
 }

@@ -36,7 +36,8 @@ function toPublic(user: User): UserPublic {
     email: user.email,
     login: user.login,
     displayName: user.displayName,
-    isAdmin: user.isAdmin,
+    // Phase 8 Stage 1: `role` enum replaces the boolean `isAdmin`.
+    role: user.role,
     isActive: user.isActive
   };
 }
@@ -68,7 +69,7 @@ export async function createUser(input: CreateUserRequest): Promise<UserPublic> 
     login,
     passwordHash,
     displayName: input.displayName,
-    isAdmin: input.isAdmin
+    role: input.role
   });
   return toPublic(row);
 }

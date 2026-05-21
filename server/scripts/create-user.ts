@@ -31,7 +31,10 @@ interface ParsedArgs {
   password: string;
   login?: string;
   display: string;
+  // Phase 8 Stage 1: explicit role + the two legacy boolean shortcuts.
+  role: "user" | "admin" | "super_admin";
   admin: boolean;
+  superAdmin: boolean;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -47,12 +50,21 @@ function parseArgs(argv: string[]): ParsedArgs {
     }
   }
 
+  // Phase 8 Stage 1: `--role=user|admin|super_admin` is the new
+  // explicit form. `--admin` (boolean) is kept for backward-compat:
+  // it maps to `role=admin`. `--super-admin` (no value) shortcut
+  // maps to `role=super_admin` for the bootstrap CLI path.
   const schema = z.object({
     email: z.string().email(),
     password: z.string().min(8, { message: "Password must be at least 8 chars." }),
     login: z.string().min(1).max(64).optional(),
     display: z.string().default(""),
+    role: z.enum(["user", "admin", "super_admin"]).default("user"),
     admin: z
+      .string()
+      .optional()
+      .transform(v => v === "true"),
+    superAdmin: z
       .string()
       .optional()
       .transform(v => v === "true")
@@ -63,7 +75,9 @@ function parseArgs(argv: string[]): ParsedArgs {
     password: map.get("password"),
     login: map.get("login"),
     display: map.get("display") ?? "",
-    admin: map.get("admin")
+    role: map.get("role"),
+    admin: map.get("admin"),
+    superAdmin: map.get("super-admin")
   });
 
   if (!parsed.success) {
@@ -84,13 +98,25 @@ function printUsage(): void {
   console.error(
     [
       "Usage:",
-      "  npm run create-user -- --email=jane@bsg.com --password=secret [--login=jane] [--display=\"Jane Doe\"] [--admin]"
+      "  npm run create-user -- --email=jane@bsg.com --password=secret \\",
+      "    [--login=jane] [--display=\"Jane Doe\"] [--role=user|admin|super_admin]",
+      "",
+      "Backward-compat: `--admin` = `--role=admin`, `--super-admin` = `--role=super_admin`."
     ].join("\n")
   );
 }
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+
+  // Phase 8 Stage 1: resolve final role. Explicit `--role=...` wins;
+  // otherwise the legacy `--super-admin` / `--admin` shortcuts feed
+  // in. Default = `user` (least privileged).
+  const role: "user" | "admin" | "super_admin" = args.superAdmin
+    ? "super_admin"
+    : args.admin
+      ? "admin"
+      : args.role;
 
   // eslint-disable-next-line no-console
   console.log(`[create-user] hashing password (bcrypt cost=${env.BCRYPT_COST})…`);
@@ -104,14 +130,14 @@ async function main(): Promise<void> {
         login: args.login ?? null,
         passwordHash: hash,
         displayName: args.display,
-        isAdmin: args.admin
+        role
       })
       .returning({
         id: users.id,
         email: users.email,
         login: users.login,
         displayName: users.displayName,
-        isAdmin: users.isAdmin,
+        role: users.role,
         isActive: users.isActive,
         createdAt: users.createdAt
       });

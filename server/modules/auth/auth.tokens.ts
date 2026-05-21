@@ -2,8 +2,14 @@
  * Token utilities — JWT (access) + opaque random (refresh).
  *
  * Access token: short-lived JWT, signed with JWT_ACCESS_SECRET.
- *   Payload: { sub: <userId>, isAdmin: <bool> }
+ *   Payload: { sub: <userId>, role: <"user"|"admin"|"super_admin"> }
  *   Verified on every authenticated API request.
+ *
+ *   Phase 8 Stage 1: the legacy `isAdmin: boolean` claim was replaced
+ *   with the hierarchical `role` enum. Tokens minted before the
+ *   migration are rejected as "invalid" (force re-login) — existing
+ *   sessions have at most JWT_ACCESS_EXPIRES (default 15 min) to
+ *   pick up the new claim shape via /auth/refresh.
  *
  * Refresh token: opaque random 32 bytes, base64url-encoded.
  *   The raw value lives only in the httpOnly cookie + (briefly) the
@@ -14,16 +20,17 @@
 import { createHash, randomBytes } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { env } from "../../config/env";
+import { USER_ROLES, type UserRole } from "../../db/schema";
 
 // ─── Access JWT ─────────────────────────────────────────────────────
 
 export interface AccessTokenPayload {
   sub: string;       // user id
-  isAdmin: boolean;
+  role: UserRole;
 }
 
-export function signAccessToken(userId: string, isAdmin: boolean): string {
-  const payload: AccessTokenPayload = { sub: userId, isAdmin };
+export function signAccessToken(userId: string, role: UserRole): string {
+  const payload: AccessTokenPayload = { sub: userId, role };
   return jwt.sign(payload, env.JWT_ACCESS_SECRET, {
     // jsonwebtoken's `expiresIn` is typed as a string-literal union
     // (`"15m" | "1h" | ...`), so a plain `string` from env doesn't
@@ -50,11 +57,20 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
     if (typeof decoded === "string") {
       throw new AccessTokenVerificationError("invalid", "Unexpected JWT payload type.");
     }
-    const { sub, isAdmin } = decoded as jwt.JwtPayload & { isAdmin?: boolean };
-    if (typeof sub !== "string" || typeof isAdmin !== "boolean") {
-      throw new AccessTokenVerificationError("invalid", "JWT payload missing required claims.");
+    const { sub, role } = decoded as jwt.JwtPayload & { role?: string };
+    if (typeof sub !== "string") {
+      throw new AccessTokenVerificationError("invalid", "JWT payload missing sub claim.");
     }
-    return { sub, isAdmin };
+    // Phase 8 Stage 1: stale pre-migration tokens lack `role` and will
+    // land here; surface as "invalid" so the client refreshes (and
+    // the new refresh issues a token with the role claim).
+    if (typeof role !== "string" || !USER_ROLES.includes(role as UserRole)) {
+      throw new AccessTokenVerificationError(
+        "invalid",
+        "JWT payload missing or unrecognised role claim."
+      );
+    }
+    return { sub, role: role as UserRole };
   } catch (err) {
     if (err instanceof AccessTokenVerificationError) throw err;
     if (err instanceof jwt.TokenExpiredError) {

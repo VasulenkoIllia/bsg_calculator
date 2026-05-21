@@ -36,7 +36,7 @@ const fixtureUser = {
   email: "alice@bsg.test",
   login: "alice",
   displayName: "Alice",
-  isAdmin: false,
+  role: "user" as const,
   isActive: true
 };
 

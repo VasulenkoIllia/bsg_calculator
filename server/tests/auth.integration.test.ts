@@ -21,7 +21,7 @@ describe("POST /api/v1/auth/login", () => {
     expect(res.body.accessToken).toEqual(expect.any(String));
     expect(res.body.user).toMatchObject({
       email: "ok@bsg.test",
-      isAdmin: false,
+      role: "user",
       isActive: true
     });
     // Sets the httpOnly refresh cookie.
@@ -95,7 +95,7 @@ describe("GET /api/v1/auth/me", () => {
       .set("Authorization", `Bearer ${token}`);
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ email: "me@bsg.test", isAdmin: false });
+    expect(res.body).toMatchObject({ email: "me@bsg.test", role: "user" });
   });
 
   it("returns 401 AUTH_TOKEN_INVALID without Authorization header", async () => {

@@ -11,6 +11,7 @@
  */
 
 import type { Logger } from "pino";
+import type { UserRole } from "../db/schema";
 import "express";
 
 declare module "express-serve-static-core" {
@@ -19,7 +20,11 @@ declare module "express-serve-static-core" {
     user?: {
       id: string;
       email: string;
-      isAdmin: boolean;
+      // Phase 8 Stage 1: hierarchical role enum (user ⊂ admin ⊂ super_admin).
+      // Replaces the legacy boolean `isAdmin` claim. Gates use the
+      // generic `requireRole(min)` middleware instead of branching
+      // on a boolean.
+      role: UserRole;
     };
     log: Logger;
   }

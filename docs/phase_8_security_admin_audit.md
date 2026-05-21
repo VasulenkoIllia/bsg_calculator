@@ -1,12 +1,45 @@
 # Phase 8 — Security, Admin Management, Document Audit & Deletion
 
-**Status**: Planned (post-7.2). Not implemented.
-**Date**: 2026-05-20
+**Status**: Stage 1 complete (2026-05-21). Stages 2–6 planned.
+**Date created**: 2026-05-20
 **Confirmed by**: operator brief 2026-05-20 (this conversation)
 
 Four feature blocks raised after Sprint 7.2 acceptance. This document
 captures the agreed-upon contract before implementation so the spec
 doesn't drift across sprints.
+
+## Stage progress
+
+| Stage | Topic | Status |
+|---|---|---|
+| 1 | Roles foundation (`users.role` enum + `requireRole` middleware + bootstrap) | ✅ **DONE 2026-05-21** (Phase 8 Stage 1.A–D) |
+| 2 | TOTP 2FA + `/me` personal cabinet | ⏳ planned |
+| 3 | Super-admin user management (`/admin/users`, invite copy-link, block, password reset) | ⏳ planned (needs Stage 1+2) |
+| 4 | Per-document event log | ⏳ planned (needs Stage 1 for actor name) |
+| 5 | Document soft-delete with HubSpot Note tear-down | ⏳ planned (needs Stage 1+4) |
+| 6 | `admin_actions` audit log + admin sub-shell | ⏳ planned (needs Stages 1-5) |
+
+### Stage 1 deliverables shipped
+
+- Migration `0007_user_role_enum.sql` — added `role text` column with
+  CHECK enum, backfilled existing `is_admin=true` rows to `role='admin'`,
+  dropped `is_admin` column.
+- JWT access-token claim swapped from `isAdmin: boolean` to `role:
+  'user'|'admin'|'super_admin'`. Stale pre-migration tokens surface
+  as `AccessTokenVerificationError("invalid")` → client re-refreshes
+  within 15 min and picks up the new shape.
+- New `server/middleware/require-role.ts` with hierarchical tier
+  (user=0, admin=1, super_admin=2). `requireRole('admin')` accepts
+  both admin and super_admin (admin ⊂ super_admin).
+- `requireAdmin()` kept as a thin re-export for backward-compat.
+- Bootstrap script `server/scripts/bootstrap-super-admin.ts` runs
+  on every server boot: promotes the user whose email matches
+  `BOOTSTRAP_SUPER_ADMIN_EMAIL` to super_admin. Idempotent, never
+  demotes.
+- `create-user.ts` accepts `--role=user|admin|super_admin` with
+  backward-compat shortcuts `--admin` / `--super-admin`.
+- Frontend: `PublicUser.role` (typed union) + new
+  `useAuth().hasRole(min)` helper mirroring the backend tier table.
 
 ---
 
