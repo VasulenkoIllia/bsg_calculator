@@ -240,10 +240,87 @@ class HubspotClient {
     }
   }
 
-  /** Internal — used by get() / delete() / future post(). Holds the retry/backoff logic. */
+  /**
+   * Phase 9 — POST /crm/v3/objects/notes.
+   *
+   * Creates a stand-alone Note in HubSpot. The Note is NOT associated
+   * with any record yet — use `associateNoteWith()` immediately after
+   * (or in the same flow) to link it to a deal or company. HubSpot's
+   * API doesn't accept associations in the create payload via the
+   * v3 single-object endpoint, so we do it as two calls.
+   *
+   * Required scope: `crm.objects.notes.write`. The Note body is
+   * stored verbatim in HubSpot — keep it < 65k chars (HubSpot's
+   * documented Note body cap).
+   *
+   * `body` is plain text by default. For richer formatting, set
+   * `bodyContentType="HTML"` and pass HTML in `body` — we use plain
+   * text in Phase 9 for fidelity across the HubSpot UI + email
+   * digests + mobile app rendering.
+   */
+  async createNote(input: {
+    body: string;
+    /** Unix millis timestamp; defaults to now. */
+    timestamp?: number;
+  }): Promise<{ id: string }> {
+    const raw = await this.post<{ id: string }>(`/crm/v3/objects/notes`, {
+      properties: {
+        hs_note_body: input.body,
+        hs_timestamp: input.timestamp ?? Date.now()
+      }
+    });
+    return { id: raw.id };
+  }
+
+  /**
+   * Phase 9 — PUT /crm/v3/objects/notes/{id}/associations/{toType}/{toId}/{type}
+   *
+   * Links a Note to a deal or company. We use the v3 "default"
+   * association type so HubSpot picks the predefined "Note → Deal"
+   * or "Note → Company" association without us having to enumerate
+   * the numeric type id.
+   *
+   * `toObjectType` is the HubSpot object type name (`deal`,
+   * `company`, etc.).
+   *
+   * `toObjectId` is the HubSpot object id (the natural key, NOT our
+   * UUID).
+   *
+   * Returns void — HubSpot returns the updated association list but
+   * we don't consume it.
+   */
+  async associateNoteWith(input: {
+    noteId: string;
+    toObjectType: "deal" | "company";
+    toObjectId: string;
+  }): Promise<void> {
+    // The v4 "default" association API lets us omit the numeric
+    // association-type id and let HubSpot resolve the canonical one
+    // (Note → Deal = 214, Note → Company = 190 in current API, but
+    // those numbers are docs-only and can rotate per portal).
+    await this.put<unknown>(
+      `/crm/v4/objects/notes/${encodeURIComponent(input.noteId)}/associations/default/${encodeURIComponent(
+        input.toObjectType
+      )}/${encodeURIComponent(input.toObjectId)}`,
+      // PUT body is empty for the default-association shortcut.
+      undefined
+    );
+  }
+
+  /**
+   * Phase 9 — internal PUT helper. Returns the parsed JSON response
+   * (or undefined if HubSpot responds 204). `post()` already exists
+   * elsewhere in this class; we only need PUT for the v4 association
+   * default-link endpoint.
+   */
+  private async put<T>(path: string, body: unknown, options: RequestOptions = {}): Promise<T> {
+    return this.request<T>(path, "PUT", body, options);
+  }
+
+  /** Internal — used by get() / delete() / post() / put(). Holds the retry/backoff logic. */
   private async request<T>(
     path: string,
-    method: "GET" | "POST" | "DELETE",
+    method: "GET" | "POST" | "DELETE" | "PUT",
     body: unknown,
     options: RequestOptions = {}
   ): Promise<T> {

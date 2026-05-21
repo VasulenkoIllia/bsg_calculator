@@ -68,6 +68,34 @@ export async function findByNumber(number: string): Promise<Document | undefined
 }
 
 /**
+ * Phase 9 — patch a document's HubSpot sync state + note id after a
+ * Note write-back attempt. Used by the sync service:
+ *   - `state='synced'` + `noteId='...'` after a successful POST /notes
+ *   - `state='failed'` + `noteId=null` after an unrecoverable error
+ *
+ * Returns the updated row; undefined if no row matched (caller can
+ * surface a NotFoundError).
+ */
+export async function updateDocumentHubspotSync(
+  id: string,
+  patch: {
+    hubspotSyncState: "not_synced" | "synced" | "failed";
+    hubspotNoteId: string | null;
+  }
+): Promise<Document | undefined> {
+  const rows = await db
+    .update(documents)
+    .set({
+      hubspotSyncState: patch.hubspotSyncState,
+      hubspotNoteId: patch.hubspotNoteId,
+      updatedAt: new Date()
+    })
+    .where(eq(documents.id, id))
+    .returning();
+  return rows[0];
+}
+
+/**
  * Insert a document inside an open TX. The caller is expected to have
  * just allocated the BSG-XXXXX number via `allocateNextNumber(tx)` so
  * the two operations share the same transaction.

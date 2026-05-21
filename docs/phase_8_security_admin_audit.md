@@ -16,8 +16,19 @@ doesn't drift across sprints.
 | 2 | TOTP 2FA + `/me` personal cabinet | ⏳ planned |
 | 3 | Super-admin user management (`/admin/users`, invite copy-link, block, password reset) | ⏳ planned (needs Stage 1+2) |
 | 4 | Per-document event log | ⏳ planned (needs Stage 1 for actor name) |
-| 5 | Document soft-delete with HubSpot Note tear-down | ⏳ planned (needs Stage 1+4) |
+| 5 | Document soft-delete with HubSpot Note tear-down | ⏳ planned (needs Stage 1+4; `deleteNote()` client method ready since Sprint 7.3.D) |
 | 6 | `admin_actions` audit log + admin sub-shell | ⏳ planned (needs Stages 1-5) |
+
+### Adjacent Phase 9 shipped (2026-05-21)
+
+**HubSpot Note write-back** — `POST /api/v1/documents/:number/sync`.
+Not part of the Phase 8 stage progression but tightly related (Stage 5
+will tear down the same Notes on document deletion). Pushes a
+plain-text Note with BSG-XXXXX + key contract terms + clickable link
+back to our SPA; associates with the document's pinned deal (preferred)
+or the parent company (fallback). Each Sync click creates a fresh
+Note (audit trail). See `docs/deployment.md §9` for the full flow
+and `server/modules/documents/sync.service.ts` for the wiring.
 
 ### Stage 1 deliverables shipped
 

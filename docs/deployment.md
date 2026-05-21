@@ -330,7 +330,7 @@ Default 64MB is fine for offer + agreement renders. If you bump it, set `shm_siz
 - No 2FA on login yet (Phase 8 Stage 2).
 - No alerting on sustained outage — failures show only in container logs.
 
-## 9. HubSpot synchronization — current state (Sprint 7.4)
+## 9. HubSpot synchronization — current state (Phase 9 / 2026-05-21)
 
 ### Inbound (HubSpot → our DB) — ✅ WORKS
 Three pull paths, all production-ready:
@@ -340,10 +340,25 @@ Three pull paths, all production-ready:
 
 Sprint 7.4 also fixed a correctness bug where deals whose primary HubSpot company association was filtered out (`WORLDFY OY` style) would silently land as `filtered_out` instead of using the fallback company from `associations.companies.results`.
 
-### Outbound (our DB → HubSpot) — ❌ NOT IMPLEMENTED (Phase 9)
-There is no `createNote` / `updateNote` method on the HubSpot client. The `POST /api/v1/documents/:number/sync` route is wired but the controller throws `NotImplementedError`. The `hubspotSyncState` column on `documents` will stay `not_synced` for every document until Phase 9 lands.
+### Outbound (our DB → HubSpot Notes) — ✅ WORKS (Phase 9)
 
-`hubspot.client.deleteNote()` exists (Sprint 7.3.D) — added for Phase 8 document-deletion flow — but is not invoked by any current code path.
+**`POST /api/v1/documents/:number/sync`** is now wired:
+
+1. Loads the document by BSG number + its parent company.
+2. Builds a plain-text Note body via `server/modules/documents/note-builder.ts` (BSG number, scope, key contract terms from payload, addendum if any, clickable link back to `/documents/:number`).
+3. Calls HubSpot **POST /crm/v3/objects/notes** with the body.
+4. Calls HubSpot **PUT /crm/v4/objects/notes/{noteId}/associations/default/{deal|company}/{id}** to attach the Note to either the document's `hubspotDealId` (preferred) or the parent company's `hubspot_company_id` (fallback).
+5. Updates `documents.hubspot_note_id` + `hubspot_sync_state='synced'`.
+
+On HubSpot failure → `hubspot_sync_state='failed'` is persisted BEFORE the error propagates, so the next GET shows the failed badge + Retry CTA in the UI.
+
+**Operator policy**: each Sync click creates a NEW Note in HubSpot (audit trail). `documents.hubspot_note_id` always points to the most recent. Older Notes from previous syncs stay in HubSpot — operator can clean them up manually if they don't want clutter.
+
+**Required HubSpot scope**: `crm.objects.notes.write` MUST be added to the Private App. Without it, every sync returns 403 → the document is marked `failed`.
+
+**Frontend trigger**: the "Sync to HubSpot" button on `/documents/:number` calls this endpoint. Visible to admins + super-admins (gated by `requireRole('admin')` on the backend, mirrored by `hasRole('admin')` on the frontend so regular users don't see a button that would 403).
+
+**Rate limit**: `hubspotProxyLimiter` = 10/min/IP. Comfortably under HubSpot's per-Private-App 100 req / 10s ceiling even when a single operator spams Sync.
 
 ### Pipeline stages — pulled on app boot
 The deal pipeline + stage labels are fetched once at server startup via `hubspot.listPipelineStages()` and cached for 1 hour in-memory. To pick up new stages added in HubSpot before the TTL expires, restart the app container (`docker compose restart app`).

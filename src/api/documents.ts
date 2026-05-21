@@ -91,6 +91,26 @@ export async function useDocumentAsTemplate(
 }
 
 /**
+ * Phase 9 — POST /documents/:number/sync.
+ *
+ * Pushes a HubSpot Note for this document and associates it with the
+ * pinned deal (if any) or the parent company. Returns the updated
+ * document DTO with the new `hubspotSyncState` + `hubspotNoteId`.
+ *
+ * Errors: 502 HUBSPOT_UNREACHABLE on upstream failure. The backend
+ * still persists `hubspot_sync_state='failed'` BEFORE the error
+ * propagates, so a fresh GET re-renders with the failed badge.
+ */
+export async function syncDocumentToHubspot(
+  number: string
+): Promise<PublicDocument> {
+  const { data } = await apiClient.post<PublicDocument>(
+    `/documents/${number}/sync`
+  );
+  return data;
+}
+
+/**
  * GET /api/v1/numbering/peek[?hubspotCompanyId=…] — preview the next
  * BSG-<seq>-<suffix>. Without `hubspotCompanyId` the suffix is
  * rendered as "XXXXXX" so the wizard can show a partial preview

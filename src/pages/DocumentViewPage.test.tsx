@@ -13,6 +13,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import * as documentsApi from "../api/documents.js";
 import type { PublicDocument } from "../api/types.js";
+import { AuthProvider } from "../contexts/AuthContext.js";
 import { ToastProvider } from "../contexts/ToastContext.js";
 import { DocumentViewPage } from "./DocumentViewPage.js";
 
@@ -41,13 +42,20 @@ function renderAt(number: string) {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <ToastProvider>
-        <MemoryRouter initialEntries={[`/documents/${number}`]}>
-          <Routes>
-            <Route path="/documents/:number" element={<DocumentViewPage />} />
-          </Routes>
-        </MemoryRouter>
-      </ToastProvider>
+      {/* Phase 9: DocumentViewPage now reads useAuth().hasRole to
+          decide whether to render the "Sync to HubSpot" button, so
+          the test tree needs AuthProvider. The provider does a
+          cold-boot refresh against the mocked apiClient — in tests
+          this is a fast no-op because no refresh cookie is set. */}
+      <AuthProvider>
+        <ToastProvider>
+          <MemoryRouter initialEntries={[`/documents/${number}`]}>
+            <Routes>
+              <Route path="/documents/:number" element={<DocumentViewPage />} />
+            </Routes>
+          </MemoryRouter>
+        </ToastProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }
