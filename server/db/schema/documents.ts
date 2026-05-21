@@ -48,15 +48,28 @@ export const documents = pgTable(
       { onDelete: "set null" }
     ),
     // 'offer' | 'agreement' | 'offer_and_agreement' — enforced by CHECK below.
-    scope: text("scope").notNull(),
+    // Sprint 9.M S4 — `.$type<>()` annotation narrows the column to
+    // the actual enum union so callers don't need `as` casts on the
+    // DTO projection. A new value would still need: (a) widening
+    // this annotation, (b) widening the CHECK constraint, (c)
+    // widening the matching Zod enum in documents.schemas.ts.
+    scope: text("scope")
+      .notNull()
+      .$type<"offer" | "agreement" | "offer_and_agreement">(),
     // Frozen snapshot — CalculatorSnapshotPayload + header/parties/signatures.
     payload: jsonb("payload").notNull(),
     // Optional addendum text rendered into the PDF.
     addendum: text("addendum"),
     // 'not_synced' | 'synced' | 'failed' | 'delete_pending' | 'delete_failed'
     // — Phase 9 wrote the first three; Phase 8 Stage 5 added the last
-    // two for the delete-flow transition states.
-    hubspotSyncState: text("hubspot_sync_state").notNull().default("not_synced"),
+    // two for the delete-flow transition states. Sprint 9.M S4 —
+    // typed narrow so `toPublic` doesn't need an `as` cast.
+    hubspotSyncState: text("hubspot_sync_state")
+      .notNull()
+      .default("not_synced")
+      .$type<
+        "not_synced" | "synced" | "failed" | "delete_pending" | "delete_failed"
+      >(),
     // Set by Phase 9 once a HubSpot Note exists for this document.
     hubspotNoteId: text("hubspot_note_id"),
     createdByUserId: uuid("created_by_user_id")
@@ -72,7 +85,14 @@ export const documents = pgTable(
     ),
     // 'client_request' | 'created_in_error' | 'replaced_by_new_version'
     // | 'duplicate' | 'other' — see migration for the CHECK enum.
-    deletionReason: text("deletion_reason"),
+    // Sprint 9.M S4 — `.$type<>()` narrows the column for `toPublic`.
+    deletionReason: text("deletion_reason").$type<
+      | "client_request"
+      | "created_in_error"
+      | "replaced_by_new_version"
+      | "duplicate"
+      | "other"
+    >(),
     deletionNote: text("deletion_note"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -133,6 +153,15 @@ export const documents = pgTable(
     // bloat the b-tree.
     aliveCreatedIdx: index("documents_alive_created_idx")
       .on(table.createdAt)
+      .where(sql`${table.deletedAt} IS NULL`),
+    // Sprint 9.M S1 — composite partial index for the actually
+    // most-common query: `WHERE company_id = $1 AND
+    // deleted_at IS NULL ORDER BY created_at DESC`. The Stage 5
+    // single-column variant above couldn't be used by the planner
+    // without satisfying the company filter — this one is the
+    // first-class index for the hot path.
+    companyAliveCreatedIdx: index("documents_company_alive_created_idx")
+      .on(table.companyId, table.createdAt)
       .where(sql`${table.deletedAt} IS NULL`)
   })
 );

@@ -35,6 +35,7 @@ import {
   noteKindFromDocumentScope
 } from "../../shared/hubspot/note-builder";
 import { insertDocumentEvent } from "../events/events.repository";
+import { tryRecordEvent } from "../events/events.helpers";
 import {
   findByNumber,
   updateDocumentHubspotSync
@@ -129,23 +130,23 @@ export async function syncDocumentToHubspot(
       hubspotSyncState: "failed",
       hubspotNoteId: null
     });
-    // Phase 8 Stage 4 — best-effort sync_failed event. Wrapped in
-    // try/catch because the OUTER throw is the operator-visible
-    // error; an event-log failure here is recoverable noise we don't
-    // want to swap in.
-    try {
-      await insertDocumentEvent({
-        documentId: document.id,
-        eventType: "sync_failed",
-        actorUserId,
-        meta: { stage: "createNote", error: (err as Error).message }
-      });
-    } catch (eventErr) {
-      logger.warn(
-        { documentId: document.id, err: (eventErr as Error).message },
-        "[documents:sync] failed to record sync_failed event"
-      );
-    }
+    // Phase 8 Stage 4 — best-effort sync_failed event.
+    // Sprint 9.M D1 — uses the shared `tryRecordEvent` helper that
+    // replaces 10+ identical try/catch + logger.warn blocks across
+    // the sync + delete + auto-save paths.
+    await tryRecordEvent(
+      () =>
+        insertDocumentEvent({
+          documentId: document.id,
+          eventType: "sync_failed",
+          actorUserId,
+          meta: { stage: "createNote", error: (err as Error).message }
+        }),
+      {
+        label: "documents:sync",
+        context: { documentId: document.id, documentNumber: document.number }
+      }
+    );
     logger.error(
       {
         documentId: document.id,
@@ -183,24 +184,24 @@ export async function syncDocumentToHubspot(
       hubspotNoteId: noteId
     });
     // Phase 8 Stage 4 — record the partial failure on the timeline.
-    try {
-      await insertDocumentEvent({
-        documentId: document.id,
-        eventType: "sync_failed",
-        actorUserId,
-        meta: {
-          stage: "associate",
-          noteId,
-          target,
-          error: (err as Error).message
-        }
-      });
-    } catch (eventErr) {
-      logger.warn(
-        { documentId: document.id, err: (eventErr as Error).message },
-        "[documents:sync] failed to record sync_failed event"
-      );
-    }
+    await tryRecordEvent(
+      () =>
+        insertDocumentEvent({
+          documentId: document.id,
+          eventType: "sync_failed",
+          actorUserId,
+          meta: {
+            stage: "associate",
+            noteId,
+            target,
+            error: (err as Error).message
+          }
+        }),
+      {
+        label: "documents:sync",
+        context: { documentId: document.id, noteId }
+      }
+    );
     logger.error(
       {
         documentId: document.id,
@@ -239,19 +240,19 @@ export async function syncDocumentToHubspot(
   }
 
   // Phase 8 Stage 4 — record the success on the History timeline.
-  try {
-    await insertDocumentEvent({
-      documentId: updated.id,
-      eventType: "synced_to_hubspot",
-      actorUserId,
-      meta: { noteId, target }
-    });
-  } catch (eventErr) {
-    logger.warn(
-      { documentId: updated.id, err: (eventErr as Error).message },
-      "[documents:sync] failed to record synced_to_hubspot event"
-    );
-  }
+  await tryRecordEvent(
+    () =>
+      insertDocumentEvent({
+        documentId: updated.id,
+        eventType: "synced_to_hubspot",
+        actorUserId,
+        meta: { noteId, target }
+      }),
+    {
+      label: "documents:sync",
+      context: { documentId: updated.id, noteId }
+    }
+  );
 
   logger.info(
     {

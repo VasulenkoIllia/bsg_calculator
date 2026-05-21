@@ -33,6 +33,7 @@ import { logger } from "../../middleware/logger";
 import { ValidationError } from "../../shared/errors";
 import { getRawDocumentByNumber } from "../documents/documents.service";
 import { insertDocumentEvent } from "../events/events.repository";
+import { tryRecordEvent } from "../events/events.helpers";
 import { renderHtmlToPdf } from "./pdf.service";
 
 /**
@@ -155,21 +156,21 @@ export async function downloadPdfController(
   if (req.user?.id) {
     const actorUserId = req.user.id;
     const documentId = doc.id;
-    void (async () => {
-      try {
-        await insertDocumentEvent({
+    // Sprint 9.M D1 — `tryRecordEvent` swallows + logs the failure.
+    // We still `void` the outer Promise so the response stream isn't
+    // delayed by the event INSERT round-trip (the helper itself is
+    // async but we don't await it here on purpose — best-effort,
+    // post-response audit).
+    void tryRecordEvent(
+      () =>
+        insertDocumentEvent({
           documentId,
           eventType: "pdf_downloaded",
           actorUserId,
           meta: { number, download }
-        });
-      } catch (err) {
-        logger.warn(
-          { documentId, err: (err as Error).message },
-          "[pdf] failed to record pdf_downloaded event (best-effort)"
-        );
-      }
-    })();
+        }),
+      { label: "pdf", context: { documentId, number } }
+    );
   }
 }
 

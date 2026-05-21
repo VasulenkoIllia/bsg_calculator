@@ -369,19 +369,14 @@ function EditUserModal({
       await onSaved();
     },
     onError: (err: unknown) => {
+      // Sprint 9.M N1 — the previous switch/case over `err.code`
+      // was dead code (every branch did `setError(err.message)`).
+      // The server message is already operator-readable for all
+      // three lock-out codes (USER_CANNOT_SELF_BLOCK,
+      // USER_CANNOT_SELF_DOWNGRADE, LAST_SUPER_ADMIN) and any
+      // future server-side error, so we just surface it directly.
       if (err instanceof ApiError) {
-        // Surface the Phase 8 Stage 3 lock-out guard codes as plain
-        // operator-readable English. Keep their message body if the
-        // server already returned one.
-        switch (err.code) {
-          case "USER_CANNOT_SELF_BLOCK":
-          case "USER_CANNOT_SELF_DOWNGRADE":
-          case "LAST_SUPER_ADMIN":
-            setError(err.message);
-            break;
-          default:
-            setError(err.message);
-        }
+        setError(err.message);
       } else {
         setError("Something went wrong. Try again.");
       }

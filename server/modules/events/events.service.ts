@@ -52,12 +52,23 @@ function toPublic(row: EventRowWithActor): PublicEvent {
  * return its events. 404 if the document doesn't exist — keeps the
  * "lookup by number then list" semantics symmetric with every other
  * /documents/:number endpoint.
+ *
+ * Sprint 9.M B5/B6 — also 404 when the document is soft-deleted and
+ * the caller is below super_admin. This keeps the events endpoint
+ * consistent with the single-doc fetch + listing visibility: a
+ * regular operator can never reach the deletion-related events
+ * (which carry `reason` + `hubspotNoteIdRemoved` meta) for a
+ * retracted document. super_admin still sees the full audit trail.
  */
 export async function listDocumentEventsByNumber(
-  number: string
+  number: string,
+  actorRole: import("../../shared/roles").UserRole = "user"
 ): Promise<PublicEvent[]> {
   const doc = await findByNumber(number);
   if (!doc) throw new NotFoundError("Document");
+  if (doc.deletedAt && actorRole !== "super_admin") {
+    throw new NotFoundError("Document");
+  }
   const rows = await listDocumentEvents(doc.id);
   return rows.map(toPublic);
 }

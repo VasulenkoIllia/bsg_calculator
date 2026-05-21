@@ -30,13 +30,17 @@ interface EventHistoryPanelProps {
 }
 
 const EVENT_LABEL: Record<string, string> = {
+  // Phase 8 Stage 4 — the original document/calc event vocabulary.
   created: "Created",
   pdf_downloaded: "PDF downloaded",
   synced_to_hubspot: "Synced to HubSpot",
   sync_failed: "Sync to HubSpot failed",
-  // Stage 5 will add 'deleted' / 'restored' here.
+  // Phase 8 Stage 5 — soft-delete + super_admin restore.
   deleted: "Deleted",
-  restored: "Restored"
+  restored: "Restored",
+  // Pre-allocated for a future "edit deletion reason" endpoint
+  // (the CHECK enum is widened, no endpoint emits this yet).
+  deletion_reason_edited: "Deletion reason edited"
 };
 
 /**

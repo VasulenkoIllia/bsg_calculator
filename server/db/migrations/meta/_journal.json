@@ -78,6 +78,13 @@
       "when": 1779730800000,
       "tag": "0010_documents_soft_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1779738000000,
+      "tag": "0011_documents_alive_company_idx",
+      "breakpoints": true
     }
   ]
 }

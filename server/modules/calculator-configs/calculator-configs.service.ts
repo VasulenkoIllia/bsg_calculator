@@ -119,16 +119,26 @@ export async function createCalculatorConfig(
   if (env.AUTO_SYNC_TO_HUBSPOT) {
     const calcId = row.id;
     setImmediate(() => {
-      void import("./sync.service").then(async ({ syncCalculatorConfigToHubspot }) => {
-        try {
-          await syncCalculatorConfigToHubspot(calcId);
-        } catch (err) {
-          logger.info(
-            { calculatorConfigId: calcId, err: (err as Error).message },
-            "[calc-config:auto-sync] background sync failed; operator can Retry from /calc/:id"
+      // Sprint 9.M B4 — added `.catch(importErr)` so a dynamic-import
+      // failure surfaces as ERROR in logs rather than getting
+      // silently dropped by `void`.
+      void import("./sync.service")
+        .then(async ({ syncCalculatorConfigToHubspot }) => {
+          try {
+            await syncCalculatorConfigToHubspot(calcId);
+          } catch (err) {
+            logger.info(
+              { calculatorConfigId: calcId, err: (err as Error).message },
+              "[calc-config:auto-sync] background sync failed; operator can Retry from /calc/:id"
+            );
+          }
+        })
+        .catch(importErr => {
+          logger.error(
+            { calculatorConfigId: calcId, err: (importErr as Error).message },
+            "[calc-config:auto-sync] dynamic import of sync.service failed — auto-sync NOT attempted"
           );
-        }
-      });
+        });
     });
   }
 

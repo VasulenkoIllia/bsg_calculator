@@ -139,10 +139,17 @@ describe("DELETE /api/v1/documents/:number — happy paths", () => {
     expect(res.body.error.code).toBe("DOCUMENT_ALREADY_DELETED");
   });
 
-  it("emits a 'deleted' document_event with reason + note in meta", async () => {
-    await createTestUser({ email: "admin@bsg.test", password: "admin12345", role: "admin" });
+  it("emits a 'deleted' document_event with reason + hasNote breadcrumb (no note content)", async () => {
+    // Sprint 9.M B5/B6 — events on soft-deleted documents are now
+    // 404'd for non-super_admin callers (matching the single-doc
+    // fetch gate). Use a super_admin actor to verify the event row.
+    await createTestUser({
+      email: "sa@bsg.test",
+      password: "sa12345678",
+      role: "super_admin"
+    });
     const [company] = await db.insert(companies).values(companyFixture({ hubspotCompanyId: "del000000005" })).returning();
-    const token = await loginAs("admin@bsg.test", "admin12345");
+    const token = await loginAs("sa@bsg.test", "sa12345678");
     const { number } = await createDocAs(token, company.id);
 
     await request(app)
@@ -151,18 +158,94 @@ describe("DELETE /api/v1/documents/:number — happy paths", () => {
       .send({ reason: "client_request", note: "Client withdrew the offer" })
       .expect(200);
 
+    // Sprint 9.M B6 — events meta deliberately omits the raw `note`
+    // content (it can be sensitive operator commentary and the
+    // events endpoint is readable by any authenticated user). The
+    // breadcrumb `hasNote: true` is enough for the History panel
+    // to mark "with note" without leaking the body.
     const events = await request(app)
       .get(`/api/v1/documents/${number}/events`)
       .set("Authorization", `Bearer ${token}`);
     expect(events.status).toBe(200);
-    // events DESC — newest first should be the 'deleted' row.
     expect(events.body.items[0]).toMatchObject({
       eventType: "deleted",
       meta: expect.objectContaining({
         reason: "client_request",
-        note: "Client withdrew the offer"
+        hasNote: true
       })
     });
+    // The literal note content should NOT appear in event meta.
+    expect(events.body.items[0].meta.note).toBeUndefined();
+  });
+
+  /**
+   * Sprint 9.M B5/B6 — visibility gate on soft-deleted docs.
+   * Verifies that an `admin` who deleted the document can NO LONGER
+   * fetch its events: the gate hides deletion-metadata leak even
+   * to the deleter. Only super_admin retains access.
+   */
+  it("hides deleted-doc events from non-super_admin via 404", async () => {
+    await createTestUser({
+      email: "admin@bsg.test",
+      password: "admin12345",
+      role: "admin"
+    });
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "del000000099" }))
+      .returning();
+    const token = await loginAs("admin@bsg.test", "admin12345");
+    const { number } = await createDocAs(token, company.id);
+
+    // Admin can read events BEFORE delete.
+    await request(app)
+      .get(`/api/v1/documents/${number}/events`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    // Delete (admin allowed).
+    await request(app)
+      .delete(`/api/v1/documents/${number}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ reason: "duplicate" })
+      .expect(200);
+
+    // AFTER delete, admin (non-super_admin) gets 404 on events.
+    const res = await request(app)
+      .get(`/api/v1/documents/${number}/events`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(404);
+  });
+
+  /**
+   * Sprint 9.M B5 — `GET /documents/:number` returns 404 for
+   * non-super_admin on a soft-deleted document. Without this gate,
+   * the regular operator would see `deletionReason` + `deletionNote`
+   * fields in the public DTO.
+   */
+  it("hides deleted-doc single-fetch from non-super_admin via 404", async () => {
+    await createTestUser({
+      email: "admin@bsg.test",
+      password: "admin12345",
+      role: "admin"
+    });
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "del000000098" }))
+      .returning();
+    const token = await loginAs("admin@bsg.test", "admin12345");
+    const { number } = await createDocAs(token, company.id);
+
+    await request(app)
+      .delete(`/api/v1/documents/${number}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ reason: "duplicate" })
+      .expect(200);
+
+    const res = await request(app)
+      .get(`/api/v1/documents/${number}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(404);
   });
 });
 
@@ -288,6 +371,59 @@ describe("POST /api/v1/documents/:number/restore", () => {
       .post(`/api/v1/documents/${number}/restore`)
       .set("Authorization", `Bearer ${token}`)
       .send({});
+    expect(res.status).toBe(404);
+  });
+});
+
+/**
+ * Sprint 9.M T3 — guards on soft-deleted documents across the three
+ * write paths that should refuse to touch a retracted artefact:
+ * Sync (would push a Note for a deleted doc), Use-as-template
+ * (would bootstrap new work from a retracted source), PDF download
+ * (intentionally STILL allowed for audit access — covered here so a
+ * future refactor doesn't accidentally tighten this without
+ * thinking through the audit implications).
+ */
+describe("Soft-deleted guards across write paths", () => {
+  it("POST /documents/:number/sync on a soft-deleted doc → 404", async () => {
+    await createTestUser({ email: "admin@bsg.test", password: "admin12345", role: "admin" });
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "delsync001234" }))
+      .returning();
+    const token = await loginAs("admin@bsg.test", "admin12345");
+    const { number } = await createDocAs(token, company.id);
+
+    await request(app)
+      .delete(`/api/v1/documents/${number}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ reason: "duplicate" })
+      .expect(200);
+
+    const res = await request(app)
+      .post(`/api/v1/documents/${number}/sync`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(404);
+  });
+
+  it("POST /documents/:number/use-as-template on a soft-deleted doc → 404", async () => {
+    await createTestUser({ email: "admin@bsg.test", password: "admin12345", role: "admin" });
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "deltpl0012345" }))
+      .returning();
+    const token = await loginAs("admin@bsg.test", "admin12345");
+    const { number } = await createDocAs(token, company.id);
+
+    await request(app)
+      .delete(`/api/v1/documents/${number}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ reason: "duplicate" })
+      .expect(200);
+
+    const res = await request(app)
+      .post(`/api/v1/documents/${number}/use-as-template`)
+      .set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(404);
   });
 });

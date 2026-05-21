@@ -19,17 +19,25 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../api/client.js";
 import * as documentsApi from "../api/documents.js";
 import { downloadSavedPdf, triggerPdfDownload } from "../api/pdf.js";
+import type { DocumentDeletionReason } from "../api/types.js";
 import { buildOfferPdfHtml } from "../components/document-wizard/index.js";
 import type { DocumentTemplatePayload } from "../components/document-wizard/index.js";
 import { DeleteDocumentModal } from "../components/DeleteDocumentModal.js";
 import { EventHistoryPanel } from "../components/EventHistoryPanel.js";
-import type { DocumentDeletionReason } from "../api/types.js";
+import { useAuth } from "../contexts/AuthContext.js";
+import { useToast } from "../contexts/ToastContext.js";
+import { useDocument } from "../hooks/useDocuments.js";
+import { formatDateTime, formatScopeLabel } from "../shared/format.js";
 
 /**
  * Phase 8 Stage 5 — human-readable label for the deletion reason
  * enum. Mirrors the labels in DeleteDocumentModal's REASON_OPTIONS;
  * extracted here because the deleted-state banner needs to render
  * a reason that came back from the server.
+ *
+ * Sprint 9.M N5 — relocated below the imports block (was sandwiched
+ * between import statements, which compiles fine but reads
+ * confusingly).
  */
 function humanReason(reason: DocumentDeletionReason): string {
   switch (reason) {
@@ -49,10 +57,6 @@ function humanReason(reason: DocumentDeletionReason): string {
     }
   }
 }
-import { useAuth } from "../contexts/AuthContext.js";
-import { useToast } from "../contexts/ToastContext.js";
-import { useDocument } from "../hooks/useDocuments.js";
-import { formatDateTime, formatScopeLabel } from "../shared/format.js";
 
 /**
  * Best-effort runtime check that `payload` carries a wizard-style

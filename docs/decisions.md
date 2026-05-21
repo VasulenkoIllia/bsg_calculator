@@ -4718,3 +4718,101 @@ Use this file to record meaningful technical decisions for the project.
     passes in isolation, fails ~1/3 of full-suite runs under
     parallel TX load).
   - TypeScript clean (frontend + server).
+
+### Decision: Sprint 9.M — Stages 3/4/5 audit closure (2026-05-21)
+
+- Context:
+  - Post-Stage-5 four-agent parallel audit (database-reviewer,
+    typescript-reviewer, security-reviewer, code-reviewer) surfaced
+    30+ findings across the recent stages. None CRITICAL, but two
+    HIGH-severity correctness bugs (restore-state + advisory-lock-
+    TX-boundary) plus two MEDIUM security gaps (single-doc
+    deleted-visibility + event-meta note leak) needed attention
+    before considering the stages "hand-off ready".
+- Decision (bug fixes — applied):
+  - **B1** `restoreDocument` now resets `hubspot_sync_state` to
+    `'not_synced'` + clears `hubspotNoteId`. Previously a row
+    restored from a `delete_failed` state retained the failed
+    badge with `noteId = null` — incoherent (nothing to retry).
+  - **B3** Removed a nested try/catch in `deleteDocument` that
+    silently swallowed a DB-level failure during the
+    `delete_pending` → `delete_failed` recovery write. The state
+    UPDATE now propagates as a 5xx, surfacing the DB blip to ops.
+  - **B4** Dynamic `import("./sync.service")` calls in both
+    `documents.service` and `calculator-configs.service` now have
+    `.catch(importErr)` that logs ERROR on module-resolution
+    failure (was silently swallowed by the outer `void`).
+  - **B5** `getDocumentByNumber` + `listDocumentEventsByNumber`
+    now accept the caller's role and return 404 on soft-deleted
+    documents for non-super_admin. Before, regular operators
+    could read `deletionReason` + `deletionNote` + `deletedByUserId`
+    via the single-doc fetch (the listing already hid them).
+  - **B6** Removed the raw `note` content from the `deleted` event
+    meta. The History panel now sees only `{reason, hasNote,
+    hubspotNoteIdRemoved}`. The source of truth for the note body
+    is `documents.deletion_note`, which is gated to super_admin
+    via the B5 fix.
+  - **B7** Added a Postgres advisory transaction lock to
+    `deleteDocument`. Two concurrent DELETE clicks for the same
+    document used to both pass the `if (doc.deletedAt)` check
+    before either had finished writing back state; both would
+    then issue `hubspot.deleteNote()` and the second hit a 404 in
+    HubSpot that surfaced as a misleading `delete_failed`. Now
+    the second caller gets `409 DOCUMENT_DELETE_IN_PROGRESS`.
+- Decision (schema improvements):
+  - **S1** Migration 0011 adds composite partial index
+    `documents (company_id, created_at DESC) WHERE deleted_at IS NULL`
+    — the actual hot-path index for the per-company alive listing.
+    The Stage 5 single-column variant was a planner mis-fit.
+  - **S2** Capped the event listing repository functions at
+    `LIMIT 200` to avoid unbounded payloads from heavily-used docs.
+  - **S3** Updated the stale "ON DELETE RESTRICT" header comment
+    in `schema/events.ts` to match the actual CASCADE behaviour.
+  - **S4** Drizzle `.$type<>()` annotations on `scope`,
+    `hubspot_sync_state`, `deletion_reason` columns replace the
+    unsound `as DocumentPublic["..."]` casts in `toPublic`.
+- Decision (DRY refactors):
+  - **D1** Extracted `tryRecordEvent(insertFn, options)` to
+    `server/modules/events/events.helpers.ts`. Replaces 10+ copy-
+    paste try/catch + `logger.warn` blocks across `documents.service`,
+    `documents.sync.service`, `calculator-configs.sync.service`,
+    and `pdf.controller`. ~80 lines net removed.
+- Decision (test coverage gaps):
+  - **T1** New `AdminDeletedDocumentsPage.test.tsx` (6 tests) —
+    the only previously untested Stage 3-5 page.
+  - **T3** Three new integration tests in `documents-delete`:
+    deleted-doc + Sync → 404, deleted-doc + Use-as-template → 404,
+    deleted-doc + events read by non-super_admin → 404,
+    deleted-doc + single-fetch by non-super_admin → 404.
+- Decision (polish):
+  - **N1** Removed dead switch/case in AdminUsersPage Edit modal
+    onError (every branch did `setError(err.message)`).
+  - **N3** Deleted unused export `countActiveUsersByRole`.
+  - **N5** Relocated `humanReason` helper below imports block
+    in `DocumentViewPage.tsx` (was sandwiched between import
+    statements — compiled fine, read confusingly).
+  - **N6** `throw new Error(...)` in deleteDocument/restoreDocument
+    replaced with `InternalError` (structured 500).
+  - **N7** Updated `phase_8_security_admin_audit.md` edge-case
+    spec to reconcile with the as-shipped implementation. Updated
+    `documents.integration.test.ts` file-level docstring.
+- Decision (intentionally deferred):
+  - `getRawDocumentByNumber` + PDF download endpoint stays
+    accessible for soft-deleted docs to any authenticated user
+    (audit access). Documented with a comment + integration tests
+    that pin this policy.
+  - `documents.service.ts` split (now ~620 LOC) deferred to
+    Stage 6 when `deletion_reason_edited` ships.
+  - Last-super_admin guard 3 logically unreachable via non-self
+    target — documented in `users.service.ts` as a known limitation
+    rather than refactored (the practical case is covered by
+    self-downgrade guard 2).
+  - bcrypt floor of 4 in `BCRYPT_COST` for non-prod environments
+    — accepted (tests run faster; prod hardening enforced by the
+    `superRefine` block in env config).
+- Verification:
+  - 319 frontend tests pass (was 313; +6 from AdminDeletedDocumentsPage
+    suite).
+  - 299 server tests pass (was 296; +3 from new guard tests in
+    documents-delete: soft-deleted Sync/use-as-template/single-doc).
+  - TypeScript clean (frontend + server).

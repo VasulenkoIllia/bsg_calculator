@@ -342,7 +342,15 @@ export async function findCalculatorConfigById(
 export async function softDeleteDocument(
   id: string,
   actorUserId: string,
-  reason: string,
+  // Sprint 9.M S4 — typed narrow to match the Drizzle column's
+  // `.$type<>()` annotation. Callers (documents.service.deleteDocument)
+  // already validate via the Zod schema before this point.
+  reason:
+    | "client_request"
+    | "created_in_error"
+    | "replaced_by_new_version"
+    | "duplicate"
+    | "other",
   note: string | null
 ): Promise<Document | undefined> {
   const rows = await db
@@ -366,6 +374,14 @@ export async function softDeleteDocument(
  * restore endpoint (super_admin only). HubSpot side is NOT
  * re-created — operator manually re-syncs via the existing Sync
  * button if they want the document back on the customer timeline.
+ *
+ * Sprint 9.M B1 fix — also reset `hubspot_sync_state` to 'not_synced'.
+ * If the row was previously soft-deleted from a `delete_failed`
+ * state (or any failed-state state where state != 'not_synced'),
+ * restoring would leave the badge showing "delete failed" / "failed"
+ * with `hubspot_note_id = null` — incoherent (nothing left to retry).
+ * Reset to 'not_synced' so the restored row reads as "alive,
+ * unsynced, click Sync to push" — a clean recoverable state.
  */
 export async function restoreDocument(
   id: string
@@ -377,6 +393,8 @@ export async function restoreDocument(
       deletedByUserId: null,
       deletionReason: null,
       deletionNote: null,
+      hubspotSyncState: "not_synced",
+      hubspotNoteId: null,
       updatedAt: new Date()
     })
     .where(eq(documents.id, id))

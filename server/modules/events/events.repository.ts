@@ -87,6 +87,16 @@ export async function insertDocumentEvent(
   return rows[0];
 }
 
+/**
+ * Sprint 9.M M2 — cap the result set so a heavily-used document
+ * (many sync retries, many PDF downloads) doesn't return thousands
+ * of rows to the FE History panel. 200 events ≈ years of activity
+ * for a single document at realistic usage; sufficient for the
+ * intended "recent activity" UX. If we ever need older events,
+ * Stage 6 can add cursor pagination matching the documents pattern.
+ */
+const EVENT_LIST_LIMIT = 200;
+
 export async function listDocumentEvents(documentId: string): Promise<EventRowWithActor[]> {
   const rows = await db
     .select({
@@ -101,7 +111,8 @@ export async function listDocumentEvents(documentId: string): Promise<EventRowWi
     .from(documentEvents)
     .leftJoin(users, eq(users.id, documentEvents.actorUserId))
     .where(eq(documentEvents.documentId, documentId))
-    .orderBy(desc(documentEvents.createdAt), desc(documentEvents.id));
+    .orderBy(desc(documentEvents.createdAt), desc(documentEvents.id))
+    .limit(EVENT_LIST_LIMIT);
   return rows;
 }
 
@@ -151,6 +162,7 @@ export async function listCalcConfigEvents(
     .from(calculatorConfigEvents)
     .leftJoin(users, eq(users.id, calculatorConfigEvents.actorUserId))
     .where(eq(calculatorConfigEvents.calculatorConfigId, calculatorConfigId))
-    .orderBy(desc(calculatorConfigEvents.createdAt), desc(calculatorConfigEvents.id));
+    .orderBy(desc(calculatorConfigEvents.createdAt), desc(calculatorConfigEvents.id))
+    .limit(EVENT_LIST_LIMIT);
   return rows;
 }

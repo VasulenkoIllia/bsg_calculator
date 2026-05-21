@@ -12,18 +12,23 @@
  *   - `actor_user_id` FK → users with ON DELETE SET NULL: deleting
  *     a user shouldn't lose the events they triggered, but the row
  *     reads as "system" rather than holding a dangling pointer.
- *   - ON DELETE RESTRICT on the entity FK so a literal
- *     `DELETE FROM documents` (hard delete, NOT soft) fails loud
- *     rather than silently wiping the audit chain. Stage 5 will
- *     introduce soft-delete which leaves the row + its events alive.
+ *   - ON DELETE CASCADE on the entity FK. Documents now soft-delete
+ *     (Stage 5: UPDATE deleted_at, not DELETE) so CASCADE never
+ *     fires in normal operation — events stay alive next to the
+ *     soft-deleted row. Calc-configs still hard-delete via
+ *     `DELETE /calculator-configs/:id`, where CASCADE wipes the
+ *     events along with the row. Sprint 9.M S3 — earlier versions
+ *     of this comment said "ON DELETE RESTRICT" which contradicted
+ *     the actual migration; CASCADE is now consistent across both
+ *     surfaces.
  *   - `meta jsonb` is context-specific: documents 'synced_to_hubspot'
  *     carries `{noteId}`; 'sync_failed' carries `{error}`. The schema
  *     intentionally doesn't validate meta — the FE History panel
  *     reads optimistically.
  *   - Each table has its OWN event_type CHECK constraint enumerating
  *     the values valid for that entity (pdf_downloaded only makes
- *     sense for documents). Stage 5 will widen both with
- *     'deleted' / 'restored'.
+ *     sense for documents). Stage 5 widened documents with
+ *     'deleted' / 'restored' / 'deletion_reason_edited'.
  */
 
 import { sql } from "drizzle-orm";

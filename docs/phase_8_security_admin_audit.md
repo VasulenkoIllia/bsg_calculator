@@ -314,11 +314,25 @@ For options 1-4 the free-text note is optional but recommended.
 - The "Documents from this calculator" section on /calc/:id excludes
   soft-deleted rows by default.
 
-### Edge cases
-- A document is soft-deleted; later a different operator tries
-  to "Use as template" from `/documents/:number/use-as-template`
-  endpoint. Behavior: 404 (doc no longer accessible) unless the
-  caller is super_admin and passes `?includeDeleted=true`.
+### Edge cases (as shipped — Sprint 9.M reconciled with implementation)
+- A document is soft-deleted; later a different operator tries to
+  "Use as template" → **404 unconditionally**. The implementation
+  does NOT honour `?includeDeleted=true` on the use-as-template
+  path because templating from a retracted artefact is a product
+  smell even for super_admin. A super_admin who really wants to
+  template can Restore the doc first.
+- `GET /documents/:number` returns **404** to non-super_admin
+  callers for soft-deleted docs (Sprint 9.M B5 fix). super_admin
+  still sees the full DTO including `deletionReason` + `deletionNote`.
+- `GET /documents/:number/events` mirrors the same gate
+  (Sprint 9.M B5/B6). The `deleted` event row carries `reason` +
+  `hasNote` breadcrumb in `meta`; the raw `deletion_note` content is
+  NOT echoed into events to avoid leakage through the events list.
+- `GET /documents/:number/pdf` is INTENTIONALLY allowed on
+  soft-deleted documents — operators may need to fetch the
+  rendered artefact for audit even after retraction. The
+  `pdf_downloaded` event is still recorded.
+- POST `/documents/:number/sync` on a soft-deleted doc → **404**.
 - A soft-deleted document's `calculator_configs.id` FK reference
   is unaffected — the source calc draft can still be edited.
 

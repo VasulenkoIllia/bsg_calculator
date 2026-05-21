@@ -70,28 +70,15 @@ export async function updateUser(
 }
 
 /**
- * Phase 8 Stage 3 — count active users matching the given role.
- * Used by the "last super_admin" guard: a PATCH that would demote
- * the last remaining super_admin must be rejected so the operator
- * can't lock themselves out of the admin surface.
- *
- * "Active" here means `is_active = true` — blocked users don't
- * count toward the survival floor because they can't log in.
- */
-export async function countActiveUsersByRole(role: UserRole): Promise<number> {
-  const result = await db.execute<{ n: number }>(sql`
-    SELECT COUNT(*)::int AS n
-    FROM users
-    WHERE role = ${role} AND is_active = true
-  `);
-  return result.rows[0]?.n ?? 0;
-}
-
-/**
  * Phase 8 Stage 3 — count active users matching the given role
  * EXCLUDING a specific user id. Used by the last-super_admin guard
  * when we know we're about to demote `excludeId`: returns how many
  * OTHER active super_admins would remain.
+ *
+ * Sprint 9.M N3 — the un-suffixed `countActiveUsersByRole` was
+ * removed: no caller imported it, and the "excluding" variant
+ * subsumes the simpler count (just pass a dummy id like
+ * `00000000-0000-0000-0000-000000000000` that never matches).
  */
 export async function countActiveUsersByRoleExcluding(
   role: UserRole,

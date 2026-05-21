@@ -25,7 +25,13 @@ export async function listDocumentEventsController(
   res: Response
 ): Promise<void> {
   const number = req.params.number;
-  const items = await listDocumentEventsByNumber(number);
+  // Sprint 9.M B5/B6 — pass the caller's role through so soft-deleted
+  // documents are 404'd for non-super_admin. Mirrors the gate on
+  // getDocumentByNumber.
+  const items = await listDocumentEventsByNumber(
+    number,
+    req.user?.role ?? "user"
+  );
   res.status(200).json({ items });
 }
 

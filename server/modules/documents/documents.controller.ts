@@ -77,7 +77,11 @@ export async function getByNumberController(
   res: Response
 ): Promise<void> {
   const number = req.params.number;
-  const doc = await getDocumentByNumber(number);
+  // Sprint 9.M B5 — gate soft-deleted documents to super_admin.
+  // Non-super_admin callers get 404 when the row is soft-deleted,
+  // matching the listing endpoint's hide policy + preventing
+  // deletion-metadata leakage to regular operators.
+  const doc = await getDocumentByNumber(number, req.user?.role ?? "user");
   res.status(200).json(doc);
 }
 

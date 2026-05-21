@@ -32,6 +32,7 @@ import { logger } from "../../middleware/logger";
 import { hubspot } from "../hubspot/hubspot.client";
 import { buildHubspotNoteBody } from "../../shared/hubspot/note-builder";
 import { insertCalcConfigEvent } from "../events/events.repository";
+import { tryRecordEvent } from "../events/events.helpers";
 import {
   findById,
   updateCalculatorConfigHubspotSync
@@ -173,23 +174,24 @@ async function syncCalculatorConfigToHubspotLocked(
           hubspotNoteId: calc.hubspotNoteId
         });
         // Phase 8 Stage 4 — record the PATCH failure on the timeline.
-        try {
-          await insertCalcConfigEvent({
-            calculatorConfigId: calc.id,
-            eventType: "sync_failed",
-            actorUserId,
-            meta: {
-              stage: "updateNote",
-              noteId: calc.hubspotNoteId,
-              error: (err as Error).message
-            }
-          });
-        } catch (eventErr) {
-          logger.warn(
-            { calculatorConfigId: calc.id, err: (eventErr as Error).message },
-            "[calc-config:sync] failed to record sync_failed event"
-          );
-        }
+        // Sprint 9.M D1 — shared `tryRecordEvent` helper.
+        await tryRecordEvent(
+          () =>
+            insertCalcConfigEvent({
+              calculatorConfigId: calc.id,
+              eventType: "sync_failed",
+              actorUserId,
+              meta: {
+                stage: "updateNote",
+                noteId: calc.hubspotNoteId,
+                error: (err as Error).message
+              }
+            }),
+          {
+            label: "calc-config:sync",
+            context: { calculatorConfigId: calc.id, noteId: calc.hubspotNoteId }
+          }
+        );
         logger.error(
           {
             calculatorConfigId: calc.id,
@@ -212,19 +214,19 @@ async function syncCalculatorConfigToHubspotLocked(
         hubspotSyncState: "failed",
         hubspotNoteId: null
       });
-      try {
-        await insertCalcConfigEvent({
-          calculatorConfigId: calc.id,
-          eventType: "sync_failed",
-          actorUserId,
-          meta: { stage: "createNote", error: (err as Error).message }
-        });
-      } catch (eventErr) {
-        logger.warn(
-          { calculatorConfigId: calc.id, err: (eventErr as Error).message },
-          "[calc-config:sync] failed to record sync_failed event"
-        );
-      }
+      await tryRecordEvent(
+        () =>
+          insertCalcConfigEvent({
+            calculatorConfigId: calc.id,
+            eventType: "sync_failed",
+            actorUserId,
+            meta: { stage: "createNote", error: (err as Error).message }
+          }),
+        {
+          label: "calc-config:sync",
+          context: { calculatorConfigId: calc.id }
+        }
+      );
       logger.error(
         {
           calculatorConfigId: calc.id,
@@ -257,24 +259,24 @@ async function syncCalculatorConfigToHubspotLocked(
         hubspotSyncState: "failed",
         hubspotNoteId: noteId
       });
-      try {
-        await insertCalcConfigEvent({
-          calculatorConfigId: calc.id,
-          eventType: "sync_failed",
-          actorUserId,
-          meta: {
-            stage: "associate",
-            noteId,
-            target,
-            error: (err as Error).message
-          }
-        });
-      } catch (eventErr) {
-        logger.warn(
-          { calculatorConfigId: calc.id, err: (eventErr as Error).message },
-          "[calc-config:sync] failed to record sync_failed event"
-        );
-      }
+      await tryRecordEvent(
+        () =>
+          insertCalcConfigEvent({
+            calculatorConfigId: calc.id,
+            eventType: "sync_failed",
+            actorUserId,
+            meta: {
+              stage: "associate",
+              noteId,
+              target,
+              error: (err as Error).message
+            }
+          }),
+        {
+          label: "calc-config:sync",
+          context: { calculatorConfigId: calc.id, noteId }
+        }
+      );
       logger.error(
         {
           calculatorConfigId: calc.id,
@@ -306,19 +308,19 @@ async function syncCalculatorConfigToHubspotLocked(
   }
 
   // Phase 8 Stage 4 — record the success on the History timeline.
-  try {
-    await insertCalcConfigEvent({
-      calculatorConfigId: updated.id,
-      eventType: "synced_to_hubspot",
-      actorUserId,
-      meta: { noteId, target, isNewNote }
-    });
-  } catch (eventErr) {
-    logger.warn(
-      { calculatorConfigId: updated.id, err: (eventErr as Error).message },
-      "[calc-config:sync] failed to record synced_to_hubspot event"
-    );
-  }
+  await tryRecordEvent(
+    () =>
+      insertCalcConfigEvent({
+        calculatorConfigId: updated.id,
+        eventType: "synced_to_hubspot",
+        actorUserId,
+        meta: { noteId, target, isNewNote }
+      }),
+    {
+      label: "calc-config:sync",
+      context: { calculatorConfigId: updated.id, noteId }
+    }
+  );
 
   logger.info(
     {

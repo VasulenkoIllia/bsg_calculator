@@ -7,8 +7,13 @@
  *   - Cross-company validation (deal + calc references).
  *   - GET by number / list with filters / cursor pagination.
  *   - use-as-template flow → new calculator_config.
- *   - Sync stub → 501.
  *   - Number peek doesn't advance the sequence.
+ *
+ * Sprint 9.M N7 — the original "Sync stub → 501" coverage point was
+ * retired in Sprint 9.L (Phase 9.A wired the endpoint to a real
+ * service). The realistic sync coverage lives in
+ * `server/tests/documents-delete.integration.test.ts` (delete + sync
+ * after delete → 404) and the wider Phase 9 integration suite.
  */
 
 import { describe, expect, it } from "vitest";

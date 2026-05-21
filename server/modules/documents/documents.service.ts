@@ -11,7 +11,7 @@
  * this file only deals with database state.
  */
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { env } from "../../config/env";
 import { logger } from "../../middleware/logger";
@@ -20,12 +20,14 @@ import { buildSortedPage, type PageResult } from "../../shared/sorted-pagination
 import {
   ConflictError,
   HubspotUnreachableError,
+  InternalError,
   NotFoundError,
   ValidationError
 } from "../../shared/errors";
 import { ensureDealBelongsToCompany } from "../../shared/deal-guard";
 import { companies, type Document } from "../../db/schema";
 import { insertDocumentEvent } from "../events/events.repository";
+import { tryRecordEvent } from "../events/events.helpers";
 import { hubspot } from "../hubspot/hubspot.client";
 import { insertCalculatorConfig } from "../calculator-configs/calculator-configs.repository";
 import {
@@ -54,6 +56,11 @@ import { allocateNextNumber } from "./numbering.service";
  */
 function toPublic(row: Document | DocumentWithCompanyName): DocumentPublic {
   const companyName = "companyName" in row ? row.companyName : undefined;
+  // Sprint 9.M S4 — Drizzle `.$type<>()` annotations on `scope`,
+  // `hubspotSyncState`, `deletionReason` now narrow the column types
+  // so the previous `as DocumentPublic["..."]` casts at this site
+  // are no longer needed. The DTO Zod parser still runs as a
+  // belt-and-braces shape check.
   return parseDtoOrInternalError(
     documentPublicSchema,
     {
@@ -63,10 +70,10 @@ function toPublic(row: Document | DocumentWithCompanyName): DocumentPublic {
       ...(companyName !== undefined ? { companyName } : {}),
       hubspotDealId: row.hubspotDealId,
       calculatorConfigId: row.calculatorConfigId,
-      scope: row.scope as DocumentPublic["scope"],
+      scope: row.scope,
       payload: row.payload,
       addendum: row.addendum,
-      hubspotSyncState: row.hubspotSyncState as DocumentPublic["hubspotSyncState"],
+      hubspotSyncState: row.hubspotSyncState,
       hubspotNoteId: row.hubspotNoteId,
       createdByUserId: row.createdByUserId,
       // Phase 8 Stage 5 — surface soft-delete metadata on the public
@@ -74,7 +81,7 @@ function toPublic(row: Document | DocumentWithCompanyName): DocumentPublic {
       // on the row without a follow-up admin lookup.
       deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
       deletedByUserId: row.deletedByUserId,
-      deletionReason: row.deletionReason as DocumentPublic["deletionReason"],
+      deletionReason: row.deletionReason,
       deletionNote: row.deletionNote,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString()
@@ -198,34 +205,67 @@ export async function createDocument(
       // Lazy import to break the circular service ↔ sync dependency
       // and to keep the dev path (HUBSPOT_API_TOKEN absent) from
       // pulling in the sync module on the hot save path.
-      void import("./sync.service").then(async ({ syncDocumentToHubspot }) => {
-        try {
-          await syncDocumentToHubspot(documentNumber);
-        } catch (err) {
-          // syncDocumentToHubspot already persisted state='failed'
-          // and logged the upstream error in detail. We add one
-          // INFO line here so a routine `docker compose logs` trace
-          // shows the auto-sync touch-point. Don't re-throw — the
-          // request has long since returned 201 to the operator and
-          // an unhandled rejection would crash the worker.
-          logger.info(
-            {
-              documentNumber,
-              err: (err as Error).message
-            },
-            "[documents:auto-sync] background sync failed (already logged in sync.service); document marked 'failed' — operator can Retry from the UI"
+      //
+      // Sprint 9.M B4 — added `.catch(importErr)` so a dynamic-import
+      // failure (e.g. broken build, missing file) gets logged at
+      // ERROR rather than silently swallowed by the outer `void`.
+      void import("./sync.service")
+        .then(async ({ syncDocumentToHubspot }) => {
+          try {
+            await syncDocumentToHubspot(documentNumber);
+          } catch (err) {
+            // syncDocumentToHubspot already persisted state='failed'
+            // and logged the upstream error in detail. We add one
+            // INFO line here so a routine `docker compose logs` trace
+            // shows the auto-sync touch-point. Don't re-throw — the
+            // request has long since returned 201 to the operator and
+            // an unhandled rejection would crash the worker.
+            logger.info(
+              {
+                documentNumber,
+                err: (err as Error).message
+              },
+              "[documents:auto-sync] background sync failed (already logged in sync.service); document marked 'failed' — operator can Retry from the UI"
+            );
+          }
+        })
+        .catch(importErr => {
+          logger.error(
+            { documentNumber, err: (importErr as Error).message },
+            "[documents:auto-sync] dynamic import of sync.service failed — auto-sync NOT attempted"
           );
-        }
-      });
+        });
     });
   }
 
   return toPublic(inserted);
 }
 
-export async function getDocumentByNumber(number: string): Promise<DocumentPublic> {
+/**
+ * Sprint 9.M B5 — single-doc fetch with soft-delete visibility gate.
+ *
+ * The listing endpoint hides soft-deleted rows for non-super_admin
+ * callers, but until this fix `GET /documents/:number` returned the
+ * full DTO — including `deletionReason` + `deletionNote` (free-text
+ * operator commentary) — to any authenticated user. Now we 404
+ * deleted rows for callers below super_admin so the data exposure
+ * matches the listing's hide policy.
+ *
+ * super_admin keeps the ability to fetch deleted rows (for audit /
+ * Restore flow).
+ *
+ * Backwards-compat: `actorRole` defaults to "user" (least privileged
+ * tier) so a caller that forgets to pass it gets the safer behaviour.
+ */
+export async function getDocumentByNumber(
+  number: string,
+  actorRole: import("../../shared/roles").UserRole = "user"
+): Promise<DocumentPublic> {
   const row = await findByNumber(number);
   if (!row) throw new NotFoundError("Document");
+  if (row.deletedAt && actorRole !== "super_admin") {
+    throw new NotFoundError("Document");
+  }
   return toPublic(row);
 }
 
@@ -328,6 +368,45 @@ export async function deleteDocument(
   reason: DeletionReason,
   note: string | null
 ): Promise<DocumentPublic> {
+  // Sprint 9.M B7 — serialize concurrent DELETEs for the same
+  // document via a Postgres advisory transaction lock. Two clicks
+  // in the same event-loop tick used to both pass the
+  // `if (doc.deletedAt)` check before either had finished writing
+  // back state — both would then call `hubspot.deleteNote` and the
+  // second hit a 404 (Note already gone) that surfaced as a
+  // misleading `delete_failed`.
+  //
+  // pg_try_advisory_xact_lock returns false instead of blocking
+  // when the lock is already held; the second caller gets a 409 so
+  // their stale tab knows to refresh rather than starting a
+  // parallel run.
+  return db.transaction(async tx => {
+    const claim = await tx.execute<{ acquired: boolean }>(sql`
+      SELECT pg_try_advisory_xact_lock(hashtext('doc-delete:' || ${number}::text)) AS acquired
+    `);
+    if (!claim.rows[0]?.acquired) {
+      throw new ConflictError(
+        "DOCUMENT_DELETE_IN_PROGRESS",
+        "Another delete for this document is already in progress. Try again in a moment."
+      );
+    }
+    return deleteDocumentLocked(number, actorUserId, reason, note);
+  });
+}
+
+/**
+ * Sprint 9.M B7 — internal worker invoked under the advisory lock.
+ * Mirrors the calc-configs sync.service pattern: the lock guards
+ * concurrent ENTRIES, the work itself uses the global `db` (which
+ * is fine — Postgres advisory locks are cooperative, they only
+ * block other `pg_try_advisory_*` calls for the same key).
+ */
+async function deleteDocumentLocked(
+  number: string,
+  actorUserId: string,
+  reason: DeletionReason,
+  note: string | null
+): Promise<DocumentPublic> {
   const doc = await findByNumber(number);
   if (!doc) throw new NotFoundError("Document");
   if (doc.deletedAt) {
@@ -364,6 +443,9 @@ export async function deleteDocument(
 
     // Mark the in-flight state so a parallel reader sees something
     // sensible (not just stale 'synced' while the API call runs).
+    // Sprint 9.M B3 — the state UPDATE itself can fail (DB blip);
+    // if it does, propagate that as a 5xx rather than carrying
+    // forward stale local state into the HubSpot call.
     await updateDocumentHubspotSync(doc.id, {
       hubspotSyncState: "delete_pending",
       hubspotNoteId: doc.hubspotNoteId
@@ -375,28 +457,37 @@ export async function deleteDocument(
       // Roll the state forward to 'delete_failed' and emit an event
       // so the History panel shows what happened. The row stays
       // ALIVE — operator clicks the retry CTA which re-runs this
-      // path.
+      // path. Sprint 9.M B3 — the state UPDATE here is the recovery
+      // path; if it ALSO fails we'd be in a wedged state, so we
+      // let that exception propagate to the global error handler
+      // (5xx) rather than wrapping it. The HubSpot error is the
+      // operator-visible one; a DB recovery failure is a separate
+      // ops incident.
       await updateDocumentHubspotSync(doc.id, {
         hubspotSyncState: "delete_failed",
         hubspotNoteId: doc.hubspotNoteId
       });
-      try {
-        await insertDocumentEvent({
-          documentId: doc.id,
-          eventType: "sync_failed",
-          actorUserId,
-          meta: {
-            stage: "delete",
-            noteId: doc.hubspotNoteId,
-            error: (err as Error).message
+      await tryRecordEvent(
+        () =>
+          insertDocumentEvent({
+            documentId: doc.id,
+            eventType: "sync_failed",
+            actorUserId,
+            meta: {
+              stage: "delete",
+              noteId: doc.hubspotNoteId,
+              error: (err as Error).message
+            }
+          }),
+        {
+          label: "documents:delete",
+          context: {
+            documentId: doc.id,
+            documentNumber: doc.number,
+            noteId: doc.hubspotNoteId
           }
-        });
-      } catch (eventErr) {
-        logger.warn(
-          { documentId: doc.id, err: (eventErr as Error).message },
-          "[documents:delete] failed to record sync_failed event"
-        );
-      }
+        }
+      );
       logger.error(
         {
           documentId: doc.id,
@@ -421,25 +512,45 @@ export async function deleteDocument(
   // and resets state to 'not_synced'.
   const updated = await softDeleteDocument(doc.id, actorUserId, reason, note);
   if (!updated) {
-    throw new Error(`[documents:delete] document ${doc.number} disappeared mid-delete`);
+    // Sprint 9.M N6 — InternalError (500) carries the message into
+    // a structured log entry; the client envelope stays generic.
+    throw new InternalError(
+      `[documents:delete] document ${doc.number} disappeared mid-delete`
+    );
   }
 
   // Record the deletion in the history timeline. Best-effort —
   // a failure here shouldn't roll back the local soft-delete (the
   // row is already updated; we just lose one audit entry).
-  try {
-    await insertDocumentEvent({
-      documentId: updated.id,
-      eventType: "deleted",
-      actorUserId,
-      meta: { reason, note, hubspotNoteIdRemoved: doc.hubspotNoteId }
-    });
-  } catch (eventErr) {
-    logger.warn(
-      { documentId: updated.id, err: (eventErr as Error).message },
-      "[documents:delete] failed to record 'deleted' event"
-    );
-  }
+  //
+  // Sprint 9.M B6 — DO NOT echo the deletion `note` into event
+  // meta. The note field can be up to 8 KB of operator commentary
+  // and the events endpoint is readable by any authenticated user.
+  // The source of truth for the note is `documents.deletion_note`,
+  // which Sprint 9.M B5 now gates on super_admin via the single-doc
+  // fetch. Storing the note ONLY there + 404'ing the row for
+  // non-super_admin keeps both surfaces consistent.
+  //
+  // `hasNote` is a boolean breadcrumb so the History panel can show
+  // "reason: client_request · with note" vs "reason: client_request"
+  // without exposing the note's content.
+  await tryRecordEvent(
+    () =>
+      insertDocumentEvent({
+        documentId: updated.id,
+        eventType: "deleted",
+        actorUserId,
+        meta: {
+          reason,
+          hasNote: note !== null && note.length > 0,
+          hubspotNoteIdRemoved: doc.hubspotNoteId
+        }
+      }),
+    {
+      label: "documents:delete",
+      context: { documentId: updated.id, documentNumber: updated.number }
+    }
+  );
 
   logger.info(
     {
@@ -478,22 +589,24 @@ export async function restoreDocument(
 
   const updated = await restoreDocumentRow(doc.id);
   if (!updated) {
-    throw new Error(`[documents:restore] document ${doc.number} disappeared mid-restore`);
-  }
-
-  try {
-    await insertDocumentEvent({
-      documentId: updated.id,
-      eventType: "restored",
-      actorUserId,
-      meta: {}
-    });
-  } catch (eventErr) {
-    logger.warn(
-      { documentId: updated.id, err: (eventErr as Error).message },
-      "[documents:restore] failed to record 'restored' event"
+    throw new InternalError(
+      `[documents:restore] document ${doc.number} disappeared mid-restore`
     );
   }
+
+  await tryRecordEvent(
+    () =>
+      insertDocumentEvent({
+        documentId: updated.id,
+        eventType: "restored",
+        actorUserId,
+        meta: {}
+      }),
+    {
+      label: "documents:restore",
+      context: { documentId: updated.id, documentNumber: updated.number }
+    }
+  );
 
   logger.info(
     {
