@@ -360,7 +360,9 @@ On HubSpot failure → `hubspot_sync_state='failed'` is persisted BEFORE the err
 
 **Auto-sync (Phase 9.G)**: with `AUTO_SYNC_DOCUMENTS_TO_HUBSPOT=true` in `.env`, every successful `POST /documents` schedules a fire-and-forget sync via `setImmediate` AFTER the DB transaction commits. The operator gets a clean 201 immediately; the badge flips `not_synced → synced` (or `failed`) in the background. Same flag also auto-syncs calc-configs on first save (Phase 9.I).
 
-**Calculator sync (Phase 9.I)**: same flow as documents, with one operator-confirmed difference — auto-saves (`PUT /calculator-configs/:id`) DO NOT touch HubSpot. The Note's `Link` always opens our SPA which renders the freshest state, so there's nothing meaningful to re-push on every keystroke. Manual Sync button on `/calc/:id` creates a fresh Note (audit trail) the same way as documents.
+**Calculator sync (Phase 9.I + 9.K)**: TWO operator-confirmed differences from documents:
+1. Auto-saves (`PUT /calculator-configs/:id`) DO NOT touch HubSpot. The Note's `Link` always opens our SPA which renders the freshest state.
+2. **One Note per calc**: manual Sync button on `/calc/:id` PATCHes the EXISTING Note in HubSpot (refreshes body in place). Documents stay on the create-new-each-time policy because each document is a frozen point-in-time artefact; calculators are living drafts. If the operator deletes the Note manually in HubSpot UI, our next Sync click sees the 404 and self-heals by creating a fresh one (the sync service has a 404→CREATE fallback).
 
 **Note body format (Phase 9.H)**: compact one-liner + clickable link:
 ```

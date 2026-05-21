@@ -82,58 +82,119 @@ export async function syncCalculatorConfigToHubspot(
     detailPath: `/calc/${encodeURIComponent(calc.id)}`
   });
 
-  // Step 1: create Note.
+  // Phase 9.K — one-Note-per-calc semantics. Decide whether to
+  // PATCH the existing Note or CREATE a new one:
+  //   - If we already have a `hubspot_note_id` AND last sync state
+  //     was "synced" → PATCH (refresh body in place).
+  //   - Otherwise → CREATE (first sync, or recovery after a failure
+  //     that left the previous noteId stale).
+  //   - If PATCH returns 404 (operator deleted the Note in HubSpot
+  //     UI) → fall back to CREATE so we self-heal.
+  const shouldPatch =
+    calc.hubspotNoteId !== null && calc.hubspotSyncState === "synced";
   let noteId: string;
-  try {
-    const note = await hubspot.createNote({ body });
-    noteId = note.id;
-  } catch (err) {
-    await updateCalculatorConfigHubspotSync(calc.id, {
-      hubspotSyncState: "failed",
-      hubspotNoteId: null
-    });
-    logger.error(
-      {
-        calculatorConfigId: calc.id,
-        err: (err as Error).message
-      },
-      "[calc-config:sync] createNote failed — calc-config marked failed"
-    );
-    throw err;
+  let isNewNote = false;
+
+  if (shouldPatch && calc.hubspotNoteId) {
+    try {
+      await hubspot.updateNote({ noteId: calc.hubspotNoteId, body });
+      noteId = calc.hubspotNoteId;
+    } catch (err) {
+      // 404 = Note was manually deleted in HubSpot. Recover by
+      // creating a fresh one + re-running association. Any other
+      // upstream error → mark failed and bail.
+      const status =
+        err instanceof HubspotUnreachableError &&
+        typeof err.details === "object" &&
+        err.details !== null &&
+        "status" in err.details
+          ? (err.details as { status?: number }).status
+          : undefined;
+      if (status === 404) {
+        logger.warn(
+          { calculatorConfigId: calc.id, staleNoteId: calc.hubspotNoteId },
+          "[calc-config:sync] existing Note 404 in HubSpot — creating fresh one"
+        );
+        // Fall through to the CREATE branch below by clearing the
+        // shouldPatch flag.
+        const note = await hubspot.createNote({ body });
+        noteId = note.id;
+        isNewNote = true;
+      } else {
+        await updateCalculatorConfigHubspotSync(calc.id, {
+          hubspotSyncState: "failed",
+          hubspotNoteId: calc.hubspotNoteId
+        });
+        logger.error(
+          {
+            calculatorConfigId: calc.id,
+            noteId: calc.hubspotNoteId,
+            err: (err as Error).message
+          },
+          "[calc-config:sync] updateNote (PATCH) failed — calc-config marked failed"
+        );
+        throw err;
+      }
+    }
+  } else {
+    // First-time sync or recovery from a previous failure.
+    try {
+      const note = await hubspot.createNote({ body });
+      noteId = note.id;
+      isNewNote = true;
+    } catch (err) {
+      await updateCalculatorConfigHubspotSync(calc.id, {
+        hubspotSyncState: "failed",
+        hubspotNoteId: null
+      });
+      logger.error(
+        {
+          calculatorConfigId: calc.id,
+          err: (err as Error).message
+        },
+        "[calc-config:sync] createNote failed — calc-config marked failed"
+      );
+      throw err;
+    }
   }
 
-  // Step 2: associate. Deal preferred over Company.
+  // Step 2: associate ONLY when we just created a fresh Note. A
+  // PATCH'd existing Note already has its association from the
+  // original CREATE — re-asserting would be a no-op (HubSpot
+  // returns 409 on duplicate associations).
   const target =
     calc.hubspotDealId !== null
       ? { type: "deal" as const, id: calc.hubspotDealId }
       : { type: "company" as const, id: company.hubspotCompanyId };
 
-  try {
-    await hubspot.associateNoteWith({
-      noteId,
-      toObjectType: target.type,
-      toObjectId: target.id
-    });
-  } catch (err) {
-    await updateCalculatorConfigHubspotSync(calc.id, {
-      hubspotSyncState: "failed",
-      hubspotNoteId: noteId
-    });
-    logger.error(
-      {
-        calculatorConfigId: calc.id,
+  if (isNewNote) {
+    try {
+      await hubspot.associateNoteWith({
         noteId,
-        associationTarget: target,
-        err: (err as Error).message
-      },
-      "[calc-config:sync] note created but association failed"
-    );
-    throw err instanceof HubspotUnreachableError
-      ? err
-      : new HubspotUnreachableError(
-          `Note created (${noteId}) but association failed: ${(err as Error).message}`,
-          { noteId, target }
-        );
+        toObjectType: target.type,
+        toObjectId: target.id
+      });
+    } catch (err) {
+      await updateCalculatorConfigHubspotSync(calc.id, {
+        hubspotSyncState: "failed",
+        hubspotNoteId: noteId
+      });
+      logger.error(
+        {
+          calculatorConfigId: calc.id,
+          noteId,
+          associationTarget: target,
+          err: (err as Error).message
+        },
+        "[calc-config:sync] note created but association failed"
+      );
+      throw err instanceof HubspotUnreachableError
+        ? err
+        : new HubspotUnreachableError(
+            `Note created (${noteId}) but association failed: ${(err as Error).message}`,
+            { noteId, target }
+          );
+    }
   }
 
   // Step 3: persist success state.
