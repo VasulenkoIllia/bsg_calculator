@@ -48,7 +48,9 @@ describe("POST /api/v1/pdf/preview (Sprint 6.0)", () => {
   });
 
   it("returns 400 when body is missing or payload key absent", async () => {
-    await createTestUser({ email: "pdf@bsg.test", password: "password12345" });
+    // Sprint 9.S audit closure — explicit role at the call site so
+    // the actor tier is visible without reading the helper's default.
+    await createTestUser({ email: "pdf@bsg.test", password: "password12345", role: "admin" });
     const token = await loginAs("pdf@bsg.test", "password12345");
     const res = await request(app)
       .post("/api/v1/pdf/preview")
@@ -62,7 +64,9 @@ describe("POST /api/v1/pdf/preview (Sprint 6.0)", () => {
     // Same shape-guard as GET /:number/pdf — fails BEFORE Puppeteer
     // pool is touched so the test runs cleanly even with Chromium
     // disabled in NODE_ENV=test.
-    await createTestUser({ email: "pdf@bsg.test", password: "password12345" });
+    // Sprint 9.S audit closure — explicit role at the call site so
+    // the actor tier is visible without reading the helper's default.
+    await createTestUser({ email: "pdf@bsg.test", password: "password12345", role: "admin" });
     const token = await loginAs("pdf@bsg.test", "password12345");
     const res = await request(app)
       .post("/api/v1/pdf/preview")
@@ -78,7 +82,9 @@ describe("POST /api/v1/pdf/preview (Sprint 6.0)", () => {
     // explicitly rejects null nested fields, ensuring the error surface
     // is the right shape (400 VALIDATION_FAILED, not a confusing 500
     // from buildOfferPdfHtml dereferencing a null).
-    await createTestUser({ email: "pdf@bsg.test", password: "password12345" });
+    // Sprint 9.S audit closure — explicit role at the call site so
+    // the actor tier is visible without reading the helper's default.
+    await createTestUser({ email: "pdf@bsg.test", password: "password12345", role: "admin" });
     const token = await loginAs("pdf@bsg.test", "password12345");
     const res = await request(app)
       .post("/api/v1/pdf/preview")
@@ -103,7 +109,9 @@ describe("GET /api/v1/documents/:number/pdf", () => {
   });
 
   it("returns 400 VALIDATION_FAILED for a malformed number (regex pre-check)", async () => {
-    await createTestUser({ email: "pdf@bsg.test", password: "password12345" });
+    // Sprint 9.S audit closure — explicit role at the call site so
+    // the actor tier is visible without reading the helper's default.
+    await createTestUser({ email: "pdf@bsg.test", password: "password12345", role: "admin" });
     const token = await loginAs("pdf@bsg.test", "password12345");
     // BSG-9999999 (no suffix) rejected by the URL pattern BEFORE the
     // DB lookup — defends Content-Disposition from CRLF injection on
@@ -116,7 +124,9 @@ describe("GET /api/v1/documents/:number/pdf", () => {
   });
 
   it("returns 404 for a well-formed but missing number", async () => {
-    await createTestUser({ email: "pdf@bsg.test", password: "password12345" });
+    // Sprint 9.S audit closure — explicit role at the call site so
+    // the actor tier is visible without reading the helper's default.
+    await createTestUser({ email: "pdf@bsg.test", password: "password12345", role: "admin" });
     const token = await loginAs("pdf@bsg.test", "password12345");
     const res = await request(app)
       .get("/api/v1/documents/BSG-9999999-999999/pdf")

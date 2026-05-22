@@ -96,6 +96,14 @@ export function hashRefreshToken(raw: string): string {
 }
 
 /**
+ * Sprint 9.P default — 12h. Must match the `JWT_REFRESH_EXPIRES`
+ * default in `server/config/env.ts`. Used only as the
+ * defence-in-depth fallback in `refreshTokenMaxAgeMs()` when the
+ * env value somehow bypassed Zod validation (shouldn't happen).
+ */
+const DEFAULT_REFRESH_MAX_AGE_MS = 12 * 3600 * 1000;
+
+/**
  * Compute the configured refresh-token TTL in milliseconds. Single
  * source of truth — both the DB `refresh_tokens.expires_at` column
  * (via `refreshTokenExpiry()`) and the Set-Cookie max-age (via
@@ -109,11 +117,8 @@ export function hashRefreshToken(raw: string): string {
 export function refreshTokenMaxAgeMs(): number {
   const expires = env.JWT_REFRESH_EXPIRES;
   const match = /^(\d+)([smhdw])$/.exec(expires);
-  if (!match) {
-    // Match the env default; Zod gates the format so this is a
-    // defence-in-depth fallback.
-    return 12 * 3600 * 1000;
-  }
+  if (!match) return DEFAULT_REFRESH_MAX_AGE_MS;
+
   const value = Number.parseInt(match[1], 10);
   const unit = match[2];
   const multiplier: Record<string, number> = {

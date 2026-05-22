@@ -5226,4 +5226,79 @@ Use this file to record meaningful technical decisions for the project.
   - `/me` + 2FA (Phase 8 Stage 2) explicitly DEFERRED — still
     planned, called out as future work.
 
+### Decision: Sprint 9.S — post-9.P/9.R audit closure (2026-05-22)
+- Context: ran a 3-agent parallel audit (code-reviewer +
+  security-reviewer + typescript-reviewer) over Sprint 9.P (idle
+  timeout + 12h cap) and Sprint 9.R (History rearrange + inline
+  Restore + user→READ-ONLY). **No regressions found.** All three
+  reviewers independently confirmed the route gates, type safety,
+  CSRF posture, and decomposition were clean.
+- Actionable findings (all addressed):
+
+  **MEDIUM:**
+  - **M1** `src/hooks/useIdleTimeout.ts` — removed dead
+    `resetActivity` `useCallback` (it was listed in the effect's
+    dep array but never invoked — survived only to keep the deps
+    array stable, which is circular). Also dropped the unnecessary
+    `heartbeatRef` (replaced with a local `heartbeatId` inside the
+    effect — the ref served no cross-render purpose).
+  - **M2** Explicit `role: "admin"` added at every `createTestUser`
+    call site in `events.integration.test.ts` and
+    `pdf.integration.test.ts` that previously relied on the
+    helper's default. Makes the actor tier visible at the call
+    site instead of buried in the helper's default.
+  - **M3** `server/tests/test-helpers.ts` — removed the
+    `input.isAdmin ? "admin" : "admin"` tautology and dropped the
+    `isAdmin` parameter entirely. The `isAdmin: false` path would
+    have silently resolved to admin post-9.R, which is a footgun;
+    callers should pass `role` explicitly when they need anything
+    other than the new default.
+  - **M4** `server/tests/users.integration.test.ts:52` — the
+    "returns 403 FORBIDDEN for non-admin users" test now creates
+    its actor with explicit `role: "user"`. Without the fix the
+    test still passed (admin → 403 via super_admin gate) but for
+    the wrong reason; a future widening of the gate to `admin`
+    would silently let the assertion pass green.
+  - **M5 (sliding refresh window — design question, NOT changed):**
+    A rotation at 11:59:55 resets the refresh-token expiry to a
+    fresh 12h window. Effective session can exceed 12h-from-login
+    if the user keeps rotating. Decided to KEEP sliding behaviour
+    because: (a) physical-access threat is covered by the 30-min
+    idle timer; (b) hard 12h-from-login would disrupt 8-10h
+    workdays for legitimate operators; (c) BSG has no compliance
+    requirement forcing a hard cap. Documented as known behaviour.
+
+  **LOW:**
+  - **L1** `useIdleTimeout` ref→local (collapsed into M1).
+  - **L2** `auth.tokens.refreshTokenMaxAgeMs()` — extracted the
+    `12 * 3600 * 1000` magic number into a named
+    `DEFAULT_REFRESH_MAX_AGE_MS` constant for the defence-in-depth
+    fallback path.
+  - **L3** Legacy `isAdmin` removed (collapsed into M3).
+
+  **NICE (deferred):**
+  - Sub-router pattern for grouping `requireRole("admin")` gates.
+    Worth considering later when mutating endpoints multiply
+    beyond 3 per router.
+  - `CalculatorPage.tsx` at 699 lines (ceiling 800) — watch item,
+    not a refactor yet. Next sprint that adds calc-related feature
+    code should re-assess.
+
+- Documentation alignment:
+  - `docs/backend_conventions.md:198` updated from `default("30d")`
+    to `default("12h")` to match the env schema after Sprint 9.P.
+  - `docs/decisions.md` has full Sprint 9.O/P/R/S entries
+    (this entry closes the chain).
+  - `docs/phase_8_security_admin_audit.md` references the planned
+    Stage 2 (/me + 2FA) which is still planned. Capability matrix
+    in that file matches our current implementation. No drift.
+
+- Verification:
+  - 331 frontend tests pass (unchanged — the audit fixes were
+    inside `useIdleTimeout` internals + test descriptions).
+  - 331 server tests pass (unchanged net count — the
+    test-helpers refactor didn't break any test).
+  - TypeScript clean (FE + BE).
+  - **Zero regressions identified.** Existing functionality unchanged.
+
 

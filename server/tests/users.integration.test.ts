@@ -49,7 +49,12 @@ describe("GET /api/v1/users (super_admin-only)", () => {
   });
 
   it("returns 403 FORBIDDEN for non-admin users", async () => {
-    await createTestUser({ email: "op@bsg.test", password: "op12345" });
+    // Sprint 9.S audit closure — explicit `role: "user"`. The
+    // test name is "non-admin users", and the assertion verifies
+    // the gate rejects the lowest tier. Without the explicit role
+    // the helper would default to admin (per the 9.R flip), still
+    // 403'd by the super_admin gate but for the wrong reason.
+    await createTestUser({ email: "op@bsg.test", password: "op12345", role: "user" });
     const token = await loginAs("op@bsg.test", "op12345");
 
     const res = await request(app).get("/api/v1/users").set("Authorization", `Bearer ${token}`);

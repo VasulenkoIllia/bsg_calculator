@@ -195,7 +195,9 @@ const Env = z.object({
 
   JWT_ACCESS_SECRET: z.string().min(32),
   JWT_ACCESS_EXPIRES: z.string().default("15m"),
-  JWT_REFRESH_EXPIRES: z.string().default("30d"),  // refresh tokens are opaque, no secret needed
+  // Sprint 9.P — refresh TTL shortened from 30d → 12h as part of the
+  // session-hygiene pass (idle-timeout on FE + hard cap server-side).
+  JWT_REFRESH_EXPIRES: z.string().default("12h"),  // refresh tokens are opaque, no secret needed
   BCRYPT_COST: z.coerce.number().int().min(4).max(15).default(12),
 
   FRONTEND_ORIGIN: z.string().url().default("http://localhost:5173"),

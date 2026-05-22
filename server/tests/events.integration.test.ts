@@ -54,7 +54,8 @@ describe("GET /api/v1/documents/:number/events", () => {
     const user = await createTestUser({
       email: "creator@bsg.test",
       password: "creator12345",
-      displayName: "Creator"
+      displayName: "Creator",
+      role: "admin"
     });
     const [company] = await db
       .insert(companies)
@@ -103,7 +104,10 @@ describe("GET /api/v1/documents/:number/events", () => {
   });
 
   it("returns 404 for an unknown document number", async () => {
-    await createTestUser({ email: "op@bsg.test", password: "op12345" });
+    // Explicit `role: "admin"` — Sprint 9.S audit closure made the
+    // actor tier visible at the call site instead of relying on the
+    // helper's default.
+    await createTestUser({ email: "op@bsg.test", password: "op12345", role: "admin" });
     const token = await loginAs("op@bsg.test", "op12345");
     const res = await request(app)
       .get("/api/v1/documents/BSG-9999999-AAAAAA/events")
@@ -123,7 +127,8 @@ describe("GET /api/v1/calculator-configs/:id/events", () => {
     const user = await createTestUser({
       email: "calc@bsg.test",
       password: "calc12345",
-      displayName: "Calc Author"
+      displayName: "Calc Author",
+      role: "admin"
     });
     const [company] = await db
       .insert(companies)
@@ -160,7 +165,10 @@ describe("GET /api/v1/calculator-configs/:id/events", () => {
   });
 
   it("returns 404 for an unknown calc id", async () => {
-    await createTestUser({ email: "op@bsg.test", password: "op12345" });
+    // Explicit `role: "admin"` — Sprint 9.S audit closure made the
+    // actor tier visible at the call site instead of relying on the
+    // helper's default.
+    await createTestUser({ email: "op@bsg.test", password: "op12345", role: "admin" });
     const token = await loginAs("op@bsg.test", "op12345");
     const res = await request(app)
       .get("/api/v1/calculator-configs/00000000-0000-4000-8000-000000000000/events")
@@ -170,7 +178,10 @@ describe("GET /api/v1/calculator-configs/:id/events", () => {
   });
 
   it("returns 400 VALIDATION_FAILED on malformed UUID", async () => {
-    await createTestUser({ email: "op@bsg.test", password: "op12345" });
+    // Explicit `role: "admin"` — Sprint 9.S audit closure made the
+    // actor tier visible at the call site instead of relying on the
+    // helper's default.
+    await createTestUser({ email: "op@bsg.test", password: "op12345", role: "admin" });
     const token = await loginAs("op@bsg.test", "op12345");
     const res = await request(app)
       .get("/api/v1/calculator-configs/not-a-uuid/events")
@@ -190,7 +201,10 @@ describe("GET /api/v1/calculator-configs/:id/events", () => {
  */
 describe("ON DELETE CASCADE — calc-config delete wipes its events", () => {
   it("DELETE /calculator-configs/:id removes the events too", async () => {
-    await createTestUser({ email: "op@bsg.test", password: "op12345" });
+    // Explicit `role: "admin"` — Sprint 9.S audit closure made the
+    // actor tier visible at the call site instead of relying on the
+    // helper's default.
+    await createTestUser({ email: "op@bsg.test", password: "op12345", role: "admin" });
     const [company] = await db
       .insert(companies)
       .values(companyFixture({ hubspotCompanyId: "cascadetest12" }))

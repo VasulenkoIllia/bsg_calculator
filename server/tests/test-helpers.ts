@@ -16,17 +16,19 @@ import { users, type User } from "../db/schema";
 export const app = createApp();
 
 /**
- * Phase 8 Stage 1: tests can now pass either the new `role` field
- * OR the legacy `isAdmin` boolean (for backward-compat with the
- * older test suites that haven't been touched yet).
+ * Sprint 9.R — default role is `admin`. Pre-9.R the helper defaulted
+ * to `user`, but the 9.R route gates tightened the user→admin
+ * boundary on every mutating endpoint, so the integration suite's
+ * implicit "default authenticated caller" is now admin. The handful
+ * of tests that explicitly verify the read-only `user` tier pass
+ * `role: "user"` explicitly — search test files for `role: "user"`
+ * to find them.
  *
- * Sprint 9.R — default role changed from "user" to "admin".
- * Rationale: Sprint 9.R tightened the user→admin boundary on
- * mutating endpoints (POST /documents, POST/PUT/DELETE
- * /calculator-configs, etc.), so the pre-9.R "default authenticated
- * caller" behaviour is now `admin`. The integration suite assumes
- * the actor can mutate; only the handful of tests that explicitly
- * test the read-only `user` tier should now pass `role: "user"`.
+ * Sprint 9.S audit fix — the legacy `isAdmin` boolean parameter was
+ * removed. It had become a footgun (`isAdmin: false` resolved to
+ * "admin" after the default flip due to a tautological ternary).
+ * Callers should pass `role:` explicitly when they need anything
+ * other than the admin default.
  */
 export async function createTestUser(input: {
   email: string;
@@ -34,12 +36,11 @@ export async function createTestUser(input: {
   login?: string;
   displayName?: string;
   role?: "user" | "admin" | "super_admin";
-  isAdmin?: boolean;
   isActive?: boolean;
 }): Promise<User> {
   // bcrypt cost is forced to 4 in tests via setup.ts → BCRYPT_COST.
   const passwordHash = await bcrypt.hash(input.password, 4);
-  const resolvedRole = input.role ?? (input.isAdmin ? "admin" : "admin");
+  const resolvedRole = input.role ?? "admin";
   const [row] = await db
     .insert(users)
     .values({

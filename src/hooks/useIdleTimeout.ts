@@ -31,6 +31,10 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+// `useRef` stays because `lastActivityRef` (the canonical activity
+// timestamp) needs to survive re-renders without triggering them.
+// `useCallback` is still used by `extend()` so the consumer's
+// reference identity is stable.
 import {
   ACTIVITY_THROTTLE_MS,
   IDLE_TIMEOUT_MIN,
@@ -72,15 +76,6 @@ export function useIdleTimeout(enabled: boolean): UseIdleTimeoutResult {
   // state so the throttle check is synchronous + doesn't trigger
   // re-renders. We re-read this every tick of the heartbeat below.
   const lastActivityRef = useRef<number>(Date.now());
-
-  // The heartbeat interval fires once per second; cheap. The state
-  // transitions happen here, so the React effect cleanup can clear
-  // a single timer cleanly.
-  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const resetActivity = useCallback(() => {
-    lastActivityRef.current = Date.now();
-  }, []);
 
   // Public `extend()` — called from the "Stay signed in" button.
   // Resets the activity stamp + flips status back to "active" so
@@ -127,11 +122,13 @@ export function useIdleTimeout(enabled: boolean): UseIdleTimeoutResult {
 
     // ─── Heartbeat ────────────────────────────────────────────────
     // Once per second, check time-since-last-activity and transition
-    // the stage if a threshold has been crossed.
+    // the stage if a threshold has been crossed. The interval handle
+    // is a local because nothing outside this effect needs to read
+    // or cancel it — the cleanup closure owns it.
     const timeoutMs = IDLE_TIMEOUT_MIN * 60 * 1000;
     const warningMs = IDLE_WARNING_SEC * 1000;
 
-    heartbeatRef.current = setInterval(() => {
+    const heartbeatId = setInterval(() => {
       const idleFor = Date.now() - lastActivityRef.current;
       const remaining = timeoutMs - idleFor;
       if (remaining <= 0) {
@@ -152,12 +149,9 @@ export function useIdleTimeout(enabled: boolean): UseIdleTimeoutResult {
       for (const event of ACTIVITY_EVENTS) {
         window.removeEventListener(event, handleActivity);
       }
-      if (heartbeatRef.current) {
-        clearInterval(heartbeatRef.current);
-        heartbeatRef.current = null;
-      }
+      clearInterval(heartbeatId);
     };
-  }, [enabled, resetActivity]);
+  }, [enabled]);
 
   return { status, extend };
 }
