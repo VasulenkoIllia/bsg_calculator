@@ -50,3 +50,22 @@ export const refreshResponseSchema = z.object({
 });
 
 export type RefreshResponse = z.infer<typeof refreshResponseSchema>;
+
+// ─── Sprint 9.T — self-service password change + sign-out everywhere
+
+/**
+ * `/me/password` request body. Re-auth via `currentPassword` is
+ * mandatory — without it, an XSS that captures an access token could
+ * permanently lock the legitimate owner out by setting a new
+ * password. Matching `currentPassword` against the row's bcrypt hash
+ * gates the rotation behind possession of the actual credential, not
+ * just session theft.
+ */
+export const changeOwnPasswordRequestSchema = z.object({
+  currentPassword: z.string().min(1).max(128),
+  newPassword: z.string().min(8).max(128)
+});
+
+export type ChangeOwnPasswordRequest = z.infer<
+  typeof changeOwnPasswordRequestSchema
+>;

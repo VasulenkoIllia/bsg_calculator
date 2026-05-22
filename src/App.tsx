@@ -38,6 +38,7 @@ import { DocumentsListPage } from "./pages/DocumentsListPage.js";
 import { DocumentViewPage } from "./pages/DocumentViewPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
 import { NotFoundPage } from "./pages/NotFoundPage.js";
+import { PersonalCabinetPage } from "./pages/PersonalCabinetPage.js";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage.js";
 import { WizardPage } from "./pages/WizardPage.js";
 
@@ -74,6 +75,10 @@ export default function App() {
             <Route path="/calculators" element={<CalculatorsListPage />} />
             <Route path="/calc/:id" element={<CalculatorPage />} />
             <Route path="/wizard" element={<WizardPage />} />
+            {/* Sprint 9.T — personal cabinet. Phase 8 Stage 2 partial
+                (2FA deferred). Inside PrivateRoute because all settings
+                here require the actor to be authenticated. */}
+            <Route path="/me" element={<PersonalCabinetPage />} />
             {/* Phase 8 Stage 3 — super_admin-only admin surface.
                 `RequireRole` renders a 403 page (NOT a redirect) for
                 regular admins/users so the back button still works

@@ -129,10 +129,16 @@ export function AppHeader() {
             the bar single-row; Sign-out button stays visible. */}
         {user ? (
           <div className="flex shrink-0 items-center gap-2 text-xs">
-            <span className="hidden text-slate-500 sm:inline">
+            {/* Sprint 9.T — display name now links to /me (personal
+                cabinet). The link is unobtrusive (no underline) so
+                the bar still looks like a static identity strip. */}
+            <NavLink
+              to="/me"
+              className="hidden text-slate-500 transition hover:text-slate-800 sm:inline"
+            >
               Signed in as{" "}
               <strong className="text-slate-800">{user.displayName}</strong>
-            </span>
+            </NavLink>
             <button
               type="button"
               onClick={handleLogout}

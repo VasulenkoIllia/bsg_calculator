@@ -6,6 +6,10 @@
  *   POST   /refresh  refresh cookie (no Bearer)
  *   POST   /logout   refresh cookie (no Bearer)
  *   GET    /me       Bearer access token (requireAuth)
+ *
+ * Sprint 9.T — Phase 8 Stage 2 (partial; 2FA deferred):
+ *   POST   /me/password               Bearer + currentPassword re-auth
+ *   POST   /me/sign-out-everywhere    Bearer
  */
 
 import { Router } from "express";
@@ -13,10 +17,12 @@ import { asyncHandler } from "../../shared/async-handler";
 import { loginLimiter, refreshLimiter } from "../../middleware/rate-limit";
 import { requireAuth } from "../../middleware/require-auth";
 import {
+  changeOwnPasswordController,
   loginController,
   logoutController,
   meController,
-  refreshController
+  refreshController,
+  signOutEverywhereController
 } from "./auth.controller";
 
 export const authRouter = Router();
@@ -34,3 +40,20 @@ authRouter.post("/login", loginLimiter, asyncHandler(loginController));
 authRouter.post("/refresh", refreshLimiter, asyncHandler(refreshController));
 authRouter.post("/logout", refreshLimiter, asyncHandler(logoutController));
 authRouter.get("/me", requireAuth(), asyncHandler(meController));
+
+// Sprint 9.T — self-service. Both reuse `loginLimiter` (5/min) since
+// /me/password does a bcrypt compare on currentPassword that has the
+// same DoS profile as /login. /me/sign-out-everywhere is cheaper but
+// shares the same operator-action posture.
+authRouter.post(
+  "/me/password",
+  requireAuth(),
+  loginLimiter,
+  asyncHandler(changeOwnPasswordController)
+);
+authRouter.post(
+  "/me/sign-out-everywhere",
+  requireAuth(),
+  loginLimiter,
+  asyncHandler(signOutEverywhereController)
+);

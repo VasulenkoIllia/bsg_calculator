@@ -5301,4 +5301,71 @@ Use this file to record meaningful technical decisions for the project.
   - TypeScript clean (FE + BE).
   - **Zero regressions identified.** Existing functionality unchanged.
 
+### Decision: Sprint 9.T — `/me` personal cabinet (Phase 8 Stage 2 partial) (2026-05-22)
+- Context: Phase 8 Stage 2 was originally specified as TOTP 2FA + a
+  personal-cabinet page. Operator decision was to **ship the cabinet
+  now without 2FA** ("Давай зробимо стейдж 2 але без 2фа. 2фа
+  зробимо пізніше") — the 2FA piece is the large/risky part and can
+  land as a focused security sprint later.
+- Scope shipped:
+  - **New page `/me`** (PersonalCabinetPage). Inside PrivateRoute.
+    Four sections:
+    1. **Profile** — email + login + displayName + role. All
+       read-only ("ask a super-admin to change these"). Mirrors the
+       Phase 8 spec.
+    2. **Change password** — currentPassword + newPassword +
+       confirm. POST `/auth/me/password` (Bearer + re-auth).
+       Success bulk-revokes every refresh token for the user;
+       client flushes AuthContext + redirects to /login.
+    3. **Sign out everywhere** — destructive (kicks every device).
+       window.confirm gate. POST `/auth/me/sign-out-everywhere`.
+       Same post-call hygiene as change-password.
+    4. **Two-factor authentication** — placeholder card with
+       "Coming soon" badge. Reserves the slot in the layout so the
+       eventual 2FA work doesn't change page structure.
+  - **AppHeader identity strip** — "Signed in as <displayName>" is
+    now a `<NavLink to="/me">`. Unobtrusive (no underline) so the
+    bar still reads as a static identity strip.
+- Backend surface:
+  - `POST /api/v1/auth/me/password` — requireAuth + loginLimiter
+    (5/min, same DoS profile as /login since it does a bcrypt
+    compare). Mandatory `currentPassword` re-auth via
+    bcrypt.compare; mismatch returns the same
+    `AUTH_INVALID_CREDENTIALS` shape as /login (uniform FE error
+    handling).
+  - `POST /api/v1/auth/me/sign-out-everywhere` — requireAuth +
+    loginLimiter (same posture as a destructive operator action).
+    No re-auth (the access token IS the credential here; trade-off
+    is an XSS could trigger an unwanted full sign-out, which is
+    annoying but not exploitable for impersonation).
+- Security properties:
+  - Mandatory currentPassword re-auth on `/me/password` defends
+    against XSS-driven silent password takeover.
+  - Both endpoints bulk-revoke refresh tokens via the same
+    `revokeAllRefreshTokensForUser` helper used by the
+    reset-link flow (Sprint 9.O), inheriting the 60-second
+    backdate that closes the 10s rotation grace window.
+  - Server clears the local refresh cookie via `clearCookie` so the
+    next request from this tab doesn't try to use a stale cookie.
+- What's NOT in this sprint (explicitly deferred for a later
+  security pass):
+  - TOTP 2FA enable/disable + QR setup + backup codes
+  - `trusted_devices` table + "Trust this browser 30 days" cookie
+  - Login flow stage 2 (`POST /auth/2fa/verify`)
+  - Super_admin force-disable of another user's 2FA
+  - `totp_secret_encrypted` + `backup_codes_hashed[]` columns on
+    `users`
+- Verification:
+  - 337 server tests pass (was 331; +6 new for /me/password happy
+    path + 401 on wrong currentPassword + 400 on short newPassword
+    + 401 without Bearer + sign-out-everywhere happy + 401 without
+    Bearer).
+  - 331 frontend tests pass (unchanged; no new component test for
+    PersonalCabinetPage — page is read-mostly, the few mutations
+    are covered by the BE integration suite plus manual smoke).
+  - TypeScript clean (FE + BE).
+  - `docs/phase_8_security_admin_audit.md` updated: Stage 2 is
+    now "🟡 PARTIAL 2026-05-22" with explicit note that 2FA is
+    deferred.
+
 

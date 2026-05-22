@@ -60,3 +60,30 @@ export async function me(): Promise<PublicUser> {
   const { data } = await apiClient.get<PublicUser>("/auth/me");
   return data;
 }
+
+/**
+ * Sprint 9.T — POST /auth/me/password
+ *
+ * Self-service password change. Mandatory `currentPassword` re-auth
+ * prevents XSS-driven silent password takeover. On success the
+ * server bulk-revokes every refresh token for this user (including
+ * this session's), so the caller MUST flush local AuthContext via
+ * `setAccessToken(null)` + redirect to /login afterwards.
+ */
+export async function changeOwnPassword(body: {
+  currentPassword: string;
+  newPassword: string;
+}): Promise<void> {
+  await apiClient.post("/auth/me/password", body);
+}
+
+/**
+ * Sprint 9.T — POST /auth/me/sign-out-everywhere
+ *
+ * Revoke every refresh token belonging to the current user (this
+ * device included). Same post-call hygiene as changeOwnPassword:
+ * caller must clear the in-memory access token + redirect to login.
+ */
+export async function signOutEverywhere(): Promise<void> {
+  await apiClient.post("/auth/me/sign-out-everywhere");
+}

@@ -19,15 +19,18 @@
  */
 
 import bcrypt from "bcrypt";
+import { env } from "../../config/env";
 import { REFRESH_GRACE_WINDOW_MS } from "../../config/constants";
 import {
   findUserByIdentifier,
   findUserById,
   insertRefreshToken,
   rotateRefreshTokenAtomically,
+  revokeAllRefreshTokensForUser,
   revokeRefreshToken,
   touchRefreshToken
 } from "./auth.repository";
+import { updatePasswordHash } from "../users/users.repository";
 import {
   generateRefreshTokenRaw,
   hashRefreshToken,
@@ -36,6 +39,7 @@ import {
 } from "./auth.tokens";
 import {
   ForbiddenError,
+  InternalError,
   InvalidCredentialsError,
   TokenInvalidError
 } from "../../shared/errors";
@@ -233,4 +237,63 @@ export async function refresh(refreshTokenRaw: string): Promise<RefreshOutcome> 
 export async function logout(refreshTokenRaw: string): Promise<void> {
   const tokenHash = hashRefreshToken(refreshTokenRaw);
   await revokeRefreshToken(tokenHash);
+}
+
+// ─── Sprint 9.T — self-service operations on /auth/me ────────────────
+
+/**
+ * Change the current user's password. Re-auth via `currentPassword`
+ * is mandatory: matching it against the row's bcrypt hash gates the
+ * rotation behind possession of the actual credential, so a stolen
+ * access token alone can't lock the legitimate owner out.
+ *
+ * On success: ALL existing refresh tokens for this user are revoked
+ * (forcing every other device/tab to re-login). The current session
+ * is intentionally NOT auto-rotated here — the caller already has a
+ * valid access token + refresh cookie; revoking-all + leaving the
+ * current cookie in place means the next /auth/refresh on this
+ * device will rotate cleanly via the standard path. Other devices
+ * will land on /login.
+ */
+export async function changeOwnPassword(input: {
+  userId: string;
+  currentPassword: string;
+  newPassword: string;
+}): Promise<void> {
+  const user = await findUserById(input.userId);
+  if (!user) throw new TokenInvalidError("User not found.");
+  if (!user.isActive) throw new ForbiddenError("Account is disabled.");
+
+  const matches = await bcrypt.compare(input.currentPassword, user.passwordHash);
+  if (!matches) {
+    // Reuse the same error shape as the login path so the FE error
+    // handler renders "Email or password is incorrect" uniformly.
+    throw new InvalidCredentialsError();
+  }
+
+  const newHash = await bcrypt.hash(input.newPassword, env.BCRYPT_COST);
+  const updated = await updatePasswordHash(user.id, newHash);
+  if (!updated) {
+    throw new InternalError(
+      `[auth] user ${user.id} disappeared mid-password-change`
+    );
+  }
+
+  // Revoke every refresh token for this user. The bulk-revoke
+  // backdates revoked_at past the grace window, so even a fresh
+  // refresh attempt from another tab will fail. The CURRENT
+  // session's refresh cookie is also revoked — that's intentional:
+  // the FE will catch the next 401 and route the user back to
+  // /login, which is correct UX after a password change.
+  await revokeAllRefreshTokensForUser(user.id);
+}
+
+/**
+ * Bulk-revoke every active refresh token for the current user.
+ * Used by "Sign out everywhere" on /me. After this call, EVERY
+ * device (including the one that initiated) will land on /login
+ * on its next request.
+ */
+export async function signOutEverywhere(userId: string): Promise<void> {
+  await revokeAllRefreshTokensForUser(userId);
 }
