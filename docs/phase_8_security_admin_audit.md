@@ -1,6 +1,6 @@
 # Phase 8 — Security, Admin Management, Document Audit & Deletion
 
-**Status**: Stages 1 + 3 + 4 + 5 complete (2026-05-21). Stage 2 partial (Sprint 9.T — /me cabinet shipped, 2FA deferred). Stage 6 planned.
+**Status**: Stages 1 + 3 + 4 + 5 + 6 complete (Stage 6 shipped 2026-05-22 in Sprint 9.U). Stage 2 partial (Sprint 9.T — /me cabinet shipped, 2FA deferred to a future security pass).
 **Date created**: 2026-05-20
 **Confirmed by**: operator brief 2026-05-20 (this conversation)
 
@@ -17,7 +17,7 @@ doesn't drift across sprints.
 | 3 | Super-admin user management (`/admin/users`, block, password reset) | ✅ **DONE 2026-05-21** (Phase 8 Stage 3.A–D; invite copy-link deferred — super_admin sets initial password directly and forwards it manually) |
 | 4 | Per-document event log | ✅ **DONE 2026-05-21** (Phase 8 Stage 4.A–E; ALSO covers calculator_config_events since the operator brief asked for both surfaces) |
 | 5 | Document soft-delete with HubSpot Note tear-down | ✅ **DONE 2026-05-21** (Phase 8 Stage 5.A–E; reason presets, super_admin restore, /admin/documents/deleted) |
-| 6 | `admin_actions` audit log + admin sub-shell | ⏳ planned (needs Stages 1-5) |
+| 6 | `admin_actions` audit log + admin sub-shell | ✅ **DONE 2026-05-22** (Sprint 9.U — `admin_actions` table + recordAdminAction wired into 12 endpoints + super_admin GET /admin/audit-log + FE AuditLogPage; admin sub-shell deferred — operator picked the lighter "extra link in AppHeader" approach) |
 
 ### Adjacent Phase 9 shipped (2026-05-21)
 

@@ -29,6 +29,7 @@ import { errorHandler, notFoundHandler } from "./middleware/error-handler";
 import { apiLimiter } from "./middleware/rate-limit";
 import { requestId } from "./middleware/request-id";
 import { requestLogger } from "./middleware/logger";
+import { adminActionsRouter } from "./modules/admin-actions/admin-actions.routes";
 import { authRouter } from "./modules/auth/auth.routes";
 import { invitesPublicRouter } from "./modules/invites/invites.routes";
 import { resetsPublicRouter } from "./modules/password-resets/resets.routes";
@@ -191,6 +192,9 @@ export function createApp(): express.Express {
   app.use("/api/v1/documents", pdfRouter); // mounts /:number/pdf
   app.use("/api/v1/pdf", pdfPreviewRouter); // mounts POST /preview (Sprint 6.0)
   app.use("/api/v1/numbering", numberingRouter);
+  // Sprint 9.U — admin audit log. Mounted at /api/v1/admin so the
+  // prefix is reserved for future super_admin-only surfaces.
+  app.use("/api/v1/admin", adminActionsRouter);
   // Sprint 5 routes (POST /api/v1/hubspot/webhooks + POST /api/v1/hubspot/refresh)
   // are mounted as children of hubspotRouter above.
 

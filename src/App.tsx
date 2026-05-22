@@ -30,6 +30,7 @@ import { RequireRole } from "./components/RequireRole.js";
 import { CalculatorProvider } from "./contexts/CalculatorContext.js";
 import { AcceptInvitePage } from "./pages/AcceptInvitePage.js";
 import { AdminUsersPage } from "./pages/AdminUsersPage.js";
+import { AuditLogPage } from "./pages/AuditLogPage.js";
 import { CalculatorPage } from "./pages/CalculatorPage.js";
 import { CalculatorsListPage } from "./pages/CalculatorsListPage.js";
 import { CompaniesPage } from "./pages/CompaniesPage.js";
@@ -86,6 +87,8 @@ export default function App() {
                 message. */}
             <Route element={<RequireRole min="super_admin" />}>
               <Route path="/admin/users" element={<AdminUsersPage />} />
+              {/* Sprint 9.U — Phase 8 Stage 6 audit log. */}
+              <Route path="/admin/audit-log" element={<AuditLogPage />} />
               {/* Sprint 9.N — /admin/documents/deleted removed. The
                   main Documents listing now shows soft-deleted docs
                   with a Status filter, so the dedicated super_admin

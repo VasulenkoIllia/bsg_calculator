@@ -1,0 +1,114 @@
+/**
+ * Sprint 9.U — Phase 8 Stage 6 — admin_actions audit log.
+ *
+ * Append-only log of privileged operator actions. Distinct from the
+ * per-entity event logs (`document_events`, `calculator_config_events`):
+ * this table answers "what did <admin> do?" rather than "what
+ * happened to <entity>?".
+ *
+ * Design rationale + column-level notes live in
+ * `server/db/migrations/0013_admin_actions.sql` — keep this file in
+ * sync with the migration's CHECK constraint when adding new
+ * action_type values.
+ */
+
+import { check, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { users } from "./users";
+
+/**
+ * Controlled vocabulary mirrored on both sides. Keep in lockstep
+ * with the CHECK constraint in `0013_admin_actions.sql`.
+ */
+export const ADMIN_ACTION_TYPES = [
+  // User management (super_admin surface)
+  "user.created",
+  "user.updated",
+  "user.password_reset",
+  "user.invite_created",
+  "user.invite_revoked",
+  "user.reset_link_created",
+  // Public flows (target user is the actor)
+  "auth.invite_accepted",
+  "auth.reset_consumed",
+  "auth.password_changed",
+  "auth.signed_out_everywhere",
+  // Document management (admin + super_admin surface)
+  "document.deleted",
+  "document.restored"
+] as const;
+
+export type AdminActionType = (typeof ADMIN_ACTION_TYPES)[number];
+
+/**
+ * `target_type` enum. Free-form-ish in DB (no CHECK) because we may
+ * add new target categories without a migration, but the TS layer
+ * narrows to this set. `null` is valid for global actions.
+ */
+export type AdminActionTargetType =
+  | "user"
+  | "document"
+  | "calc_config"
+  | "invite"
+  | "reset";
+
+export const adminActions = pgTable(
+  "admin_actions",
+  {
+    id: uuid("id").primaryKey().defaultRandom().notNull(),
+
+    // Actor — FK is SET NULL so a future user deletion doesn't break
+    // the log row. Display fields are denormalised at write-time so
+    // the listing renders without a JOIN.
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade"
+    }),
+    actorDisplayName: text("actor_display_name").notNull(),
+    actorEmail: text("actor_email").notNull(),
+
+    // Action — Zod will narrow this on the way out via AdminActionType.
+    actionType: text("action_type").notNull(),
+
+    // Target (optional).
+    targetType: text("target_type"),
+    targetId: text("target_id"),
+
+    // Structured payload. Defaults to `{}` so callers can rely on it
+    // being a non-null JSON object.
+    meta: jsonb("meta")
+      .notNull()
+      .default(sql`'{}'::jsonb`)
+      .$type<Record<string, unknown>>(),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
+  },
+  table => ({
+    createdAtIdx: index("admin_actions_created_at_idx").on(
+      table.createdAt.desc()
+    ),
+    targetIdx: index("admin_actions_target_idx").on(
+      table.targetType,
+      table.targetId
+    ),
+    // Mirrors the migration's CHECK. Drizzle's `check()` is a
+    // runtime-only constraint — the migration applies it; the schema
+    // declaration here documents intent.
+    actionTypeCheck: check(
+      "admin_actions_action_type_check",
+      sql`${table.actionType} IN (
+        'user.created', 'user.updated', 'user.password_reset',
+        'user.invite_created', 'user.invite_revoked',
+        'user.reset_link_created',
+        'auth.invite_accepted', 'auth.reset_consumed',
+        'auth.password_changed', 'auth.signed_out_everywhere',
+        'document.deleted', 'document.restored'
+      )`
+    )
+  })
+);
+
+export type AdminAction = typeof adminActions.$inferSelect;
+export type NewAdminAction = typeof adminActions.$inferInsert;

@@ -13,6 +13,7 @@ import type { Request, Response } from "express";
 import { REFRESH_COOKIE_NAME, refreshCookieOptions } from "../auth/auth.cookies";
 import { parseUuidParam } from "../../shared/uuid-param";
 import { InternalError } from "../../shared/errors";
+import { recordAdminAction } from "../admin-actions/admin-actions.service";
 import {
   acceptInviteRequestSchema,
   createInviteRequestSchema
@@ -40,6 +41,13 @@ function actorId(req: Request): string {
 export async function createInviteController(req: Request, res: Response): Promise<void> {
   const body = createInviteRequestSchema.parse(req.body);
   const result = await createInviteAndLink(body, actorId(req));
+  await recordAdminAction({
+    actorUserId: actorId(req),
+    actionType: "user.invite_created",
+    targetType: "invite",
+    targetId: result.id,
+    meta: { role: body.role, expiresAt: result.expiresAt }
+  });
   res.status(201).json(result);
 }
 
@@ -51,6 +59,12 @@ export async function listInvitesController(_req: Request, res: Response): Promi
 export async function revokeInviteController(req: Request, res: Response): Promise<void> {
   const id = parseUuidParam(req, "id");
   await revokeInviteById(id);
+  await recordAdminAction({
+    actorUserId: actorId(req),
+    actionType: "user.invite_revoked",
+    targetType: "invite",
+    targetId: id
+  });
   res.status(204).end();
 }
 
@@ -72,6 +86,17 @@ export async function previewInviteController(req: Request, res: Response): Prom
 export async function acceptInviteController(req: Request, res: Response): Promise<void> {
   const body = acceptInviteRequestSchema.parse(req.body);
   const result = await acceptInvite(readRawToken(req), body);
+
+  // Audit log — the newly-created user IS the actor. The invite
+  // creator is captured separately on `user_invites.created_by_user_id`
+  // (and surfaces on the InvitesPanel "Created by" column).
+  await recordAdminAction({
+    actorUserId: result.user.id,
+    actionType: "auth.invite_accepted",
+    targetType: "user",
+    targetId: result.user.id,
+    meta: { role: result.user.role, email: result.user.email }
+  });
 
   // Mirror /auth/login: refresh token lives in httpOnly cookie,
   // access token + public user shape in the body. FE drops them

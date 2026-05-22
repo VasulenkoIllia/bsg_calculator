@@ -29,6 +29,7 @@ import {
   signOutEverywhere
 } from "./auth.service";
 import { TokenInvalidError } from "../../shared/errors";
+import { recordAdminAction } from "../admin-actions/admin-actions.service";
 
 /**
  * POST /api/v1/auth/login
@@ -127,6 +128,12 @@ export async function changeOwnPasswordController(
     currentPassword: body.currentPassword,
     newPassword: body.newPassword
   });
+  await recordAdminAction({
+    actorUserId: req.user.id,
+    actionType: "auth.password_changed",
+    targetType: "user",
+    targetId: req.user.id
+  });
   // The bulk-revoke killed the current session's refresh too. Clear
   // the cookie so the next request from this tab doesn't try to use
   // it (avoids a confusing 401 before the FE notices).
@@ -149,6 +156,12 @@ export async function signOutEverywhereController(
 ): Promise<void> {
   if (!req.user) throw new TokenInvalidError();
   await signOutEverywhere(req.user.id);
+  await recordAdminAction({
+    actorUserId: req.user.id,
+    actionType: "auth.signed_out_everywhere",
+    targetType: "user",
+    targetId: req.user.id
+  });
   res.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
   res.status(204).end();
 }

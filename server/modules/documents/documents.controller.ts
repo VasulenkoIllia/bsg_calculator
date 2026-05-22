@@ -12,6 +12,7 @@ import {
   parseSortQuery
 } from "../../shared/sorted-pagination";
 import { TokenInvalidError } from "../../shared/errors";
+import { recordAdminAction } from "../admin-actions/admin-actions.service";
 import { documentSortFields } from "./documents.repository";
 import {
   createDocumentSchema,
@@ -194,6 +195,15 @@ export async function deleteController(
     body.reason,
     body.note ?? null
   );
+  await recordAdminAction({
+    actorUserId: req.user.id,
+    actionType: "document.deleted",
+    targetType: "document",
+    targetId: number,
+    // hasNote breadcrumb only — keep the operator's free-text note
+    // OUT of the audit listing (it can be sensitive).
+    meta: { reason: body.reason, hasNote: Boolean(body.note) }
+  });
   res.status(200).json(updated);
 }
 
@@ -220,5 +230,11 @@ export async function restoreController(
   }
   const number = req.params.number;
   const updated = await restoreDocument(number, req.user.id);
+  await recordAdminAction({
+    actorUserId: req.user.id,
+    actionType: "document.restored",
+    targetType: "document",
+    targetId: number
+  });
   res.status(200).json(updated);
 }

@@ -92,6 +92,13 @@
       "when": 1779745200000,
       "tag": "0012_invites_and_resets",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1779836400000,
+      "tag": "0013_admin_actions",
+      "breakpoints": true
     }
   ]
 }

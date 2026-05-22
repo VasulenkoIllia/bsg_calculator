@@ -5368,4 +5368,72 @@ Use this file to record meaningful technical decisions for the project.
     now "🟡 PARTIAL 2026-05-22" with explicit note that 2FA is
     deferred.
 
+### Decision: Sprint 9.U — Phase 8 Stage 6 admin_actions audit log (2026-05-22)
+- Context: Stage 6 was the last planned Phase-8 stage — an append-
+  only audit trail of privileged actions so super_admins can answer
+  "who deleted document X?" / "what did Maria do yesterday?".
+  Distinct from `document_events` (per-entity timeline).
+- Backend:
+  - New table `admin_actions` (migration 0013): actor (FK SET NULL +
+    denormalised display_name/email), action_type with CHECK against
+    a controlled vocabulary, target_type + target_id (nullable), meta
+    jsonb, created_at. Two indexes: created_at DESC + (target_type,
+    target_id) partial.
+  - New module `server/modules/admin-actions/` (repository + service
+    + controller + routes + schemas).
+  - `recordAdminAction()` — append-only helper. Failures LOGGED +
+    SWALLOWED so a logging glitch can't roll back the privileged
+    action that just succeeded.
+  - Wired into 12 endpoints across 5 controllers (invites, resets,
+    users, documents, auth/me).
+  - GET /api/v1/admin/audit-log — super_admin only, paginated via
+    opaque cursor (id + createdAt pair), optional filters on
+    actionType + actorUserId.
+- Frontend:
+  - New page `/admin/audit-log` (AuditLogPage). Newest-first table
+    with single "Filter by action" dropdown.
+  - New nav tab "Audit log" in AppHeader (super_admin only).
+  - Route gated by `RequireRole min="super_admin"`.
+- Controlled vocabulary (12 action types today):
+  user.created/updated/password_reset, user.invite_created/revoked,
+  user.reset_link_created, auth.invite_accepted, auth.reset_consumed,
+  auth.password_changed, auth.signed_out_everywhere,
+  document.deleted, document.restored.
+  Adding a new value requires both a migration (drops + recreates
+  the CHECK) and an update to `ADMIN_ACTION_TYPES` — intentional
+  friction so new admin surfaces force a conscious audit-log
+  decision.
+- Security properties:
+  - Append-only: no UPDATE / DELETE / soft-delete surface.
+  - Never logs raw passwords, raw tokens, or document-deletion
+    free-text notes. The `note` field is captured as
+    `hasNote: true/false`, not the body. Verified by a regression
+    test that asserts old + new passwords do NOT appear in meta.
+  - SET NULL FK on actor_user_id preserves the audit row when a
+    user is later removed (denormalised display fields fill in).
+- Why a lighter "extra link in AppHeader" instead of the spec's
+  full admin sub-shell: operator picked the lighter approach
+  explicitly ("Додати 'Audit log' link в хедер"). For 3-5
+  operators a separate admin UX shell is overkill; the existing
+  tab strip handles the new link cleanly. Sub-shell remains
+  available as a future refactor when /admin grows.
+- Verification:
+  - 344 server tests pass (was 337; +7 for the audit log: 403 for
+    admin/user, 401 without token, empty page on fresh DB, invite
+    create+revoke captured, document delete+restore filterable,
+    password-change captured WITHOUT password leakage).
+  - 331 FE tests pass (unchanged — AuditLogPage is read-only,
+    covered by BE integration + manual smoke).
+  - TypeScript clean (FE + BE).
+  - Migration 0013 applied to local dev DB; verified via psql.
+- Phase 8 status after Sprint 9.U:
+  - Stage 1 (roles) ✅
+  - Stage 2 (/me cabinet + 2FA) 🟡 partial — 2FA deferred
+  - Stage 3 (user management) ✅
+  - Stage 4 (per-entity event log) ✅
+  - Stage 5 (soft-delete) ✅
+  - Stage 6 (admin audit log) ✅
+  - Only outstanding piece is TOTP 2FA, awaiting a focused
+    security sprint.
+
 

@@ -84,7 +84,7 @@ beforeEach(async () => {
   // our UUID-PK schema but harmless). Add new tables here as the
   // schema grows.
   await dbModule.db.execute(
-    sql`TRUNCATE TABLE hubspot_webhook_events, documents, calculator_configs, deals, companies, refresh_tokens, users RESTART IDENTITY CASCADE`
+    sql`TRUNCATE TABLE hubspot_webhook_events, admin_actions, documents, calculator_configs, deals, companies, refresh_tokens, users RESTART IDENTITY CASCADE`
   );
   // Reset numbering sequence — TRUNCATE on documents doesn't touch
   // the sequence row. Set to the seed value so each test file starts
