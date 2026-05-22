@@ -20,7 +20,7 @@ import { and, eq, gt, isNull } from "drizzle-orm";
 import { db } from "../../db/client";
 import { passwordResets, type PasswordReset } from "../../db/schema";
 import { expectSingle } from "../../shared/db-helpers";
-import { generateRawToken, hashToken } from "../invites/invites.repository";
+import { generateRawToken, hashToken } from "../../shared/token-utils";
 
 export interface CreatedReset {
   row: PasswordReset;

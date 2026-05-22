@@ -169,6 +169,75 @@ describe("POST /api/v1/auth/invite/:token/accept (public)", () => {
     expect(second.status).toBe(404);
   });
 
+  it("transaction rollback — no orphan user when invite is consumed concurrently", async () => {
+    // Sprint 9.O audit fix M2 regression test. Before the fix,
+    // racing two /accept calls with the SAME token but different
+    // emails would: both pass findAliveInviteByRawToken, both
+    // insert users (different emails so no UNIQUE collision), and
+    // only the first wins the markInviteAccepted optimistic UPDATE.
+    // The "loser" was left as an ORPHAN user row with an active
+    // role and a working password.
+    //
+    // The fix wraps insertUser + markInviteAccepted in a tx; the
+    // loser's INSERT rolls back. This test verifies the loser does
+    // NOT end up with a usable account.
+    await createTestUser({ email: "sa@bsg.test", password: "sa12345678", role: "super_admin" });
+    const adminToken = await loginAs("sa@bsg.test", "sa12345678");
+
+    const create = await request(app)
+      .post("/api/v1/users/invites")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ role: "user" });
+    const rawToken = extractTokenFromLink(create.body.link);
+
+    // Fire both /accept calls "concurrently". Node's event-loop is
+    // single-threaded but Postgres + the bcrypt awaits naturally
+    // interleave, which is enough to exercise the race when the
+    // pre-fix code is run against this test.
+    const [winnerRes, loserRes] = await Promise.all([
+      request(app).post(`/api/v1/auth/invite/${rawToken}/accept`).send({
+        email: "winner@bsg.test",
+        displayName: "Winner",
+        password: "pwForWinner1"
+      }),
+      request(app).post(`/api/v1/auth/invite/${rawToken}/accept`).send({
+        email: "loser@bsg.test",
+        displayName: "Loser",
+        password: "pwForLoser1"
+      })
+    ]);
+    // Exactly one wins (201). The loser gets either:
+    //   - 409 (true race inside the tx — both passed findAlive but
+    //     only one landed markInviteAccepted; the tx rolled back
+    //     the user INSERT), OR
+    //   - 404 (the first request finished its tx + marked the invite
+    //     accepted BEFORE the second's findAlive ran, so the second
+    //     never saw an alive invite).
+    // Both paths are correct outcomes of the M2 fix — what matters
+    // is that the loser never ends up with a usable account.
+    const statuses = [winnerRes.status, loserRes.status].sort();
+    expect(statuses[0]).toBe(201);
+    expect([404, 409]).toContain(statuses[1]);
+
+    // Whichever email LOST must NOT have a usable login (its INSERT
+    // was rolled back). Try logging in with BOTH submitted passwords;
+    // one works, the other returns 401.
+    const winnerEmail = winnerRes.status === 201 ? "winner@bsg.test" : "loser@bsg.test";
+    const loserEmail = winnerRes.status === 201 ? "loser@bsg.test" : "winner@bsg.test";
+    const winnerPw = winnerRes.status === 201 ? "pwForWinner1" : "pwForLoser1";
+    const loserPw = winnerRes.status === 201 ? "pwForLoser1" : "pwForWinner1";
+
+    const winnerLogin = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ identifier: winnerEmail, password: winnerPw });
+    expect(winnerLogin.status).toBe(200);
+
+    const loserLogin = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ identifier: loserEmail, password: loserPw });
+    expect(loserLogin.status).toBe(401); // rolled back — no user row exists
+  });
+
   it("returns 409 on duplicate email", async () => {
     await createTestUser({ email: "sa@bsg.test", password: "sa12345678", role: "super_admin" });
     await createTestUser({ email: "taken@bsg.test", password: "anything", role: "user" });

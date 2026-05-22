@@ -8,7 +8,7 @@
  */
 
 import { desc, eq, or, sql } from "drizzle-orm";
-import { db } from "../../db/client";
+import { db, type DbOrTx } from "../../db/client";
 import { users, type User, type UserRole } from "../../db/schema";
 import { expectSingle } from "../../shared/db-helpers";
 
@@ -23,13 +23,14 @@ export async function findUserById(id: string): Promise<User | undefined> {
 
 export async function emailOrLoginExists(
   email: string,
-  login: string | null
+  login: string | null,
+  tx: DbOrTx = db
 ): Promise<boolean> {
   const conditions = [eq(users.email, email)];
   if (login !== null) {
     conditions.push(eq(users.login, login));
   }
-  const rows = await db
+  const rows = await tx
     .select({ id: users.id })
     .from(users)
     .where(or(...conditions))
@@ -37,15 +38,18 @@ export async function emailOrLoginExists(
   return rows.length > 0;
 }
 
-export async function insertUser(input: {
-  email: string;
-  login: string | null;
-  passwordHash: string;
-  displayName: string;
-  // Phase 8 Stage 1: hierarchical role instead of boolean isAdmin.
-  role: UserRole;
-}): Promise<User> {
-  const rows = await db.insert(users).values(input).returning();
+export async function insertUser(
+  input: {
+    email: string;
+    login: string | null;
+    passwordHash: string;
+    displayName: string;
+    // Phase 8 Stage 1: hierarchical role instead of boolean isAdmin.
+    role: UserRole;
+  },
+  tx: DbOrTx = db
+): Promise<User> {
+  const rows = await tx.insert(users).values(input).returning();
   return expectSingle(rows, "insertUser");
 }
 

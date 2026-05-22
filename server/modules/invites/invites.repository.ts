@@ -14,9 +14,8 @@
  * twice.
  */
 
-import { randomBytes, createHash } from "node:crypto";
-import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
-import { db } from "../../db/client";
+import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import { db, type DbOrTx } from "../../db/client";
 import {
   userInvites,
   users,
@@ -24,19 +23,7 @@ import {
   type UserInvite
 } from "../../db/schema";
 import { expectSingle } from "../../shared/db-helpers";
-
-/**
- * Generate a cryptographically random URL-safe token. 32 bytes of
- * entropy → 43 chars base64url — enough that a brute-force attack
- * is computationally infeasible.
- */
-function generateRawToken(): string {
-  return randomBytes(32).toString("base64url");
-}
-
-function hashToken(raw: string): string {
-  return createHash("sha256").update(raw).digest("hex");
-}
+import { generateRawToken, hashToken } from "../../shared/token-utils";
 
 export interface CreatedInvite {
   row: UserInvite;
@@ -99,7 +86,7 @@ export async function findAliveInviteByRawToken(
 export async function markInviteAccepted(
   inviteId: string,
   acceptedUserId: string,
-  tx = db
+  tx: DbOrTx = db
 ): Promise<UserInvite | undefined> {
   const rows = await tx
     .update(userInvites)
@@ -147,12 +134,21 @@ export async function revokeInvite(
  * Row shape for the super_admin "Pending invites" panel —
  * includes the inviter's display name so the FE can render
  * "invited by <name>" without an N+1.
+ *
+ * Sprint 9.O audit fix L2 — timestamps are typed as `string` (NOT
+ * `Date`) because `db.execute` bypasses Drizzle's typed query
+ * builder, and node-pg returns timestamptz columns as ISO-formatted
+ * strings rather than Date objects. The defensive `new Date(...)`
+ * wrap in `invites.service.listInvites` handles the conversion at
+ * the boundary. Declaring `Date` here was a type-system lie that
+ * compiled fine but blew up at runtime ("expiresAt.toISOString is
+ * not a function") — discovered during smoke-testing.
  */
 export interface InviteListRow {
   id: string;
   role: InviteRole;
-  expiresAt: Date;
-  createdAt: Date;
+  expiresAt: string;
+  createdAt: string;
   createdByDisplayName: string;
   createdByEmail: string;
   status: "pending" | "accepted" | "revoked" | "expired";
@@ -176,8 +172,11 @@ export async function listInvites(): Promise<InviteListRow[]> {
   const result = await db.execute<{
     id: string;
     role: InviteRole;
-    expires_at: Date;
-    created_at: Date;
+    // node-pg returns timestamptz as ISO strings (NOT Date) when
+    // accessed via raw `db.execute`. Drizzle's typed builder applies
+    // its own parser; `execute` skips it. See InviteListRow comment.
+    expires_at: string;
+    created_at: string;
     created_by_display_name: string;
     created_by_email: string;
     status: "pending" | "accepted" | "revoked" | "expired";
@@ -228,7 +227,3 @@ export async function findInviteById(
   return rows[0];
 }
 
-// Export the helpers so the password-resets repo can reuse them
-// without copying the implementation. Both modules share the
-// raw→sha256 hashing pattern.
-export { generateRawToken, hashToken };

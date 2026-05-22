@@ -68,6 +68,21 @@ export async function createResetLink(
       "Cannot issue a password reset for a blocked user. Unblock first."
     );
   }
+  // Sprint 9.O audit fix M3 — block cross-super_admin resets.
+  // Without this guard, super_admin A could mint a reset link for
+  // super_admin B and silently take over B's account. The only
+  // legitimate super_admin reset is self-reset (when they're already
+  // logged in and want to change their own password via this flow
+  // instead of the standard /auth/me path). Cross-super_admin
+  // resets must go through manual DB intervention (auditable in
+  // the SQL log) rather than this in-app surface.
+  if (target.role === "super_admin" && target.id !== createdByUserId) {
+    throw new ConflictError(
+      "RESET_FORBIDDEN_PEER_SUPER_ADMIN",
+      "Cannot reset another super-admin's password via the in-app flow. " +
+        "Coordinate directly with the target super-admin, or reset via DB."
+    );
+  }
   const { row, rawToken } = await createPasswordReset({
     userId,
     createdByUserId,

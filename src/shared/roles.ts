@@ -30,6 +30,24 @@ export const ROLE_TIER: Record<UserRole, number> = {
 };
 
 /**
+ * Sprint 9.O audit fix L3 — runtime-validatable role list.
+ * Use to narrow an untrusted string from form input or query params
+ * before treating it as a UserRole. The `as const` keeps the array
+ * elements typed as the literal union, so callers don't have to
+ * re-assert.
+ */
+export const USER_ROLES = ["user", "admin", "super_admin"] as const;
+
+/**
+ * Type-guard for an untrusted string. The `select`/role dropdowns
+ * read DOM `value` strings which TypeScript can only widen to
+ * `string`; this guard narrows them back to `UserRole`.
+ */
+export function isUserRole(v: unknown): v is UserRole {
+  return typeof v === "string" && (USER_ROLES as readonly string[]).includes(v);
+}
+
+/**
  * Returns true when `actor` has at LEAST `min`'s capabilities.
  * Useful in render-time gates (e.g. `hasRoleAtLeast(user.role, 'admin')`
  * for an Admin-only button).

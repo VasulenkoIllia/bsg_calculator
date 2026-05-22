@@ -20,6 +20,7 @@ import {
   calculatorConfigs,
   companies,
   documents,
+  users,
   type CalculatorConfig,
   type Document,
   type NewDocument
@@ -103,35 +104,32 @@ export interface DocumentWithDeleter extends Document {
 export async function findByNumberWithDeleter(
   number: string
 ): Promise<DocumentWithDeleter | undefined> {
-  // Hand-rolled SQL because the LEFT JOIN on `deleted_by_user_id`
-  // is conditional (NULL when alive). Drizzle's typed builder works
-  // but the resulting types get awkward — raw SQL with explicit
-  // row typing keeps the call site clean.
-  const result = await db.execute<{
-    document_id: string;
-    deleted_by_display_name: string | null;
-    deleted_by_email: string | null;
-  }>(sql`
-    SELECT
-      d.id AS document_id,
-      u.display_name AS deleted_by_display_name,
-      u.email::text AS deleted_by_email
-    FROM documents d
-    LEFT JOIN users u ON u.id = d.deleted_by_user_id
-    WHERE d.number = ${number}
-    LIMIT 1
-  `);
-  if (result.rows.length === 0) return undefined;
-  const doc = await findByNumber(number);
-  if (!doc) return undefined;
-  const meta = result.rows[0];
+  // Sprint 9.O audit fix M4 — replaced the original "raw SELECT for
+  // the JOIN + second `findByNumber` call" pattern with a single
+  // Drizzle typed `leftJoin`. The previous version did two
+  // round-trips and opened a TOCTOU window (the doc could mutate
+  // between the two reads). One query, properly typed nullable
+  // surrogate fields, no race.
+  const rows = await db
+    .select({
+      doc: documents,
+      deleterDisplayName: users.displayName,
+      deleterEmail: users.email
+    })
+    .from(documents)
+    .leftJoin(users, eq(users.id, documents.deletedByUserId))
+    .where(eq(documents.number, number))
+    .limit(1);
+
+  const row = rows[0];
+  if (!row) return undefined;
   return {
-    ...doc,
+    ...row.doc,
     deletedBy:
-      meta.deleted_by_display_name !== null && meta.deleted_by_email !== null
+      row.deleterDisplayName !== null && row.deleterEmail !== null
         ? {
-            displayName: meta.deleted_by_display_name,
-            email: meta.deleted_by_email
+            displayName: row.deleterDisplayName,
+            email: row.deleterEmail
           }
         : null
   };

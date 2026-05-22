@@ -49,6 +49,31 @@ const REDACT_PATHS = [
   "headers.cookie"
 ];
 
+/**
+ * Sprint 9.O audit fix M1 — strip raw one-time tokens out of the
+ * request URL before it lands in logs. The invite + password-reset
+ * routes carry the raw token as a path segment, so the URL itself
+ * is sensitive (`req.url = "/api/v1/auth/invite/<live-token>/accept"`).
+ * REDACT_PATHS handles header/body keys but NOT URL path segments,
+ * so we mask them here in the serializer.
+ *
+ * Patterns covered:
+ *   /api/v1/auth/invite/<token>
+ *   /api/v1/auth/invite/<token>/accept
+ *   /api/v1/auth/password-reset/<token>
+ *
+ * The token is replaced with the literal string `[redacted]` so the
+ * URL shape is still useful for diagnostics ("a request hit the
+ * invite-accept endpoint with status 404") without leaking the token
+ * value to anyone with log access.
+ */
+export function redactTokenInUrl(url: string): string {
+  return url.replace(
+    /^(\/api\/v1\/auth\/(?:invite|password-reset)\/)([^/?]+)/,
+    "$1[redacted]"
+  );
+}
+
 export const logger = pino({
   level: env.LOG_LEVEL,
   // Pretty-print in dev for readability; JSON in prod for log
@@ -99,7 +124,10 @@ export const requestLogger = () =>
     serializers: {
       req: req => ({
         method: req.method,
-        url: req.url,
+        // Sprint 9.O audit fix M1 — mask raw one-time tokens carried
+        // as path segments on the invite + password-reset endpoints.
+        // No-op for any other URL.
+        url: redactTokenInUrl(req.url),
         remoteAddress: req.remoteAddress,
         userAgent: req.headers?.["user-agent"]
       }),

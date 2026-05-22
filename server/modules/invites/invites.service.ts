@@ -22,6 +22,7 @@
 
 import bcrypt from "bcrypt";
 import { env } from "../../config/env";
+import { db } from "../../db/client";
 import {
   ConflictError,
   InternalError,
@@ -116,30 +117,44 @@ export async function acceptInvite(
 
   const passwordHash = await bcrypt.hash(body.password, env.BCRYPT_COST);
 
-  // Insert user first, then mark the invite accepted via the
-  // optimistic UPDATE in `markInviteAccepted`. Two concurrent
-  // /accept calls with the same raw token would both insert
-  // users, but only ONE would land the invite UPDATE (the
-  // optimistic WHERE clause filters out already-accepted/
-  // revoked rows). The "loser" gets 409. Acceptable trade-off:
-  // a leftover user row in the unlikely concurrent case can be
-  // reconciled by ops (drop orphan); much simpler than threading
-  // a tx through insertUser.
-  const userRow = await insertUser({
-    email: body.email,
-    login,
-    passwordHash,
-    displayName: body.displayName,
-    role: invite.role
-  });
-
-  const inviteRow = await markInviteAccepted(invite.id, userRow.id);
-  if (!inviteRow) {
-    throw new ConflictError(
-      "INVITE_ALREADY_USED",
-      "This invite has already been accepted. Ask for a new one."
+  // Sprint 9.O audit fix M2 — wrap user creation + invite consumption
+  // in a single transaction. Without this, two concurrent /accept
+  // calls with the same raw token could both pass the pre-flight,
+  // both insert a user row, and only the first wins `markInviteAccepted`
+  // — the loser would throw 409 but leave an orphan user row with
+  // an active role and a usable password. Wrapping in `db.transaction`
+  // means the orphan INSERT rolls back when `markInviteAccepted`
+  // returns zero rows (which we now signal by throwing inside the tx).
+  // The bcrypt hash is computed outside the tx (CPU work, not
+  // DB-coupled).
+  const userRow = await db.transaction(async tx => {
+    const created = await insertUser(
+      {
+        email: body.email,
+        login,
+        passwordHash,
+        displayName: body.displayName,
+        role: invite.role
+      },
+      tx
     );
-  }
+    const inviteRow = await markInviteAccepted(invite.id, created.id, tx);
+    if (!inviteRow) {
+      // Race-loser path. Throwing inside the tx triggers a rollback,
+      // so the user INSERT above is undone. We catch outside the tx
+      // and re-throw as the public 409 ConflictError.
+      throw new InviteRaceLost();
+    }
+    return created;
+  }).catch(err => {
+    if (err instanceof InviteRaceLost) {
+      throw new ConflictError(
+        "INVITE_ALREADY_USED",
+        "This invite has already been accepted. Ask for a new one."
+      );
+    }
+    throw err;
+  });
 
   // Issue the access+refresh token pair the same way the login
   // endpoint does — pasting straight into AuthContext on the FE.
@@ -156,6 +171,19 @@ export async function acceptInvite(
       isActive: userRow.isActive
     }
   };
+}
+
+/**
+ * Internal sentinel — thrown inside the acceptInvite transaction
+ * when the optimistic invite UPDATE loses a race. Caught one level
+ * up and re-thrown as a public-facing ConflictError. Using a custom
+ * class (vs. just throwing the ConflictError directly inside the tx)
+ * keeps the rollback-on-throw semantics clear at the call site.
+ */
+class InviteRaceLost extends Error {
+  constructor() {
+    super("[invites] race-loser rolling back user INSERT");
+  }
 }
 
 export async function listInvites(): Promise<InviteAdminRow[]> {

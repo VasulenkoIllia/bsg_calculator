@@ -72,6 +72,47 @@ describe("POST /api/v1/users/:id/password-reset-link (super_admin only)", () => 
     expect(res.status).toBe(403);
   });
 
+  it("rejects cross-super_admin reset link (audit fix M3)", async () => {
+    // Sprint 9.O audit fix M3 — super_admin A must NOT be able to
+    // mint a password-reset link for super_admin B. Without this
+    // gate, A could silently take over B's account by issuing a
+    // link + resetting B's password. The only legitimate
+    // super_admin reset via this flow is self-reset.
+    await createTestUser({ email: "sa-a@bsg.test", password: "sa-a-12345", role: "super_admin" });
+    const targetB = await createTestUser({
+      email: "sa-b@bsg.test",
+      password: "sa-b-12345",
+      role: "super_admin"
+    });
+    const sa = await loginAs("sa-a@bsg.test", "sa-a-12345");
+
+    const res = await request(app)
+      .post(`/api/v1/users/${targetB.id}/password-reset-link`)
+      .set("Authorization", `Bearer ${sa.accessToken}`);
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("RESET_FORBIDDEN_PEER_SUPER_ADMIN");
+  });
+
+  it("allows super_admin self-reset link (own account is fine)", async () => {
+    // The audit fix M3 gate is "cannot reset OTHER super_admins";
+    // resetting your OWN account is still allowed via this flow
+    // (the alternative is the /auth/me direct password-change path).
+    const sa = await createTestUser({
+      email: "sa@bsg.test",
+      password: "sa12345678",
+      role: "super_admin"
+    });
+    const session = await loginAs("sa@bsg.test", "sa12345678");
+
+    const res = await request(app)
+      .post(`/api/v1/users/${sa.id}/password-reset-link`)
+      .set("Authorization", `Bearer ${session.accessToken}`);
+
+    expect(res.status).toBe(201);
+    expect(res.body.link).toMatch(/reset-password\?token=/);
+  });
+
   it("returns 404 for an unknown user id", async () => {
     await createTestUser({ email: "sa@bsg.test", password: "sa12345678", role: "super_admin" });
     const sa = await loginAs("sa@bsg.test", "sa12345678");

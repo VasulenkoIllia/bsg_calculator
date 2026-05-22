@@ -95,6 +95,17 @@ export function AcceptInvitePage() {
   async function handleSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     setSubmitError(null);
+
+    // Sprint 9.O audit fix L4 — mirror the length check from
+    // ResetPasswordPage so both sibling pages enforce the same
+    // client-side rule before hitting the server (the server's Zod
+    // schema rejects <8 chars too — this is defence in depth for
+    // tests/scripted submissions that bypass `<input minLength>`).
+    if (password.length < 8) {
+      setSubmitError("Password must be at least 8 characters.");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const result = await acceptInvite(token, {

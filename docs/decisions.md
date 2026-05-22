@@ -4973,3 +4973,118 @@ Use this file to record meaningful technical decisions for the project.
   - TypeScript clean (frontend + server).
   - Smoke-tested end-to-end via curl: super_admin → mint invite →
     paste raw token → accept-invite → auto-login → /companies.
+
+### Decision: Sprint 9.O — post-merge audit closure (2026-05-22)
+- Context: ran a parallel three-agent audit (code-reviewer +
+  security-reviewer + typescript-reviewer) over the Sprint 9.O
+  commit (a538c54). User explicitly asked: "потрібно зараз
+  провести аудит змін. якість коду безпека. чи в нас експайряться
+  інвайт рефреш токени. чи їх можна використти тільки 1 раз. Аналіз
+  модульності проекту чистоти коду."
+- Outcome: 6 MEDIUM + 4 LOW findings. All addressed.
+
+**MEDIUM fixes:**
+
+  - **M1 — Token redaction in logs.** `server/middleware/logger.ts`
+    added a `redactTokenInUrl` helper invoked by the pino-http `req`
+    serializer. Strips raw tokens from `/api/v1/auth/invite/<t>` and
+    `/api/v1/auth/password-reset/<t>` URLs before they hit stdout.
+    REDACT_PATHS already covers header/body keys but not URL paths.
+    Without this, anyone with log-aggregator access saw live tokens
+    in plaintext.
+
+  - **M2 — Orphan user row on concurrent invite-accept race.**
+    Wrapped `insertUser` + `markInviteAccepted` in `db.transaction`.
+    `insertUser` and `emailOrLoginExists` in users.repository now
+    accept an optional `tx: DbOrTx` parameter (defaults to `db`).
+    Before the fix, two concurrent /accept requests with the same
+    raw token could both insert user rows; only the winner landed
+    the invite UPDATE, the loser threw 409 but left a committed
+    user row with an active role + usable password. The tx now
+    rolls back the loser's INSERT via an internal `InviteRaceLost`
+    sentinel thrown inside the tx callback.
+
+  - **M3 — Cross-super_admin reset escalation blocked.**
+    `resets.service.createResetLink` now rejects with
+    `RESET_FORBIDDEN_PEER_SUPER_ADMIN` (409) when `target.role ===
+    "super_admin" && target.id !== createdByUserId`. Self-reset
+    stays allowed (the operator may legitimately want to reset
+    their own password via this flow rather than /auth/me).
+
+  - **M4 — `findByNumberWithDeleter` rewritten via Drizzle leftJoin.**
+    Previous implementation did two DB round-trips (raw SELECT for
+    the JOIN + a separate `findByNumber` call) and opened a TOCTOU
+    window where the doc could mutate between the reads. Now uses
+    `db.select().from(documents).leftJoin(users, eq(users.id,
+    documents.deletedByUserId))` — one query, properly typed
+    nullable surrogate fields.
+
+  - **M5 — `CopyableField` no longer uses `document.getElementById`.**
+    Replaced the hardcoded `id="copyable-field"` with a per-instance
+    `useRef<HTMLInputElement>`. Two CopyableField components mounted
+    simultaneously would have collided on the global id.
+
+  - **M6 — `AdminUsersPage.tsx` decomposed.** File was at 1065 lines
+    after Sprint 9.O. Extracted:
+      - `src/pages/admin/AdminUsersShared.tsx` (225 lines) — modal
+        scaffolding (ModalShell, LabelledField, FormError,
+        ModalFooter), role/status badges, RoleSelect, CopyableField.
+        Both AdminUsersPage and InvitesPanel import from here.
+      - `src/pages/admin/InvitesPanel.tsx` (295 lines) —
+        PendingInvitesPanel + InviteUserModal + InviteRow +
+        InviteStatusBadge. Owns its own TanStack Query keys, the
+        invite API surface, and the modal state.
+      - `src/pages/AdminUsersPage.tsx` (now 604 lines) — users table
+        + Create/Edit/Reset modals + the "+ Invite user" trigger.
+
+**LOW fixes:**
+
+  - **L1 — Shared `server/shared/token-utils.ts`.** Moved
+    `generateRawToken` + `hashToken` out of `invites.repository`
+    into a peer module. Previously `resets.repository` imported
+    from `invites.repository` — peer module shouldn't depend on
+    peer module; both now import from `shared/`.
+
+  - **L2 — `db.execute<RowShape>` types now reflect node-pg reality.**
+    `InviteListRow.expiresAt/createdAt` were typed as `Date` but
+    node-pg returns ISO strings via raw `db.execute` (Drizzle's
+    typed builder applies a parser; `execute` skips it). The
+    defensive `new Date(...)` wrap in the service was the runtime
+    fix; the type now matches (`string`) so future callers don't
+    rely on a Date method that throws.
+
+  - **L3 — `as UserRole` cast replaced with runtime narrowing.**
+    Added `USER_ROLES` const + `isUserRole(v): v is UserRole` guard
+    to `src/shared/roles.ts`. `RoleSelect`'s onChange now narrows
+    the DOM string before propagating to the parent. Defence in
+    depth (server's Zod validation remains authoritative).
+
+  - **L4 — `AcceptInvitePage` length check added.** Mirrors the
+    same redundant client-side guard `ResetPasswordPage` already had,
+    so the two sibling pages behave identically when their form
+    is submitted via a synthetic event that bypasses `<input
+    minLength>` (e.g. test harnesses).
+
+- Verification:
+  - 322 frontend tests pass (no change — refactor was behaviour-
+    preserving).
+  - 329 server tests pass (was 320; +9 new: 1 race-fix regression,
+    2 cross-super_admin reset gates, 6 logger redaction).
+  - TypeScript clean.
+  - Smoke-evidence in test runs: log lines now show
+    `/api/v1/auth/invite/[redacted]/accept` instead of the raw
+    token (M1 fix observable in pino output).
+
+**Audit findings explicitly NOT addressed (kept by design):**
+
+  - super_admin role allowed in invites — kept per user decision.
+    Audit trail in `user_invites` table is sufficient.
+  - Timing side-channel on token lookup — 256 bits of entropy makes
+    timing-assisted brute force infeasible. Documented as
+    known-non-issue.
+  - Browser history retains the raw token (query string delivery) —
+    accepted trade-off for the no-SMTP flow. CSP blocks Referer
+    leakage to external parties.
+  - Refresh grace backdate (60s) without `hard_revoked_at` column —
+    correct for the single-writer deploy; explicit column adds
+    schema complexity with no behavioural difference.
