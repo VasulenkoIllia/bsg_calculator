@@ -211,9 +211,22 @@ export function DocumentsListPage() {
             onChange={e => setScopeFilter(e.target.value as DocumentScope | "all")}
             className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:w-48"
           >
+            {/*
+              Sprint 9.Q — only two real scopes the wizard can produce:
+              "offer" (Пропозиція) and "offer_and_agreement"
+              (Пропозиція + Договір). Standalone "agreement" is a
+              valid backend enum value but no creation path actually
+              produces it (see WizardPage `toBackendScope` — the
+              comment there explicitly calls it out as a product
+              decision). Showing "Agreement" in the filter was a
+              dead option that confused operators; removed.
+
+              If we ever resurrect agreement-only docs, add the
+              option back HERE — the backend filter + enum already
+              accept "agreement" as a value, so no API change needed.
+            */}
             <option value="all">All scopes</option>
             <option value="offer">Offer</option>
-            <option value="agreement">Agreement</option>
             <option value="offer_and_agreement">Offer + Agreement</option>
           </select>
         </label>
