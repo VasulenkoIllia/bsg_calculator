@@ -149,6 +149,19 @@ export const documentPublicSchema = z.object({
     .nullable(),
   deletionNote: z.string().nullable(),
   /**
+   * Sprint 9.O — display surrogate for the actor who soft-deleted
+   * the row. Populated by `findByNumberWithDeleter` (single-doc
+   * fetch) via LEFT JOIN on `users`. Null on listings + when the
+   * doc is alive.
+   */
+  deletedBy: z
+    .object({
+      displayName: z.string(),
+      email: z.string()
+    })
+    .nullable()
+    .optional(),
+  /**
    * Sprint 9.N — last action surfaced from `document_events` via
    * LATERAL subquery on the listing endpoint. Null on single-doc
    * fetch (different code path doesn't JOIN events). Powers the

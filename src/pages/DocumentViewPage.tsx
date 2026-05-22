@@ -296,6 +296,19 @@ export function DocumentViewPage() {
             <p className="font-semibold">
               Deleted · {new Date(doc.deletedAt).toLocaleString()}
             </p>
+            {/* Sprint 9.O — show WHO deleted the doc so the audit trail
+                is visible alongside the timestamp. `deletedBy` comes
+                from a LEFT JOIN on users.deleted_by_user_id; if the
+                deleter row was hard-deleted (shouldn't happen — users
+                are soft-deleted via isActive=false — but defensively)
+                we just omit the line. */}
+            {doc.deletedBy ? (
+              <p className="mt-1">
+                <span className="font-semibold">Deleted by: </span>
+                {doc.deletedBy.displayName}{" "}
+                <span className="text-red-700">({doc.deletedBy.email})</span>
+              </p>
+            ) : null}
             {doc.deletionReason ? (
               <p className="mt-1">
                 <span className="font-semibold">Reason: </span>

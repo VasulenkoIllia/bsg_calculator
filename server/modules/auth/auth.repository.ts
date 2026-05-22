@@ -132,3 +132,45 @@ export async function revokeRefreshToken(tokenHash: string): Promise<void> {
       and(eq(refreshTokens.tokenHash, tokenHash), sql`${refreshTokens.revokedAt} IS NULL`)
     );
 }
+
+/**
+ * Sprint 9.O — bulk-revoke every active refresh token belonging to
+ * a user. Called by:
+ *   - `consumeReset` (password-reset-link flow) — when a user
+ *     resets their password we kill every device's session so the
+ *     old password's residual cookies can't keep accessing the
+ *     account.
+ *   - (future) super_admin "Sign out everywhere" action on
+ *     /admin/users.
+ *
+ * SECURITY: stamps `revokedAt` to a timestamp PAST the rotation
+ * grace window (currently 10s). Without this offset, a refresh
+ * issued within ~10s after the bulk-revoke would still be honoured
+ * via the "graced" path in auth.service.refresh() — i.e. a stolen
+ * pre-reset cookie could keep minting access tokens for 10s after
+ * the user thought they'd been signed out. We want bulk-revoke to
+ * be a HARD kill, so we backdate revoked_at by 1 minute (well past
+ * the 10s grace window). The single-token revoke
+ * (`revokeRefreshToken`, called by /auth/logout) deliberately KEEPS
+ * the grace window for benign multi-tab logout races.
+ *
+ * Uses the same NULL-revoked guard as the single-token variant so
+ * already-revoked rows aren't re-stamped.
+ */
+export async function revokeAllRefreshTokensForUser(
+  userId: string
+): Promise<void> {
+  // 60s back-date >> the 10s REFRESH_GRACE_WINDOW_MS so the grace
+  // path in auth.service.refresh() rejects any post-bulk-revoke
+  // refresh attempt as "revoked > 10s ago".
+  const HARD_REVOKE_BACKDATE_MS = 60_000;
+  await db
+    .update(refreshTokens)
+    .set({ revokedAt: new Date(Date.now() - HARD_REVOKE_BACKDATE_MS) })
+    .where(
+      and(
+        eq(refreshTokens.userId, userId),
+        sql`${refreshTokens.revokedAt} IS NULL`
+      )
+    );
+}

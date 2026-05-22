@@ -3,6 +3,8 @@
  *
  * Route layout:
  *   /login                → LoginPage (public)
+ *   /accept-invite        → AcceptInvitePage (public — Sprint 9.O)
+ *   /reset-password       → ResetPasswordPage (public — Sprint 9.O)
  *   /                     → PrivateRoute gate
  *     /                   → redirect to /companies (default landing)
  *     /companies          → CompaniesPage (Sprint 2.8.D)
@@ -26,6 +28,7 @@ import { AppShell } from "./components/AppShell.js";
 import { PrivateRoute } from "./components/PrivateRoute.js";
 import { RequireRole } from "./components/RequireRole.js";
 import { CalculatorProvider } from "./contexts/CalculatorContext.js";
+import { AcceptInvitePage } from "./pages/AcceptInvitePage.js";
 import { AdminUsersPage } from "./pages/AdminUsersPage.js";
 import { CalculatorPage } from "./pages/CalculatorPage.js";
 import { CalculatorsListPage } from "./pages/CalculatorsListPage.js";
@@ -35,6 +38,7 @@ import { DocumentsListPage } from "./pages/DocumentsListPage.js";
 import { DocumentViewPage } from "./pages/DocumentViewPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
 import { NotFoundPage } from "./pages/NotFoundPage.js";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage.js";
 import { WizardPage } from "./pages/WizardPage.js";
 
 export default function App() {
@@ -43,6 +47,12 @@ export default function App() {
       <Routes>
         {/* Public route. PrivateRoute also redirects here on 401. */}
         <Route path="/login" element={<LoginPage />} />
+        {/* Sprint 9.O — public token-based onboarding flows. The raw
+            token in the query string IS the credential, so these MUST
+            sit outside PrivateRoute (an unauthenticated invitee opens
+            the link from email/Telegram/etc.). */}
+        <Route path="/accept-invite" element={<AcceptInvitePage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
         {/* Authenticated subtree. CalculatorProvider sits inside
             the gate so its initialisation only runs for logged-in

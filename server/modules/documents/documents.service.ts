@@ -33,6 +33,7 @@ import { insertCalculatorConfig } from "../calculator-configs/calculator-configs
 import {
   cursorValueForRow,
   findByNumber,
+  findByNumberWithDeleter,
   findCalculatorConfigById,
   insertDocumentWithNumber,
   listDocuments,
@@ -40,6 +41,7 @@ import {
   softDeleteDocument,
   updateDocumentHubspotSync,
   type DocumentWithCompanyName,
+  type DocumentWithDeleter,
   type ListDocumentsArgs
 } from "./documents.repository";
 import {
@@ -69,11 +71,12 @@ interface ToPublicOptions {
 }
 
 function toPublic(
-  row: Document | DocumentWithCompanyName,
+  row: Document | DocumentWithCompanyName | DocumentWithDeleter,
   options: ToPublicOptions = {}
 ): DocumentPublic {
   const companyName = "companyName" in row ? row.companyName : undefined;
   const lastEvent = "lastEvent" in row ? row.lastEvent : null;
+  const deletedBy = "deletedBy" in row ? row.deletedBy : null;
   const canSeeDeletionNote = options.canSeeDeletionNote ?? false;
   // Sprint 9.M S4 — Drizzle `.$type<>()` annotations on `scope`,
   // `hubspotSyncState`, `deletionReason` now narrow the column types
@@ -104,6 +107,12 @@ function toPublic(
       // may include sensitive details.
       deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
       deletedByUserId: row.deletedByUserId,
+      // Sprint 9.O — surfaced from the LEFT JOIN on
+      // `findByNumberWithDeleter`. Listing rows don't carry it
+      // (the DocumentWithCompanyName path doesn't JOIN users on
+      // deleted_by_user_id) — they get null here and rely on
+      // lastEvent's actor for the "deleted by Admin" hint.
+      deletedBy,
       deletionReason: row.deletionReason,
       deletionNote: canSeeDeletionNote ? row.deletionNote : null,
       // Sprint 9.N — last action surfaced from the events log via
@@ -302,7 +311,10 @@ export async function getDocumentByNumber(
   number: string,
   actorRole: import("../../shared/roles").UserRole = "user"
 ): Promise<DocumentPublic> {
-  const row = await findByNumber(number);
+  // Sprint 9.O — use the deleter-enriched query so the public DTO
+  // carries `deletedBy: { displayName, email }`. Listings and PDF
+  // path stay on the plain `findByNumber` (don't need this JOIN).
+  const row = await findByNumberWithDeleter(number);
   if (!row) throw new NotFoundError("Document");
   return toPublic(row, { canSeeDeletionNote: actorRole !== "user" });
 }

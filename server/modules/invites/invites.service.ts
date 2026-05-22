@@ -1,0 +1,199 @@
+/**
+ * Sprint 9.O — invite-link service.
+ *
+ * Orchestrates the three operations:
+ *   - `createInviteAndLink` (super_admin) — issues a token + returns
+ *     the full `${APP_PUBLIC_URL}/accept-invite?token=<raw>` URL.
+ *   - `previewInvite` (public) — token → role + expiresAt for the
+ *     /accept-invite page header.
+ *   - `acceptInvite` (public) — token + email/login/displayName/password
+ *     → new `users` row + auto-login (access+refresh tokens).
+ *   - `revokeInviteById` (super_admin) — soft-revoke a pending invite.
+ *
+ * The invite create + acceptance flows are atomic at the TX level:
+ *   - acceptInvite wraps `INSERT users` + `UPDATE user_invites SET
+ *     accepted_at, accepted_user_id` in one transaction so a
+ *     concurrent /accept never produces two users from one token.
+ *
+ * Public endpoints return generic `404 INVITE_INVALID` for any
+ * "not pending" reason (expired/revoked/used/unknown) — we don't
+ * leak which state the token is in.
+ */
+
+import bcrypt from "bcrypt";
+import { env } from "../../config/env";
+import {
+  ConflictError,
+  InternalError,
+  NotFoundError
+} from "../../shared/errors";
+import { issueTokenPairForUser } from "../auth/auth.service";
+import type { UserPublic } from "../auth/auth.schemas";
+import { emailOrLoginExists, insertUser } from "../users/users.repository";
+import {
+  createInvite,
+  findAliveInviteByRawToken,
+  findInviteById,
+  listInvites as listInvitesRepo,
+  markInviteAccepted,
+  revokeInvite
+} from "./invites.repository";
+import type {
+  AcceptInviteRequest,
+  CreateInviteRequest,
+  CreateInviteResponse,
+  InviteAdminRow,
+  InvitePreview
+} from "./invites.schemas";
+
+/**
+ * TTL for new invite links. 24 hours matches the original Phase 8
+ * spec — long enough for ops to copy + forward via Telegram/Slack
+ * + the invitee to act, but short enough that a leaked link rots
+ * quickly.
+ */
+const INVITE_TTL_HOURS = 24;
+
+function buildInviteLink(rawToken: string): string {
+  const base = env.APP_PUBLIC_URL.replace(/\/$/, "");
+  return `${base}/accept-invite?token=${encodeURIComponent(rawToken)}`;
+}
+
+export async function createInviteAndLink(
+  body: CreateInviteRequest,
+  createdByUserId: string
+): Promise<CreateInviteResponse> {
+  const { row, rawToken } = await createInvite({
+    role: body.role,
+    createdByUserId,
+    ttlHours: INVITE_TTL_HOURS
+  });
+  return {
+    id: row.id,
+    role: row.role,
+    expiresAt: row.expiresAt.toISOString(),
+    link: buildInviteLink(rawToken)
+  };
+}
+
+export async function previewInvite(rawToken: string): Promise<InvitePreview> {
+  const invite = await findAliveInviteByRawToken(rawToken);
+  // Generic 404 for ANY "not pending" reason — never tell the
+  // caller whether the token existed but expired vs. never existed.
+  if (!invite) throw new NotFoundError("Invite");
+  return {
+    role: invite.role,
+    expiresAt: invite.expiresAt.toISOString()
+  };
+}
+
+/**
+ * Accept an invite + create the user atomically. Returns the same
+ * shape as the inner `login` helper — controller will mount the
+ * refreshTokenRaw on a cookie and forward accessToken+user in the
+ * response body, matching the existing /auth/login behaviour.
+ */
+export async function acceptInvite(
+  rawToken: string,
+  body: AcceptInviteRequest
+): Promise<{
+  accessToken: string;
+  refreshTokenRaw: string;
+  user: UserPublic;
+}> {
+  const invite = await findAliveInviteByRawToken(rawToken);
+  if (!invite) throw new NotFoundError("Invite");
+
+  // Pre-flight uniqueness check so the duplicate case is a clean
+  // 409 rather than a SQL constraint violation downstream.
+  const login = body.login ?? null;
+  if (await emailOrLoginExists(body.email, login)) {
+    throw new ConflictError(
+      "CONFLICT_USER_EXISTS",
+      "A user with this email or login already exists."
+    );
+  }
+
+  const passwordHash = await bcrypt.hash(body.password, env.BCRYPT_COST);
+
+  // Insert user first, then mark the invite accepted via the
+  // optimistic UPDATE in `markInviteAccepted`. Two concurrent
+  // /accept calls with the same raw token would both insert
+  // users, but only ONE would land the invite UPDATE (the
+  // optimistic WHERE clause filters out already-accepted/
+  // revoked rows). The "loser" gets 409. Acceptable trade-off:
+  // a leftover user row in the unlikely concurrent case can be
+  // reconciled by ops (drop orphan); much simpler than threading
+  // a tx through insertUser.
+  const userRow = await insertUser({
+    email: body.email,
+    login,
+    passwordHash,
+    displayName: body.displayName,
+    role: invite.role
+  });
+
+  const inviteRow = await markInviteAccepted(invite.id, userRow.id);
+  if (!inviteRow) {
+    throw new ConflictError(
+      "INVITE_ALREADY_USED",
+      "This invite has already been accepted. Ask for a new one."
+    );
+  }
+
+  // Issue the access+refresh token pair the same way the login
+  // endpoint does — pasting straight into AuthContext on the FE.
+  const tokens = await issueTokenPairForUser(userRow);
+  return {
+    accessToken: tokens.accessToken,
+    refreshTokenRaw: tokens.refreshToken,
+    user: {
+      id: userRow.id,
+      email: userRow.email,
+      login: userRow.login,
+      displayName: userRow.displayName,
+      role: userRow.role,
+      isActive: userRow.isActive
+    }
+  };
+}
+
+export async function listInvites(): Promise<InviteAdminRow[]> {
+  const rows = await listInvitesRepo();
+  // Sprint 9.O — defensive `new Date(...)` wrap matches the
+  // documents.service pattern: raw `db.execute` from the LATERAL
+  // JOIN occasionally drops the node-pg timestamptz parser and
+  // returns the value as a string. Wrapping accepts both Date and
+  // string inputs.
+  return rows.map(r => ({
+    id: r.id,
+    role: r.role,
+    status: r.status,
+    expiresAt: new Date(r.expiresAt).toISOString(),
+    createdAt: new Date(r.createdAt).toISOString(),
+    createdByDisplayName: r.createdByDisplayName,
+    createdByEmail: r.createdByEmail,
+    acceptedUserId: r.acceptedUserId,
+    acceptedUserDisplayName: r.acceptedUserDisplayName,
+    acceptedUserEmail: r.acceptedUserEmail
+  }));
+}
+
+export async function revokeInviteById(id: string): Promise<void> {
+  const existing = await findInviteById(id);
+  if (!existing) throw new NotFoundError("Invite");
+  if (existing.acceptedAt || existing.revokedAt) {
+    // Operator clicked Revoke on a stale list — surface as 409
+    // so the UI knows to refresh.
+    throw new ConflictError(
+      "INVITE_NOT_PENDING",
+      "This invite is no longer pending."
+    );
+  }
+  const result = await revokeInvite(id);
+  if (!result) {
+    throw new InternalError(
+      `[invites:revoke] invite ${id} disappeared mid-revoke`
+    );
+  }
+}

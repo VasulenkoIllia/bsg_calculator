@@ -41,6 +41,7 @@ const fixtureDocument = (overrides: Partial<PublicDocument> = {}): PublicDocumen
   // Phase 8 Stage 5 — soft-delete columns. Default to alive.
   deletedAt: null,
   deletedByUserId: null,
+  deletedBy: null,
   deletionReason: null,
   deletionNote: null,
   createdAt: "2026-05-17T00:00:00.000Z",

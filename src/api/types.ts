@@ -232,6 +232,14 @@ export interface PublicDocument {
   // move together (both null = alive, both non-null = soft-deleted).
   deletedAt: string | null;
   deletedByUserId: string | null;
+  /**
+   * Sprint 9.O — denormalised display info for the deleter. Comes from
+   * a LEFT JOIN on users.deleted_by_user_id at the single-document
+   * endpoint (the listing endpoint omits it — too noisy + each row
+   * already shows lastEvent.actor). Null on alive docs and also on the
+   * defensive "deleter row missing" path.
+   */
+  deletedBy: { displayName: string; email: string } | null;
   deletionReason: DocumentDeletionReason | null;
   deletionNote: string | null;
   /**

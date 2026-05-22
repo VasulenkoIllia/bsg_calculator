@@ -83,6 +83,61 @@ export async function findByNumber(number: string): Promise<Document | undefined
 }
 
 /**
+ * Sprint 9.O — single-doc fetch enriched with the deleter's
+ * display name + email. The detail page's red "Deleted" banner
+ * renders "Deleted by: Admin (admin@bsg.test)" — without this
+ * JOIN the FE would need a second fetch + N+1 on listings.
+ *
+ * Returns the regular Document row + (when deleted) the actor
+ * surrogate. Used by the public `getDocumentByNumber` service
+ * path; the listing already carries this info via the existing
+ * lastEvent LATERAL JOIN.
+ */
+export interface DocumentWithDeleter extends Document {
+  deletedBy: {
+    displayName: string;
+    email: string;
+  } | null;
+}
+
+export async function findByNumberWithDeleter(
+  number: string
+): Promise<DocumentWithDeleter | undefined> {
+  // Hand-rolled SQL because the LEFT JOIN on `deleted_by_user_id`
+  // is conditional (NULL when alive). Drizzle's typed builder works
+  // but the resulting types get awkward — raw SQL with explicit
+  // row typing keeps the call site clean.
+  const result = await db.execute<{
+    document_id: string;
+    deleted_by_display_name: string | null;
+    deleted_by_email: string | null;
+  }>(sql`
+    SELECT
+      d.id AS document_id,
+      u.display_name AS deleted_by_display_name,
+      u.email::text AS deleted_by_email
+    FROM documents d
+    LEFT JOIN users u ON u.id = d.deleted_by_user_id
+    WHERE d.number = ${number}
+    LIMIT 1
+  `);
+  if (result.rows.length === 0) return undefined;
+  const doc = await findByNumber(number);
+  if (!doc) return undefined;
+  const meta = result.rows[0];
+  return {
+    ...doc,
+    deletedBy:
+      meta.deleted_by_display_name !== null && meta.deleted_by_email !== null
+        ? {
+            displayName: meta.deleted_by_display_name,
+            email: meta.deleted_by_email
+          }
+        : null
+  };
+}
+
+/**
  * Phase 9 — patch a document's HubSpot sync state + note id after a
  * Note write-back attempt. Used by the sync service:
  *   - `state='synced'` + `noteId='...'` after a successful POST /notes

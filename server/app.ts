@@ -30,6 +30,8 @@ import { apiLimiter } from "./middleware/rate-limit";
 import { requestId } from "./middleware/request-id";
 import { requestLogger } from "./middleware/logger";
 import { authRouter } from "./modules/auth/auth.routes";
+import { invitesPublicRouter } from "./modules/invites/invites.routes";
+import { resetsPublicRouter } from "./modules/password-resets/resets.routes";
 import { calculatorConfigsRouter } from "./modules/calculator-configs/calculator-configs.routes";
 import { companiesRouter } from "./modules/companies/companies.routes";
 import { dealsRouter } from "./modules/deals/deals.routes";
@@ -174,6 +176,12 @@ export function createApp(): express.Express {
 
   // /api/v1/* mounts:
   app.use("/api/v1/auth", authRouter);
+  // Sprint 9.O — public (no auth) routes for the invite-link +
+  // password-reset-link flows. The raw token IS the credential;
+  // both surfaces 404 on any "not pending" reason without
+  // revealing token state.
+  app.use("/api/v1/auth/invite", invitesPublicRouter);
+  app.use("/api/v1/auth/password-reset", resetsPublicRouter);
   app.use("/api/v1/users", usersRouter);
   app.use("/api/v1/companies", companiesRouter);
   app.use("/api/v1/deals", dealsRouter);

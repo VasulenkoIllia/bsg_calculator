@@ -1,0 +1,85 @@
+/**
+ * Sprint 9.O — invite-link HTTP controllers.
+ *
+ * Auth split:
+ *   - POST/GET/DELETE under /users/invites — super_admin only (gated
+ *     at the router; controllers assume req.user is set).
+ *   - GET/POST under /auth/invite — PUBLIC (no requireAuth). The raw
+ *     token IS the credential. Token verification happens in the
+ *     repository's `findAliveInviteByRawToken` (404 on any miss).
+ */
+
+import type { Request, Response } from "express";
+import { REFRESH_COOKIE_NAME, refreshCookieOptions } from "../auth/auth.cookies";
+import { parseUuidParam } from "../../shared/uuid-param";
+import { InternalError } from "../../shared/errors";
+import {
+  acceptInviteRequestSchema,
+  createInviteRequestSchema
+} from "./invites.schemas";
+import {
+  acceptInvite,
+  createInviteAndLink,
+  listInvites,
+  previewInvite,
+  revokeInviteById
+} from "./invites.service";
+
+function actorId(req: Request): string {
+  const id = req.user?.id;
+  if (!id) {
+    throw new InternalError(
+      "[invites.controller] req.user.id missing — requireAuth not mounted"
+    );
+  }
+  return id;
+}
+
+// ─── super_admin endpoints ──────────────────────────────────────────
+
+export async function createInviteController(req: Request, res: Response): Promise<void> {
+  const body = createInviteRequestSchema.parse(req.body);
+  const result = await createInviteAndLink(body, actorId(req));
+  res.status(201).json(result);
+}
+
+export async function listInvitesController(_req: Request, res: Response): Promise<void> {
+  const items = await listInvites();
+  res.status(200).json({ items });
+}
+
+export async function revokeInviteController(req: Request, res: Response): Promise<void> {
+  const id = parseUuidParam(req, "id");
+  await revokeInviteById(id);
+  res.status(204).end();
+}
+
+// ─── Public endpoints (no auth) ─────────────────────────────────────
+
+function readRawToken(req: Request): string {
+  // Token comes via path param (per the link format
+  // /accept-invite?token=… on the FE; backend receives via
+  // /auth/invite/:token). Trim + length guard for sanity.
+  const raw = req.params.token ?? "";
+  return raw.trim().slice(0, 256);
+}
+
+export async function previewInviteController(req: Request, res: Response): Promise<void> {
+  const preview = await previewInvite(readRawToken(req));
+  res.status(200).json(preview);
+}
+
+export async function acceptInviteController(req: Request, res: Response): Promise<void> {
+  const body = acceptInviteRequestSchema.parse(req.body);
+  const result = await acceptInvite(readRawToken(req), body);
+
+  // Mirror /auth/login: refresh token lives in httpOnly cookie,
+  // access token + public user shape in the body. FE drops them
+  // into AuthContext + the cookie carries the refresh side
+  // transparently.
+  res.cookie(REFRESH_COOKIE_NAME, result.refreshTokenRaw, refreshCookieOptions);
+  res.status(201).json({
+    accessToken: result.accessToken,
+    user: result.user
+  });
+}

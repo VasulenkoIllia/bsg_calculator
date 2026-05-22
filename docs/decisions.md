@@ -4901,3 +4901,75 @@ Use this file to record meaningful technical decisions for the project.
   - 302 server tests pass (was 299; +6 Sprint 9.N visibility +
     lastEvent rendering tests; -3 dead-letter B5/B6 gate tests).
   - TypeScript clean (frontend + server).
+
+### Decision: Sprint 9.O — Invite-link + Reset-link + Deleted by (2026-05-22)
+- Context:
+  - The Phase-8-Stage-3 user-management surface lets a super_admin
+    type a new operator's email + initial password directly. The
+    operator forwards the password out-of-band (Telegram/Slack).
+    User feedback:
+    > "якщо адмін дає посилання то все повністю заповнює користувач
+    > адмін обирає тільки роль"
+    i.e. the super_admin should pick only a role, and the new user
+    should fill the rest themselves via a one-time link. Same logic
+    for password resets — instead of the super_admin choosing a new
+    password, mint a link the user opens to set their own.
+  - Soft-delete banner already showed timestamp + reason + note but
+    not WHO deleted the document. User asked: "також писати хто
+    видалив" (also write who deleted it).
+- Three new surfaces, behind one sprint label because they all touch
+  the same area (admin user management + audit visibility):
+  1. **Invite-link** — super_admin POSTs `/users/invites` with just a
+     `role`; server mints a 32-byte sha256-hashed token, returns the
+     URL `${APP_PUBLIC_URL}/accept-invite?token=...` ONCE. Invitee
+     opens the link, fills email/login/displayName/password, server
+     creates the user atomically and returns an auto-login token
+     pair. TTL 24h. Public route at `/api/v1/auth/invite/:token`
+     (no requireAuth). All "not pending" reasons return 404 to avoid
+     leaking token state. List endpoint shows pending + recent
+     finished invites with creator/acceptor attribution.
+  2. **Reset-link** — super_admin POSTs `/users/:id/password-reset-link`
+     for a target user; server mints `${APP_PUBLIC_URL}/reset-password?token=...`.
+     User opens the link, sets their own password, server bulk-revokes
+     EVERY active refresh token for that user (security: stamps
+     `revoked_at` outside the 10s rotation grace window so a stolen
+     pre-reset cookie can't keep refreshing for 10s post-reset) and
+     issues a fresh pair. TTL 1h (tighter than invites — higher-stakes
+     op on an existing account).
+  3. **Deleted by** — `findByNumberWithDeleter` LEFT JOIN users on
+     `deleted_by_user_id`, denormalises into `doc.deletedBy =
+     { displayName, email } | null`, banner renders "Deleted by:
+     <name> (<email>)" alongside the existing fields.
+- Why two NEW tables (`user_invites`, `password_resets`) instead of a
+  single generic `auth_tokens` blob:
+  - The two flows differ in the shape of the consume action: invite
+    creates a user (with email/login/displayName/password input);
+    reset updates an existing user's password. Modeling them as one
+    table would mean either an unconstrained `meta jsonb` payload or
+    a fat schema with half the columns NULL for each kind. Two
+    tightly-typed tables with stable CHECK constraints win.
+  - The repositories share `generateRawToken` + `hashToken` helpers
+    so the cryptographic plumbing isn't duplicated.
+- Direct-flow alternative kept:
+  - The existing "Create user directly (with known password)" and
+    "Reset password to known value" controllers stay shipped. The UI
+    relabels the create button as "+ Create directly" alongside the
+    new primary "+ Invite user", and the reset modal becomes 2-tab:
+    "Send reset link" (default) / "Set immediately" (legacy).
+  - Rationale: when SMTP is unavailable AND the operator already
+    knows the new value, skipping the round-trip is genuinely
+    simpler. The link flow is the safer default though.
+- AuthContext refactor:
+  - Added `auth.hydrate({ accessToken, user })` so the new public
+    pages can drop a freshly-minted token pair into AuthProvider
+    state directly (mirrors what `login()` does internally) instead
+    of triggering a full page reload + cold-boot refresh round-trip.
+- Verification:
+  - 322 frontend tests pass (was 313; +9 new: 4 AcceptInvitePage,
+    4 ResetPasswordPage, +1 covers the 2-tab modal default).
+  - 320 server tests pass (was 302; +10 invites integration,
+    +8 password-resets integration). The pre-existing hubspot
+    retry-budget unhandled-rejection error is unchanged + unrelated.
+  - TypeScript clean (frontend + server).
+  - Smoke-tested end-to-end via curl: super_admin → mint invite →
+    paste raw token → accept-invite → auto-login → /companies.

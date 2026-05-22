@@ -21,6 +21,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import * as usersApi from "../api/users.js";
+import * as invitesApi from "../api/invites.js";
 import { ApiError } from "../api/client.js";
 import { AuthProvider, useAuth } from "../contexts/AuthContext.js";
 import { AdminUsersPage } from "./AdminUsersPage.js";
@@ -95,6 +96,11 @@ function BootedShell() {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  // Sprint 9.O — the page now renders a PendingInvitesPanel beside
+  // the users table. Every test that mounts the page would otherwise
+  // hit the real `/users/invites` endpoint. Default to "no invites";
+  // individual invite-flow tests override this.
+  vi.spyOn(invitesApi, "listInvites").mockResolvedValue({ items: [] });
 });
 
 afterEach(() => {
@@ -178,7 +184,10 @@ describe("AdminUsersPage — Create modal", () => {
     renderPage();
     await waitFor(() => expect(listSpy).toHaveBeenCalled());
 
-    fireEvent.click(screen.getByRole("button", { name: /create user/i }));
+    // Sprint 9.O — "+ Create user" was renamed "+ Create directly"
+    // when the new invite-link flow became the default. The old
+    // direct-create path stays available for the no-SMTP case.
+    fireEvent.click(screen.getByRole("button", { name: /create directly/i }));
     fireEvent.change(screen.getByLabelText(/^Email\s*\*/i), {
       target: { value: "new@bsg.test" }
     });
@@ -210,7 +219,10 @@ describe("AdminUsersPage — Create modal", () => {
     renderPage();
     await waitFor(() => expect(screen.getByText(SA_USER.email)).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: /create user/i }));
+    // Sprint 9.O — "+ Create user" was renamed "+ Create directly"
+    // when the new invite-link flow became the default. The old
+    // direct-create path stays available for the no-SMTP case.
+    fireEvent.click(screen.getByRole("button", { name: /create directly/i }));
     fireEvent.change(screen.getByLabelText(/^Email\s*\*/i), {
       target: { value: "dup@bsg.test" }
     });
@@ -309,6 +321,10 @@ describe("AdminUsersPage — Reset password modal", () => {
     // Scope to the modal dialog so we don't pick up the table-row
     // "Reset password" button — both share the same accessible name.
     const dialog = screen.getByRole("dialog");
+    // Sprint 9.O — the modal is now 2-tab. Default tab is "Send reset
+    // link" (the new safer flow); the legacy direct-set flow lives
+    // behind the "Set immediately" tab. Switch to it for this test.
+    fireEvent.click(within(dialog).getByRole("button", { name: /set immediately/i }));
     fireEvent.change(within(dialog).getByLabelText(/new password/i), {
       target: { value: "freshSecret9" }
     });

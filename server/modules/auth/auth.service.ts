@@ -86,6 +86,31 @@ export async function loadActiveUserPublic(userId: string): Promise<UserPublic> 
 /**
  * Verify identifier + password, issue tokens.
  */
+/**
+ * Sprint 9.O — extracted from `login` so the invite-accept flow
+ * (and any future "passwordless" path) can issue a token pair
+ * without re-implementing the rotation + insert dance.
+ *
+ * Pre-condition: caller has already verified the user's identity
+ * (bcrypt match for login, single-use token consumption for
+ * invite-accept, etc.) AND that `user.isActive`. The helper does
+ * not re-check — it just emits the tokens.
+ */
+export async function issueTokenPairForUser(
+  user: User
+): Promise<{ accessToken: string; refreshToken: string }> {
+  const refreshTokenRaw = generateRefreshTokenRaw();
+  await insertRefreshToken({
+    userId: user.id,
+    tokenHash: hashRefreshToken(refreshTokenRaw),
+    expiresAt: refreshTokenExpiry()
+  });
+  return {
+    accessToken: signAccessToken(user.id, user.role),
+    refreshToken: refreshTokenRaw
+  };
+}
+
 export async function login(input: {
   identifier: string;
   password: string;
@@ -109,16 +134,10 @@ export async function login(input: {
     throw new InvalidCredentialsError();
   }
 
-  const refreshTokenRaw = generateRefreshTokenRaw();
-  await insertRefreshToken({
-    userId: user.id,
-    tokenHash: hashRefreshToken(refreshTokenRaw),
-    expiresAt: refreshTokenExpiry()
-  });
-
+  const pair = await issueTokenPairForUser(user);
   return {
-    accessToken: signAccessToken(user.id, user.role),
-    refreshTokenRaw,
+    accessToken: pair.accessToken,
+    refreshTokenRaw: pair.refreshToken,
     user: toUserPublic(user)
   };
 }

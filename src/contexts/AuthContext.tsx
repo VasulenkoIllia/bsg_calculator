@@ -52,6 +52,14 @@ interface AuthState {
 interface AuthContextValue extends AuthState {
   /** Submit credentials. Throws an `ApiError` on failure. */
   login: (identifier: string, password: string) => Promise<void>;
+  /**
+   * Sprint 9.O — hydrate state from an already-issued token pair.
+   * Used by flows that authenticate the user via a side channel (the
+   * accept-invite + consume-reset endpoints) and end up holding the
+   * same `{ accessToken, user }` shape the login endpoint returns.
+   * The refresh cookie is set by the server in the same response.
+   */
+  hydrate: (params: { accessToken: string; user: PublicUser }) => void;
   /** Server-side revoke + client-side state clear. */
   logout: () => Promise<void>;
   /**
@@ -139,6 +147,14 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
     setState({ user, isBooting: false });
   }, []);
 
+  const hydrate = useCallback(
+    ({ accessToken, user }: { accessToken: string; user: PublicUser }): void => {
+      setAccessToken(accessToken);
+      setState({ user, isBooting: false });
+    },
+    []
+  );
+
   const logout = useCallback(async (): Promise<void> => {
     try {
       await authApi.logout();
@@ -168,10 +184,11 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
       user: state.user,
       isBooting: state.isBooting,
       login,
+      hydrate,
       logout,
       hasRole
     }),
-    [state.user, state.isBooting, login, logout, hasRole]
+    [state.user, state.isBooting, login, hydrate, logout, hasRole]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

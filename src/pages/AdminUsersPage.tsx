@@ -30,6 +30,17 @@ import {
   type CreateUserRequest,
   type UpdateUserRequest
 } from "../api/users.js";
+import {
+  createInvite,
+  listInvites,
+  revokeInvite,
+  type CreateInviteResponse,
+  type InviteAdminRow
+} from "../api/invites.js";
+import {
+  createPasswordResetLink,
+  type CreateResetLinkResponse
+} from "../api/password-resets.js";
 import type { PublicUser, UserRole } from "../api/types.js";
 import { useAuth } from "../contexts/AuthContext.js";
 
@@ -48,6 +59,7 @@ export function AdminUsersPage() {
 
   type ModalState =
     | { kind: "create" }
+    | { kind: "invite" }
     | { kind: "edit"; user: PublicUser }
     | { kind: "reset"; user: PublicUser }
     | null;
@@ -55,6 +67,8 @@ export function AdminUsersPage() {
 
   const invalidate = (): Promise<void> =>
     queryClient.invalidateQueries({ queryKey: ["admin", "users"] }) as Promise<void>;
+  const invalidateInvites = (): Promise<void> =>
+    queryClient.invalidateQueries({ queryKey: ["admin", "invites"] }) as Promise<void>;
 
   return (
     <section className="space-y-4">
@@ -65,13 +79,23 @@ export function AdminUsersPage() {
             Manage operator accounts. Super-admin only.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setModal({ kind: "create" })}
-          className="rounded-lg border border-blue-500 bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-blue-700"
-        >
-          + Create user
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setModal({ kind: "invite" })}
+            className="rounded-lg border border-blue-500 bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+          >
+            + Invite user
+          </button>
+          <button
+            type="button"
+            onClick={() => setModal({ kind: "create" })}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            title="Create user directly with a known password (no link)"
+          >
+            + Create directly
+          </button>
+        </div>
       </header>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -148,12 +172,22 @@ export function AdminUsersPage() {
         </table>
       </div>
 
+      <PendingInvitesPanel />
+
       {modal?.kind === "create" ? (
         <CreateUserModal
           onClose={() => setModal(null)}
           onSaved={async () => {
             await invalidate();
             setModal(null);
+          }}
+        />
+      ) : null}
+      {modal?.kind === "invite" ? (
+        <InviteUserModal
+          onClose={() => setModal(null)}
+          onSaved={async () => {
+            await invalidateInvites();
           }}
         />
       ) : null}
@@ -437,10 +471,71 @@ function EditUserModal({
 }
 
 // ────────────────────────────────────────────────────────────────────
-// Reset-password modal
+// Reset-password modal (Sprint 9.O — 2-tab)
+//
+//  Tab 1: "Set immediately" — old behaviour. Super-admin types a
+//    password, copies it, forwards it via Telegram / Slack. The user's
+//    sessions stay active until their 15-min access tokens expire.
+//
+//  Tab 2: "Send reset link" — new behaviour. Server mints a one-time
+//    sha256-hashed token (TTL 1h). Super-admin copies the link, the
+//    user opens it, sets their own password. Consuming the link bulk-
+//    revokes the user's refresh tokens (sessions die on next refresh)
+//    AND auto-logs the user in with a fresh pair.
 // ────────────────────────────────────────────────────────────────────
 
 function ResetPasswordModal({ user, onClose }: { user: PublicUser; onClose: () => void }) {
+  type Tab = "immediate" | "link";
+  const [tab, setTab] = useState<Tab>("link");
+
+  return (
+    <ModalShell
+      title={`Reset password for ${user.email}`}
+      onClose={onClose}
+    >
+      <div className="-mt-2 flex gap-1 rounded-lg bg-slate-100 p-1 text-xs font-semibold">
+        <TabButton active={tab === "link"} onClick={() => setTab("link")}>
+          Send reset link
+        </TabButton>
+        <TabButton active={tab === "immediate"} onClick={() => setTab("immediate")}>
+          Set immediately
+        </TabButton>
+      </div>
+
+      {tab === "link" ? (
+        <ResetLinkTab user={user} onClose={onClose} />
+      ) : (
+        <ResetImmediateTab user={user} onClose={onClose} />
+      )}
+    </ModalShell>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        active
+          ? "flex-1 rounded-md bg-white px-3 py-1.5 text-slate-900 shadow-sm"
+          : "flex-1 rounded-md px-3 py-1.5 text-slate-600 transition hover:text-slate-900"
+      }
+    >
+      {children}
+    </button>
+  );
+}
+
+function ResetImmediateTab({ user, onClose }: { user: PublicUser; onClose: () => void }) {
   const [newPassword, setNewPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [doneMessage, setDoneMessage] = useState<string | null>(null);
@@ -465,43 +560,105 @@ function ResetPasswordModal({ user, onClose }: { user: PublicUser; onClose: () =
   }
 
   return (
-    <ModalShell
-      title={`Reset password for ${user.email}`}
-      subtitle="The user's old password stops working immediately; existing sessions stay active until their access token expires (~15 min)."
-      onClose={onClose}
-    >
-      <form onSubmit={handleSubmit} className="space-y-3">
-        <LabelledField label="New password" required>
-          <input
-            type="text"
-            value={newPassword}
-            onChange={e => setNewPassword(e.target.value)}
-            required
-            minLength={8}
-            autoFocus
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-          />
-        </LabelledField>
-
-        {error ? <FormError>{error}</FormError> : null}
-        {doneMessage ? (
-          <p
-            role="status"
-            className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800"
-          >
-            {doneMessage}
-          </p>
-        ) : null}
-
-        <ModalFooter
-          onCancel={onClose}
-          cancelLabel={doneMessage ? "Close" : "Cancel"}
-          submitting={mutation.isPending}
-          submitLabel={doneMessage ? "Reset another" : "Reset password"}
-          submitDisabled={doneMessage !== null && newPassword.trim() === ""}
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <p className="text-xs text-slate-500">
+        The user's old password stops working immediately; existing
+        sessions stay active until their access token expires (~15 min).
+      </p>
+      <LabelledField label="New password" required>
+        <input
+          type="text"
+          value={newPassword}
+          onChange={e => setNewPassword(e.target.value)}
+          required
+          minLength={8}
+          autoFocus
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
         />
-      </form>
-    </ModalShell>
+      </LabelledField>
+
+      {error ? <FormError>{error}</FormError> : null}
+      {doneMessage ? (
+        <p
+          role="status"
+          className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800"
+        >
+          {doneMessage}
+        </p>
+      ) : null}
+
+      <ModalFooter
+        onCancel={onClose}
+        cancelLabel={doneMessage ? "Close" : "Cancel"}
+        submitting={mutation.isPending}
+        submitLabel={doneMessage ? "Reset another" : "Reset password"}
+        submitDisabled={doneMessage !== null && newPassword.trim() === ""}
+      />
+    </form>
+  );
+}
+
+function ResetLinkTab({ user, onClose }: { user: PublicUser; onClose: () => void }) {
+  const [link, setLink] = useState<CreateResetLinkResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: () => createPasswordResetLink(user.id),
+    onSuccess: data => {
+      setLink(data);
+    },
+    onError: (err: unknown) => {
+      setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
+    }
+  });
+
+  function handleGenerate(): void {
+    setError(null);
+    mutation.mutate();
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-slate-500">
+        Generate a one-time link (valid for 1 hour). Forward it to the
+        user via Telegram / Slack. When they open it they set their own
+        password — that consumption also revokes every existing session
+        for this user.
+      </p>
+
+      {link ? (
+        <>
+          <LabelledField label="Reset link (copy and forward)">
+            <CopyableField value={link.link} />
+          </LabelledField>
+          <p className="text-xs text-slate-500">
+            Expires {new Date(link.expiresAt).toLocaleString()}.
+          </p>
+        </>
+      ) : null}
+
+      {error ? <FormError>{error}</FormError> : null}
+
+      <footer className="flex items-center justify-end gap-2 pt-2">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          {link ? "Close" : "Cancel"}
+        </button>
+        {!link ? (
+          <button
+            type="button"
+            onClick={handleGenerate}
+            disabled={mutation.isPending}
+            className="rounded-lg border border-blue-500 bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {mutation.isPending ? "Generating…" : "Generate link"}
+          </button>
+        ) : null}
+      </footer>
+    </div>
   );
 }
 
@@ -584,5 +741,310 @@ function ModalFooter({
         {submitting ? "Saving…" : submitLabel}
       </button>
     </footer>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Sprint 9.O — Invite-user modal
+//
+// The whole point of the invite flow: super-admin only picks a role.
+// Email, login, displayName, password are filled in BY THE INVITEE on
+// /accept-invite. This screen exists to mint the link + show it once
+// so the operator can copy + forward via Telegram / Slack.
+// ────────────────────────────────────────────────────────────────────
+
+function InviteUserModal({
+  onClose,
+  onSaved
+}: {
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [role, setRole] = useState<UserRole>("user");
+  const [link, setLink] = useState<CreateInviteResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: () => createInvite({ role }),
+    onSuccess: async data => {
+      setLink(data);
+      await onSaved(); // refresh the pending-invites panel below
+    },
+    onError: (err: unknown) => {
+      setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
+    }
+  });
+
+  function handleGenerate(): void {
+    setError(null);
+    mutation.mutate();
+  }
+
+  return (
+    <ModalShell
+      title="Invite user"
+      subtitle="Pick a role and forward the generated link to the new operator. They'll fill in their own email, login, display name, and password."
+      onClose={onClose}
+    >
+      {link ? (
+        <div className="space-y-3">
+          <p className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+            Invite link generated. Copy it below and forward via Telegram / Slack.
+            It expires {new Date(link.expiresAt).toLocaleString()}.
+          </p>
+          <LabelledField label="Invite link">
+            <CopyableField value={link.link} />
+          </LabelledField>
+          <footer className="flex items-center justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Close
+            </button>
+          </footer>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <LabelledField label="Role" required>
+            <RoleSelect value={role} onChange={setRole} />
+          </LabelledField>
+
+          {error ? <FormError>{error}</FormError> : null}
+
+          <footer className="flex items-center justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleGenerate}
+              disabled={mutation.isPending}
+              className="rounded-lg border border-blue-500 bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {mutation.isPending ? "Generating…" : "Generate invite link"}
+            </button>
+          </footer>
+        </div>
+      )}
+    </ModalShell>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Sprint 9.O — Pending invites panel
+//
+// Lives below the users table. Lists all non-accepted, non-revoked
+// invites so the super-admin can revoke a link they typed wrong or
+// sent to the wrong person.
+// ────────────────────────────────────────────────────────────────────
+
+function PendingInvitesPanel() {
+  const queryClient = useQueryClient();
+  const invitesQuery = useQuery({
+    queryKey: ["admin", "invites"],
+    queryFn: listInvites,
+    staleTime: 30_000
+  });
+
+  const revokeMutation = useMutation({
+    mutationFn: (id: string) => revokeInvite(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin", "invites"] });
+    }
+  });
+
+  // Filter to pending only. Show accepted/revoked/expired separately
+  // in a smaller "recent" section so the operator can audit recent
+  // activity.
+  const items = invitesQuery.data?.items ?? [];
+  const pending = items.filter(i => i.status === "pending");
+  const recent = items.filter(i => i.status !== "pending").slice(0, 10);
+
+  return (
+    <section className="space-y-2">
+      <header>
+        <h2 className="text-base font-semibold text-slate-900">Invites</h2>
+        <p className="text-xs text-slate-500">
+          Pending links that haven't been accepted yet, plus the 10 most-recent finished ones for audit.
+        </p>
+      </header>
+
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <table className="min-w-full divide-y divide-slate-200 text-sm">
+          <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-600">
+            <tr>
+              <th className="px-4 py-2 text-left">Role</th>
+              <th className="px-4 py-2 text-left">Status</th>
+              <th className="px-4 py-2 text-left">Created by</th>
+              <th className="px-4 py-2 text-left">Expires</th>
+              <th className="px-4 py-2 text-left">Accepted by</th>
+              <th className="px-4 py-2 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 text-slate-800">
+            {invitesQuery.isLoading ? (
+              <tr>
+                <td className="px-4 py-6 text-center text-sm text-slate-500" colSpan={6}>
+                  Loading invites…
+                </td>
+              </tr>
+            ) : invitesQuery.isError ? (
+              <tr>
+                <td className="px-4 py-6 text-center text-sm text-red-600" colSpan={6}>
+                  Failed to load invites
+                  {invitesQuery.error instanceof ApiError
+                    ? `: ${invitesQuery.error.message}`
+                    : "."}
+                </td>
+              </tr>
+            ) : items.length === 0 ? (
+              <tr>
+                <td className="px-4 py-6 text-center text-sm text-slate-500" colSpan={6}>
+                  No invites yet — click "Invite user" above.
+                </td>
+              </tr>
+            ) : (
+              <>
+                {pending.map(invite => (
+                  <InviteRow
+                    key={invite.id}
+                    invite={invite}
+                    onRevoke={() => revokeMutation.mutate(invite.id)}
+                    revoking={
+                      revokeMutation.isPending && revokeMutation.variables === invite.id
+                    }
+                  />
+                ))}
+                {recent.map(invite => (
+                  <InviteRow key={invite.id} invite={invite} onRevoke={null} revoking={false} />
+                ))}
+              </>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function InviteRow({
+  invite,
+  onRevoke,
+  revoking
+}: {
+  invite: InviteAdminRow;
+  onRevoke: (() => void) | null;
+  revoking: boolean;
+}) {
+  return (
+    <tr className="hover:bg-slate-50">
+      <td className="px-4 py-2">
+        <RoleBadge role={invite.role} />
+      </td>
+      <td className="px-4 py-2">
+        <InviteStatusBadge status={invite.status} />
+      </td>
+      <td className="px-4 py-2 text-xs text-slate-600">
+        {invite.createdByDisplayName}
+        <br />
+        <span className="text-slate-400">{invite.createdByEmail}</span>
+      </td>
+      <td className="px-4 py-2 text-xs text-slate-500">
+        {new Date(invite.expiresAt).toLocaleString()}
+      </td>
+      <td className="px-4 py-2 text-xs text-slate-600">
+        {invite.acceptedUserEmail ? (
+          <>
+            {invite.acceptedUserDisplayName}
+            <br />
+            <span className="text-slate-400">{invite.acceptedUserEmail}</span>
+          </>
+        ) : (
+          <span className="text-slate-400">—</span>
+        )}
+      </td>
+      <td className="px-4 py-2 text-right">
+        {onRevoke ? (
+          <button
+            type="button"
+            onClick={onRevoke}
+            disabled={revoking}
+            className="rounded border border-red-300 bg-white px-2 py-0.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"
+          >
+            {revoking ? "Revoking…" : "Revoke"}
+          </button>
+        ) : (
+          <span className="text-xs text-slate-300">—</span>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+function InviteStatusBadge({ status }: { status: InviteAdminRow["status"] }) {
+  const styles: Record<InviteAdminRow["status"], string> = {
+    pending: "bg-yellow-100 text-yellow-800",
+    accepted: "bg-green-100 text-green-700",
+    revoked: "bg-slate-100 text-slate-600",
+    expired: "bg-slate-100 text-slate-600"
+  };
+  return (
+    <span
+      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${styles[status]}`}
+    >
+      {status}
+    </span>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────
+// CopyableField — readonly input + copy-to-clipboard button.
+//
+// Used by the invite + reset-link surfaces to show the generated URL
+// once. Clipboard write is fire-and-forget; we surface a "Copied!"
+// toast for 1.5s so the operator gets feedback.
+// ────────────────────────────────────────────────────────────────────
+
+function CopyableField({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Fallback: select the text in the input so the user can copy
+      // manually via Cmd/Ctrl+C. (Some browsers block writeText on
+      // non-secure contexts, e.g. local IP over plain HTTP.)
+      const el = document.getElementById("copyable-field") as HTMLInputElement | null;
+      el?.select();
+    }
+  }
+
+  return (
+    <div className="flex gap-2">
+      <input
+        id="copyable-field"
+        type="text"
+        readOnly
+        value={value}
+        onFocus={e => e.currentTarget.select()}
+        className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-mono text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+      />
+      <button
+        type="button"
+        onClick={handleCopy}
+        className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+      >
+        {copied ? "Copied!" : "Copy"}
+      </button>
+    </div>
   );
 }
