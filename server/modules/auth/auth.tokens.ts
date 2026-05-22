@@ -95,17 +95,24 @@ export function hashRefreshToken(raw: string): string {
   return createHash("sha256").update(raw).digest("hex");
 }
 
-/** Compute expiry timestamp for a freshly issued refresh token. */
-export function refreshTokenExpiry(): Date {
-  // Parse `JWT_REFRESH_EXPIRES` (e.g. "30d") into milliseconds.
-  // jsonwebtoken accepts the same string format but we need a Date for
-  // the DB column.
+/**
+ * Compute the configured refresh-token TTL in milliseconds. Single
+ * source of truth — both the DB `refresh_tokens.expires_at` column
+ * (via `refreshTokenExpiry()`) and the Set-Cookie max-age (via
+ * `auth.cookies.refreshCookieOptions`) derive from this so they
+ * can't drift independently.
+ *
+ * Falls back to 12 hours (the Sprint 9.P default) if the env value
+ * is malformed — the Zod schema already enforces format upstream,
+ * so this fallback should never fire in practice.
+ */
+export function refreshTokenMaxAgeMs(): number {
   const expires = env.JWT_REFRESH_EXPIRES;
   const match = /^(\d+)([smhdw])$/.exec(expires);
   if (!match) {
-    // Fall back to 30 days if env value is unusual; env loader Zod
-    // already restricts the format upstream.
-    return new Date(Date.now() + 30 * 24 * 3600 * 1000);
+    // Match the env default; Zod gates the format so this is a
+    // defence-in-depth fallback.
+    return 12 * 3600 * 1000;
   }
   const value = Number.parseInt(match[1], 10);
   const unit = match[2];
@@ -116,5 +123,10 @@ export function refreshTokenExpiry(): Date {
     d: 24 * 3600 * 1000,
     w: 7 * 24 * 3600 * 1000
   };
-  return new Date(Date.now() + value * multiplier[unit]);
+  return value * multiplier[unit];
+}
+
+/** Compute expiry timestamp for a freshly issued refresh token. */
+export function refreshTokenExpiry(): Date {
+  return new Date(Date.now() + refreshTokenMaxAgeMs());
 }

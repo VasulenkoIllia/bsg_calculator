@@ -93,11 +93,22 @@ const EnvSchema = z.object({
     .regex(/^\d+[smhdw]$/, "must match format like '15m', '24h', '30d'")
     .default("15m"),
   // Refresh token TTL — opaque token (not a JWT); the value is consumed
-  // by auth.service when inserting refresh_tokens.expires_at.
+  // by auth.service when inserting refresh_tokens.expires_at AND by
+  // auth.cookies for the cookie's max-age (so they stay in sync — see
+  // `refreshTokenMaxAgeMs()` in auth.tokens.ts).
+  //
+  // Sprint 9.P — shortened from 30d to 12h as an absolute-session cap.
+  // Combined with the FE idle-timeout (30 min of no activity → forced
+  // logout), this means a forgotten session can survive at most 30
+  // minutes of inactivity and at most 12 hours of total elapsed time
+  // from login. Anyone who needs a longer session can simply log in
+  // again — the cost is minimal for a 3-5 operator internal tool, the
+  // payoff is closing the "left browser open over lunch" attack
+  // window.
   JWT_REFRESH_EXPIRES: z
     .string()
     .regex(/^\d+[smhdw]$/, "must match format like '15m', '24h', '30d'")
-    .default("30d"),
+    .default("12h"),
   BCRYPT_COST: z.coerce.number().int().min(4).max(15).default(12),
 
   // CORS / frontend

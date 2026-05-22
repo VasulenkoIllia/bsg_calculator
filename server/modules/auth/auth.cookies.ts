@@ -10,8 +10,16 @@
 import type { CookieOptions, Request } from "express";
 import { isProd } from "../../config/env";
 import { REFRESH_COOKIE_NAME, REFRESH_COOKIE_PATH } from "../../config/constants";
+import { refreshTokenMaxAgeMs } from "./auth.tokens";
 
-/** Refresh-token cookie attributes. */
+/**
+ * Refresh-token cookie attributes.
+ *
+ * Sprint 9.P — `maxAge` is now derived from the same env-driven helper
+ * (`refreshTokenMaxAgeMs`) that computes the DB `expires_at`, so the
+ * two can't drift. Previously hardcoded to 30 days; now follows
+ * `JWT_REFRESH_EXPIRES` (default 12h).
+ */
 export const refreshCookieOptions: CookieOptions = {
   httpOnly: true,
   // SameSite=Strict: the cookie is only sent on same-site requests.
@@ -24,10 +32,8 @@ export const refreshCookieOptions: CookieOptions = {
   // HTTPS-only in prod (set by Traefik). Allowed in dev for localhost.
   secure: isProd,
   path: REFRESH_COOKIE_PATH,
-  // 30-day expiry matches refresh-token TTL. The server is the source
-  // of truth for revocation; the cookie just needs to outlive
-  // the token by no margin.
-  maxAge: 30 * 24 * 3600 * 1000
+  // Mirrors refresh_tokens.expires_at — single env knob, no drift.
+  maxAge: refreshTokenMaxAgeMs()
 };
 
 /**

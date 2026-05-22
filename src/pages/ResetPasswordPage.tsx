@@ -112,6 +112,46 @@ export function ResetPasswordPage() {
     }
   }
 
+  // Sprint 9.O follow-up — same logged-in guard as AcceptInvitePage.
+  // Consuming a reset token auto-logs the user in (the server bulk-
+  // revokes their refresh tokens + issues a fresh pair), which
+  // replaces whatever session was already in the browser cookie.
+  // For a super_admin testing the flow in the same tab, this
+  // silently swaps their identity — surface an explicit step instead.
+  if (!auth.isBooting && auth.user) {
+    return (
+      <div className="mx-auto mt-12 max-w-md px-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h1 className="text-xl font-semibold text-slate-900">
+            Reset your password
+          </h1>
+          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            You're currently signed in as <strong>{auth.user.email}</strong>.
+            Resetting this password will sign you out of your current
+            session and sign you in as the reset's target account.
+            Sign out first if that's not what you want.
+          </p>
+          <div className="mt-4 flex gap-2">
+            <button
+              type="button"
+              onClick={() => auth.logout()}
+              className="rounded-lg border border-blue-500 bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+            >
+              Sign out and continue
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/companies", { replace: true })}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Cancel — keep current session
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto mt-12 max-w-md px-4">
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

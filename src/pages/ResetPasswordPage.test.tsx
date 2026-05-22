@@ -40,6 +40,33 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("ResetPasswordPage — already-logged-in guard", () => {
+  it("shows the sign-out warning when an operator is already logged in", async () => {
+    // Sprint 9.O follow-up — see the matching test in
+    // AcceptInvitePage.test.tsx for rationale. Consuming the reset
+    // token auto-logs the user in, which would overwrite an
+    // existing session cookie. Block that with an explicit step.
+    vi.spyOn(authApi, "refresh").mockResolvedValue({ accessToken: "tok" });
+    vi.spyOn(authApi, "me").mockResolvedValue({
+      id: "u-sa",
+      email: "sa@bsg.test",
+      login: "sa",
+      displayName: "Super Admin",
+      role: "super_admin",
+      isActive: true
+    });
+
+    renderAt("good-token");
+
+    await waitFor(() => {
+      expect(screen.getByText(/you're currently signed in as/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/sa@bsg\.test/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /sign out and continue/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^new password/i)).not.toBeInTheDocument();
+  });
+});
+
 describe("ResetPasswordPage — preview", () => {
   it("renders friendly error on 404 preview", async () => {
     vi.spyOn(resetsApi, "previewReset").mockRejectedValue(

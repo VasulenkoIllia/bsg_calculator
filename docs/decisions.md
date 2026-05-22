@@ -5088,3 +5088,62 @@ Use this file to record meaningful technical decisions for the project.
   - Refresh grace backdate (60s) without `hard_revoked_at` column —
     correct for the single-writer deploy; explicit column adds
     schema complexity with no behavioural difference.
+
+### Decision: Sprint 9.P — Idle timeout + absolute session cap (2026-05-22)
+- Context: user raised the "Я залишив комп відкритим на обід, колега
+  сів за нього і отримав доступ" threat. Previously the system had:
+  - 15-min access token (fine — short stolen-token window)
+  - **30-day** refresh token cookie (problem — physical-access
+    persistence)
+  - No idle detection at all (problem — left-open browser was a
+    persistent session)
+- Three options surfaced: FE idle timeout (A), BE-anchored idle (B),
+  shorter absolute cap (C). User picked **A + C** with one uniform
+  timeout for all roles ("Простіше навчити операторів").
+- Implementation:
+  - **C: refresh TTL 30d → 12h.** Single source of truth via new
+    `refreshTokenMaxAgeMs()` helper in `auth.tokens.ts` — both
+    `refresh_tokens.expires_at` (DB) and the Set-Cookie max-age now
+    read it. Env knob `JWT_REFRESH_EXPIRES` default changed from
+    "30d" to "12h"; updated in .env, .env.example, .env.production,
+    .env.production.example.
+  - **A: FE idle timeout** — new `useIdleTimeout(enabled)` hook
+    + `IdleTimeoutWarning` modal mounted globally in AppShell.
+    30 minutes of zero activity → forced logout. 60 seconds before
+    that deadline → warning modal with "Залишитись" / "Вийти зараз"
+    + live countdown. Activity events: mousemove, mousedown,
+    keydown, click, touchstart, scroll (throttled to once per
+    second). Hook is disabled when `auth.user === null` (login
+    page doesn't need it).
+- Why FE-only for the idle gate:
+  - Sufficient for the threat model (physical-access "colleague at
+    unlocked laptop"). DevTools-level bypass is out of scope — that
+    attacker already has physical access and many other vectors.
+  - Server-side enforcement (BE-anchored option B) would need a
+    migration + `last_activity_at` column + UPDATE on every refresh
+    — significant work for a marginal security delta in a 3-5
+    operator internal tool.
+  - The 12h absolute server-side cap is the bullet-proof backstop:
+    even if FE idle is bypassed, the session dies after 12h.
+- Configuration in `src/config/idleTimeout.ts`:
+  - `IDLE_TIMEOUT_MIN = 30` — minutes to forced logout
+  - `IDLE_WARNING_SEC = 60` — warning visibility window
+  - `ACTIVITY_THROTTLE_MS = 1000` — debounce for activity events
+- Per-role timeout: not implemented (uniform 30 min for all). User
+  explicitly preferred simplicity ("Простіше навчити операторів").
+  Switching to per-role later is a one-line change in
+  `useIdleTimeout` — pull the value from a `useAuth().user.role`
+  lookup.
+- "Hidden tab" handling: explicitly NOT timing out faster when the
+  tab is in the background. Common UX failure mode — operators read
+  email in another window while logged in here; an aggressive
+  visibility-based timeout would constantly log them out.
+- Verification:
+  - 331 frontend tests pass (was 322; +9 for useIdleTimeout hook).
+  - 329 server tests pass (no new tests — env-only change validated
+    by existing auth.tokens.test "refreshTokenExpiry returns a
+    future Date ~12 hours out" which was updated from 30d).
+  - TypeScript clean (FE + BE).
+  - Single-source-of-truth confirmed: `refreshTokenMaxAgeMs()`
+    drives both DB expiry and cookie max-age.
+

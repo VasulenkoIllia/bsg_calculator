@@ -46,6 +46,35 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("AcceptInvitePage — already-logged-in guard", () => {
+  it("shows the sign-out warning when an operator is already logged in", async () => {
+    // Sprint 9.O follow-up — if the browser already has a session
+    // (e.g. a super_admin clicking the invite link in the same tab
+    // they're admin'ing the system from), DON'T silently overwrite
+    // the cookie with the new user's tokens. Show a warning + an
+    // explicit "Sign out and continue" step.
+    vi.spyOn(authApi, "refresh").mockResolvedValue({ accessToken: "tok" });
+    vi.spyOn(authApi, "me").mockResolvedValue({
+      id: "u-sa",
+      email: "sa@bsg.test",
+      login: "sa",
+      displayName: "Super Admin",
+      role: "super_admin",
+      isActive: true
+    });
+
+    renderAt("good-token");
+
+    await waitFor(() => {
+      expect(screen.getByText(/you're currently signed in as/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/sa@bsg\.test/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /sign out and continue/i })).toBeInTheDocument();
+    // The form should NOT render while the warning is up.
+    expect(screen.queryByLabelText(/^email/i)).not.toBeInTheDocument();
+  });
+});
+
 describe("AcceptInvitePage — preview states", () => {
   it("shows a friendly error for a 404 preview (unknown/used/expired)", async () => {
     vi.spyOn(invitesApi, "previewInvite").mockRejectedValue(

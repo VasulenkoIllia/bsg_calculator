@@ -142,6 +142,49 @@ export function AcceptInvitePage() {
     }
   }
 
+  // Sprint 9.O follow-up — block the accept flow if the operator
+  // is ALREADY logged in. Without this guard, submitting the form
+  // would silently overwrite their current session with the newly-
+  // created user's tokens (the server's auto-login response sets a
+  // fresh refresh cookie, which replaces the existing one). Most
+  // commonly hits a super_admin who clicks an invite link in the
+  // same browser tab they're using to admin the system — they
+  // didn't intend to "log out + log in as new user", but that's
+  // what happens. Force an explicit logout step.
+  if (!auth.isBooting && auth.user) {
+    return (
+      <div className="mx-auto mt-12 max-w-md px-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h1 className="text-xl font-semibold text-slate-900">
+            Accept invitation
+          </h1>
+          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            You're currently signed in as <strong>{auth.user.email}</strong>.
+            Accepting this invite will create a new account and replace
+            your current session. Sign out first if you want to keep
+            your existing one.
+          </p>
+          <div className="mt-4 flex gap-2">
+            <button
+              type="button"
+              onClick={() => auth.logout()}
+              className="rounded-lg border border-blue-500 bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+            >
+              Sign out and continue
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/companies", { replace: true })}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Cancel — keep current session
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto mt-12 max-w-md px-4">
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

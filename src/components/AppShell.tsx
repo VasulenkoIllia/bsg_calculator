@@ -15,6 +15,7 @@
 
 import { Outlet } from "react-router-dom";
 import { AppHeader } from "./AppHeader.js";
+import { IdleTimeoutWarning } from "./IdleTimeoutWarning.js";
 
 export function AppShell() {
   return (
@@ -23,6 +24,11 @@ export function AppShell() {
       <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8 md:py-8">
         <Outlet />
       </div>
+      {/* Sprint 9.P — idle-timeout warning. Mounted globally so the
+          countdown is visible from any authenticated route. Renders
+          null while the user is active OR logged-out, so the cost
+          when idle is just one ticker interval per second. */}
+      <IdleTimeoutWarning />
     </main>
   );
 }

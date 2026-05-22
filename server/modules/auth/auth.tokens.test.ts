@@ -72,14 +72,14 @@ describe("auth.tokens — refresh token", () => {
     expect(hashRefreshToken("a")).not.toBe(hashRefreshToken("b"));
   });
 
-  it("refreshTokenExpiry returns a future Date ~30 days out", () => {
+  it("refreshTokenExpiry returns a future Date ~12 hours out", () => {
     const before = Date.now();
     const expiry = refreshTokenExpiry();
     const after = Date.now();
-    // JWT_REFRESH_EXPIRES default is "30d" → ~2.6M seconds.
-    // Allow a generous window for parsing.
-    const thirtyDaysMs = 30 * 24 * 3600 * 1000;
-    expect(expiry.getTime() - before).toBeGreaterThanOrEqual(thirtyDaysMs - 5000);
-    expect(expiry.getTime() - after).toBeLessThanOrEqual(thirtyDaysMs + 5000);
+    // Sprint 9.P — JWT_REFRESH_EXPIRES default is "12h" (was "30d").
+    // Tightened to close the "left browser open" attack window.
+    const twelveHoursMs = 12 * 3600 * 1000;
+    expect(expiry.getTime() - before).toBeGreaterThanOrEqual(twelveHoursMs - 5000);
+    expect(expiry.getTime() - after).toBeLessThanOrEqual(twelveHoursMs + 5000);
   });
 });
