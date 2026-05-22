@@ -55,14 +55,30 @@ beforeEach(() => {
 
 describe("DELETE /api/v1/documents/:number — auth + body validation", () => {
   it("returns 403 FORBIDDEN for plain `user` role", async () => {
-    await createTestUser({ email: "user@bsg.test", password: "user12345" });
-    const [company] = await db.insert(companies).values(companyFixture({ hubspotCompanyId: "del000000001" })).returning();
-    const token = await loginAs("user@bsg.test", "user12345");
-    const { number } = await createDocAs(token, company.id);
+    // Sprint 9.R — `user` is now also forbidden from POST /documents
+    // (createDocAs helper). Two-actor setup: an admin seeds the
+    // document so the user can attempt to delete it.
+    await createTestUser({
+      email: "admin@bsg.test",
+      password: "admin12345",
+      role: "admin"
+    });
+    await createTestUser({
+      email: "user@bsg.test",
+      password: "user12345",
+      role: "user"
+    });
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "del000000001" }))
+      .returning();
+    const adminToken = await loginAs("admin@bsg.test", "admin12345");
+    const userToken = await loginAs("user@bsg.test", "user12345");
+    const { number } = await createDocAs(adminToken, company.id);
 
     const res = await request(app)
       .delete(`/api/v1/documents/${number}`)
-      .set("Authorization", `Bearer ${token}`)
+      .set("Authorization", `Bearer ${userToken}`)
       .send({ reason: "duplicate" });
     expect(res.status).toBe(403);
   });
@@ -263,9 +279,12 @@ describe("DELETE /api/v1/documents/:number — happy paths", () => {
       password: "admin12345",
       role: "admin"
     });
+    // Sprint 9.R — explicit role: "user" (default flipped to "admin").
+    // This test specifically verifies the `user` tier's note-redaction.
     await createTestUser({
       email: "user@bsg.test",
-      password: "user12345"
+      password: "user12345",
+      role: "user"
     });
     const [company] = await db
       .insert(companies)

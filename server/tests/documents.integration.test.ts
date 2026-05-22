@@ -108,6 +108,28 @@ describe("POST /api/v1/documents", () => {
     expect(res.status).toBe(401);
   });
 
+  it("Sprint 9.R — returns 403 FORBIDDEN for read-only `user` role", async () => {
+    // user is now the read-only viewer tier (Phase 8 spec). POST
+    // /documents is admin+. This regression test pins the gate.
+    await createTestUser({
+      email: "viewer@bsg.test",
+      password: "viewer12345",
+      role: "user"
+    });
+    const token = await loginAs("viewer@bsg.test", "viewer12345");
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "9999ROUSER001" }))
+      .returning();
+
+    const res = await request(app)
+      .post("/api/v1/documents")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, scope: "offer", payload: samplePayload });
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe("FORBIDDEN");
+  });
+
   it("allocates the next BSG-<seq>-<suffix> number and persists the doc", async () => {
     const token = await setupAuth();
     const [company] = await db

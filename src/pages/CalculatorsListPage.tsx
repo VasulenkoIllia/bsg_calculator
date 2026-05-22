@@ -29,6 +29,7 @@ import { ApiError } from "../api/client.js";
 import { LastActionCell } from "../components/LastActionCell.js";
 import { LoadMoreButton } from "../components/LoadMoreButton.js";
 import { SortableTh } from "../components/SortableTh.js";
+import { useAuth } from "../contexts/AuthContext.js";
 import { useCalculatorConfigs } from "../hooks/useCalculatorConfig.js";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
 import { useSortState } from "../hooks/useSortState.js";
@@ -36,6 +37,9 @@ import { formatDateTime } from "../shared/format.js";
 import type { CalculatorConfigSortField } from "../api/calculator-configs.js";
 
 export function CalculatorsListPage() {
+  // Sprint 9.R — `user` is the read-only tier (no calc creation /
+  // edit / delete). Use this gate to hide write affordances.
+  const { hasRole } = useAuth();
   const [searchInput, setSearchInput] = useState("");
   // 300ms debounce on the title-substring query so a fast typist
   // doesn't fire a request per keystroke. Mirrors the pattern used
@@ -82,12 +86,17 @@ export function CalculatorsListPage() {
             aria-label="Search saved calculators by title"
             className="w-64 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
           />
-          <Link
-            to="/calculator"
-            className="rounded-lg border border-blue-500 bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
-          >
-            + New calculator
-          </Link>
+          {/* Sprint 9.R — hide "+ New calculator" for read-only `user`s.
+              The /calculator route itself is still reachable (they
+              can run computations), they just can't persist them. */}
+          {hasRole("admin") ? (
+            <Link
+              to="/calculator"
+              className="rounded-lg border border-blue-500 bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+            >
+              + New calculator
+            </Link>
+          ) : null}
         </div>
       </header>
 

@@ -337,14 +337,18 @@ export function DocumentViewPage() {
           >
             {pdfPending ? "Preparing PDF…" : "Download PDF"}
           </button>
-          <button
-            type="button"
-            onClick={handleUseAsTemplate}
-            disabled={templatePending}
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {templatePending ? "Creating draft…" : "Use as Template"}
-          </button>
+          {/* Sprint 9.R — admin+ only. POST /documents/:number/use-as-template
+              creates a new document, which `user` (read-only) can't do. */}
+          {hasRole("admin") ? (
+            <button
+              type="button"
+              onClick={handleUseAsTemplate}
+              disabled={templatePending}
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {templatePending ? "Creating draft…" : "Use as Template"}
+            </button>
+          ) : null}
           {/*
             Phase 9 — HubSpot Note write-back. Admin-only on the
             backend (requireRole('admin')); same gate here so the
@@ -419,6 +423,19 @@ export function DocumentViewPage() {
         */}
       </div>
 
+      {/* Sprint 9.R — collapsible audit-trail panel moved UP, right
+          after the action buttons. Operator brief: "Історію документу
+          перенести вище до інших кнопок щоб було зручніше" — the
+          history is operationally co-located with the actions
+          (created → synced → deleted → restored), so reading it
+          next to the buttons is the natural flow. The preview
+          (still long) sits below. */}
+      <EventHistoryPanel
+        events={eventsQuery.data?.items ?? []}
+        isLoading={eventsQuery.isLoading}
+        isError={eventsQuery.isError}
+      />
+
       {/* Document preview — same iframe-rendered HTML as the wizard's
           Preview step, fed by the frontend's buildOfferPdfHtml using
           the payload stored on save. We compute this lazily so a
@@ -426,15 +443,6 @@ export function DocumentViewPage() {
           (e.g. a calc-only snapshot from an earlier save) doesn't
           crash the page — we fall back to the raw JSON view. */}
       <DocumentPreviewSection payload={doc.payload} number={doc.number} />
-
-      {/* Phase 8 Stage 4 — collapsible audit-trail panel. Collapsed
-          by default so it doesn't push the debug view further down
-          on an unrelated page-load. Click the header to expand. */}
-      <EventHistoryPanel
-        events={eventsQuery.data?.items ?? []}
-        isLoading={eventsQuery.isLoading}
-        isError={eventsQuery.isError}
-      />
 
       <div className="rounded-2xl border border-slate-200 bg-white p-6">
         <details

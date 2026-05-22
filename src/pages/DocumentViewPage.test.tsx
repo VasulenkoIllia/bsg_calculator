@@ -12,6 +12,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import * as documentsApi from "../api/documents.js";
+import * as authApi from "../api/auth.js";
 import type { PublicDocument } from "../api/types.js";
 import { AuthProvider } from "../contexts/AuthContext.js";
 import { ToastProvider } from "../contexts/ToastContext.js";
@@ -105,6 +106,17 @@ describe("DocumentViewPage — Download PDF", () => {
 
 describe("DocumentViewPage — Use as Template", () => {
   it("calls useDocumentAsTemplate and navigates to the returned URL", async () => {
+    // Sprint 9.R — button is admin+ gated now. Bring the auth
+    // context into "logged-in as admin" so the button renders.
+    vi.spyOn(authApi, "refresh").mockResolvedValue({ accessToken: "tok" });
+    vi.spyOn(authApi, "me").mockResolvedValue({
+      id: "u-admin",
+      email: "admin@bsg.test",
+      login: "admin",
+      displayName: "Admin",
+      role: "admin",
+      isActive: true
+    });
     vi.spyOn(documentsApi, "getDocumentByNumber").mockResolvedValueOnce(
       fixtureDocument()
     );

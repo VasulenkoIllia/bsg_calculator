@@ -412,10 +412,15 @@ export function CalculatorPage() {
         all six zones. Renders FIRST so it sits above editModeBanner,
         SavedStatusBadge, and the zone panels.
       */}
+      {/* Sprint 9.R — `user` is read-only on calc-configs. The
+          backend's POST /calculator-configs is admin-gated; we
+          mirror that gate here by withholding the save handler
+          (CalculatorStickyToolbar hides the button when the prop
+          is undefined). */}
       <CalculatorStickyToolbar
         draftTitle={toolbarDraftTitle}
         onOpenWizard={handleOpenWizardFromToolbar}
-        onSaveCalculator={handleSaveFromToolbar}
+        onSaveCalculator={hasRole("admin") ? handleSaveFromToolbar : undefined}
         showHardcodedConstants={calc.showHardcodedConstants}
         onToggleConstantsAndFormulas={calc.toggleHardcodedConstantsAndZoneFormulas}
         onReset={calc.resetAllValuesToZero}
@@ -664,7 +669,10 @@ export function CalculatorPage() {
         // In edit mode auto-save replaces the explicit modal flow —
         // the "Save calculator" button is hidden and a "Saved · 2s ago"
         // badge at the top of the page communicates state instead.
-        onSaveCalculator={isEditMode ? undefined : () => setSaveOpen(true)}
+        // Sprint 9.R — additionally hidden for read-only `user`s.
+        onSaveCalculator={
+          isEditMode || !hasRole("admin") ? undefined : () => setSaveOpen(true)
+        }
       />
 
       {!isEditMode && snapshot ? (

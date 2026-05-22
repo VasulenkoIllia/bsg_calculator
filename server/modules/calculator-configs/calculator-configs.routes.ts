@@ -31,10 +31,26 @@ calculatorConfigsRouter.use(requireAuth());
 // Sprint 6.9 N4: tighter rate limit on the list path. See
 // middleware/rate-limit.ts → listingLimiter (30/min/IP).
 calculatorConfigsRouter.get("/", listingLimiter, asyncHandler(listController));
-calculatorConfigsRouter.post("/", asyncHandler(createController));
+// Sprint 9.R — Phase 8 capability matrix tightened: only admin+
+// can mutate calc-configs. `user` retains read access (GET / and
+// GET /:id) but can't create / edit / delete drafts. Aligns with
+// the "user = sales rep reading quotes" model.
+calculatorConfigsRouter.post(
+  "/",
+  requireRole("admin"),
+  asyncHandler(createController)
+);
 calculatorConfigsRouter.get("/:id", asyncHandler(getController));
-calculatorConfigsRouter.put("/:id", asyncHandler(updateController));
-calculatorConfigsRouter.delete("/:id", asyncHandler(deleteController));
+calculatorConfigsRouter.put(
+  "/:id",
+  requireRole("admin"),
+  asyncHandler(updateController)
+);
+calculatorConfigsRouter.delete(
+  "/:id",
+  requireRole("admin"),
+  asyncHandler(deleteController)
+);
 // Phase 9.I — manual HubSpot Note write-back. Admin role + tight
 // rate-limit (10/min/IP via hubspotProxyLimiter) so a spammy retry
 // can't exhaust the per-Private-App HubSpot budget.

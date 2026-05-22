@@ -19,6 +19,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import * as configsApi from "../api/calculator-configs.js";
+import * as authApi from "../api/auth.js";
+import { ApiError } from "../api/client.js";
+import { AuthProvider } from "../contexts/AuthContext.js";
 import type { PublicCalculatorConfig } from "../api/types.js";
 import { CalculatorsListPage } from "./CalculatorsListPage.js";
 
@@ -39,14 +42,25 @@ const fixtureConfig = (
 });
 
 function renderPage() {
+  // Sprint 9.R — page now reads useAuth().hasRole to hide
+  // "+ New calculator" for read-only users. Default: cold-boot
+  // refresh 401s (logged-out), so hasRole returns false. Individual
+  // tests can override the refresh+me mocks to flip into "admin
+  // logged-in" mode when they assert on the button being visible.
+  vi.spyOn(authApi, "refresh").mockRejectedValue(
+    new ApiError("AUTH_INVALID", "no", 401)
+  );
+
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } }
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
-        <CalculatorsListPage />
-      </MemoryRouter>
+      <AuthProvider>
+        <MemoryRouter>
+          <CalculatorsListPage />
+        </MemoryRouter>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

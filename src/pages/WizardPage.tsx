@@ -22,6 +22,7 @@ import { ApiError } from "../api/client.js";
 import * as documentsApi from "../api/documents.js";
 import { renderPdfPreview, triggerPdfDownload } from "../api/pdf.js";
 import type { PublicCompany } from "../api/types.js";
+import { useAuth } from "../contexts/AuthContext.js";
 import { useCalculator } from "../contexts/CalculatorContext.js";
 import { useToast } from "../contexts/ToastContext.js";
 import { useCalculatorConfig } from "../hooks/useCalculatorConfig.js";
@@ -67,6 +68,9 @@ function parseStep(value: string | null): WizardStep | null {
 export function WizardPage() {
   const calc = useCalculator();
   const toast = useToast();
+  // Sprint 9.R — `user` is the read-only tier. Save button is
+  // hidden for them (the backend's POST /documents is admin-gated).
+  const { hasRole } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const calculatorHeaderSeed = useMemo(
@@ -431,7 +435,7 @@ export function WizardPage() {
             onDealIdChange={setSelectedDealId}
           />
         }
-        onSaveDocument={() => setSaveDocOpen(true)}
+        onSaveDocument={hasRole("admin") ? () => setSaveDocOpen(true) : undefined}
         saveDisabledReason={
           selectedCompany ? null : "Pick a company on Step 1 first."
         }

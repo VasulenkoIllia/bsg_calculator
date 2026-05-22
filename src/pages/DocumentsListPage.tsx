@@ -27,11 +27,15 @@
 
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../api/client.js";
+import * as documentsApi from "../api/documents.js";
 import { CompanyTypeahead } from "../components/CompanyTypeahead.js";
 import { LastActionCell } from "../components/LastActionCell.js";
 import { LoadMoreButton } from "../components/LoadMoreButton.js";
 import { SortableTh } from "../components/SortableTh.js";
+import { useAuth } from "../contexts/AuthContext.js";
+import { useToast } from "../contexts/ToastContext.js";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
 import { useDocuments } from "../hooks/useDocuments.js";
 import { useSortState } from "../hooks/useSortState.js";
@@ -77,11 +81,25 @@ function humanReason(reason: DocumentDeletionReason): string {
  * (the row is alive) and Deleted (with the reason inline). When
  * Stage 6 adds delete_pending / delete_failed transition states we
  * can extend this without touching the row JSX.
+ *
+ * Sprint 9.R — added inline Restore button for super_admin on
+ * deleted rows. The previous flow forced a click-into-detail-page
+ * just to restore; operator brief explicitly asked for inline
+ * action ("додати на сторінку документів також можливість
+ * відновити документ").
  */
-function StatusCell({ doc }: { doc: PublicDocumentListItem }) {
+function StatusCell({
+  doc,
+  onRestore,
+  restoring
+}: {
+  doc: PublicDocumentListItem;
+  onRestore: (() => void) | null;
+  restoring: boolean;
+}) {
   if (doc.deletedAt) {
     return (
-      <div className="flex flex-col gap-0.5">
+      <div className="flex flex-col gap-1">
         <span className="inline-flex w-fit items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700">
           Deleted
         </span>
@@ -89,6 +107,16 @@ function StatusCell({ doc }: { doc: PublicDocumentListItem }) {
           <span className="text-xs text-slate-500">
             {humanReason(doc.deletionReason)}
           </span>
+        ) : null}
+        {onRestore ? (
+          <button
+            type="button"
+            onClick={onRestore}
+            disabled={restoring}
+            className="mt-0.5 w-fit rounded border border-green-500 bg-white px-2 py-0.5 text-[10px] font-semibold text-green-700 hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {restoring ? "Restoring…" : "Restore"}
+          </button>
         ) : null}
       </div>
     );
@@ -132,6 +160,29 @@ export function DocumentsListPage() {
   // Sprint 9.N — new product filters.
   const [scopeFilter, setScopeFilter] = useState<DocumentScope | "all">("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  // Sprint 9.R — inline restore for super_admin. The mutation's
+  // `variables` carries the document number being restored, so we
+  // can disable just that row's button rather than blocking every
+  // Restore on the page at once.
+  const { hasRole } = useAuth();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const restoreMutation = useMutation({
+    mutationFn: (number: string) => documentsApi.restoreDocument(number),
+    onSuccess: async (_data, number) => {
+      toast.success(`Restored ${number}`);
+      // Refresh the listing AND any cached detail/event queries so
+      // navigating into the doc immediately shows the alive state.
+      await queryClient.invalidateQueries({ queryKey: ["documents"] });
+      await queryClient.invalidateQueries({ queryKey: ["document", number] });
+      await queryClient.invalidateQueries({
+        queryKey: ["document-events", number]
+      });
+    },
+    onError: err => {
+      toast.error(err instanceof ApiError ? err.message : "Restore failed.");
+    }
+  });
   // Sprint 7.2: shared sort-state hook (was 7 lines of repetitive
   // useState pairs in 6.8). Default createdAt:desc mirrors backend
   // default. Flipping sort triggers a fresh TanStack-Query page
@@ -362,7 +413,18 @@ export function DocumentsListPage() {
                 </td>
                 <td className="px-4 py-3 text-slate-700">{formatScopeLabel(doc.scope)}</td>
                 <td className="px-4 py-3">
-                  <StatusCell doc={doc} />
+                  <StatusCell
+                    doc={doc}
+                    onRestore={
+                      hasRole("super_admin") && doc.deletedAt
+                        ? () => restoreMutation.mutate(doc.number)
+                        : null
+                    }
+                    restoring={
+                      restoreMutation.isPending &&
+                      restoreMutation.variables === doc.number
+                    }
+                  />
                 </td>
                 <td className="px-4 py-3 text-slate-500">
                   {doc.hubspotSyncState === "not_synced" ? (

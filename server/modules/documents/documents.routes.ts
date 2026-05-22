@@ -29,10 +29,16 @@ documentsRouter.use(requireAuth());
 // Sprint 6.9 N4: tighter rate limit on the list path — see
 // middleware/rate-limit.ts for sizing rationale (30/min/IP).
 documentsRouter.get("/", listingLimiter, asyncHandler(listController));
-documentsRouter.post("/", asyncHandler(createController));
+// Sprint 9.R — Phase 8 capability matrix: only admin+ can create
+// documents. `user` is the read-only viewer tier (e.g. sales rep
+// who reviews quotes but doesn't author them).
+documentsRouter.post("/", requireRole("admin"), asyncHandler(createController));
 documentsRouter.get("/:number", asyncHandler(getByNumberController));
+// Use-as-template ALSO writes a new document (just pre-populated
+// from an existing one). Same admin gate.
 documentsRouter.post(
   "/:number/use-as-template",
+  requireRole("admin"),
   asyncHandler(useAsTemplateController)
 );
 // Phase 9 — HubSpot Note write-back. Tighter rate limit

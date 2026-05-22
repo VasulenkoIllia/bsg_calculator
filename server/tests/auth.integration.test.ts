@@ -11,7 +11,14 @@ import { app, createTestUser, extractRefreshCookie } from "./test-helpers";
 
 describe("POST /api/v1/auth/login", () => {
   it("returns access token + user on valid credentials", async () => {
-    await createTestUser({ email: "ok@bsg.test", password: "correct123" });
+    // Sprint 9.R — explicit role: "user" because createTestUser
+    // default flipped from "user" to "admin". This test specifically
+    // verifies the auth-response shape for the lowest-tier role.
+    await createTestUser({
+      email: "ok@bsg.test",
+      password: "correct123",
+      role: "user"
+    });
 
     const res = await request(app)
       .post("/api/v1/auth/login")
@@ -83,7 +90,12 @@ describe("POST /api/v1/auth/login", () => {
 
 describe("GET /api/v1/auth/me", () => {
   it("returns the authenticated user when given a valid Bearer", async () => {
-    await createTestUser({ email: "me@bsg.test", password: "correct123" });
+    // Sprint 9.R — explicit role: "user" (default flipped to admin).
+    await createTestUser({
+      email: "me@bsg.test",
+      password: "correct123",
+      role: "user"
+    });
 
     const login = await request(app)
       .post("/api/v1/auth/login")

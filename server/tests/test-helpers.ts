@@ -18,8 +18,15 @@ export const app = createApp();
 /**
  * Phase 8 Stage 1: tests can now pass either the new `role` field
  * OR the legacy `isAdmin` boolean (for backward-compat with the
- * older test suites that haven't been touched yet). When both are
- * absent the user lands at `role='user'` (least privileged).
+ * older test suites that haven't been touched yet).
+ *
+ * Sprint 9.R — default role changed from "user" to "admin".
+ * Rationale: Sprint 9.R tightened the user→admin boundary on
+ * mutating endpoints (POST /documents, POST/PUT/DELETE
+ * /calculator-configs, etc.), so the pre-9.R "default authenticated
+ * caller" behaviour is now `admin`. The integration suite assumes
+ * the actor can mutate; only the handful of tests that explicitly
+ * test the read-only `user` tier should now pass `role: "user"`.
  */
 export async function createTestUser(input: {
   email: string;
@@ -32,7 +39,7 @@ export async function createTestUser(input: {
 }): Promise<User> {
   // bcrypt cost is forced to 4 in tests via setup.ts → BCRYPT_COST.
   const passwordHash = await bcrypt.hash(input.password, 4);
-  const resolvedRole = input.role ?? (input.isAdmin ? "admin" : "user");
+  const resolvedRole = input.role ?? (input.isAdmin ? "admin" : "admin");
   const [row] = await db
     .insert(users)
     .values({

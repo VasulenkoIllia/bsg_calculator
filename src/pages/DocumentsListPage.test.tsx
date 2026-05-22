@@ -9,6 +9,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import * as companiesApi from "../api/companies.js";
 import * as documentsApi from "../api/documents.js";
+import * as authApi from "../api/auth.js";
+import { ApiError } from "../api/client.js";
+import { AuthProvider } from "../contexts/AuthContext.js";
+import { ToastProvider } from "../contexts/ToastContext.js";
 import type { PublicCompany, PublicDocument } from "../api/types.js";
 import { DocumentsListPage } from "./DocumentsListPage.js";
 
@@ -50,14 +54,27 @@ const fixtureDocument = (overrides: Partial<PublicDocument> = {}): PublicDocumen
 });
 
 function renderPage() {
+  // Sprint 9.R — page now reads useAuth().hasRole (for the inline
+  // Restore button) AND useToast (for restore-success feedback).
+  // Cold-boot refresh → 401 keeps the test in "logged-out" mode
+  // by default (no Restore button visible); individual tests can
+  // override the mocks to flip into super_admin to assert on it.
+  vi.spyOn(authApi, "refresh").mockRejectedValue(
+    new ApiError("AUTH_INVALID", "no", 401)
+  );
+
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } }
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
-        <DocumentsListPage />
-      </MemoryRouter>
+      <ToastProvider>
+        <AuthProvider>
+          <MemoryRouter>
+            <DocumentsListPage />
+          </MemoryRouter>
+        </AuthProvider>
+      </ToastProvider>
     </QueryClientProvider>
   );
 }

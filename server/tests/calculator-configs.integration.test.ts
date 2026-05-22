@@ -56,6 +56,25 @@ describe("POST /api/v1/calculator-configs", () => {
     expect(res.status).toBe(401);
   });
 
+  it("Sprint 9.R — returns 403 FORBIDDEN for read-only `user` role", async () => {
+    // Phase 8 spec: `user` = read-only viewer. Cannot create
+    // calc-configs (admin+ required).
+    await createTestUser({
+      email: "viewer@bsg.test",
+      password: "viewer12345",
+      role: "user"
+    });
+    const token = await loginAs("viewer@bsg.test", "viewer12345");
+    const [company] = await db.insert(companies).values(companyFixture()).returning();
+
+    const res = await request(app)
+      .post("/api/v1/calculator-configs")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, payload: samplePayload });
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe("FORBIDDEN");
+  });
+
   it("creates a config with companyId + payload only (deal omitted)", async () => {
     const token = await setupAuth();
     const [company] = await db.insert(companies).values(companyFixture()).returning();

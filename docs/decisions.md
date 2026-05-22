@@ -5147,3 +5147,83 @@ Use this file to record meaningful technical decisions for the project.
   - Single-source-of-truth confirmed: `refreshTokenMaxAgeMs()`
     drives both DB expiry and cookie max-age.
 
+### Decision: Sprint 9.R — History rearrange + Restore from list + user→read-only (2026-05-22)
+- Context: operator brief during live testing:
+  1. "Історію документу перенести вище до інших кнопок щоб було
+     зручніше" — History panel on DocumentViewPage was below the
+     preview, requiring scroll past a tall iframe.
+  2. "Додати на сторінку документів також можливість відновити
+     документ" — Restore was only available from the detail page;
+     operators with a list of soft-deleted docs had to click into
+     each one.
+  3. "В нас є просто користувач не адмін і не супер адмін які в
+     нього права?" — exposed real architectural drift: Phase 8
+     spec defined `user` as **read-only** (sales-rep tier reviewing
+     quotes), but the implementation let `user` create documents
+     and calc-configs (basically admin without HubSpot push). Spec
+     wins.
+
+**A. History above preview (DocumentViewPage)**
+  Moved `<EventHistoryPanel>` from below the document preview to
+  right after the action-buttons row. Trivial JSX move.
+
+**B. Inline Restore on DocumentsListPage**
+  `StatusCell` now accepts `onRestore: (() => void) | null` and
+  `restoring: boolean`. When the row is soft-deleted AND the
+  caller is super_admin, a green outline button appears below the
+  "Deleted" badge. Wired via `useMutation` on `restoreDocument`;
+  per-row loading state via `mutation.variables === doc.number`.
+  No backend changes — reuses the existing super_admin restore
+  endpoint.
+
+**C. user role → READ-ONLY (BE + FE)**
+  Backend route gates added:
+  - `POST /api/v1/documents` → `requireRole("admin")`
+  - `POST /api/v1/documents/:number/use-as-template` → admin
+  - `POST /api/v1/calculator-configs` → admin
+  - `PUT /api/v1/calculator-configs/:id` → admin
+  - `DELETE /api/v1/calculator-configs/:id` → admin
+
+  Already gated (unchanged): Sync, Delete, Restore, user management.
+
+  Frontend writes hidden for `user`:
+  - "+ New calculator" link on CalculatorsListPage
+  - "Save calculator" on CalculatorPage (sticky toolbar + Zone6
+    footer; both via `onSaveCalculator` prop wired to
+    `hasRole("admin") ? handler : undefined`)
+  - "Save document" on WizardPage
+  - "Use as Template" on DocumentViewPage
+
+  Test-helpers default role flipped from `"user"` → `"admin"`.
+  Rationale: pre-9.R, "default authenticated caller" was
+  behaviourally admin everywhere except a few explicit `user`
+  tests; flipping the default is more readable than negating
+  it everywhere. Tests that target `user` now pass `role: "user"`
+  explicitly.
+
+  New regression tests: `POST /documents` returns 403 for `user`,
+  `POST /calculator-configs` returns 403 for `user`.
+
+- Final capability matrix (now matches Phase 8 spec):
+
+  | Action | user | admin | super_admin |
+  |---|---|---|---|
+  | Read everything | ✅ | ✅ | ✅ |
+  | Create / edit documents | ❌ | ✅ | ✅ |
+  | Create / edit calc-configs | ❌ | ✅ | ✅ |
+  | Sync to HubSpot | ❌ | ✅ | ✅ |
+  | Soft-delete documents | ❌ | ✅ | ✅ |
+  | Restore documents | ❌ | ❌ | ✅ |
+  | User management / invites | ❌ | ❌ | ✅ |
+
+- Verification:
+  - 331 frontend tests pass (unchanged net count; +1 regression for
+    user-role 403, fixed 3 test files that needed AuthProvider +
+    auth refresh mocks after the page started reading useAuth).
+  - 331 server tests pass (was 329; +2 new "user 403 on mutating
+    endpoint" tests for documents + calc-configs).
+  - TypeScript clean (FE + BE).
+  - `/me` + 2FA (Phase 8 Stage 2) explicitly DEFERRED — still
+    planned, called out as future work.
+
+
