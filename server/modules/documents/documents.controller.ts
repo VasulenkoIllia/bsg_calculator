@@ -92,6 +92,23 @@ export async function createController(req: Request, res: Response): Promise<voi
   if (!req.user) throw new TokenInvalidError();
   const body = createDocumentSchema.parse(req.body);
   const created = await createDocument(body, req.user.id);
+  // Sprint 9.X.B — audit log. We deliberately log the document number
+  // (operator-readable) under `targetId` rather than the UUID, matching
+  // the delete/restore handlers — keeps the audit-log table searchable
+  // by the same identifier the operator sees in the UI. Scope +
+  // companyId go into `meta` so the company filter (Sprint 9.X.C) can
+  // narrow by company without a follow-up JOIN.
+  await recordAdminAction({
+    ...auditActor(req),
+    actionType: "document.created",
+    targetType: "document",
+    targetId: created.number,
+    meta: {
+      scope: body.scope,
+      companyId: body.companyId,
+      hubspotDealId: body.hubspotDealId ?? null
+    }
+  });
   res.status(201).json(created);
 }
 
@@ -161,6 +178,22 @@ export async function syncController(
   // BSG-XXX". Auto-sync from createDocument's setImmediate passes
   // null (no req.user there) and the event reads as "system".
   const updated = await syncDocumentToHubspot(number, req.user.id);
+  // Sprint 9.X.B — audit log. Logged AFTER the sync resolves so a
+  // HubSpot failure (502 thrown above) doesn't create a misleading
+  // "synced" entry. Operator can re-click Sync after a failure, which
+  // produces a fresh audit row + a fresh Note in HubSpot — the
+  // sync.service intentionally creates a new Note per call so the
+  // customer's timeline has the full retry history.
+  await recordAdminAction({
+    ...auditActor(req),
+    actionType: "document.synced",
+    targetType: "document",
+    targetId: number,
+    meta: {
+      hubspotNoteId: updated.hubspotNoteId,
+      companyId: updated.companyId
+    }
+  });
   res.status(200).json(updated);
 }
 

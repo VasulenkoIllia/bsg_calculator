@@ -102,6 +102,91 @@ describe("audit log captures admin actions across surfaces", () => {
     expect(types).toContain("user.invite_revoked");
   });
 
+  it("Sprint 9.X.B — captures document.created at POST /documents", async () => {
+    // The Sprint 9.O audit broadened recordAdminAction wiring to user
+    // surfaces but did NOT include document.created — until now an
+    // operator could create a row that never landed in the audit log.
+    // Verify the new wiring fires the right action_type + carries
+    // companyId in meta (consumed by the company filter in 9.X.C).
+    await createTestUser({ email: "sa@bsg.test", password: "sa12345678", role: "super_admin" });
+    const token = await loginAs("sa@bsg.test", "sa12345678");
+    const company = await seedCompany("audit-doc-created-001");
+
+    const create = await request(app)
+      .post("/api/v1/documents")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        companyId: company.id,
+        scope: "agreement",
+        payload: { schemaVersion: 1 }
+      });
+    expect(create.status).toBe(201);
+
+    const log = await request(app)
+      .get("/api/v1/admin/audit-log?actionType=document.created")
+      .set("Authorization", `Bearer ${token}`);
+    expect(log.status).toBe(200);
+    expect(log.body.items).toHaveLength(1);
+    expect(log.body.items[0]).toMatchObject({
+      actionType: "document.created",
+      targetType: "document",
+      targetId: create.body.number,
+      meta: { scope: "agreement", companyId: company.id }
+    });
+  });
+
+  it("Sprint 9.X.B — captures calc.created / calc.updated / calc.deleted", async () => {
+    // Mirrors the documents wiring for the calc-configs CRUD surface.
+    // Three rounds (create → update → delete) on a single calc — the
+    // audit log should carry one row per surface, all with
+    // targetType='calc_config' and the same targetId.
+    await createTestUser({ email: "sa@bsg.test", password: "sa12345678", role: "super_admin" });
+    const token = await loginAs("sa@bsg.test", "sa12345678");
+    const company = await seedCompany("audit-calc-001");
+
+    const create = await request(app)
+      .post("/api/v1/calculator-configs")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        companyId: company.id,
+        title: "Audit-trail draft",
+        payload: { schemaVersion: 1 }
+      });
+    expect(create.status).toBe(201);
+    const calcId = create.body.id;
+
+    await request(app)
+      .put(`/api/v1/calculator-configs/${calcId}`)
+      .set("Authorization", `Bearer ${token}`)
+      // updateCalculatorConfigSchema requires `payload` (full snapshot
+      // on every save — frontend always sends the entire blob); title
+      // is optional.
+      .send({
+        title: "Audit-trail draft (edited)",
+        payload: { schemaVersion: 1 }
+      })
+      .expect(200);
+
+    await request(app)
+      .delete(`/api/v1/calculator-configs/${calcId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(204);
+
+    const log = await request(app)
+      .get("/api/v1/admin/audit-log")
+      .set("Authorization", `Bearer ${token}`);
+    expect(log.status).toBe(200);
+
+    const calcRows = log.body.items.filter(
+      (r: { targetId: string; targetType: string }) =>
+        r.targetType === "calc_config" && r.targetId === calcId
+    );
+    const types = calcRows.map((r: { actionType: string }) => r.actionType);
+    expect(types).toContain("calc.created");
+    expect(types).toContain("calc.updated");
+    expect(types).toContain("calc.deleted");
+  });
+
   it("captures document delete + restore", async () => {
     await createTestUser({ email: "sa@bsg.test", password: "sa12345678", role: "super_admin" });
     const token = await loginAs("sa@bsg.test", "sa12345678");

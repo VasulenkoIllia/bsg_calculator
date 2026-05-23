@@ -14,6 +14,8 @@ import {
 } from "../../shared/sorted-pagination";
 import { parseUuidParam } from "../../shared/uuid-param";
 import { TokenInvalidError } from "../../shared/errors";
+import { auditActor } from "../../shared/audit-actor";
+import { recordAdminAction } from "../admin-actions/admin-actions.service";
 import { calculatorConfigSortFields } from "./calculator-configs.repository";
 import {
   createCalculatorConfigSchema,
@@ -63,6 +65,20 @@ export async function createController(req: Request, res: Response): Promise<voi
   if (!req.user) throw new TokenInvalidError();
   const body = createCalculatorConfigSchema.parse(req.body);
   const created = await createCalculatorConfig(body, req.user.id);
+  // Sprint 9.X.B — audit log. companyId in meta enables the company
+  // filter on /audit-log (Sprint 9.X.C). The calc's `title` may be
+  // null (untitled drafts) — logged as null in that case.
+  await recordAdminAction({
+    ...auditActor(req),
+    actionType: "calc.created",
+    targetType: "calc_config",
+    targetId: created.id,
+    meta: {
+      companyId: body.companyId,
+      hubspotDealId: body.hubspotDealId ?? null,
+      title: body.title ?? null
+    }
+  });
   res.status(201).json(created);
 }
 
@@ -78,12 +94,45 @@ export async function updateController(req: Request, res: Response): Promise<voi
   const id = parseUuidParam(req, "id");
   const body = updateCalculatorConfigSchema.parse(req.body);
   const updated = await updateCalculatorConfigById(id, body);
+  // Sprint 9.X.B — audit log. Calc auto-saves on /calc/:id fire this
+  // endpoint repeatedly while the operator edits, so the audit log
+  // accumulates rows fast — that's intentional, the operator brief
+  // calls for "зміни по документах" visibility. `meta.touchedKeys`
+  // (list of fields the PUT body actually included) keeps each row
+  // small but informative; the full payload isn't replicated here
+  // (calculator_config_events already captures the snapshot).
+  await recordAdminAction({
+    ...auditActor(req),
+    actionType: "calc.updated",
+    targetType: "calc_config",
+    targetId: id,
+    meta: {
+      companyId: updated.companyId,
+      touchedKeys: Object.keys(body)
+    }
+  });
   res.status(200).json(updated);
 }
 
 export async function deleteController(req: Request, res: Response): Promise<void> {
+  if (!req.user) throw new TokenInvalidError();
   const id = parseUuidParam(req, "id");
+  // Sprint 9.X.B — audit log. Fetch the calc BEFORE delete so we can
+  // carry companyId + title into meta (the delete itself returns no
+  // payload). If the calc is missing, `getCalculatorConfig` throws
+  // 404 and we never reach the recordAdminAction call.
+  const existing = await getCalculatorConfig(id);
   await deleteCalculatorConfigById(id);
+  await recordAdminAction({
+    ...auditActor(req),
+    actionType: "calc.deleted",
+    targetType: "calc_config",
+    targetId: id,
+    meta: {
+      companyId: existing.companyId,
+      title: existing.title
+    }
+  });
   res.status(204).end();
 }
 
@@ -103,11 +152,28 @@ export async function deleteController(req: Request, res: Response): Promise<voi
  * push to the customer's CRM timeline.
  */
 export async function syncController(req: Request, res: Response): Promise<void> {
+  if (!req.user) throw new TokenInvalidError();
   const id = parseUuidParam(req, "id");
   // Phase 8 Stage 4 — pass req.user.id so the History panel attributes
   // the manual sync click to a real person. Auto-sync background path
   // (createCalculatorConfig setImmediate) calls the service with
   // `actorUserId=null` so it shows as "system".
-  const updated = await syncCalculatorConfigToHubspot(id, req.user?.id ?? null);
+  const updated = await syncCalculatorConfigToHubspot(id, req.user.id);
+  // Sprint 9.X.B — audit log. Logged AFTER the sync resolves; a
+  // HubSpot failure (502) re-throws above and we never get here, so
+  // the audit row only exists when the Note was actually created /
+  // updated. Auto-sync from the background setImmediate is NOT logged
+  // (no req on that path; the system action shouldn't pollute the
+  // operator's audit trail).
+  await recordAdminAction({
+    ...auditActor(req),
+    actionType: "calc.synced",
+    targetType: "calc_config",
+    targetId: id,
+    meta: {
+      hubspotNoteId: updated.hubspotNoteId,
+      companyId: updated.companyId
+    }
+  });
   res.status(200).json(updated);
 }

@@ -99,6 +99,13 @@
       "when": 1779836400000,
       "tag": "0013_admin_actions",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1779922800000,
+      "tag": "0014_admin_actions_new_types",
+      "breakpoints": true
     }
   ]
 }

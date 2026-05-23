@@ -29,8 +29,15 @@ export const ADMIN_ACTION_TYPES = [
   "auth.reset_consumed",
   "auth.password_changed",
   "auth.signed_out_everywhere",
+  // Sprint 9.X.B — extended documents + new calc-configs set.
+  "document.created",
+  "document.synced",
   "document.deleted",
-  "document.restored"
+  "document.restored",
+  "calc.created",
+  "calc.updated",
+  "calc.deleted",
+  "calc.synced"
 ] as const;
 
 export type AdminActionType = (typeof ADMIN_ACTION_TYPES)[number];
@@ -111,10 +118,22 @@ export function formatAdminActionType(type: AdminActionType): string {
       return "Changed own password";
     case "auth.signed_out_everywhere":
       return "Signed out everywhere";
+    case "document.created":
+      return "Created document";
+    case "document.synced":
+      return "Synced document to HubSpot";
     case "document.deleted":
       return "Deleted document";
     case "document.restored":
       return "Restored document";
+    case "calc.created":
+      return "Created calculator";
+    case "calc.updated":
+      return "Updated calculator";
+    case "calc.deleted":
+      return "Deleted calculator";
+    case "calc.synced":
+      return "Synced calculator to HubSpot";
     default: {
       const _exhaustive: never = type;
       return String(_exhaustive);

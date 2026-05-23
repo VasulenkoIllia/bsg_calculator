@@ -33,9 +33,20 @@ export const ADMIN_ACTION_TYPES = [
   "auth.reset_consumed",
   "auth.password_changed",
   "auth.signed_out_everywhere",
-  // Document management (admin + super_admin surface)
+  // Document management (any operator role)
+  // Sprint 9.X.B — extended to include the create + manual-sync events.
+  // Auto-sync from the background setImmediate is NOT logged here
+  // (it's a system action, not operator-driven).
+  "document.created",
+  "document.synced",
   "document.deleted",
-  "document.restored"
+  "document.restored",
+  // Calc-config management — Sprint 9.X.B added the full CRUD + manual
+  // sync set. Same auto-sync exclusion rule as documents.
+  "calc.created",
+  "calc.updated",
+  "calc.deleted",
+  "calc.synced"
 ] as const;
 
 export type AdminActionType = (typeof ADMIN_ACTION_TYPES)[number];
@@ -104,7 +115,9 @@ export const adminActions = pgTable(
         'user.reset_link_created',
         'auth.invite_accepted', 'auth.reset_consumed',
         'auth.password_changed', 'auth.signed_out_everywhere',
-        'document.deleted', 'document.restored'
+        'document.created', 'document.synced',
+        'document.deleted', 'document.restored',
+        'calc.created', 'calc.updated', 'calc.deleted', 'calc.synced'
       )`
     )
   })
