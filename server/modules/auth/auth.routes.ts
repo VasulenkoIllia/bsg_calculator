@@ -14,7 +14,11 @@
 
 import { Router } from "express";
 import { asyncHandler } from "../../shared/async-handler";
-import { loginLimiter, refreshLimiter } from "../../middleware/rate-limit";
+import {
+  loginLimiter,
+  refreshLimiter,
+  selfServiceLimiter
+} from "../../middleware/rate-limit";
 import { requireAuth } from "../../middleware/require-auth";
 import {
   changeOwnPasswordController,
@@ -41,19 +45,19 @@ authRouter.post("/refresh", refreshLimiter, asyncHandler(refreshController));
 authRouter.post("/logout", refreshLimiter, asyncHandler(logoutController));
 authRouter.get("/me", requireAuth(), asyncHandler(meController));
 
-// Sprint 9.T — self-service. Both reuse `loginLimiter` (5/min) since
-// /me/password does a bcrypt compare on currentPassword that has the
-// same DoS profile as /login. /me/sign-out-everywhere is cheaper but
-// shares the same operator-action posture.
+// Sprint 9.T — self-service. Sprint 9.V audit fix M4 — use a
+// dedicated `selfServiceLimiter` (separate counter pool from
+// `loginLimiter`) so a burst of /me/password attempts from an
+// operator can't eat into the unauthenticated /login budget.
 authRouter.post(
   "/me/password",
   requireAuth(),
-  loginLimiter,
+  selfServiceLimiter,
   asyncHandler(changeOwnPasswordController)
 );
 authRouter.post(
   "/me/sign-out-everywhere",
   requireAuth(),
-  loginLimiter,
+  selfServiceLimiter,
   asyncHandler(signOutEverywhereController)
 );

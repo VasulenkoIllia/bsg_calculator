@@ -11,6 +11,8 @@ import { useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { ApiError } from "../api/client.js";
 import {
+  ADMIN_ACTION_TYPES,
+  formatAdminActionType,
   listAdminActions,
   type AdminAction,
   type AdminActionType,
@@ -18,59 +20,6 @@ import {
 } from "../api/admin-actions.js";
 import { LoadMoreButton } from "../components/LoadMoreButton.js";
 import { formatDateTime } from "../shared/format.js";
-
-/**
- * Operator-readable label for each action type. Keep in lockstep
- * with the controlled vocabulary in the server's CHECK constraint
- * (server/db/migrations/0013_admin_actions.sql).
- */
-function humanActionType(type: AdminActionType): string {
-  switch (type) {
-    case "user.created":
-      return "Created user";
-    case "user.updated":
-      return "Updated user";
-    case "user.password_reset":
-      return "Reset password (direct)";
-    case "user.invite_created":
-      return "Issued invite";
-    case "user.invite_revoked":
-      return "Revoked invite";
-    case "user.reset_link_created":
-      return "Issued reset link";
-    case "auth.invite_accepted":
-      return "Accepted invite";
-    case "auth.reset_consumed":
-      return "Consumed reset link";
-    case "auth.password_changed":
-      return "Changed own password";
-    case "auth.signed_out_everywhere":
-      return "Signed out everywhere";
-    case "document.deleted":
-      return "Deleted document";
-    case "document.restored":
-      return "Restored document";
-    default: {
-      const _exhaustive: never = type;
-      return String(_exhaustive);
-    }
-  }
-}
-
-const ALL_ACTION_TYPES: AdminActionType[] = [
-  "user.created",
-  "user.updated",
-  "user.password_reset",
-  "user.invite_created",
-  "user.invite_revoked",
-  "user.reset_link_created",
-  "auth.invite_accepted",
-  "auth.reset_consumed",
-  "auth.password_changed",
-  "auth.signed_out_everywhere",
-  "document.deleted",
-  "document.restored"
-];
 
 export function AuditLogPage() {
   const [actionType, setActionType] = useState<AdminActionType | "all">("all");
@@ -123,9 +72,9 @@ export function AuditLogPage() {
             className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:w-64"
           >
             <option value="all">All actions</option>
-            {ALL_ACTION_TYPES.map(t => (
+            {ADMIN_ACTION_TYPES.map(t => (
               <option key={t} value={t}>
-                {humanActionType(t)}
+                {formatAdminActionType(t)}
               </option>
             ))}
           </select>
@@ -190,7 +139,7 @@ function AuditRow({ action }: { action: AdminAction }) {
         <span className="text-slate-400">{action.actorEmail}</span>
       </td>
       <td className="px-4 py-3 text-sm text-slate-800">
-        {humanActionType(action.actionType)}
+        {formatAdminActionType(action.actionType)}
       </td>
       <td className="px-4 py-3 text-xs text-slate-600">
         {action.targetType ? (

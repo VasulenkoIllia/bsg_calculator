@@ -5436,4 +5436,65 @@ Use this file to record meaningful technical decisions for the project.
   - Only outstanding piece is TOTP 2FA, awaiting a focused
     security sprint.
 
+### Decision: Sprint 9.V — 9.T/9.U audit closure (2026-05-22)
+- Context: ran 3-agent parallel audit (security + code + RBAC
+  verification) over Sprint 9.T (/me cabinet) + Sprint 9.U (admin
+  audit log) before the planned 2FA work.
+- Findings: **0 CRITICAL/HIGH/MEDIUM security issues, 0 RBAC
+  discrepancies (28 rows verified), 0 regressions**. The RBAC
+  verification confirmed FE/BE gates are paired correctly for
+  every action across all three roles.
+- Actionable fixes (all addressed):
+  - **M1** Redundant `findUserById` on every audit write.
+    Added `displayName` to `req.user` so requireAuth carries the
+    field forward (zero extra DB cost — the User row is already
+    in hand). `RecordAdminActionInput` now accepts denormalised
+    `actorDisplayName` + `actorEmail`; the lookup fallback stays
+    for callers without `req.user`. New `auditActor(req)` helper
+    in `server/shared/audit-actor.ts` returns the spread-friendly
+    triple — controllers use `...auditActor(req)` in every audit
+    call site.
+  - **M2 (partial)** Centralised `loginAsToken` + `loginAsSession`
+    in `test-helpers.ts`. The 12 existing test files still have
+    their local copies (not worth a 12-file diff right now); new
+    tests should import from the helper. Drift-only-grows-with-
+    time, but no functional issue.
+  - **M3** `actorId(req)` is now cached to a const in every
+    controller that uses it twice (createInviteController,
+    revokeInviteController, createPasswordResetLinkController, all
+    three users.controller mutators).
+  - **M4** Added dedicated `selfServiceLimiter` (5/min, separate
+    counter pool) for `/auth/me/password` + `/auth/me/sign-out-
+    everywhere`. Previously they shared `loginLimiter`'s state, so
+    a burst of /me/password attempts could starve /login on the
+    same IP.
+  - **M5** `recordAdminAction` error logger now passes the full
+    `err` object (pino serializes stack); previously only
+    `(err as Error).message` made debugging a write failure hard.
+  - **M6** FE `ADMIN_ACTION_TYPES` is now an exported `as const`
+    array in `src/api/admin-actions.ts` (single source of truth);
+    `AdminActionType` is derived as `typeof ADMIN_ACTION_TYPES[number]`.
+    `AuditLogPage` imports the array directly — no more hand-
+    maintained list.
+  - **M7** Added cursor pagination correctness test (7 rows, two
+    pages of 5 + 2, disjoint id sets across pages, second page's
+    nextCursor null). Previously only the empty/single-page paths
+    were covered.
+  - **M8** `formatAdminActionType` moved from `AuditLogPage`'s
+    private scope into `src/api/admin-actions.ts` (NOT into
+    `src/shared/format.ts` because `tsconfig.server.json` includes
+    `src/shared/**` and would then pull `api/admin-actions` →
+    `api/client` → vite's `import.meta.env` into the server build).
+  - **M9** Added regression test: `role: "user"` can change their
+    own password via `/me/password`. Both /me endpoints are
+    `requireAuth()` only (no `requireRole`), and a future
+    accidental tightening would silently break sales-rep accounts.
+- Verification:
+  - 346 server tests pass (was 344; +2: cursor pagination + user-role
+    /me access).
+  - 331 frontend tests pass (unchanged).
+  - TypeScript clean (FE + BE).
+- Status going into 2FA: Phase 8 effectively complete except for
+  the TOTP block. Repository, FE, audit log all verified clean.
+
 

@@ -51,6 +51,10 @@ export function requireAuth() {
       req.user = {
         id: user.id,
         email: user.email,
+        // Sprint 9.V audit fix M1 — carry displayName so audit-action
+        // writes don't re-fetch the user row. The `user` row is
+        // already in hand here; no extra DB cost.
+        displayName: user.displayName,
         role: user.role
       };
       next();

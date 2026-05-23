@@ -103,6 +103,31 @@ describe("POST /api/v1/auth/me/password", () => {
       .send({ currentPassword: "x", newPassword: "newPassword2" });
     expect(res.status).toBe(401);
   });
+
+  it("Sprint 9.V audit fix M9 — works for read-only `user` role too", async () => {
+    // /me is gated by requireAuth() only (no requireRole), so the
+    // lowest tier MUST be able to change their own password. A
+    // future regression that tightens this to admin+ would break
+    // sales-rep tier accounts.
+    await createTestUser({
+      email: "u@bsg.test",
+      password: "oldPass12",
+      role: "user"
+    });
+    const session = await loginAs("u@bsg.test", "oldPass12");
+
+    const res = await request(app)
+      .post("/api/v1/auth/me/password")
+      .set("Authorization", `Bearer ${session.accessToken}`)
+      .send({ currentPassword: "oldPass12", newPassword: "newPass34" });
+    expect(res.status).toBe(204);
+
+    // New password works.
+    const newLogin = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ identifier: "u@bsg.test", password: "newPass34" });
+    expect(newLogin.status).toBe(200);
+  });
 });
 
 describe("POST /api/v1/auth/me/sign-out-everywhere", () => {

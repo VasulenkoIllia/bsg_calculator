@@ -55,6 +55,25 @@ export const loginLimiter = buildLimiter({
   message: "Too many login attempts. Please wait a minute and try again."
 });
 
+/**
+ * Sprint 9.V audit fix — separate limiter for authenticated
+ * self-service actions (/me/password + /me/sign-out-everywhere).
+ *
+ * Why separate from `loginLimiter`: both /me endpoints are
+ * Bearer-authenticated and shouldn't share an IP counter with the
+ * unauthenticated /login surface. A burst of /me/password attempts
+ * from an operator would otherwise eat into the same 5/min budget
+ * and temporarily block /login from the same IP for a legit user.
+ *
+ * The 5/min cap matches /login's posture because /me/password also
+ * does a bcrypt compare (currentPassword verification), so the DoS
+ * profile is the same — just keyed to a different counter pool.
+ */
+export const selfServiceLimiter = buildLimiter({
+  max: 5,
+  message: "Too many requests. Please wait a minute and try again."
+});
+
 /** Refresh limiter — generous because legit multi-tab clients burst. */
 export const refreshLimiter = buildLimiter({
   max: 20,

@@ -29,6 +29,7 @@ import {
   signOutEverywhere
 } from "./auth.service";
 import { TokenInvalidError } from "../../shared/errors";
+import { auditActor } from "../../shared/audit-actor";
 import { recordAdminAction } from "../admin-actions/admin-actions.service";
 
 /**
@@ -129,7 +130,7 @@ export async function changeOwnPasswordController(
     newPassword: body.newPassword
   });
   await recordAdminAction({
-    actorUserId: req.user.id,
+    ...auditActor(req),
     actionType: "auth.password_changed",
     targetType: "user",
     targetId: req.user.id
@@ -157,7 +158,7 @@ export async function signOutEverywhereController(
   if (!req.user) throw new TokenInvalidError();
   await signOutEverywhere(req.user.id);
   await recordAdminAction({
-    actorUserId: req.user.id,
+    ...auditActor(req),
     actionType: "auth.signed_out_everywhere",
     targetType: "user",
     targetId: req.user.id

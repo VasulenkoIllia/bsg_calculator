@@ -5,6 +5,7 @@
 import type { Request, Response } from "express";
 import { parseUuidParam } from "../../shared/uuid-param";
 import { InternalError } from "../../shared/errors";
+import { auditActor } from "../../shared/audit-actor";
 import { recordAdminAction } from "../admin-actions/admin-actions.service";
 import {
   createUser,
@@ -47,10 +48,11 @@ export async function getController(req: Request, res: Response): Promise<void> 
 }
 
 export async function createController(req: Request, res: Response): Promise<void> {
+  const actor = actorId(req);
   const body = createUserRequestSchema.parse(req.body);
   const user = await createUser(body);
   await recordAdminAction({
-    actorUserId: actorId(req),
+    ...auditActor(req),
     actionType: "user.created",
     targetType: "user",
     targetId: user.id,
@@ -60,11 +62,12 @@ export async function createController(req: Request, res: Response): Promise<voi
 }
 
 export async function patchController(req: Request, res: Response): Promise<void> {
+  const actor = actorId(req);
   const id = parseUuidParam(req, "id");
   const body = updateUserRequestSchema.parse(req.body);
-  const user = await patchUser(id, body, actorId(req));
+  const user = await patchUser(id, body, actor);
   await recordAdminAction({
-    actorUserId: actorId(req),
+    ...auditActor(req),
     actionType: "user.updated",
     targetType: "user",
     targetId: user.id,
@@ -78,11 +81,12 @@ export async function patchController(req: Request, res: Response): Promise<void
 }
 
 export async function resetPasswordController(req: Request, res: Response): Promise<void> {
+  const actor = actorId(req);
   const id = parseUuidParam(req, "id");
   const body = resetPasswordRequestSchema.parse(req.body);
   const user = await resetUserPassword(id, body.newPassword);
   await recordAdminAction({
-    actorUserId: actorId(req),
+    ...auditActor(req),
     actionType: "user.password_reset",
     targetType: "user",
     targetId: id

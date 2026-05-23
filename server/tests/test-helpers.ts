@@ -56,6 +56,47 @@ export async function createTestUser(input: {
   return row;
 }
 
+/**
+ * Sprint 9.V audit fix M2 — centralised login helper.
+ * Previously duplicated across 12 test files; the two flavours
+ * (returns just the token vs. returns {token, cookie}) are exported
+ * separately so each call site picks the shape it actually needs.
+ *
+ * Both throw on non-200 with the email + status in the message so a
+ * mistyped password surfaces obviously in the test failure output
+ * instead of as a cryptic 401 elsewhere.
+ */
+import request from "supertest";
+
+export async function loginAsToken(
+  email: string,
+  password: string
+): Promise<string> {
+  const res = await request(app)
+    .post("/api/v1/auth/login")
+    .send({ identifier: email, password });
+  if (res.status !== 200) {
+    throw new Error(`loginAsToken ${email} failed: ${res.status}`);
+  }
+  return res.body.accessToken;
+}
+
+export async function loginAsSession(
+  email: string,
+  password: string
+): Promise<{ accessToken: string; refreshCookie: string }> {
+  const res = await request(app)
+    .post("/api/v1/auth/login")
+    .send({ identifier: email, password });
+  if (res.status !== 200) {
+    throw new Error(`loginAsSession ${email} failed: ${res.status}`);
+  }
+  return {
+    accessToken: res.body.accessToken,
+    refreshCookie: extractRefreshCookie(res.headers["set-cookie"])
+  };
+}
+
 /** Extract the bsg_refresh cookie from a Set-Cookie header. */
 export function extractRefreshCookie(setCookieHeader: string | string[] | undefined): string {
   if (!setCookieHeader) return "";

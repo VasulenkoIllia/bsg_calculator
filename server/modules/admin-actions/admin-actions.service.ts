@@ -38,11 +38,18 @@ import {
 export interface RecordAdminActionInput {
   /**
    * The acting user's id. Pass `null` for actor-less system actions
-   * (none today, but the schema supports it). The helper loads the
-   * row to denormalise `displayName` + `email` at write-time so the
-   * audit listing renders without a JOIN later.
+   * (none today, but the schema supports it).
    */
   actorUserId: string | null;
+  /**
+   * Sprint 9.V audit fix M1 — denormalised display fields. Pass them
+   * when the caller already has the User row (every controller does,
+   * via `req.user`), so we skip an unnecessary DB round-trip. The
+   * fallback path (look up by id) stays for callers that genuinely
+   * don't have the values handy.
+   */
+  actorDisplayName?: string;
+  actorEmail?: string;
   actionType: AdminActionType;
   targetType?: AdminActionTargetType;
   targetId?: string;
@@ -57,14 +64,24 @@ export interface RecordAdminActionInput {
  * just succeeded. Audit trail completeness is best-effort; if a
  * write somehow fails the operator brief is "fix the log infra"
  * rather than "block the user".
+ *
+ * Performance note: when the caller passes `actorDisplayName` +
+ * `actorEmail` (every controller does via `req.user`), this method
+ * issues exactly ONE DB statement (the INSERT). If those are absent
+ * and `actorUserId` is set, we fall back to a SELECT to denormalise
+ * before the INSERT.
  */
 export async function recordAdminAction(
   input: RecordAdminActionInput
 ): Promise<void> {
   try {
-    let actorDisplayName = "system";
-    let actorEmail = "system@local";
-    if (input.actorUserId) {
+    let actorDisplayName = input.actorDisplayName ?? "system";
+    let actorEmail = input.actorEmail ?? "system@local";
+    // Fallback lookup only when the caller didn't denormalise.
+    if (
+      input.actorUserId &&
+      (input.actorDisplayName === undefined || input.actorEmail === undefined)
+    ) {
       const user = await findUserById(input.actorUserId);
       if (user) {
         actorDisplayName = user.displayName;
@@ -84,9 +101,13 @@ export async function recordAdminAction(
       input.tx
     );
   } catch (err) {
+    // Sprint 9.V audit fix M5 — pass the Error object directly so
+    // pino serializes the full stack trace (under the `err` key).
+    // Previously `err: (err as Error).message` stripped the stack,
+    // making debugging a write failure significantly harder.
     logger.error(
       {
-        err: (err as Error).message,
+        err,
         actionType: input.actionType,
         actorId: input.actorUserId,
         targetId: input.targetId ?? null

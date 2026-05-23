@@ -141,6 +141,48 @@ describe("audit log captures admin actions across surfaces", () => {
     });
   });
 
+  it("Sprint 9.V audit fix M7 — cursor pagination walks pages without overlap", async () => {
+    // Generate 7 audit entries (more than one page at limit=5), then
+    // verify the cursor walks both pages cleanly with no row appearing
+    // twice and no row missing.
+    await createTestUser({ email: "sa@bsg.test", password: "sa12345678", role: "super_admin" });
+    const token = await loginAs("sa@bsg.test", "sa12345678");
+
+    // Emit 7 invite-create actions.
+    for (let i = 0; i < 7; i++) {
+      await request(app)
+        .post("/api/v1/users/invites")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ role: "user" })
+        .expect(201);
+    }
+
+    const page1 = await request(app)
+      .get("/api/v1/admin/audit-log?limit=5")
+      .set("Authorization", `Bearer ${token}`);
+    expect(page1.status).toBe(200);
+    expect(page1.body.items).toHaveLength(5);
+    expect(page1.body.nextCursor).not.toBeNull();
+
+    const cursor = page1.body.nextCursor as { id: string; createdAt: string };
+    const page2 = await request(app)
+      .get(
+        `/api/v1/admin/audit-log?limit=5&cursorId=${cursor.id}&cursorCreatedAt=${encodeURIComponent(cursor.createdAt)}`
+      )
+      .set("Authorization", `Bearer ${token}`);
+    expect(page2.status).toBe(200);
+    // 7 invites total → page1 has 5, page2 has 2.
+    expect(page2.body.items).toHaveLength(2);
+    expect(page2.body.nextCursor).toBeNull();
+
+    // No overlap — id sets are disjoint.
+    const page1Ids = new Set(page1.body.items.map((i: { id: string }) => i.id));
+    const page2Ids = page2.body.items.map((i: { id: string }) => i.id);
+    for (const id of page2Ids) {
+      expect(page1Ids.has(id)).toBe(false);
+    }
+  });
+
   it("captures /me/password change with NO password in meta", async () => {
     await createTestUser({
       email: "ch@bsg.test",

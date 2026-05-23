@@ -12,6 +12,7 @@ import {
   parseSortQuery
 } from "../../shared/sorted-pagination";
 import { TokenInvalidError } from "../../shared/errors";
+import { auditActor } from "../../shared/audit-actor";
 import { recordAdminAction } from "../admin-actions/admin-actions.service";
 import { documentSortFields } from "./documents.repository";
 import {
@@ -196,7 +197,7 @@ export async function deleteController(
     body.note ?? null
   );
   await recordAdminAction({
-    actorUserId: req.user.id,
+    ...auditActor(req),
     actionType: "document.deleted",
     targetType: "document",
     targetId: number,
@@ -231,7 +232,7 @@ export async function restoreController(
   const number = req.params.number;
   const updated = await restoreDocument(number, req.user.id);
   await recordAdminAction({
-    actorUserId: req.user.id,
+    ...auditActor(req),
     actionType: "document.restored",
     targetType: "document",
     targetId: number

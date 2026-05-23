@@ -20,6 +20,11 @@ declare module "express-serve-static-core" {
     user?: {
       id: string;
       email: string;
+      // Sprint 9.V audit fix M1 — denormalised at requireAuth-time
+      // so admin-action audit logging doesn't re-fetch the user row
+      // on every privileged action. requireAuth has the User in hand
+      // anyway; carrying displayName forward costs nothing.
+      displayName: string;
       // Phase 8 Stage 1: hierarchical role enum (user ⊂ admin ⊂ super_admin).
       // Replaces the legacy boolean `isAdmin` claim. Gates use the
       // generic `requireRole(min)` middleware instead of branching
