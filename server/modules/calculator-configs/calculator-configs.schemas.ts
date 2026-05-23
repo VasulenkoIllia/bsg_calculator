@@ -187,6 +187,17 @@ export const calculatorConfigPublicSchema = z.object({
       actorEmail: z.string().nullable()
     })
     .nullable()
+    .optional(),
+  // Sprint 9.X.A — display surrogate for the row's creator. Sourced
+  // from the listing endpoint's LEFT JOIN on `users.created_by_user_id`.
+  // Nullable because the FK is ON DELETE SET NULL; optional because
+  // single-row endpoints don't JOIN this.
+  createdBy: z
+    .object({
+      displayName: z.string(),
+      email: z.string()
+    })
+    .nullable()
     .optional()
 });
 export type CalculatorConfigPublic = z.infer<typeof calculatorConfigPublicSchema>;

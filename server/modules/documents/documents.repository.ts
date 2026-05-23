@@ -50,9 +50,24 @@ export interface LastEventSummary {
   actorEmail: string | null;
 }
 
+/**
+ * Sprint 9.X.A — denormalised display info for the row's creator.
+ * Sourced from a LEFT JOIN on users.created_by_user_id at the
+ * listing endpoint. Nullable because the FK is ON DELETE SET NULL —
+ * if the creator user was hard-deleted, the document survives but
+ * we lose the display surrogate. Renders below the CREATED
+ * timestamp on the FE so operators see "Created by Super Admin"
+ * without an N+1 fetch per row.
+ */
+export interface CreatorSummary {
+  displayName: string;
+  email: string;
+}
+
 export interface DocumentWithCompanyName extends Document {
   companyName: string;
   lastEvent: LastEventSummary | null;
+  createdBy: CreatorSummary | null;
 }
 
 /**
@@ -381,10 +396,17 @@ export async function listDocuments(
   // via `sql.raw` since the typed `.leftJoinLateral` helper isn't in
   // our drizzle-orm version. The raw fragment is parameter-free
   // (only references column refs, no user input) → no SQL injection.
+  // Sprint 9.X.A — also LEFT JOIN users on documents.created_by_user_id
+  // so each row surfaces the creator's display surrogate. The FK is
+  // ON DELETE SET NULL (matches the existing deleted_by_user_id
+  // semantics), so the JOIN is LEFT not INNER — a doc whose creator
+  // was hard-deleted still renders, with `createdBy = null`.
   const rows = await db
     .select({
       doc: documents,
       companyName: companies.name,
+      creatorDisplayName: users.displayName,
+      creatorEmail: users.email,
       lastEventType: sql<string | null>`le.event_type`,
       lastEventCreatedAt: sql<Date | null>`le.created_at`,
       lastEventActorUserId: sql<string | null>`le.actor_user_id`,
@@ -393,6 +415,7 @@ export async function listDocuments(
     })
     .from(documents)
     .innerJoin(companies, eq(documents.companyId, companies.id))
+    .leftJoin(users, eq(users.id, documents.createdByUserId))
     .leftJoin(
       sql`LATERAL (
         SELECT
@@ -416,6 +439,10 @@ export async function listDocuments(
   return rows.map(r => ({
     ...r.doc,
     companyName: r.companyName,
+    createdBy:
+      r.creatorDisplayName !== null && r.creatorEmail !== null
+        ? { displayName: r.creatorDisplayName, email: r.creatorEmail }
+        : null,
     lastEvent: r.lastEventType
       ? {
           eventType: r.lastEventType,

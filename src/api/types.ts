@@ -158,6 +158,14 @@ export interface PublicCalculatorConfig {
    * no events have been recorded yet.
    */
   lastEvent?: PublicLastEvent | null;
+  /**
+   * Sprint 9.X.A — display surrogate for the calc's creator, sourced
+   * from the listing endpoint's LEFT JOIN on `users.created_by_user_id`.
+   * Renders below the Updated timestamp on /calculators ("Created by
+   * Super Admin"). Nullable because the FK is ON DELETE SET NULL;
+   * optional because single-row endpoints don't JOIN this.
+   */
+  createdBy?: { displayName: string; email: string } | null;
 }
 
 /**
@@ -240,6 +248,15 @@ export interface PublicDocument {
    * defensive "deleter row missing" path.
    */
   deletedBy: { displayName: string; email: string } | null;
+  /**
+   * Sprint 9.X.A — display surrogate for the document's creator,
+   * sourced from the listing endpoint's LEFT JOIN on
+   * `users.created_by_user_id`. Renders below the CREATED timestamp
+   * on /documents ("Created by Super Admin"). Nullable because the FK
+   * is ON DELETE SET NULL; optional because single-doc endpoints don't
+   * JOIN this.
+   */
+  createdBy?: { displayName: string; email: string } | null;
   deletionReason: DocumentDeletionReason | null;
   deletionNote: string | null;
   /**

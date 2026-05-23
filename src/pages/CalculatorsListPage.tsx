@@ -240,7 +240,28 @@ export function CalculatorsListPage() {
                     <span className="text-slate-400">company-level</span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-slate-500">{formatDateTime(cfg.updatedAt)}</td>
+                {/*
+                  Sprint 9.X.A — render creator below the Updated
+                  timestamp. Calc-configs are mutable (Updated ≠
+                  Created semantically), so we explicitly label
+                  "Created by …" to keep meaning unambiguous. The
+                  LastAction column already shows the most-recent
+                  editor — this surfaces the original author.
+                  Sourced from the listing endpoint's LEFT JOIN on
+                  `users.created_by_user_id`; null if the creator
+                  was hard-deleted (FK is ON DELETE SET NULL).
+                */}
+                <td className="px-4 py-3 text-slate-500">
+                  <div>{formatDateTime(cfg.updatedAt)}</div>
+                  {cfg.createdBy ? (
+                    <div
+                      className="text-xs text-slate-400"
+                      title={cfg.createdBy.email}
+                    >
+                      Created by {cfg.createdBy.displayName}
+                    </div>
+                  ) : null}
+                </td>
                 <td className="px-4 py-3">
                   <LastActionCell event={cfg.lastEvent} />
                 </td>

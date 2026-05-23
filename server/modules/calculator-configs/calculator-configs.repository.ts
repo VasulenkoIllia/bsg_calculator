@@ -29,6 +29,7 @@ import { db, type DbOrTx } from "../../db/client";
 import {
   calculatorConfigs,
   companies,
+  users,
   type CalculatorConfig,
   type NewCalculatorConfig
 } from "../../db/schema";
@@ -72,6 +73,16 @@ export interface CalculatorConfigWithCompanyName extends CalculatorConfig {
     actorUserId: string | null;
     actorDisplayName: string | null;
     actorEmail: string | null;
+  } | null;
+  // Sprint 9.X.A — display surrogate for the row's creator, sourced
+  // from a LEFT JOIN on `users.created_by_user_id`. Renders below the
+  // updated/created timestamp on the FE listing so operators see
+  // "Created by Super Admin" without an N+1 fetch per row. Nullable
+  // because the FK is ON DELETE SET NULL — a calc whose creator was
+  // hard-deleted survives with createdBy=null.
+  createdBy: {
+    displayName: string;
+    email: string;
   } | null;
 }
 
@@ -339,10 +350,15 @@ export async function listCalculatorConfigs(
   // row per calc so the "Last action" column on the FE listing
   // works without an N+1 fetch. LIMIT 1 + ORDER BY DESC keeps the
   // planner cheap (events table is indexed on `(calc_id, created_at DESC)`).
+  // Sprint 9.X.A — also LEFT JOIN users on calculator_configs.created_by_user_id
+  // for the creator's display surrogate. Mirrors the same JOIN added
+  // to listDocuments in the same sprint.
   const rows = await db
     .select({
       config: calculatorConfigs,
       companyName: companies.name,
+      creatorDisplayName: users.displayName,
+      creatorEmail: users.email,
       lastEventType: sql<string | null>`le.event_type`,
       lastEventCreatedAt: sql<Date | null>`le.created_at`,
       lastEventActorUserId: sql<string | null>`le.actor_user_id`,
@@ -351,6 +367,7 @@ export async function listCalculatorConfigs(
     })
     .from(calculatorConfigs)
     .innerJoin(companies, eq(calculatorConfigs.companyId, companies.id))
+    .leftJoin(users, eq(users.id, calculatorConfigs.createdByUserId))
     .leftJoin(
       sql`LATERAL (
         SELECT
@@ -374,6 +391,10 @@ export async function listCalculatorConfigs(
   return rows.map(r => ({
     ...r.config,
     companyName: r.companyName,
+    createdBy:
+      r.creatorDisplayName !== null && r.creatorEmail !== null
+        ? { displayName: r.creatorDisplayName, email: r.creatorEmail }
+        : null,
     lastEvent: r.lastEventType
       ? {
           eventType: r.lastEventType,

@@ -452,7 +452,26 @@ export function DocumentsListPage() {
                 <td className="px-4 py-3">
                   <LastActionCell event={doc.lastEvent} />
                 </td>
-                <td className="px-4 py-3 text-slate-500">{formatDateTime(doc.createdAt)}</td>
+                {/*
+                  Sprint 9.X.A — show creator below the timestamp.
+                  Backend listing now LEFT JOINs `users` on
+                  `documents.created_by_user_id`, so each row carries
+                  `createdBy.displayName` + `email` (or null if the
+                  creator was hard-deleted — FK is ON DELETE SET NULL).
+                  We render `displayName` (compact) with `email` as
+                  the title attribute for disambiguation on hover.
+                */}
+                <td className="px-4 py-3 text-slate-500">
+                  <div>{formatDateTime(doc.createdAt)}</div>
+                  {doc.createdBy ? (
+                    <div
+                      className="text-xs text-slate-400"
+                      title={doc.createdBy.email}
+                    >
+                      by {doc.createdBy.displayName}
+                    </div>
+                  ) : null}
+                </td>
               </tr>
             ))}
           </tbody>

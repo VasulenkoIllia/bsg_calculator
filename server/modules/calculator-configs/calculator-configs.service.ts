@@ -60,6 +60,11 @@ function toPublic(
   // is forwarded to the public DTO so the FE "Last action" column
   // can render `actor · event · time-ago` without an N+1.
   const lastEvent = "lastEvent" in row ? row.lastEvent : null;
+  // Sprint 9.X.A — listing rows carry the creator's display surrogate
+  // via the LEFT JOIN added on `users.id = created_by_user_id`. Single
+  // -row endpoints (create / update / get-by-id) don't JOIN, so we
+  // surface null and the FE renders no subline.
+  const createdBy = "createdBy" in row ? row.createdBy : null;
   return parseDtoOrInternalError(
     calculatorConfigPublicSchema,
     {
@@ -75,6 +80,7 @@ function toPublic(
       // Phase 9.I — HubSpot sync state surfaced on the public DTO.
       hubspotNoteId: row.hubspotNoteId,
       hubspotSyncState: row.hubspotSyncState,
+      createdBy,
       lastEvent: lastEvent
         ? {
             eventType: lastEvent.eventType,

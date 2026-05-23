@@ -77,6 +77,12 @@ function toPublic(
   const companyName = "companyName" in row ? row.companyName : undefined;
   const lastEvent = "lastEvent" in row ? row.lastEvent : null;
   const deletedBy = "deletedBy" in row ? row.deletedBy : null;
+  // Sprint 9.X.A — listing rows carry the creator's display surrogate
+  // via the new LEFT JOIN on users.created_by_user_id. Single-doc
+  // paths (Document / DocumentWithDeleter) don't carry it; we surface
+  // null there so the DTO shape is uniform and the FE detail page
+  // (which doesn't render this) doesn't crash on a missing key.
+  const createdBy = "createdBy" in row ? row.createdBy : null;
   const canSeeDeletionNote = options.canSeeDeletionNote ?? false;
   // Sprint 9.M S4 — Drizzle `.$type<>()` annotations on `scope`,
   // `hubspotSyncState`, `deletionReason` now narrow the column types
@@ -113,6 +119,7 @@ function toPublic(
       // deleted_by_user_id) — they get null here and rely on
       // lastEvent's actor for the "deleted by Admin" hint.
       deletedBy,
+      createdBy,
       deletionReason: row.deletionReason,
       deletionNote: canSeeDeletionNote ? row.deletionNote : null,
       // Sprint 9.N — last action surfaced from the events log via

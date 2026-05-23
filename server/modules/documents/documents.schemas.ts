@@ -162,6 +162,20 @@ export const documentPublicSchema = z.object({
     .nullable()
     .optional(),
   /**
+   * Sprint 9.X.A — display surrogate for the row's creator. Sourced
+   * from the listing endpoint's LEFT JOIN on `users.created_by_user_id`.
+   * Nullable because the FK is ON DELETE SET NULL — a doc whose creator
+   * was hard-deleted survives with createdBy=null. Optional because the
+   * single-doc endpoints don't JOIN this (no need on the detail page).
+   */
+  createdBy: z
+    .object({
+      displayName: z.string(),
+      email: z.string()
+    })
+    .nullable()
+    .optional(),
+  /**
    * Sprint 9.N — last action surfaced from `document_events` via
    * LATERAL subquery on the listing endpoint. Null on single-doc
    * fetch (different code path doesn't JOIN events). Powers the
