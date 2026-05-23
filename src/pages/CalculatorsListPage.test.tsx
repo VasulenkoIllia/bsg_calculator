@@ -160,8 +160,12 @@ describe("CalculatorsListPage — search", () => {
     // First call (initial mount) had no q.
     expect(spy.mock.calls[0][0]).toMatchObject({ q: undefined });
 
+    // Sprint 9.W — search input is now wrapped in a <label> with
+    // aria-label "Search saved calculators by title". Query via the
+    // accessible name rather than placeholder (placeholder text is
+    // marketing copy, not a stable identifier).
     fireEvent.change(
-      screen.getByPlaceholderText(/search by title/i),
+      screen.getByLabelText(/search saved calculators by title/i),
       { target: { value: "alpha" } }
     );
 
@@ -184,14 +188,17 @@ describe("CalculatorsListPage — search", () => {
     await waitFor(() => expect(spy).toHaveBeenCalled());
 
     fireEvent.change(
-      screen.getByPlaceholderText(/search by title/i),
+      screen.getByLabelText(/search saved calculators by title/i),
       { target: { value: "doesnotexist" } }
     );
 
+    // Sprint 9.W — empty-state message is now generic ("match the
+    // current filters") because both q AND company-filter can drive
+    // an empty result. Test no longer asserts on the query echo.
     await waitFor(
       () => {
         expect(
-          screen.getByText(/no saved calculators match "doesnotexist"/i)
+          screen.getByText(/no saved calculators match the current filters/i)
         ).toBeInTheDocument();
       },
       { timeout: 1_000 }

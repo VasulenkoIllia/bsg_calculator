@@ -26,6 +26,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api/client.js";
+import { CompanyTypeahead } from "../components/CompanyTypeahead.js";
 import { LastActionCell } from "../components/LastActionCell.js";
 import { LoadMoreButton } from "../components/LoadMoreButton.js";
 import { SortableTh } from "../components/SortableTh.js";
@@ -35,12 +36,19 @@ import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
 import { useSortState } from "../hooks/useSortState.js";
 import { formatDateTime } from "../shared/format.js";
 import type { CalculatorConfigSortField } from "../api/calculator-configs.js";
+import type { PublicCompany } from "../api/types.js";
 
 export function CalculatorsListPage() {
   // Sprint 9.R — `user` is the read-only tier (no calc creation /
   // edit / delete). Use this gate to hide write affordances.
   const { hasRole } = useAuth();
   const [searchInput, setSearchInput] = useState("");
+  // Sprint 9.W — optional company filter (parallel with the same
+  // affordance on /documents). Backend + hook already accept
+  // `companyId`; this just surfaces the UI.
+  const [selectedCompany, setSelectedCompany] = useState<PublicCompany | null>(
+    null
+  );
   // 300ms debounce on the title-substring query so a fast typist
   // doesn't fire a request per keystroke. Mirrors the pattern used
   // on /documents (DocumentsListPage) and the company-typeahead.
@@ -49,7 +57,16 @@ export function CalculatorsListPage() {
   const { sortField, sortDir, sortSpec, handleSortChange } =
     useSortState<CalculatorConfigSortField>("createdAt", "desc");
 
-  const configs = useCalculatorConfigs({ q, sort: sortSpec });
+  const configs = useCalculatorConfigs({
+    q,
+    companyId: selectedCompany?.id,
+    // When a company is selected, drop the deal-pin filter so the
+    // operator sees BOTH deal-pinned and company-level drafts for
+    // that company. Without showAll the list would default to
+    // company-level only.
+    showAll: selectedCompany ? true : undefined,
+    sort: sortSpec
+  });
   // Sprint 6.7 audit fix (S9): mirror the DocumentsListPage UX —
   // when TanStack Query is re-fetching the listing (e.g. after a
   // window-focus or a mutation invalidates the cache) show a
@@ -77,28 +94,43 @@ export function CalculatorsListPage() {
             (auto-save) or to launch the wizard from it.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        {/* Sprint 9.R — hide "+ New calculator" for read-only `user`s.
+            The /calculator route itself is still reachable (they
+            can run computations), they just can't persist them. */}
+        {hasRole("admin") ? (
+          <Link
+            to="/calculator"
+            className="rounded-lg border border-blue-500 bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+          >
+            + New calculator
+          </Link>
+        ) : null}
+      </header>
+
+      {/* Sprint 9.W — filter strip: company typeahead + title search.
+          Mirror of the /documents listing filter row. */}
+      <div className="flex flex-col flex-wrap gap-3 sm:flex-row sm:items-end">
+        <CompanyTypeahead
+          selected={selectedCompany}
+          onSelectedChange={setSelectedCompany}
+          label="Filter by company"
+          placeholder="Click to browse, or type to filter…"
+          className="w-full sm:w-72"
+        />
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Search by title
+          </span>
           <input
             type="search"
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
-            placeholder="Search by title…"
+            placeholder="e.g. Q1 pricing"
             aria-label="Search saved calculators by title"
-            className="w-64 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:w-64"
           />
-          {/* Sprint 9.R — hide "+ New calculator" for read-only `user`s.
-              The /calculator route itself is still reachable (they
-              can run computations), they just can't persist them. */}
-          {hasRole("admin") ? (
-            <Link
-              to="/calculator"
-              className="rounded-lg border border-blue-500 bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
-            >
-              + New calculator
-            </Link>
-          ) : null}
-        </div>
-      </header>
+        </label>
+      </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -169,8 +201,8 @@ export function CalculatorsListPage() {
             {!configs.isLoading && !configs.isError && configs.items.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-4 py-6 text-center text-sm text-slate-500">
-                  {q.trim()
-                    ? `No saved calculators match "${q.trim()}".`
+                  {q.trim() || selectedCompany
+                    ? "No saved calculators match the current filters."
                     : "No saved calculators yet. Open the calculator and click Save calculator to persist one."}
                 </td>
               </tr>
