@@ -226,6 +226,67 @@ describe("audit log captures admin actions across surfaces", () => {
     });
   });
 
+  it("Sprint 9.X.C — companyId filter narrows to docs+calcs of one company", async () => {
+    // Setup: two companies, each with one document. Operator runs the
+    // log with ?companyId=A and should see only A's row.
+    await createTestUser({ email: "sa@bsg.test", password: "sa12345678", role: "super_admin" });
+    const token = await loginAs("sa@bsg.test", "sa12345678");
+    const companyA = await seedCompany("audit-filter-a-001");
+    const companyB = await seedCompany("audit-filter-b-001");
+
+    const docA = await request(app)
+      .post("/api/v1/documents")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: companyA.id, scope: "offer", payload: { schemaVersion: 1 } });
+    expect(docA.status).toBe(201);
+
+    const docB = await request(app)
+      .post("/api/v1/documents")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: companyB.id, scope: "offer", payload: { schemaVersion: 1 } });
+    expect(docB.status).toBe(201);
+
+    const log = await request(app)
+      .get(`/api/v1/admin/audit-log?companyId=${companyA.id}&actionType=document.created`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(log.status).toBe(200);
+    expect(log.body.items).toHaveLength(1);
+    expect(log.body.items[0].targetId).toBe(docA.body.number);
+  });
+
+  it("Sprint 9.X.C — targetType filter narrows to one entity category", async () => {
+    // Setup: create 1 doc + 1 calc; filtering by targetType=document
+    // returns exactly the doc row, by targetType=calc_config returns
+    // exactly the calc row.
+    await createTestUser({ email: "sa@bsg.test", password: "sa12345678", role: "super_admin" });
+    const token = await loginAs("sa@bsg.test", "sa12345678");
+    const company = await seedCompany("audit-filter-target-001");
+
+    await request(app)
+      .post("/api/v1/documents")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, scope: "offer", payload: { schemaVersion: 1 } })
+      .expect(201);
+
+    await request(app)
+      .post("/api/v1/calculator-configs")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, payload: { schemaVersion: 1 } })
+      .expect(201);
+
+    const docOnly = await request(app)
+      .get("/api/v1/admin/audit-log?targetType=document")
+      .set("Authorization", `Bearer ${token}`);
+    expect(docOnly.body.items.every((r: { targetType: string }) => r.targetType === "document"))
+      .toBe(true);
+
+    const calcOnly = await request(app)
+      .get("/api/v1/admin/audit-log?targetType=calc_config")
+      .set("Authorization", `Bearer ${token}`);
+    expect(calcOnly.body.items.every((r: { targetType: string }) => r.targetType === "calc_config"))
+      .toBe(true);
+  });
+
   it("Sprint 9.V audit fix M7 — cursor pagination walks pages without overlap", async () => {
     // Generate 7 audit entries (more than one page at limit=5), then
     // verify the cursor walks both pages cleanly with no row appearing

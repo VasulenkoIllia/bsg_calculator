@@ -38,7 +38,23 @@ export const listAdminActionsQuerySchema = z.object({
   /** Filter by action type (controlled enum). */
   actionType: z.enum(ADMIN_ACTION_TYPES).optional(),
   /** Filter by actor user id. */
-  actorUserId: z.string().uuid().optional()
+  actorUserId: z.string().uuid().optional(),
+  /**
+   * Sprint 9.X.C — filter to rows whose target is a `document` OR
+   * `calc_config` belonging to this company. Resolves via two
+   * EXISTS subqueries in the repository (the document target_id is
+   * the BSG number; the calc target_id is the UUID).
+   */
+  companyId: z.string().uuid().optional(),
+  /**
+   * Sprint 9.X.C — narrow to a specific target category. Uses the
+   * same enum as the public DTO. Null target_type rows (global
+   * actions like /me/sign-out-everywhere) are excluded when this
+   * filter is set.
+   */
+  targetType: z
+    .enum(["user", "document", "calc_config", "invite", "reset"])
+    .optional()
 });
 
 export type ListAdminActionsQuery = z.infer<typeof listAdminActionsQuerySchema>;

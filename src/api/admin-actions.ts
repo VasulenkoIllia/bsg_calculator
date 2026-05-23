@@ -72,6 +72,17 @@ export interface ListAdminActionsParams {
   cursorCreatedAt?: string;
   actionType?: AdminActionType;
   actorUserId?: string;
+  /**
+   * Sprint 9.X.C — narrow to rows whose target is a document or
+   * calc_config belonging to this company. user / invite / reset
+   * rows are excluded by the OR (no company association).
+   */
+  companyId?: string;
+  /**
+   * Sprint 9.X.C — narrow to a specific target category. Rows with
+   * `target_type = null` (global actions) are excluded when set.
+   */
+  targetType?: AdminActionTargetType;
 }
 
 export async function listAdminActions(

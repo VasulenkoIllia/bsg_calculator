@@ -42,6 +42,18 @@ export interface ListAdminActionsArgs {
   actionType?: AdminActionType;
   /** Optional filter — exact match on actor_user_id. */
   actorUserId?: string;
+  /** Sprint 9.X.C — exact match on target_type. */
+  targetType?: AdminActionTargetType;
+  /**
+   * Sprint 9.X.C — narrow to rows whose target is a document OR
+   * calc_config belonging to this company. Resolved via two EXISTS
+   * subqueries because:
+   *   - document targets use target_id = documents.number (text)
+   *   - calc_config targets use target_id = calculator_configs.id (uuid as text)
+   *   - user / invite / reset targets don't have a company → excluded
+   *     by the OR (they can't match either subquery)
+   */
+  companyId?: string;
 }
 
 export async function listAdminActions(
@@ -54,6 +66,33 @@ export async function listAdminActions(
   }
   if (args.actorUserId) {
     conditions.push(eq(adminActions.actorUserId, args.actorUserId));
+  }
+  if (args.targetType) {
+    conditions.push(eq(adminActions.targetType, args.targetType));
+  }
+  if (args.companyId) {
+    // Sprint 9.X.C — company filter via EXISTS. Both subqueries are
+    // parameterised via Drizzle's sql template tags so the companyId
+    // can't be injected. The text/uuid casts mirror how target_id is
+    // stored: documents persist BSG-XXX as text; calc_configs persist
+    // the UUID as text. The casts are explicit to avoid an implicit
+    // "text = uuid" comparison error from the planner.
+    conditions.push(
+      sql`(
+        EXISTS (
+          SELECT 1 FROM documents d
+          WHERE d.number = ${adminActions.targetId}
+            AND d.company_id = ${args.companyId}
+            AND ${adminActions.targetType} = 'document'
+        )
+        OR EXISTS (
+          SELECT 1 FROM calculator_configs c
+          WHERE c.id::text = ${adminActions.targetId}
+            AND c.company_id = ${args.companyId}
+            AND ${adminActions.targetType} = 'calc_config'
+        )
+      )`
+    );
   }
   // Cursor: (created_at DESC, id DESC) — strict-less-than the cursor
   // pair. The (created_at DESC, id DESC) ordering means "older rows
