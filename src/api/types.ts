@@ -191,6 +191,14 @@ export interface PublicLastEvent {
  */
 export type PublicCalculatorConfigListItem = PublicCalculatorConfig & {
   companyName: string;
+  // Sprint 9.Y.A M1 audit fix — tighten createdBy on the listing
+  // shape from optional to REQUIRED (still nullable). The listing
+  // repository's LEFT JOIN always populates this field — either the
+  // creator surrogate or explicit `null`. Marking it required here
+  // forces list-rendering call sites to handle both branches
+  // (without the fix, `cfg.createdBy?.displayName` was accepted but
+  // could mask a wiring regression).
+  createdBy: { displayName: string; email: string } | null;
 };
 
 // ─── Documents ────────────────────────────────────────────────────
@@ -280,6 +288,12 @@ export interface PublicDocument {
  */
 export type PublicDocumentListItem = PublicDocument & {
   companyName: string;
+  // Sprint 9.Y.A M1 audit fix — mirror PublicCalculatorConfigListItem:
+  // listing repo's LEFT JOIN always returns either the creator
+  // surrogate or explicit null, so the listing shape promises the
+  // field is present (still nullable). Single-doc fetches use the
+  // base PublicDocument type where the field is optional.
+  createdBy: { displayName: string; email: string } | null;
 };
 
 /**

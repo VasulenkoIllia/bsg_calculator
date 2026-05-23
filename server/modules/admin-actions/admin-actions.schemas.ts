@@ -7,10 +7,10 @@
  */
 
 import { z } from "zod";
-import { ADMIN_ACTION_TYPES } from "../../db/schema";
+import { ADMIN_ACTION_TARGET_TYPES, ADMIN_ACTION_TYPES } from "../../db/schema";
 
 export const adminActionTargetTypeSchema = z
-  .enum(["user", "document", "calc_config", "invite", "reset"])
+  .enum(ADMIN_ACTION_TARGET_TYPES)
   .nullable();
 
 export const adminActionPublicSchema = z.object({
@@ -51,10 +51,11 @@ export const listAdminActionsQuerySchema = z.object({
    * same enum as the public DTO. Null target_type rows (global
    * actions like /me/sign-out-everywhere) are excluded when this
    * filter is set.
+   *
+   * Sprint 9.Y.A M2 audit fix — pulls from the shared constant
+   * rather than re-listing the values.
    */
-  targetType: z
-    .enum(["user", "document", "calc_config", "invite", "reset"])
-    .optional()
+  targetType: z.enum(ADMIN_ACTION_TARGET_TYPES).optional()
 });
 
 export type ListAdminActionsQuery = z.infer<typeof listAdminActionsQuerySchema>;

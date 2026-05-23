@@ -29,14 +29,39 @@ import type { PublicCompany } from "../api/types.js";
  * Sprint 9.X.C — controlled vocabulary for the targetType dropdown.
  * Keep in lockstep with `adminActionTargetTypeSchema` on the server.
  * "all" is the FE-only sentinel for "no filter".
+ *
+ * Sprint 9.Y.A H2 audit fix — `companyScoped` marks target types that
+ * carry a company association (so the `companyId` filter can apply).
+ * `user` / `invite` / `reset` rows have no company link; combining
+ * them with `companyId` produces a silent empty result. The UI uses
+ * this flag to disable incompatible options when a company is
+ * selected, surfacing the constraint instead of returning 0 rows.
  */
-const TARGET_TYPE_OPTIONS: readonly { value: AdminActionTargetType; label: string }[] = [
-  { value: "document", label: "Document" },
-  { value: "calc_config", label: "Calculator" },
-  { value: "user", label: "User" },
-  { value: "invite", label: "Invite" },
-  { value: "reset", label: "Password reset" }
+const TARGET_TYPE_OPTIONS: readonly {
+  value: AdminActionTargetType;
+  label: string;
+  companyScoped: boolean;
+}[] = [
+  { value: "document", label: "Document", companyScoped: true },
+  { value: "calc_config", label: "Calculator", companyScoped: true },
+  { value: "user", label: "User", companyScoped: false },
+  { value: "invite", label: "Invite", companyScoped: false },
+  { value: "reset", label: "Password reset", companyScoped: false }
 ];
+
+/**
+ * Sprint 9.Y.A L2 audit fix — typed parser for the targetType select.
+ * Replaces the previous `e.target.value as AdminActionTargetType | "all"`
+ * cast with a runtime check against the controlled vocabulary. Falls
+ * back to "all" on any unexpected value (defence in depth — the
+ * <option> set is author-controlled, but a future regression that
+ * adds an unlisted value would silently corrupt state under a cast).
+ */
+function parseTargetType(value: string): AdminActionTargetType | "all" {
+  if (value === "all") return "all";
+  const match = TARGET_TYPE_OPTIONS.find(o => o.value === value);
+  return match ? match.value : "all";
+}
 
 export function AuditLogPage() {
   const [actionType, setActionType] = useState<AdminActionType | "all">("all");
@@ -54,11 +79,29 @@ export function AuditLogPage() {
   // super_admin-only on the server, but so is /audit-log, so we can
   // safely call it here. `staleTime: Infinity` is OK — the dropdown
   // doesn't need to react to a new user being added in the same session.
+  //
+  // Sprint 9.Y.A L1 audit fix — queryKey moved out of the
+  // `["admin", "audit-log", …]` prefix so a future
+  // `invalidateQueries(["admin", "audit-log"])` doesn't accidentally
+  // re-fetch the user dropdown.
   const usersQuery = useQuery({
-    queryKey: ["admin", "audit-log", "users-dropdown"],
+    queryKey: ["admin", "users", "audit-log-actor-dropdown"],
     queryFn: listUsers,
     staleTime: Infinity
   });
+
+  // Sprint 9.Y.A H2 audit fix — when a company is selected, narrow
+  // the targetType state to a company-scoped value. `user` / `invite` /
+  // `reset` rows are unreachable by the companyId filter, so silently
+  // keeping a stale incompatible selection would yield an empty page
+  // with no explanation.
+  const companySelected = selectedCompany !== null;
+  const effectiveTargetType: AdminActionTargetType | "all" =
+    companySelected &&
+    targetType !== "all" &&
+    !TARGET_TYPE_OPTIONS.find(o => o.value === targetType)?.companyScoped
+      ? "all"
+      : targetType;
 
   const {
     data,
@@ -74,7 +117,7 @@ export function AuditLogPage() {
       "audit-log",
       actionType,
       selectedCompany?.id ?? null,
-      targetType,
+      effectiveTargetType,
       actorUserId
     ],
     initialPageParam: undefined,
@@ -85,7 +128,11 @@ export function AuditLogPage() {
       return listAdminActions({
         actionType: actionType === "all" ? undefined : actionType,
         companyId: selectedCompany?.id,
-        targetType: targetType === "all" ? undefined : targetType,
+        // Use `effectiveTargetType` here too so the request matches
+        // the cache key — H2 audit fix coerces incompatible
+        // user/invite/reset selections to "all" when a company is set.
+        targetType:
+          effectiveTargetType === "all" ? undefined : effectiveTargetType,
         actorUserId: actorUserId === "all" ? undefined : actorUserId,
         cursorId: cursor?.id,
         cursorCreatedAt: cursor?.createdAt
@@ -134,19 +181,33 @@ export function AuditLogPage() {
               Filter by target
             </span>
             <select
-              value={targetType}
-              onChange={e =>
-                setTargetType(e.target.value as AdminActionTargetType | "all")
-              }
+              value={effectiveTargetType}
+              onChange={e => setTargetType(parseTargetType(e.target.value))}
               className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
             >
               <option value="all">All targets</option>
               {TARGET_TYPE_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>
+                <option
+                  key={o.value}
+                  value={o.value}
+                  disabled={companySelected && !o.companyScoped}
+                >
                   {o.label}
+                  {companySelected && !o.companyScoped
+                    ? " (no company link)"
+                    : ""}
                 </option>
               ))}
             </select>
+            {/* Sprint 9.Y.A H2 — surface the constraint inline rather
+                than returning a silent empty page when the operator
+                combines an incompatible target with companyId. */}
+            {companySelected ? (
+              <span className="text-[10px] text-slate-400">
+                Showing only document + calculator rows for this
+                company.
+              </span>
+            ) : null}
           </label>
           {/* CompanyTypeahead — handles "no selection" via null, so we
               can clear it from the wrapper button below. */}

@@ -55,13 +55,22 @@ export type AdminActionType = (typeof ADMIN_ACTION_TYPES)[number];
  * `target_type` enum. Free-form-ish in DB (no CHECK) because we may
  * add new target categories without a migration, but the TS layer
  * narrows to this set. `null` is valid for global actions.
+ *
+ * Sprint 9.Y.A M2 audit fix — promoted from a plain union to a
+ * single source of truth (`as const` tuple + derived type). The Zod
+ * query schema for the audit-log filter (Sprint 9.X.C) used to
+ * re-declare these five strings inline; both now read from the same
+ * constant, so adding a sixth target category is a one-line change.
  */
-export type AdminActionTargetType =
-  | "user"
-  | "document"
-  | "calc_config"
-  | "invite"
-  | "reset";
+export const ADMIN_ACTION_TARGET_TYPES = [
+  "user",
+  "document",
+  "calc_config",
+  "invite",
+  "reset"
+] as const;
+
+export type AdminActionTargetType = (typeof ADMIN_ACTION_TARGET_TYPES)[number];
 
 export const adminActions = pgTable(
   "admin_actions",

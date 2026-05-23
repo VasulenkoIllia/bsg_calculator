@@ -391,9 +391,14 @@ export async function listCalculatorConfigs(
   return rows.map(r => ({
     ...r.config,
     companyName: r.companyName,
+    // Sprint 9.Y.A M4 audit fix — see documents.repository for the
+    // rationale. Anchor on `displayName` (the UI-visible field) and
+    // coerce a (theoretically) missing email to empty string. In
+    // practice the users table has both columns NOT NULL, so the
+    // empty-string fallback never fires today.
     createdBy:
-      r.creatorDisplayName !== null && r.creatorEmail !== null
-        ? { displayName: r.creatorDisplayName, email: r.creatorEmail }
+      r.creatorDisplayName !== null
+        ? { displayName: r.creatorDisplayName, email: r.creatorEmail ?? "" }
         : null,
     lastEvent: r.lastEventType
       ? {

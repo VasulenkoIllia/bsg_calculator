@@ -5497,4 +5497,140 @@ Use this file to record meaningful technical decisions for the project.
 - Status going into 2FA: Phase 8 effectively complete except for
   the TOTP block. Repository, FE, audit log all verified clean.
 
+### Decision: Sprint 9.W — Company filter on Saved calculators (2026-05-23)
+- Context: `/calculators` listing only had a title-substring search.
+  Operators searching for "the draft I saved for Acme" had no
+  efficient narrow path; `/documents` had a parallel CompanyTypeahead
+  filter since launch but `/calculators` was missing it.
+- Change: Added `CompanyTypeahead` to `CalculatorsListPage` next
+  to the title search. Bound to `useCalculatorConfigs({ companyId,
+  showAll: true })` — `showAll: true` keeps both company-level AND
+  deal-pinned drafts visible for the chosen company (default scope
+  collapses to company-level only).
+- Restructured the header into a top row (title + "+ New calculator")
+  and a separate filter strip (company + title search) mirroring the
+  `/documents` layout. Empty state copy generic ("match the current
+  filters") because q AND company can each cause empty results.
+- Tests: 7/7 in `CalculatorsListPage.test.tsx` updated to query
+  search input via `getByLabelText` (aria-label) instead of
+  placeholder.
+
+### Decision: Sprint 9.X.A — `createdBy` on listing CREATED column (2026-05-23)
+- Context: operators couldn't see who created a document or calc
+  from the listing — only the LastAction column showed actor, but
+  for rows with no recent edit that column was empty / showed
+  "system". Original authorship was effectively invisible.
+- Change: both `listDocuments` and `listCalculatorConfigs` repos
+  gain a `LEFT JOIN users ON users.id = created_by_user_id`. The
+  row shape carries `createdBy: { displayName, email } | null`.
+  LEFT (not INNER) because the FK is ON DELETE SET NULL; rows whose
+  creator was hard-deleted still render with `createdBy=null`.
+- DTO surfaces it as nullable+optional on the base schema; the
+  narrowed `*ListItem` types tighten it to required-nullable (since
+  the listing repo always populates the field).
+- FE renders the creator name as a small subline below the
+  timestamp on both pages. `email` in `title` attribute for hover
+  disambiguation.
+
+### Decision: Sprint 9.X.B — Audit log: document.created + sync + calc CRUD (2026-05-23)
+- Context: `admin_actions` only logged 12 action types — all of
+  them on user-management or document delete/restore surfaces.
+  Creating a document or saving a calculator landed in per-entity
+  event tables but not in the operator-facing audit log.
+- DB change: migration `0014_admin_actions_new_types.sql` drops +
+  recreates the `action_type` CHECK with 6 new values:
+  `document.created`, `document.synced`, `calc.created`,
+  `calc.updated`, `calc.deleted`, `calc.synced`. Auto-sync from the
+  background `setImmediate` is NOT in this set — it's a system
+  action, not operator-driven; including it would pollute the audit
+  trail with one entry per save.
+- BE wiring: `recordAdminAction` calls added in `documents.controller`
+  (create, sync) and `calculator-configs.controller` (full CRUD +
+  sync). All calls happen AFTER the privileged op resolves so a
+  failure throws before the audit log row is written.
+- FE: `formatAdminActionType` extended with 6 new arms; the
+  exhaustive `default: never` guard catches future additions.
+- Tests: 2 new integration tests cover `document.created` + the
+  calc CRUD trio. 348 server tests pass (+2).
+
+### Decision: Sprint 9.X.C — Audit log: company/target/actor filters (2026-05-23)
+- Context: `/audit-log` only filtered by action_type. A super_admin
+  hunting "what did Bob touch on Acme last week" had to scroll
+  pages or grep meta JSON by eye.
+- BE change: `listAdminActionsQuerySchema` + repository gain
+  `companyId` (uuid) and `targetType` (controlled enum) params.
+  Company filter resolves via two parameterised EXISTS subqueries:
+  one over `documents.number` (target_id) where `target_type =
+  'document'`, one over `calculator_configs.id::text` where
+  `target_type = 'calc_config'`. user / invite / reset rows have no
+  company association — excluded by the OR.
+- FE change: `AuditLogPage` filter strip restructured from a 1-up
+  dropdown into a 4-up responsive grid (1 col mobile, 2 col tablet,
+  4 col desktop). New widgets: `CompanyTypeahead`, target dropdown,
+  actor dropdown (populated from `listUsers`).
+- Tests: 2 new integration tests cover company filter
+  (cross-company isolation) + target type filter. 350 server tests
+  pass (+2).
+
+### Decision: Sprint 9.Y.A — 9.W/9.X audit closure (2026-05-23)
+- Context: ran 3-agent parallel audit (security + code + TypeScript)
+  over Sprints 9.W + 9.X.A/B/C before deploy.
+- Findings: **0 CRITICAL, 2 HIGH, 4 MEDIUM, 3 LOW** — all
+  addressable in this same closure commit.
+- Actionable fixes (all addressed):
+  - **H1** `updateController` (calc-configs) was the only handler
+    in its file missing the `if (!req.user) throw new
+    TokenInvalidError()` guard. Without it, `auditActor(req)`
+    would surface a misconfigured route as a 500 instead of a
+    401. Added the guard for consistency + defence-in-depth.
+  - **H2** Combining `companyId` with `targetType=user|invite|reset`
+    on `/audit-log` produced a silent empty result (the company
+    EXISTS subqueries can only match document/calc_config rows; the
+    AND of the two conditions yields zero). The UI used to let an
+    operator pick both with no warning. Fix: `TARGET_TYPE_OPTIONS`
+    grew a `companyScoped` flag; `effectiveTargetType` coerces
+    incompatible selections to "all" when a company is set; the
+    `<option>` element is `disabled` with a "(no company link)"
+    suffix; an inline hint surfaces the constraint.
+  - **M1** `PublicDocumentListItem` and `PublicCalculatorConfigListItem`
+    now declare `createdBy` as REQUIRED (still nullable). The
+    listing repo's LEFT JOIN guarantees either a surrogate or
+    explicit null — marking it required at the listing-narrowed
+    layer forces call sites to handle both branches.
+  - **M2** `ADMIN_ACTION_TARGET_TYPES` extracted as an `as const`
+    array in `server/db/schema/admin-actions.ts`. The Zod schemas
+    (target type schema + list-query target filter) and the
+    derived TS type all read from this one source.
+  - **M4** `createdBy` null-collapse in both listing repos now
+    anchors on `displayName !== null` alone (with an `email ?? ""`
+    fallback that never fires today since both columns are NOT
+    NULL on `users`). Previous pair-check would have silently
+    produced `createdBy=null` if a future schema change made
+    `display_name` nullable.
+  - **L1** AuditLogPage `usersQuery` queryKey moved from
+    `["admin", "audit-log", "users-dropdown"]` to
+    `["admin", "users", "audit-log-actor-dropdown"]` so a future
+    `invalidateQueries(["admin", "audit-log"])` doesn't surprise-
+    invalidate the actor dropdown cache.
+  - **L2** Typed `parseTargetType(value: string)` helper replaces
+    the `as AdminActionTargetType | "all"` cast on the target
+    `<select>` onChange. Falls back to "all" on any unexpected
+    value — defence-in-depth, the `<option>` set is author-
+    controlled.
+- Findings NOT fixed (accepted):
+  - **MEDIUM (security): `createdBy.email` visible to `user`-tier
+    on listings.** Pre-existing exposure pattern — `lastEvent`
+    already carries `actorEmail` to the same tier. Not a new
+    regression; deferred to a separate privacy-tier review.
+  - **MEDIUM (code): `calc.updated` audit growth on auto-save.**
+    Intentional per operator brief ("see every change"). Retention
+    policy is a separate ops decision; documented here so a future
+    "audit table is huge" complaint has a paper trail.
+  - **LOW: audit + privileged op are not in one TX.** Pre-existing
+    pattern across delete/restore/sync handlers; the service
+    swallows audit-write failures by design. Project-wide trade-off,
+    not new.
+- Verification: 350 server tests pass, 331 frontend tests pass,
+  tsc clean (FE + BE).
+
 

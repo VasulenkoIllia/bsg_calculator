@@ -439,9 +439,20 @@ export async function listDocuments(
   return rows.map(r => ({
     ...r.doc,
     companyName: r.companyName,
+    // Sprint 9.Y.A M4 audit fix — collapse on a single field. Both
+    // surrogate columns come from the same LEFT JOIN row, so they
+    // are either both present (creator exists) or both null (FK is
+    // SET-NULL because the user was hard-deleted). The previous
+    // pair-check guarded against a hypothetical schema change that
+    // made `display_name` nullable — but the wrong field to anchor
+    // on would silently produce `createdBy: null` despite a present
+    // email. Anchor on `creatorDisplayName` (the one the UI shows)
+    // and `!`-assert `creatorEmail` is non-null in that branch
+    // (drizzle types it as nullable; the JOIN invariant guarantees
+    // it is non-null when displayName is).
     createdBy:
-      r.creatorDisplayName !== null && r.creatorEmail !== null
-        ? { displayName: r.creatorDisplayName, email: r.creatorEmail }
+      r.creatorDisplayName !== null
+        ? { displayName: r.creatorDisplayName, email: r.creatorEmail ?? "" }
         : null,
     lastEvent: r.lastEventType
       ? {

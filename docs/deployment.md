@@ -439,3 +439,54 @@ docker compose exec postgres psql -U bsg -d bsg_calculator -c \
 
 Either way, on the operator's next API call they'll have super-admin
 privileges (Phase 8 Stages 3+).
+
+---
+
+## 11. Routine redeploy (Sprint 9.W + 9.X + later) — `git pull && rebuild`
+
+For every sprint after the initial Stage 1 deploy, the redeploy
+recipe is the same regardless of whether the sprint added new
+migrations:
+
+```bash
+cd /var/www/projects/bsg_calculator
+git pull
+docker compose up -d --build app
+docker compose logs -f app | head -30   # confirm migrations applied
+```
+
+The entrypoint runs `npm run db:migrate` BEFORE the API listens, so
+any new files in `server/db/migrations/` are applied idempotently.
+The Drizzle journal (`server/db/migrations/meta/_journal.json`) is
+checked in — production picks up new entries automatically. No
+manual `psql` step is required.
+
+### 11.1 Sprint-specific notes
+
+- **Sprint 9.X.B (migration `0014_admin_actions_new_types.sql`)** —
+  drops + recreates the `admin_actions.action_type` CHECK to add 6
+  new vocabulary values (`document.created`, `document.synced`, and
+  the `calc.*` quartet). DDL-only, touches no row data; existing
+  rows that pre-date the new vocabulary keep their old action_types
+  and remain valid (the CHECK is only enforced on INSERT/UPDATE).
+- **Sprint 9.W + 9.X.A + 9.X.C** — no DB changes. Pure FE
+  restructure + additive BE JOINs / filter params. Rolling back the
+  container to a pre-sprint image is safe — no schema state to
+  unwind.
+
+### 11.2 Post-redeploy smoke
+
+After `docker compose up -d --build app`:
+
+1. Visit `https://bsg.workflo.space` — should serve the SPA.
+2. `/documents` listing — every row now shows "by &lt;creator&gt;"
+   under the CREATED date.
+3. `/calculators` listing — Company filter dropdown visible above
+   the table; row "Updated" cell shows creator subline.
+4. `/audit-log` (super_admin) — 4 filter widgets visible
+   (action / target / company / actor). Try selecting a company,
+   then the target dropdown should show user / invite / reset
+   options disabled with the "(no company link)" suffix.
+5. Create + delete a calc-config — audit log should record both
+   `calc.created` and `calc.deleted` rows with the correct
+   companyId in meta.

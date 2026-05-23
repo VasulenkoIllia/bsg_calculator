@@ -91,6 +91,13 @@ export async function createController(req: Request, res: Response): Promise<voi
  * calculator-configs.schemas.ts for the contract.
  */
 export async function updateController(req: Request, res: Response): Promise<void> {
+  // Sprint 9.Y.A H1 audit fix — guard `req.user` like every sibling
+  // handler in this file. Without it, `auditActor(req)` would throw
+  // an InternalError (500) on a misconfigured route instead of the
+  // expected TokenInvalidError (401). requireRole('admin') in the
+  // route table already sets req.user in practice; this is purely
+  // defence-in-depth + consistency.
+  if (!req.user) throw new TokenInvalidError();
   const id = parseUuidParam(req, "id");
   const body = updateCalculatorConfigSchema.parse(req.body);
   const updated = await updateCalculatorConfigById(id, body);
