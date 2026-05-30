@@ -35,3 +35,6 @@ pnpm-debug.log*
 # ARE committed and reviewed. Per-run rendered PNGs + diff overlays are
 # not (they regenerate every `npm run visual-diff`).
 tests/visual-diff-output/
+
+# Local PDF reference set for layout testing (not committed)
+reference-pdfs/

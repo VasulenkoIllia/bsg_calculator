@@ -2,7 +2,6 @@ import { escapeHtml } from "../../shared/html.js";
 import { buildAgreementBodyHtml } from "./agreementPdf/index.js";
 import {
   buildPdfUiKitStyles,
-  renderFooter,
   renderMetaItem
 } from "./pdf-kit/primitives.js";
 import { OFFER_REFERENCE_TOKENS } from "./pdf-kit/tokens.js";
@@ -25,103 +24,52 @@ const OFFER_CONFIDENTIAL_TITLE = "CONFIDENTIAL · PAYMENT INFRASTRUCTURE";
 const OFFER_SUBTITLE =
   "Card Acquiring, Payout Infrastructure & Settlement Terms — structured for scale-up and enterprise merchants operating globally.";
 
-// One body row to be wrapped by the orchestrator. `breakBefore: true`
-// makes the row start on a new printed page (force-page-break-before
-// CSS class). Used to push the Pay Out section onto page 2 when the
-// Card Acquiring section is heavy (tiered + both regions).
+// One top-level OFFER section, wrapped by the orchestrator into its
+// own `<tr><td>` row.
 interface OfferBodyRow {
   html: string;
-  breakBefore?: boolean;
 }
 
 // Returns each top-level OFFER section (Card Acquiring / Additional
 // Card Acquiring / Pay Out / Other Services & Fees / Terms &
-// Limitations) as its own row. The orchestrator wraps each row in a
-// separate `<tr><td>` inside `table.page-layout > tbody` so Chrome's
-// print engine has natural break points between rows — that is what
-// makes `<tfoot>` reliably repeat the disclaimer footer on every page.
-//
-// Page-budget rule (refined 2026-05-14 for section 1.1 across all
-// four sub-cases — second double-break fix on 2026-05-14):
-//
-//   Heavy payin (tiered) WITHOUT 1.1:
-//     page 1 = header + section 1 + payin custom note
-//     page 2 = section 2 + payout note + sections 3 + 4
-//     Rule: section 2 carries breakBefore=true. Sections 3+4 flow
-//     after it on page 2.
-//
-//   Heavy payin WITH 1.1:
-//     page 1 = header + section 1 + payin custom note
-//     page 2 = section 1.1 + section 2 + payout note + 3 + 4
-//     Rule: ONLY section 1.1 carries breakBefore=true. Section 2
-//     flows naturally beneath 1.1.
-//
-//   Light payin (non-tiered) WITHOUT 1.1:
-//     page 1 = header + section 1 + payin note + section 2 + note
-//     page 2 = sections 3 + 4
-//     Rule: section 3 carries breakBefore=true. Section 1 is small
-//     enough that 1+2 share page 1 cleanly.
-//
-//   Light payin WITH 1.1:
-//     page 1 = header + section 1 + payin note + section 1.1
-//     page 2 = section 2 + payout note + sections 3 + 4
-//     Rule: nothing forces a break. Section 1.1's extra height
-//     (especially when tiered) naturally cascades section 2 onto
-//     page 2; section 3 must NOT force a break (that would orphan
-//     section 2 alone on page 2 with sections 3+4 on page 3).
-//
-// `breakBefore` flags by section:
-//   - Section 1.1: heavyPayin
-//     (push to page 2 only when section 1 is heavy)
-//   - Section 2:   heavyPayin && !hasAdditional
-//     (force only when 1.1 is absent — when 1.1 is present, 1.1
-//     already opened page 2 and section 2 must flow after it)
-//   - Section 3:   lightPayin && !hasAdditional
-//     (force only when 1.1 is absent — when 1.1 is present, the
-//     extra ~50mm of 1.1 already cascades section 2 onto page 2
-//     naturally, and forcing 3 would strand section 2 alone there)
+// Limitations) as its own row. The orchestrator wraps each row in its
+// own `<tr><td>` inside `table.page-layout > tbody`, giving the print
+// engine clean break points between sections. Page breaks are NOT
+// forced — see the NATURAL FLOW note in the function body.
 function buildOfferBodyRows(
   data: DocumentTemplatePayload,
   layout: DocumentWizardLayout
 ): OfferBodyRow[] {
+  // NATURAL FLOW (2026-05-30): no forced page breaks inside the offer.
+  // Each `.offer-section` carries `break-inside: avoid`, so a section
+  // is never split mid-table — the print engine simply pushes a whole
+  // section to the next page when it doesn't fit, and otherwise lets
+  // sections flow continuously. This replaces the old compact-era
+  // `force-page-break-before` heuristics, which assumed a fixed 2-page
+  // budget and orphaned content (e.g. a lone custom note on an
+  // otherwise-empty page) once the universal full-size layout +
+  // standardized 10mm section gaps changed section heights. Custom
+  // notes stay as their own rows so a long note never drags its
+  // section's `break-inside: avoid` across a page boundary.
   const rows: OfferBodyRow[] = [];
 
   const payin = buildPayinSection(data, layout);
-  const payinIsPresent = payin.length > 0;
-  const payinHasTiers =
-    layout.payin.tableMode === "byRegionTiered" ||
-    layout.payin.tableMode === "flatTiered";
-  const heavyPayin = payinIsPresent && payinHasTiers;
-  const lightPayin = payinIsPresent && !payinHasTiers;
-
   if (payin) rows.push({ html: payin });
+
   const payinNote = buildPayinCustomNoteHtml(data);
   if (payinNote) rows.push({ html: payinNote });
 
-  // Section 1.1 — Additional Card Acquiring (custom operator rows).
-  // Returns "" when there are no custom rows; the orchestrator skips
-  // the push in that case. When heavy payin, force-page-break-before
-  // sends it to page 2; when light payin it flows on page 1.
-  const payinAdditional = buildPayinAdditionalSection(data, layout);
-  const hasAdditional = payinAdditional.length > 0;
-  if (hasAdditional) rows.push({ html: payinAdditional, breakBefore: heavyPayin });
+  const payinAdditional = buildPayinAdditionalSection(data);
+  if (payinAdditional) rows.push({ html: payinAdditional });
 
-  // Section 2 — Pay Out. When section 1.1 exists AND we forced a
-  // break before it, section 2 must NOT also force a break (that
-  // would push section 2 to page 3 with a large empty gap on page
-  // 2). Section 2 flows naturally after 1.1 in that case.
   const payout = buildPayoutSection(data, layout);
-  if (payout) rows.push({ html: payout, breakBefore: heavyPayin && !hasAdditional });
+  if (payout) rows.push({ html: payout });
+
   const payoutNote = buildPayoutCustomNoteHtml(data);
   if (payoutNote) rows.push({ html: payoutNote });
 
-  // Section 3 — Other Services & Fees. When section 1.1 exists, its
-  // extra height (especially tiered) already cascades section 2 onto
-  // page 2 naturally; forcing section 3 to page 2 would strand
-  // section 2 alone there with sections 3+4 on page 3. So mirror the
-  // section-2 rule and gate the force-break on !hasAdditional.
   const services = buildOtherServicesSection(data, layout);
-  if (services) rows.push({ html: services, breakBefore: lightPayin && !hasAdditional });
+  if (services) rows.push({ html: services });
 
   const terms = buildTermsSection(data, layout);
   if (terms) rows.push({ html: terms });
@@ -161,15 +109,13 @@ export function buildOfferPdfHtml(
   const offerSectionRows = buildOfferBodyRows(data, layout);
   const agreementBody = includeAgreement ? buildAgreementBodyHtml(data) : "";
 
-  // Wrap each top-level block in its own <tr><td>. Multiple TRs give
-  // Chrome's print engine the natural break points it needs to repeat
-  // the disclaimer footer (in <tfoot>) on every page. When the row
-  // has `breakBefore`, the TR carries the `force-page-break-before`
-  // class so it starts on a fresh page.
-  const wrap = (innerHtml: string, opts: { breakBefore?: boolean } = {}) => {
-    const trClass = opts.breakBefore ? ' class="force-page-break-before"' : "";
-    return `<tr${trClass}><td class="page-content-cell">${innerHtml}</td></tr>`;
-  };
+  // Wrap each top-level block in its own <tr><td>. The wrapping
+  // <table> gives the print engine natural per-row break points
+  // between sections. The running footer is rendered by Puppeteer via
+  // `footerTemplate` (pdf.service.ts) and lives in the @page bottom
+  // margin — no <tfoot> here.
+  const wrap = (innerHtml: string) =>
+    `<tr><td class="page-content-cell">${innerHtml}</td></tr>`;
 
   const showPricingMeta = shouldShowPricingMeta(scope);
   // Order: identification first (NUMBER, DATE, TYPE), then pricing meta
@@ -205,11 +151,6 @@ export function buildOfferPdfHtml(
 </head>
 <body${bodyClass ? ` class="${bodyClass}"` : ""}>
   <table class="page-layout">
-    <tfoot class="page-layout-foot">
-      <tr>
-        <td class="page-footer-cell">${renderFooter(data.header.documentNumber)}</td>
-      </tr>
-    </tfoot>
     <tbody class="page-layout-body">
       ${wrap(`<div class="sheet">
             <header class="offer-header">
@@ -222,7 +163,7 @@ export function buildOfferPdfHtml(
             </header>
           </div>`)}
       ${offerSectionRows
-        .map(row => wrap(`<div class="sheet">${row.html}</div>`, { breakBefore: row.breakBefore }))
+        .map(row => wrap(`<div class="sheet">${row.html}</div>`))
         .join("\n      ")}
       ${agreementBody ? wrap(`<div class="sheet">${agreementBody}</div>`) : ""}
     </tbody>

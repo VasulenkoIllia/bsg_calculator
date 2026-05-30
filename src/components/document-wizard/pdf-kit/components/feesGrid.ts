@@ -13,12 +13,18 @@ function renderFeeValueText(value: string): string {
 export function renderFeesGrid(items: FeeCardItem[]): string {
   return `<div class="fees-grid">${items
     .map(card => {
+      // The optional custom note renders on its own line under the
+      // standard subtitle (same .fee-subtitle styling). Either line may
+      // be present independently.
+      const note = card.subtitleNote
+        ? `<p class="fee-subtitle">${escapeHtml(card.subtitleNote)}</p>`
+        : "";
       const subtitle = card.subtitle
         ? `<p class="fee-subtitle">${escapeHtml(card.subtitle)}</p>`
         : "";
       return `<article class="fee-card"><h3>${escapeHtml(card.title)}</h3><p class="fee-value">${renderFeeValueText(
         card.value
-      )}</p>${subtitle}</article>`;
+      )}</p>${subtitle}${note}</article>`;
     })
     .join("")}</div>`;
 }

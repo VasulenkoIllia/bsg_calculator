@@ -1,6 +1,23 @@
 import { MiniToggle, NumberField } from "../../../calculator/index.js";
 import type { DocumentTemplatePayload } from "../../types.js";
-import { FeeFieldWithNa, StepNavigation, ToggleCheckbox } from "../shared.js";
+import {
+  FeeFieldWithNa,
+  FeeModeNote,
+  makeValueModeUpdater,
+  StepNavigation,
+  ToggleCheckbox
+} from "../shared.js";
+
+// The six section-3 fee cards that share the uniform Value / Waived /
+// N/A mode selector + custom note. Keys match DocumentWizardValueModes
+// AND DocumentWizardFeeNotes so a fee's mode + note line up.
+type FeeKey =
+  | "accountSetupFee"
+  | "refundCost"
+  | "disputeCost"
+  | "threeDsFee"
+  | "settlementFee"
+  | "monthlyMinimumFee";
 
 export function OtherFeesStep({
   draft,
@@ -34,6 +51,25 @@ export function OtherFeesStep({
       }
     });
   };
+
+  const updateMode = makeValueModeUpdater(draft, onDraftChange);
+  const updateFeeNote = (key: FeeKey, text: string) =>
+    onDraftChange({
+      ...draft,
+      feeNotes: { ...(draft.feeNotes ?? {}), [key]: text }
+    });
+
+  // Uniform Value / Waived / N/A selector + custom note for one fee.
+  const renderFeeModeNote = (key: FeeKey, notePlaceholder?: string) => (
+    <FeeModeNote
+      mode={draft.valueModes?.[key] ?? "value"}
+      onModeChange={mode => updateMode(key, mode)}
+      note={draft.feeNotes?.[key] ?? ""}
+      onNoteChange={text => updateFeeNote(key, text)}
+      ariaPrefix={key}
+      notePlaceholder={notePlaceholder}
+    />
+  );
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -69,28 +105,37 @@ export function OtherFeesStep({
 
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
           <p className="text-sm font-bold text-slate-800">Contract Summary Fees</p>
-          <div className="mt-3 grid gap-3 md:grid-cols-3">
-            <NumberField
-              label="Account Setup Fee (€)"
-              value={draft.contractSummary.accountSetupFee}
-              onChange={value => updateContractSummary({ accountSetupFee: value })}
-              min={0}
-              step={1}
-            />
-            <NumberField
-              label="Refund Cost (€)"
-              value={draft.contractSummary.refundCost}
-              onChange={value => updateContractSummary({ refundCost: value })}
-              min={0}
-              step={0.01}
-            />
-            <NumberField
-              label="Dispute / Chargeback Cost (€)"
-              value={draft.contractSummary.disputeCost}
-              onChange={value => updateContractSummary({ disputeCost: value })}
-              min={0}
-              step={0.01}
-            />
+          <div className="mt-3 grid gap-4 md:grid-cols-3">
+            <div>
+              <NumberField
+                label="Account Setup Fee (€)"
+                value={draft.contractSummary.accountSetupFee}
+                onChange={value => updateContractSummary({ accountSetupFee: value })}
+                min={0}
+                step={1}
+              />
+              {renderFeeModeNote("accountSetupFee")}
+            </div>
+            <div>
+              <NumberField
+                label="Refund Cost (€)"
+                value={draft.contractSummary.refundCost}
+                onChange={value => updateContractSummary({ refundCost: value })}
+                min={0}
+                step={0.01}
+              />
+              {renderFeeModeNote("refundCost")}
+            </div>
+            <div>
+              <NumberField
+                label="Dispute / Chargeback Cost (€)"
+                value={draft.contractSummary.disputeCost}
+                onChange={value => updateContractSummary({ disputeCost: value })}
+                min={0}
+                step={0.01}
+              />
+              {renderFeeModeNote("disputeCost")}
+            </div>
           </div>
         </div>
 
@@ -113,6 +158,7 @@ export function OtherFeesStep({
               step={0.01}
             />
           </div>
+          {renderFeeModeNote("threeDsFee")}
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -137,6 +183,7 @@ export function OtherFeesStep({
               step={0.01}
             />
           </div>
+          {renderFeeModeNote("settlementFee")}
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -154,6 +201,10 @@ export function OtherFeesStep({
               step={1}
             />
           </div>
+          {renderFeeModeNote(
+            "monthlyMinimumFee",
+            "· NA if processing volume is over 1M /mo"
+          )}
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">

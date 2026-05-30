@@ -421,7 +421,7 @@ describe("buildOfferPdfHtml", () => {
 
       const html = buildOfferPdfHtml(data);
       expect(html).toMatch(
-        /<span class="cell-line cell-subtitle">APM - Apple Pay, Google Pay/
+        /<span class="cell-line cell-subtitle">APM — Apple Pay,<br>Google Pay/
       );
     });
 
@@ -543,14 +543,16 @@ describe("buildOfferPdfHtml", () => {
       expect(html).toContain("€10,000 EUR");
     });
 
-    it("Terms grid 'N/A' value is wrapped in muted .value-na class", () => {
+    it("Terms grid 'N/A' value renders black (reference colour, not muted gray)", () => {
       const data = buildBaseTemplateData();
       data.contractSummary.collectionLimitMax = 0;
       data.valueModes = { ...(data.valueModes ?? {}), collectionLimitMax: "na" };
 
       const html = buildOfferPdfHtml(data);
-      // Same gray rule as the pricing tables — N/A reads in muted gray.
-      expect(html).toContain('<span class="value-na">N/A</span>');
+      // Terms sentinels ("N/A" / "TBD") render BLACK per the reference —
+      // not the muted .value-na used in the fee/pricing tables.
+      expect(html).not.toContain('<span class="value-na">N/A</span>');
+      expect(html).toMatch(/class="[^"]*terms-value-black[^"]*">N\/A</);
     });
 
     it("Fee card 'N/A' value is wrapped in muted .value-na class", () => {
@@ -613,28 +615,22 @@ describe("buildOfferPdfHtml", () => {
       expect(html.match(/terms-label/g)?.length ?? 0).toBeGreaterThan(0);
     });
 
-    it("default customTermsItems is an empty array — no custom rows in the PDF", () => {
+    it("built-in terms carry reference colour classes (even with no custom rows)", () => {
       const data = buildBaseTemplateData();
-      // Built fixture already has customTermsItems: [].
-
+      // No custom rows — built-in terms now carry semantic colours too
+      // (2026-05-30): pricing values blue, risk fields orange.
       const html = buildOfferPdfHtml(data);
-      // The class definitions live in the inlined <style> block — what
-      // matters is that no terms-value span actually USES the colour
-      // classes in the body.
-      expect(html).not.toMatch(/class="[^"]*terms-value-blue[^"]*"/);
-      expect(html).not.toMatch(/class="[^"]*terms-value-orange[^"]*"/);
-      expect(html).not.toMatch(/class="[^"]*terms-value-black[^"]*"/);
+      expect(html).toMatch(/class="[^"]*terms-value-blue[^"]*"/);
     });
 
-    it("built-in terms rows still render unchanged (no colour override)", () => {
+    it("built-in Settlement value renders blue (reference colour)", () => {
       const data = buildBaseTemplateData();
       data.contractSummary.customTermsItems = [];
 
       const html = buildOfferPdfHtml(data);
       expect(html).toContain("Settlement");
-      expect(html).toContain("Daily, T+3");
-      // Built-in row carries plain `terms-value` class only.
-      expect(html).toMatch(/<span class="terms-value">Daily, T\+3</);
+      // Settlement (a pricing value) reads blue per the reference rule.
+      expect(html).toMatch(/<span class="[^"]*terms-value-blue[^"]*">Daily, T\+3</);
     });
   });
 
@@ -697,8 +693,13 @@ describe("buildOfferPdfHtml", () => {
     });
   });
 
-  describe("auto-compact mode", () => {
-    it("payin tiered + both regions (6 rows) gets the compact class", () => {
+  describe("universal layout & page-budget breaks", () => {
+    // Compact preset removed 2026-05-30 — the offer renders as ONE
+    // universal (full-size) layout for every configuration. Forced
+    // page breaks were removed the same day; sections flow naturally
+    // via `break-inside: avoid`. These tests guard that NEITHER the
+    // `compact` class NOR a forced page break is ever emitted.
+    it("payin tiered + both regions (6 rows) stays universal — no compact", () => {
       const data = buildBaseTemplateData();
       data.layout.payin.regionMode = "both";
       data.layout.payin.tableMode = "byRegionTiered";
@@ -706,22 +707,22 @@ describe("buildOfferPdfHtml", () => {
       data.payinPricing.ww.rateMode = "tiered";
 
       const html = buildOfferPdfHtml(data);
-      // Section 1 (Card Acquiring) wraps in offer-section compact
-      expect(html).toMatch(/<section class="offer-section compact">[\s\S]*Card Acquiring/);
+      expect(html).not.toContain("offer-section compact");
+      expect(html).toMatch(/<section class="offer-section">[\s\S]*Card Acquiring/);
     });
 
-    it("payin single + one region (1 row) stays in normal mode", () => {
+    it("payin single + one region (1 row) stays universal — no compact", () => {
       const data = buildBaseTemplateData();
       data.layout.payin.regionMode = "euOnly";
       data.layout.payin.tableMode = "byRegionFlat";
       data.payinPricing.eu.rateMode = "single";
 
       const html = buildOfferPdfHtml(data);
-      // No compact class on the Card Acquiring section
+      expect(html).not.toContain("offer-section compact");
       expect(html).toMatch(/<section class="offer-section">[\s\S]*Card Acquiring/);
     });
 
-    it("payin tiered + one region + custom note triggers compact", () => {
+    it("payin tiered + one region + custom note stays universal — no compact", () => {
       const data = buildBaseTemplateData();
       data.layout.payin.regionMode = "euOnly";
       data.layout.payin.tableMode = "byRegionTiered";
@@ -730,32 +731,40 @@ describe("buildOfferPdfHtml", () => {
       data.contractSummary.payinCustomNoteText = "Note adds vertical weight.";
 
       const html = buildOfferPdfHtml(data);
-      // 3 rows + custom note → compact threshold met
-      expect(html).toMatch(/<section class="offer-section compact">[\s\S]*Card Acquiring/);
+      expect(html).not.toContain("offer-section compact");
+      expect(html).toMatch(/<section class="offer-section">[\s\S]*Card Acquiring/);
     });
 
-    it("payout tiered (3 rows) gets the compact class", () => {
+    it("payout tiered (3 rows) stays universal — no compact", () => {
       const data = buildBaseTemplateData();
       data.layout.payout.regionMode = "global";
       data.layout.payout.tableMode = "globalTiered";
       data.payoutPricing.rateMode = "tiered";
 
       const html = buildOfferPdfHtml(data);
-      // Section 2 (Pay Out) compact
-      expect(html).toMatch(/<section class="offer-section compact">[\s\S]*Pay Out/);
+      expect(html).not.toContain("offer-section compact");
+      expect(html).toMatch(/<section class="offer-section">[\s\S]*Pay Out/);
     });
 
-    it("payout single (1 row) stays in normal mode", () => {
+    it("payout single (1 row) stays universal — no compact", () => {
       const data = buildBaseTemplateData();
       data.layout.payout.regionMode = "global";
       data.layout.payout.tableMode = "globalFlat";
       data.payoutPricing.rateMode = "single";
 
       const html = buildOfferPdfHtml(data);
+      expect(html).not.toContain("offer-section compact");
       expect(html).toMatch(/<section class="offer-section">[\s\S]*Pay Out/);
     });
 
-    it("Pay Out row carries force-page-break-before when payin is heavy (tiered + both regions)", () => {
+    // Natural flow (2026-05-30): forced page breaks were removed from
+    // the offer body. Sections rely on `break-inside: avoid` and flow
+    // continuously, so a `<tr class="force-page-break-before">` is
+    // never emitted for ANY payin weight. (The CSS still DEFINES the
+    // class, so we match the APPLIED form on a <tr>.)
+    const FORCED_BREAK_TR = /<tr class="force-page-break-before"/;
+
+    it("heavy payin (tiered + both regions) — no forced page break", () => {
       const data = buildBaseTemplateData();
       data.layout.payin.regionMode = "both";
       data.layout.payin.tableMode = "byRegionTiered";
@@ -764,36 +773,10 @@ describe("buildOfferPdfHtml", () => {
       data.layout.payout.regionMode = "global";
       data.layout.payout.tableMode = "globalFlat";
 
-      const html = buildOfferPdfHtml(data);
-      // The TR that contains the Pay Out section carries the
-      // force-page-break-before class so section 2 starts on page 2.
-      expect(html).toMatch(
-        /<tr class="force-page-break-before"><td class="page-content-cell">[\s\S]*Pay Out/
-      );
-      // Other Services & Fees DOES NOT carry the break in heavy mode —
-      // it follows section 2 on page 2 naturally.
-      expect(html).not.toMatch(
-        /<tr class="force-page-break-before"><td class="page-content-cell">[\s\S]*Other Services/
-      );
+      expect(buildOfferPdfHtml(data)).not.toMatch(FORCED_BREAK_TR);
     });
 
-    it("Pay Out row stays in normal flow when payin is light (non-tiered or one region)", () => {
-      const data = buildBaseTemplateData();
-      data.layout.payin.regionMode = "euOnly";
-      data.layout.payin.tableMode = "byRegionFlat";
-      data.payinPricing.eu.rateMode = "single";
-      data.layout.payout.regionMode = "global";
-      data.layout.payout.tableMode = "globalFlat";
-
-      const html = buildOfferPdfHtml(data);
-      // No force-page-break class on the Pay Out row when payin is
-      // single-region / non-tiered.
-      expect(html).not.toMatch(
-        /<tr class="force-page-break-before"><td class="page-content-cell">[\s\S]*Pay Out/
-      );
-    });
-
-    it("Other Services & Fees carries force-page-break-before when payin is light", () => {
+    it("light payin (non-tiered) — no forced page break", () => {
       const data = buildBaseTemplateData();
       data.layout.payin.regionMode = "both";
       data.layout.payin.tableMode = "byRegionFlat";
@@ -804,42 +787,23 @@ describe("buildOfferPdfHtml", () => {
       data.contractSummary.refundCost = 15;
       data.contractSummary.disputeCost = 75;
 
-      const html = buildOfferPdfHtml(data);
-      // Sections 1 + 2 stay on page 1; section 3 (Other Services & Fees)
-      // is forced to start on page 2 so sections 3 + 4 share page 2.
-      expect(html).toMatch(
-        /<tr class="force-page-break-before"><td class="page-content-cell">[\s\S]*Other Services/
-      );
+      expect(buildOfferPdfHtml(data)).not.toMatch(FORCED_BREAK_TR);
     });
 
-    it("Other Services & Fees stays inline when payin section is missing", () => {
-      const data = buildBaseTemplateData();
-      data.calculatorType.payin = false;
-      data.layout.payin.regionMode = "none";
-      data.contractSummary.refundCost = 15;
-      data.contractSummary.disputeCost = 75;
-
-      const html = buildOfferPdfHtml(data);
-      // With no payin section, the page-budget rule does not apply —
-      // Other Services & Fees flows naturally.
-      expect(html).not.toMatch(
-        /<tr class="force-page-break-before"><td class="page-content-cell">[\s\S]*Other Services/
-      );
-    });
-
-    it("terms section becomes compact when total items >= 8", () => {
+    it("terms section with many items (>=8) stays universal — no compact", () => {
       const data = buildBaseTemplateData();
       // Built-in items: settlement, settlementNote, clientType,
       // restrictedJurisdictions, collectionMin, collectionMax,
       // payoutMin, rollingReserve = 8 items already with default data.
-      // Add a custom block to push past the threshold.
+      // Add custom blocks on top — these used to trigger compact.
       data.contractSummary.customTermsItems = [
         { id: "x", label: "Custom 1", value: "Body 1", color: "blue" },
         { id: "y", label: "Custom 2", value: "Body 2", color: "blue" }
       ];
 
       const html = buildOfferPdfHtml(data);
-      expect(html).toMatch(/<section class="offer-section compact">[\s\S]*Terms &amp; Limitations/);
+      expect(html).not.toContain("offer-section compact");
+      expect(html).toMatch(/<section class="offer-section">[\s\S]*Terms &amp; Limitations/);
     });
   });
 
@@ -1015,30 +979,21 @@ describe("buildOfferPdfHtml", () => {
       expect(html).toContain('<span class="cell-line value-na">N/A</span>');
     });
 
-    it("section 1.1 gets force-page-break-before on HEAVY payin (push to page 2)", () => {
+    it("section 1.1 on HEAVY payin flows naturally (no forced page break)", () => {
       const data = withBothRegions(buildBaseTemplateData());
-      // Standard rows already single in the fixture; promote layout —
-      // wizard would do this automatically via the updated
-      // resolvePayinTableMode helper (with customRows arg).
       data.layout.payin.tableMode = "byRegionTiered";
-      // Values are irrelevant for this layout-class test — only the
-      // presence of a row matters for triggering section 1.1.
       data.payinPricing.customRows = [
         buildSingleCustomRow({ id: "row-test-heavy", region: "Asia Bundle", currency: "USD" })
       ];
-      // Force heavy payin: tiered both regions.
       data.payinPricing.eu.rateMode = "tiered";
       data.payinPricing.ww.rateMode = "tiered";
 
       const html = buildOfferPdfHtml(data);
 
-      // The Section 1.1 <tr> wrapper carries the force-page-break-before
-      // class on heavy payin. Cap the lookahead at 1000 chars so the
-      // regex cannot span multiple TRs and accidentally match section 1
-      // followed by section 1.1.
-      expect(html).toMatch(
-        /<tr class="force-page-break-before">[\s\S]{0,1000}?<h2>Additional Card Acquiring/
-      );
+      // Section 1.1 is emitted and flows naturally — forced page breaks
+      // were removed 2026-05-30, so no <tr> is ever force-broken.
+      expect(html).toMatch(/<h2>Additional Card Acquiring/);
+      expect(html).not.toMatch(/<tr class="force-page-break-before"/);
     });
 
     it("explicit empty customRows = [] (back-compat) → no section 1.1 emitted", () => {
@@ -1155,13 +1110,11 @@ describe("buildOfferPdfHtml", () => {
       );
     });
 
-    it("HEAVY payin WITH section 1.1 → Pay Out flows after 1.1 (NO force-break)", () => {
-      // Regression for the double-page-break bug fixed 2026-05-14:
-      // when both section 1.1 AND section 2 carry breakBefore=true,
-      // Chrome's `page-break-before: always` rule fires twice — once
-      // for 1.1 (page 1 → page 2) and again for section 2 (page 2 →
-      // page 3), leaving page 2 mostly empty. Fix: when 1.1 exists,
-      // only 1.1 carries the force-break; section 2 flows after it.
+    it("HEAVY payin WITH section 1.1 → 1.1 then Pay Out both flow naturally", () => {
+      // Order guarantee: section 1.1 (Additional Card Acquiring) is
+      // emitted before section 2 (Pay Out), and BOTH flow in plain rows
+      // — forced page breaks were removed 2026-05-30 so neither <tr>
+      // carries force-page-break-before.
       const data = withBothRegions(buildBaseTemplateData());
       data.layout.payin.tableMode = "byRegionTiered";
       data.payinPricing.eu.rateMode = "tiered";
@@ -1174,35 +1127,26 @@ describe("buildOfferPdfHtml", () => {
 
       const html = buildOfferPdfHtml(data);
 
-      // Section 1.1 still carries the break (it opens page 2).
-      expect(html).toMatch(
-        /<tr class="force-page-break-before">[\s\S]{0,1000}?<h2>Additional Card Acquiring/
+      // No forced page break anywhere.
+      expect(html).not.toMatch(/<tr class="force-page-break-before"/);
+      // Order: section 1.1 appears before section 2 (Pay Out).
+      expect(html.indexOf("Additional Card Acquiring")).toBeLessThan(
+        html.indexOf("Card Acquiring — Pay Out")
       );
-      // Section 2 (Pay Out) must NOT carry force-page-break — it flows
-      // naturally beneath 1.1 on page 2. Looking forward from the
-      // wrapping TR to the Pay Out <h2>, we use a negative-lookahead
-      // `(?!<tr)` so the regex CANNOT cross into the next TR. That
-      // pins each assertion to the IMMEDIATE TR wrapping section 2.
+      // Section 2 (Pay Out) flows in a plain row.
       expect(html).toMatch(
         /<tr><td class="page-content-cell">(?:(?!<tr)[\s\S])*?<h2>Card Acquiring [^<]*Pay Out/
       );
-      expect(html).not.toMatch(
-        /<tr class="force-page-break-before"><td class="page-content-cell">(?:(?!<tr)[\s\S])*?<h2>Card Acquiring [^<]*Pay Out/
-      );
     });
 
-    it("section 1.1 mirrors section 1's compact state (visual parity rule)", () => {
-      // The `.col-*` column widths in styles.ts are calibrated for the
-      // compact font (8.5pt). If section 1 is compact but 1.1 is not
-      // (or vice-versa), "APM - Apple Pay, Google Pay" wraps in only
-      // one of them and the two visually-identical sections render
-      // with different row heights / wrapping. `resolvePayinCompact`
-      // is the single source of truth — both sections call it.
+    it("section 1.1 renders the same universal layout as section 1 (no compact)", () => {
+      // Compact removed 2026-05-30 — sections 1 and 1.1 always render
+      // the same full-size layout, so the old "parity" concern (one
+      // compact, one not) can no longer occur. Both carry the plain
+      // `offer-section` class in every configuration.
 
-      // Case A: section 1 compact (6 tiered rows) + section 1.1 has
-      // ONLY 1 tiered custom row (3 PDF rows, below 1.1's old `>= 4`
-      // threshold). Without the parity rule, 1.1 would be NON-compact.
-      // Under the parity rule, 1.1 inherits section 1's compact.
+      // Case A: heavy section 1 (6 tiered rows) + a tiered section 1.1
+      // custom row. Used to be the case that forced compact on both.
       const heavyData = withBothRegions(buildBaseTemplateData());
       heavyData.layout.payin.tableMode = "byRegionTiered";
       heavyData.payinPricing.eu.rateMode = "tiered";
@@ -1211,18 +1155,13 @@ describe("buildOfferPdfHtml", () => {
         buildTieredCustomRow({ id: "row-parity-heavy" })
       ];
       const heavyHtml = buildOfferPdfHtml(heavyData);
-      // BOTH sections carry `offer-section compact`.
+      // Neither section is ever compact now.
+      expect(heavyHtml).not.toContain("offer-section compact");
+      // BOTH sections render the plain `offer-section` class.
       expect(heavyHtml).toMatch(
-        /<section class="offer-section compact">[\s\S]*?<h2>Card Acquiring/
+        /<section class="offer-section">[\s\S]*?<h2>Card Acquiring/
       );
       expect(heavyHtml).toMatch(
-        /<section class="offer-section compact">[\s\S]*?<h2>Additional Card Acquiring/
-      );
-      // NEITHER section is plain `offer-section` (without compact).
-      expect(heavyHtml).not.toMatch(
-        /<section class="offer-section">[\s\S]*?<h2>Card Acquiring — Credit/
-      );
-      expect(heavyHtml).not.toMatch(
         /<section class="offer-section">[\s\S]*?<h2>Additional Card Acquiring/
       );
 
@@ -1290,10 +1229,7 @@ describe("buildOfferPdfHtml", () => {
       );
     });
 
-    it("LIGHT payin WITHOUT section 1.1 → Other Services still carries force-break (regression guard)", () => {
-      // Companion to the previous test: when 1.1 is absent, the
-      // original `lightPayin → break before section 3` rule still
-      // applies. Guards against the new condition being over-applied.
+    it("LIGHT payin WITHOUT section 1.1 → flows naturally (no forced break)", () => {
       const data = withBothRegions(buildBaseTemplateData());
       data.layout.payin.tableMode = "byRegionFlat";
       data.payinPricing.eu.rateMode = "single";
@@ -1307,19 +1243,12 @@ describe("buildOfferPdfHtml", () => {
 
       const html = buildOfferPdfHtml(data);
 
-      // No section 1.1 in the output.
       expect(html).not.toMatch(/<h2>Additional Card Acquiring/);
-      // Section 3 carries the force-page-break-before class.
-      expect(html).toMatch(
-        /<tr class="force-page-break-before"><td class="page-content-cell">(?:(?!<tr)[\s\S])*?<h2>Other Services/
-      );
+      // Natural flow — no forced page break (2026-05-30).
+      expect(html).not.toMatch(/<tr class="force-page-break-before"/);
     });
 
-    it("HEAVY payin WITHOUT section 1.1 → Pay Out still carries force-break (regression guard)", () => {
-      // Companion to the previous test: when 1.1 is absent, section 2
-      // is still the first content on page 2 and MUST carry the
-      // force-page-break-before class. Guards against the fix above
-      // being over-applied (e.g. dropping the break unconditionally).
+    it("HEAVY payin WITHOUT section 1.1 → flows naturally (no forced break)", () => {
       const data = withBothRegions(buildBaseTemplateData());
       data.layout.payin.tableMode = "byRegionTiered";
       data.payinPricing.eu.rateMode = "tiered";
@@ -1331,13 +1260,9 @@ describe("buildOfferPdfHtml", () => {
 
       const html = buildOfferPdfHtml(data);
 
-      // No section 1.1 in the output.
       expect(html).not.toMatch(/<h2>Additional Card Acquiring/);
-      // Section 2 ("Card Acquiring — Pay Out / Push to Card") carries
-      // the force-page-break-before class.
-      expect(html).toMatch(
-        /<tr class="force-page-break-before"><td class="page-content-cell">[\s\S]{0,2000}?<h2>Card Acquiring [^<]*Pay Out/
-      );
+      // Natural flow — no forced page break (2026-05-30).
+      expect(html).not.toMatch(/<tr class="force-page-break-before"/);
     });
   });
 });

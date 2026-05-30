@@ -10,6 +10,10 @@ export interface FeeCardItem {
   // CHARGING after the "Calculator mode" hint was removed) render
   // without a subtitle paragraph.
   subtitle?: string;
+  // Optional THIRD line — a custom operator-entered note rendered on
+  // its own line under `subtitle` (currently the MIN. MONTHLY ACCOUNT
+  // FEE card's "· NA if processing volume is over 1M /mo").
+  subtitleNote?: string;
 }
 
 export interface TermsGridItem {

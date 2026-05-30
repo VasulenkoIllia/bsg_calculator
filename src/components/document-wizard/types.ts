@@ -58,6 +58,19 @@ export interface DocumentWizardValueModes {
   payoutLimitMax?: ValueMode;
 }
 
+// Optional operator-entered custom note (a second subtitle line) for
+// each section-3 fee card. Keys mirror DocumentWizardValueModes so a
+// fee's mode + note pair line up. All optional → existing saved
+// payloads stay valid.
+export interface DocumentWizardFeeNotes {
+  accountSetupFee?: string;
+  refundCost?: string;
+  disputeCost?: string;
+  threeDsFee?: string;
+  settlementFee?: string;
+  monthlyMinimumFee?: string;
+}
+
 export interface DocumentHeaderMetaDraft {
   documentType: string;
   documentNumber: string;
@@ -72,6 +85,7 @@ export interface DocumentTemplatePayload {
   agreementParties: AgreementParties;
   layout: DocumentWizardLayout;
   valueModes?: DocumentWizardValueModes;
+  feeNotes?: DocumentWizardFeeNotes;
   calculatorType: {
     payin: boolean;
     payout: boolean;

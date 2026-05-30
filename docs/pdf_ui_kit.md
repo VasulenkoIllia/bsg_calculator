@@ -1,6 +1,6 @@
 # PDF UI Kit (OFFER)
 
-Date: 2026-05-02
+Date: 2026-05-30 (universal full-size layout; running header/footer moved to Puppeteer page templates)
 Status: Active
 
 ## Purpose
@@ -20,6 +20,7 @@ This prevents drift between generated documents and approved reference PDFs.
 - `src/components/document-wizard/pdf-kit/primitives.ts`
 - `src/components/document-wizard/buildOfferPdfHtml.ts`
 - `src/components/document-wizard/buildPdfUiKitHtml.ts`
+- `server/modules/pdf/pdf.service.ts` — Puppeteer renderer + running header/footer page templates
 
 ## Token set
 
@@ -29,7 +30,7 @@ Core visual intent:
 
 1. Purple accent line and highlights (reference look)
 2. Light table headers and soft borders
-3. Compact legal-document density on A4
+3. One universal full-size layout on A4 (no compact mode — more pages is fine)
 
 ## Primitives
 
@@ -37,7 +38,7 @@ Core visual intent:
 2. `renderSectionHeader`
 3. `renderFeesGrid`
 4. `renderTermsGrid`
-5. `renderFooter`
+5. `renderFooter` — retained, but the production OFFER path now uses the Puppeteer footer template (`pdf.service.ts`) instead
 6. `buildPdfUiKitStyles`
 
 ## Preview / sandbox

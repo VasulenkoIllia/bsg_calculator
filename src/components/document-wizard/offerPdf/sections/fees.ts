@@ -16,11 +16,20 @@ interface ServiceCard {
   // FAILED TRX CHARGING omits this on purpose since its value already
   // describes the mode.
   subtitle?: string;
+  // Optional custom note rendered on its own line under `subtitle`
+  // (operator-entered; currently only the MIN. MONTHLY ACCOUNT FEE).
+  subtitleNote?: string;
 }
 
 function buildOtherServicesCards(data: DocumentTemplatePayload, layout: DocumentWizardLayout): ServiceCard[] {
   const cards: ServiceCard[] = [];
   const modes = data.valueModes ?? {};
+  const notes = data.feeNotes ?? {};
+  // Operator-entered custom note → optional second subtitle line.
+  const noteFor = (key: keyof typeof notes): string | undefined => {
+    const text = notes[key]?.trim();
+    return text ? text : undefined;
+  };
   const strictHideMissing = layout.source === "calculator";
 
   const accountSetupLabel = resolveModeValue(
@@ -30,7 +39,7 @@ function buildOtherServicesCards(data: DocumentTemplatePayload, layout: Document
       : ""
   );
   if (hasText(accountSetupLabel)) {
-    cards.push({ title: "ACCOUNT SETUP", value: accountSetupLabel, subtitle: "One-time · EUR" });
+    cards.push({ title: "ACCOUNT SETUP", value: accountSetupLabel, subtitle: "One-time · EUR", subtitleNote: noteFor("accountSetupFee") });
   }
 
   const refundLabel = resolveModeValue(
@@ -38,7 +47,7 @@ function buildOtherServicesCards(data: DocumentTemplatePayload, layout: Document
     hasPositiveNumber(data.contractSummary.refundCost) ? formatEuro(data.contractSummary.refundCost) : ""
   );
   if (hasText(refundLabel)) {
-    cards.push({ title: "REFUND", value: refundLabel, subtitle: "Per action · EUR" });
+    cards.push({ title: "REFUND", value: refundLabel, subtitle: "Per action · EUR", subtitleNote: noteFor("refundCost") });
   }
 
   const disputeLabel = resolveModeValue(
@@ -46,7 +55,7 @@ function buildOtherServicesCards(data: DocumentTemplatePayload, layout: Document
     hasPositiveNumber(data.contractSummary.disputeCost) ? formatEuro(data.contractSummary.disputeCost) : ""
   );
   if (hasText(disputeLabel)) {
-    cards.push({ title: "DISPUTE / CHARGEBACK", value: disputeLabel, subtitle: "Per action · EUR" });
+    cards.push({ title: "DISPUTE / CHARGEBACK", value: disputeLabel, subtitle: "Per action · EUR", subtitleNote: noteFor("disputeCost") });
   }
 
   const threeDsLabel = resolveModeValue(
@@ -56,7 +65,7 @@ function buildOtherServicesCards(data: DocumentTemplatePayload, layout: Document
       : ""
   );
   if (hasText(threeDsLabel)) {
-    cards.push({ title: "3D SECURE (3DS)", value: threeDsLabel, subtitle: "Per action · EUR" });
+    cards.push({ title: "3D SECURE (3DS)", value: threeDsLabel, subtitle: "Per action · EUR", subtitleNote: noteFor("threeDsFee") });
   }
 
   const settlementValue = data.toggles.settlementIncluded
@@ -66,7 +75,7 @@ function buildOtherServicesCards(data: DocumentTemplatePayload, layout: Document
       : "";
   const settlementLabel = resolveModeValue(modes.settlementFee, settlementValue);
   if (hasText(settlementLabel)) {
-    cards.push({ title: "SETTLEMENT", value: settlementLabel, subtitle: "Per action · USDT" });
+    cards.push({ title: "SETTLEMENT", value: settlementLabel, subtitle: "Per action · USDT", subtitleNote: noteFor("settlementFee") });
   }
 
   const monthlyMinimumLabel = resolveModeValue(
@@ -79,21 +88,23 @@ function buildOtherServicesCards(data: DocumentTemplatePayload, layout: Document
     cards.push({
       title: "MIN. MONTHLY ACCOUNT FEE",
       value: monthlyMinimumLabel,
-      subtitle: "Per month"
+      subtitle: "Per month",
+      subtitleNote: noteFor("monthlyMinimumFee")
     });
   }
 
-  if (data.toggles.failedTrxEnabled) {
-    cards.push({
-      title: "FAILED TRX CHARGING",
-      value:
-        data.toggles.failedTrxMode === "allFailedVolume"
-          ? "All failed volume"
-          : `Under limit only (${formatPercent(data.toggles.failedTrxOverLimitThresholdPercent)})`
-      // No subtitle — the "Calculator mode" hint was removed by request
-      // because the card already conveys the mode through its value.
-    });
-  }
+  // FAILED TRX CHARGING is ALWAYS shown and has NO "Waived" state
+  // (unlike the other fees). When the checkbox is OFF it reads "0"
+  // (Доработки.docx #7: "waive = 0 по чек боксу"); when ON it conveys
+  // the charging mode. No subtitle — the value already says it all.
+  cards.push({
+    title: "FAILED TRX CHARGING",
+    value: !data.toggles.failedTrxEnabled
+      ? "0"
+      : data.toggles.failedTrxMode === "allFailedVolume"
+        ? "All failed volume"
+        : `Under limit only (${formatPercent(data.toggles.failedTrxOverLimitThresholdPercent)})`
+  });
 
   if (strictHideMissing) {
     return cards.filter(card => hasText(card.value));

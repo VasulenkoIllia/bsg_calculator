@@ -1349,7 +1349,7 @@ Use this file to record meaningful technical decisions for the project.
   - Address the build's 501 KB single-chunk size (just over the
     Vite warning) when chunk-splitting becomes worthwhile.
 
-### Decision: Auto-compact mode for OFFER sections
+### Decision: Auto-compact mode for OFFER sections  _(SUPERSEDED 2026-05-30 — see "Universal full-size PDF layout" below)_
 - Date: 2026-05-08
 - Context:
   - With tiered + both-regions Card Acquiring (6 data rows), the
@@ -5632,5 +5632,83 @@ Use this file to record meaningful technical decisions for the project.
     not new.
 - Verification: 350 server tests pass, 331 frontend tests pass,
   tsc clean (FE + BE).
+
+### Decision: Universal full-size PDF layout (compact mode removed, Puppeteer running header/footer)
+- Date: 2026-05-30
+- Context:
+  - The OFFER PDF had two render paths — a normal layout and an
+    auto-applied "compact" preset that shrank fonts/padding ~20% to
+    keep busy offers within a 2-page budget. Product wanted ONE layout
+    that looks identical at every data volume (more pages is fine),
+    matching the "Be There Solutions Commercial Offer 1.1" reference.
+  - The disclaimer footer lived in an in-HTML `<table><tfoot>` with a
+    Chromium `counter()` workaround; product also wanted a running
+    header (purple accent bar) on every page.
+  - Calculator math stays frozen — all work is in the wizard payload +
+    PDF renderer only.
+- Decision:
+  - **Removed compact mode.** Deleted the `.offer-section.compact` CSS
+    preset and every `isCompact` decision in
+    `offerPdf/sections/{payin,payout,terms}.ts`. One universal
+    full-size layout remains.
+  - **Natural page flow.** Each `.offer-section` carries
+    `break-inside: avoid`; `buildOfferBodyRows()` no longer sets any
+    `breakBefore` / `force-page-break-before` flag. Sections flow
+    continuously and a whole section moves to the next page when it
+    doesn't fit. Standardized inter-section gap `--space-section-gap`
+    = 6 mm. Empty sections return `""` and are omitted, so sparse
+    documents leave no empty frames.
+  - **Running header + footer via Puppeteer page templates**
+    (`server/modules/pdf/pdf.service.ts`: `buildHeaderTemplate()` /
+    `buildFooterTemplate()`), injected through `displayHeaderFooter`
+    into the `@page` margins (top 20 mm / bottom 26 mm / sides 20 mm,
+    synced with the CSS `@page` rule under `preferCSSPageSize`). Page
+    counter `Page N of M` lives in the footer template; the in-HTML
+    `<tfoot>` was removed. `pdf.controller.ts` passes `documentNumber`
+    so the footer prints the BSG number on both download + preview.
+  - **Per-fee value modes + custom notes.** Section 3's six fee cards
+    each expose Value / Waived / N/A (`ValueMode` in
+    `payload.valueModes`, via `resolveModeValue`) plus an optional
+    second subtitle line (`payload.feeNotes` /
+    `DocumentWizardFeeNotes`, via `FeeCardItem.subtitleNote`).
+    `FAILED TRX CHARGING` has no Waived state and prints `0` when off.
+    Replaced the legacy boolean `*Na` flags and removed
+    `toggles.monthlyMinimumFeeNote` in favour of `feeNotes`.
+  - **Pay Out (non-tiered) → card row** (`.payout-cards`, 22 pt accent
+    values); tiered keeps the multi-row table.
+  - **Terms semantic colours** (`termColor()`): pricing → blue, risk →
+    orange, sentinel `N/A` / `TBD` → black. Section labels are grey
+    (`--label-color: #9aa3b5`). METHODS cell renders 4 lines; CURRENCY
+    is `nowrap`; meta grid uses a fixed `grid-auto-rows: 64px`.
+- Supersedes:
+  - "Auto-compact mode for OFFER sections" (2026-05-08).
+  - The "Per-page footer via `<table><tfoot>`" + "Page counter via
+    `@page` margin box" bullets (iframe-print decision).
+- Alternatives considered:
+  - Keep compact as a fallback for very long offers. Rejected — defeats
+    the "looks identical at every volume" goal and re-introduces the
+    branching that caused orphaned content.
+  - Footer as repeating `<tfoot>` (status quo). Rejected — couldn't add
+    a running header cleanly and needed the `counter()` workaround;
+    Puppeteer page templates handle both header + footer + page numbers
+    natively in the `@page` margins.
+- Consequences:
+  - 329 frontend tests pass (force-break tests rewritten to assert NO
+    forced break; compact, terms-colour, and payout-card tests
+    updated); 68 pdf/documents server tests pass; FE + BE `tsc` clean;
+    lint clean.
+  - Backward-compatible: `valueModes` / `feeNotes` are optional and
+    `?? {}`-guarded; old saved documents (no `feeNotes`) render
+    unchanged via `isWizardPayload`. Verified by rendering a
+    pre-redesign saved document end-to-end (HTTP 200).
+  - Rendered the heaviest config (3 pp), a minimal-sparse config
+    (1 pp), and a saved DB document (2 pp) end-to-end to confirm the
+    layout holds from sparse to dense data.
+  - Code hygiene: removed the inert `breakBefore` mechanism + stale
+    page-budget comments; the `renderFooter` primitive
+    (`pdf-kit/components/footer.ts`) is retained but no longer wired
+    into the OFFER render path.
+- Verification: 329 FE + 68 BE (pdf/documents) tests pass; `tsc` clean
+  (FE + BE); lint clean.
 
 

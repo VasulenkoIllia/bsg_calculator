@@ -1,7 +1,27 @@
 # Specification v2.0 Alignment
 
-Date: 2026-05-07 (refreshed for 2026-05-07 wizard + PDF additions)
+Date: 2026-05-30 (refreshed for the universal-layout PDF redesign)
 Status: Active reference. Reviewed when scope changes.
+
+### Notable 2026-05-30 redesign (already implemented)
+
+- **One universal full-size PDF layout — compact mode removed.** The
+  document looks identical at every data volume; sparse data simply
+  yields fewer pages. Natural page flow (`break-inside: avoid` per
+  section) replaced the force-page-break + auto-compact heuristics.
+- **Running header + footer via Puppeteer page templates**
+  (`server/modules/pdf/pdf.service.ts`): purple accent bar on top, full
+  confidentiality disclaimer + `CONFIDENTIAL · BSG-XXXXX · Page N of M`
+  on the bottom, both in the `@page` margins. Replaced the in-HTML
+  `<tfoot>`.
+- **Per-fee value modes** (`ValueMode` = value / waived / na / tbd in
+  `payload.valueModes`) + **custom fee subtitle notes**
+  (`payload.feeNotes`) on all six Section 3 cards. `FAILED TRX` always
+  renders `0` when off.
+- **Pay Out (non-tiered) → card row** with large accent values; tiered
+  keeps the table.
+- **Terms semantic colours**: pricing → blue, risk → orange, sentinel
+  `N/A` / `TBD` → black; grey section labels.
 
 ### Notable 2026-05-07 additions (already implemented)
 
@@ -15,8 +35,9 @@ Status: Active reference. Reviewed when scope changes.
   custom notes (`payin/payoutCustomNoteEnabled / Text`). Rendered with
   user-picked colour (Blue / Black / Orange) for terms blocks and
   muted gray for section notes.
-- Per-page repeating disclaimer footer via `<table class="page-layout">`
-  + `<tfoot>`; page counter via `@page { @bottom-right }` margin box.
+- Per-page repeating disclaimer footer — **superseded 2026-05-30** by
+  the Puppeteer header/footer page templates (see the 2026-05-30
+  section above).
 - Hidden iframe + Blob URL print path (`src/lib/printHtmlViaIframe.ts`)
   replaces popup-based print.
 - Region label `EU` → `EEA + UK` (display only; data key stays `eu`).

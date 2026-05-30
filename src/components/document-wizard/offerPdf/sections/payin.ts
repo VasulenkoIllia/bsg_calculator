@@ -23,14 +23,23 @@ interface PayinRegionContext {
   pricing: PayinPricingRegion;
 }
 
-// Module-level constants for the METHODS column text. Standard rows
-// (section 1) and custom rows (section 1.1) both render the same two
-// hardcoded lines (per product decision — no per-row override). Kept
-// in one place so a future product change is a one-line edit instead
-// of two parallel string literals that can drift (as nearly happened
-// in commits 9de2533 → e7ac0e7).
-const PAYIN_METHOD_LABEL = "Credit / Debit - Visa, Mastercard";
-const PAYIN_APM_LABEL = "APM - Apple Pay, Google Pay";
+// The METHODS column cell — identical for standard rows (section 1)
+// and custom rows (section 1.1). Rendered with EXPLICIT <br> line
+// breaks so it is ALWAYS the same 4-line block regardless of how
+// table-layout:fixed sizes the column across configs (matching the
+// Be There Solutions reference exactly):
+//     Credit / Debit —
+//     Visa, Mastercard
+//     APM — Apple Pay,      (muted subtitle)
+//     Google Pay
+// The em-dash "—" and <br> are literal HTML (no user input) so they
+// are intentionally NOT escaped. Kept in one place so a product copy
+// change is a single edit.
+const PAYIN_METHODS_CELL =
+  '<td>' +
+  '<span class="cell-line">Credit / Debit —<br>Visa, Mastercard</span>' +
+  '<span class="cell-line cell-subtitle">APM — Apple Pay,<br>Google Pay</span>' +
+  '</td>';
 
 // Tier-index tuple — used both to drive the section-1 / section-1.1
 // per-tier rendering loops and to satisfy the
@@ -189,40 +198,10 @@ function hasAnyCustomRowMinFee(customRows: ReadonlyArray<PayinCustomRow>): boole
   return customRows.some(row => formatCustomRowMinTransactionFee(row) !== null);
 }
 
-// Single source of truth for "is the payin block in compact preset?".
-//
-// Used by both section 1 (`buildPayinSection`) and section 1.1
-// (`buildPayinAdditionalSection`) so they always carry the same
-// `.compact` class. This matters because the `.col-*` widths in
-// styles.ts are CALIBRATED FOR THE COMPACT FONT (8.5pt) — at the
-// default 9pt non-compact size, "APM - Apple Pay, Google Pay" no
-// longer fits the 30% METHODS column and wraps. If section 1 is
-// compact (font 8.5pt, APM line fits) and section 1.1 is not
-// (font 9pt, APM line wraps), the two visually-identical sections
-// render with different row heights and wrapping. Mirroring section
-// 1's decision into 1.1 guarantees visual parity.
-//
-// The compact rule is driven by section 1's row budget only:
-//   - >= 4 standard rows (e.g. tiered + both regions = 6 rows)
-//   - OR >= 2 rows AND a payin custom note (the note adds vertical
-//     pressure that would otherwise push section 2 off page 1)
-// Section 1.1's own row count is NOT a separate trigger — we want
-// 1.1 to match section 1 exactly, even when 1.1 has many rows and
-// section 1 has few. (In practice the orchestrator force-page-breaks
-// 1.1 to page 2 on heavy payin, so 1.1's own height rarely matters
-// for page 1's budget.)
-function resolvePayinCompact(
-  data: DocumentTemplatePayload,
-  layout: DocumentWizardLayout
-): boolean {
-  if (!data.calculatorType.payin) return false;
-  const showTierColumn =
-    layout.payin.tableMode === "byRegionTiered" ||
-    layout.payin.tableMode === "flatTiered";
-  const regions = resolvePayinRegionContexts(data, layout);
-  const totalRows = regions.length * (showTierColumn ? 3 : 1);
-  return totalRows >= 4 || (totalRows >= 2 && hasPayinCustomNote(data));
-}
+// Compact preset removed 2026-05-30 — the offer renders as ONE
+// universal layout (full-size typography) regardless of row count.
+// Heavy configs simply flow onto more pages rather than shrinking.
+// See memory project_pdf_remove_compact_mode + docs/decisions.md.
 
 function buildPayinRows(
   data: DocumentTemplatePayload,
@@ -259,9 +238,7 @@ function buildPayinRows(
               ? `<td class="cell-region">● ${escapeHtml(region.label)}</td>`
               : ""
           }
-          <td><span class="cell-line">${escapeHtml(PAYIN_METHOD_LABEL)}</span><span class="cell-line cell-subtitle">${escapeHtml(
-            PAYIN_APM_LABEL
-          )}</span></td>
+          ${PAYIN_METHODS_CELL}
           <td>EUR</td>
           ${showTierColumn ? `<td class="${tierColor}">${escapeHtml(tierLabel)}</td>` : ""}
           <td><span class="cell-line ${tierColor}">${escapeHtml(formatPayinModel(region.pricing.model))}</span><span class="cell-line">${escapeHtml(
@@ -282,9 +259,7 @@ function buildPayinRows(
           ? `<td class="cell-region">● ${escapeHtml(region.label)}</td>`
           : ""
       }
-      <td><span class="cell-line">${escapeHtml(PAYIN_METHOD_LABEL)}</span><span class="cell-line cell-subtitle">${escapeHtml(
-        PAYIN_APM_LABEL
-      )}</span></td>
+      ${PAYIN_METHODS_CELL}
       <td>EUR</td>
       ${showTierColumn ? "<td>Non-tiered, fixed</td>" : ""}
       <td><span class="cell-line tier-color-1">${escapeHtml(formatPayinModel(region.pricing.model))}</span><span class="cell-line">${escapeHtml(
@@ -311,9 +286,7 @@ export function buildPayinSection(data: DocumentTemplatePayload, layout: Documen
 
   const payinRows = buildPayinRows(data, layout, showMinFeeColumn);
 
-  // Auto-compact preset: see `resolvePayinCompact`.
-  const isCompact = resolvePayinCompact(data, layout);
-  const sectionClass = `offer-section${isCompact ? " compact" : ""}`;
+  const sectionClass = "offer-section";
 
   // The section returns ONLY the section element. The custom note (if
   // any) is emitted by the orchestrator as a separate sibling so it
@@ -345,10 +318,9 @@ export function buildPayinSection(data: DocumentTemplatePayload, layout: Documen
 //
 // Operator-added ad-hoc rows live in their own section to keep
 // section 1's calibration intact (6-row worst case + 3-4 line note
-// on page 1) and to give the orchestrator a clean break point —
-// the orchestrator sets `breakBefore` on this section when payin
-// is heavy so the additional rows land on page 2 instead of
-// stretching section 1 beyond its budget.
+// on page 1). Natural flow (`break-inside: avoid` per section) lets
+// these additional rows cascade onto the next page on their own when
+// section 1 is heavy — no forced page break is applied.
 //
 // The section is visually identical to section 1: same column
 // widths, same `tier-color-*` classes, same MIN. TRX FEE rendering.
@@ -370,7 +342,7 @@ function buildPayinAdditionalRows(
     const customMinFee = formatCustomRowMinTransactionFee(customRow);
     const regionCell = `<td class="cell-region">● ${escapeHtml(customRow.region)}</td>`;
     const currencyCell = `<td>${escapeHtml(customRow.currency)}</td>`;
-    const methodsCell = `<td><span class="cell-line">${escapeHtml(PAYIN_METHOD_LABEL)}</span><span class="cell-line cell-subtitle">${escapeHtml(PAYIN_APM_LABEL)}</span></td>`;
+    const methodsCell = PAYIN_METHODS_CELL;
     const minFeeCell = showMinFeeColumn ? `<td>${renderMinFeeCell(customMinFee)}</td>` : "";
 
     if (tiersActive) {
@@ -414,8 +386,7 @@ function buildPayinAdditionalRows(
 }
 
 export function buildPayinAdditionalSection(
-  data: DocumentTemplatePayload,
-  layout: DocumentWizardLayout
+  data: DocumentTemplatePayload
 ): string {
   if (!data.calculatorType.payin) {
     return "";
@@ -434,18 +405,9 @@ export function buildPayinAdditionalSection(
 
   const additionalRows = buildPayinAdditionalRows(customRows, showTierColumn, showMinFeeColumn);
 
-  // VISUAL PARITY RULE (2026-05-14): section 1.1 inherits section 1's
-  // compact state via `resolvePayinCompact`. Reason: the `.col-*`
-  // widths in styles.ts are calibrated for the compact font (8.5pt).
-  // If section 1 ended up compact (e.g. 6 tiered rows) but 1.1 came
-  // in non-compact (e.g. 1 tiered custom row → 3 PDF rows < 4
-  // threshold), the two sections rendered with different row heights
-  // and the METHODS column would wrap differently in 1.1 ("Google" /
-  // "Pay" split onto two lines). Mirroring section 1's decision —
-  // and dropping 1.1's own independent threshold — guarantees the
-  // two sections always look identical.
-  const isCompact = resolvePayinCompact(data, layout);
-  const sectionClass = `offer-section${isCompact ? " compact" : ""}`;
+  // Section 1.1 renders with the same universal (non-compact) layout
+  // as section 1 — no compact preset to mirror anymore.
+  const sectionClass = "offer-section";
 
   // REGION column is always shown for 1.1 (custom rows always have a
   // free-form region label). Currency column also always shown.

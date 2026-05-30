@@ -1,12 +1,10 @@
 import { escapeHtml } from "../../../../shared/html.js";
 import type { TermsGridItem } from "../types.js";
 
-// Render the value text. When it equals the literal "N/A" sentinel,
-// wrap it in `.value-na` so the cell reads in muted gray — the same
-// rule applied to fee/min-fee cells in the pricing tables. Other
-// values (numbers, "TBD", free text) render in default colour.
+// Render the value text. Terms values carry their own `valueColor`
+// (set per-field in terms.ts — sentinels "N/A"/"TBD" resolve to black,
+// matching the reference), so no muted-gray override is applied here.
 function renderTermsValueText(value: string): string {
-  if (value === "N/A") return `<span class="value-na">N/A</span>`;
   return escapeHtml(value);
 }
 

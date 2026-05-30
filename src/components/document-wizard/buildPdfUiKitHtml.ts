@@ -1,6 +1,6 @@
 import { DEFAULT_CONTRACT_SUMMARY_SETTINGS } from "../../domain/calculator/index.js";
 import { escapeHtml } from "../../shared/html.js";
-import { buildPdfUiKitStyles, renderFooter, renderMetaItem, renderSectionHeader } from "./pdf-kit/primitives.js";
+import { buildPdfUiKitStyles, renderMetaItem, renderSectionHeader } from "./pdf-kit/primitives.js";
 import { OFFER_REFERENCE_TOKENS } from "./pdf-kit/tokens.js";
 
 function renderSwatch(label: string, value: string): string {
@@ -22,11 +22,6 @@ export function buildPdfUiKitHtml(): string {
 </head>
 <body>
   <table class="page-layout">
-    <tfoot class="page-layout-foot">
-      <tr>
-        <td class="page-footer-cell">${renderFooter("BSG-UIKIT-REFERENCE")}</td>
-      </tr>
-    </tfoot>
     <tbody class="page-layout-body">
       <tr>
         <td class="page-content-cell">
@@ -63,7 +58,7 @@ export function buildPdfUiKitHtml(): string {
         <tbody>
           <tr>
             <td class="cell-region">● EEA + UK</td>
-            <td><span class="cell-line">Credit / Debit - Visa, Mastercard</span><span class="cell-line cell-subtitle">APM - Apple Pay, Google Pay</span></td>
+            <td><span class="cell-line">Credit / Debit —<br>Visa, Mastercard</span><span class="cell-line cell-subtitle">APM — Apple Pay,<br>Google Pay</span></td>
             <td>EUR</td>
             <td class="accent-text">Up to €1M</td>
             <td><span class="cell-line accent-text">IC++</span><span class="cell-line">3.00%</span></td>
@@ -72,7 +67,7 @@ export function buildPdfUiKitHtml(): string {
           </tr>
           <tr>
             <td class="cell-region">● Global</td>
-            <td><span class="cell-line">Credit / Debit - Visa, Mastercard</span><span class="cell-line cell-subtitle">APM - Apple Pay, Google Pay</span></td>
+            <td><span class="cell-line">Credit / Debit —<br>Visa, Mastercard</span><span class="cell-line cell-subtitle">APM — Apple Pay,<br>Google Pay</span></td>
             <td>EUR</td>
             <td class="accent-text">€1M – €3M</td>
             <td><span class="cell-line accent-text">IC++</span><span class="cell-line">3.25%</span></td>

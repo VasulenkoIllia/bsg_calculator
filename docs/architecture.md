@@ -130,7 +130,7 @@ The wizard always operates on the **same payload type** regardless of source. Th
 | UI | `components/calculator/zones/Zone*` | Zone presentation layer |
 | Wizard | `components/document-wizard/types` | Canonical payload type, `ValueMode`, `CustomTermsItem`, per-fee NA flags |
 | Wizard | `components/document-wizard/fromCalculator` | Source adapters (3 entry modes); seeds NA flags + custom items as defaults |
-| Wizard | `components/document-wizard/buildOfferPdfHtml` | Mode-driven OFFER renderer; wraps content in `<table class="page-layout">` so the disclaimer footer in `<tfoot>` repeats per-page |
+| Wizard | `components/document-wizard/buildOfferPdfHtml` | Universal-layout OFFER renderer; wraps each section in its own `<tr>` for clean page breaks (natural flow, no forced breaks / no compact mode). Running header + footer are Puppeteer page templates in `server/modules/pdf/pdf.service.ts` |
 | Wizard | `components/document-wizard/offerPdf/sections/*` | One file per OFFER section (payin, payout, fees, terms) |
 | Wizard | `components/document-wizard/offerPdf/tierColor` | Shared `tierColorClass(index)` helper used by both payin + payout tiered renderers |
 | Wizard | `components/document-wizard/pdf-kit` | Visual tokens + primitives + per-component renderers (sectionHeader, metaItem, feesGrid, termsGrid, footer) |

@@ -4,18 +4,14 @@ export function buildPdfUiKitStyles(tokens: PdfUiKitTokens): string {
   return `
 @page {
   size: A4;
-  margin: ${tokens.pageMarginCm}cm;
-
-  /* Page number lives in the @page bottom-right margin box because
-   * counter(page) / counter(pages) inside <table><tfoot> evaluates to
-   * 0 in Chrome (long-standing Chromium bug 678485). The margin box
-   * is the reliable cross-version place for paged-media counters. */
-  @bottom-right {
-    content: "Page " counter(page) " of " counter(pages);
-    font-size: 7.5pt;
-    color: #6b7280;
-    padding-top: 6pt;
-  }
+  /* Asymmetric bottom margin (26mm) reserves space for the running
+   * footer rendered by Puppeteer (pdf.service.ts → footerTemplate).
+   * Trimmed 30→26mm on 2026-05-30 after shrinking the footer fine
+   * print to 7pt — reclaims ~4mm of content area on every page so
+   * section 1's custom note stays on page 1. The @page margin must
+   * stay in sync with the 'margin' option passed to page.pdf()
+   * (Puppeteer prefers CSS when preferCSSPageSize:true). */
+  margin: ${tokens.pageMarginCm}cm ${tokens.pageMarginCm}cm 26mm ${tokens.pageMarginCm}cm;
 }
 
 :root {
@@ -33,10 +29,11 @@ export function buildPdfUiKitStyles(tokens: PdfUiKitTokens): string {
   --paper: ${tokens.colorPaper};
   --screen-bg: ${tokens.colorScreenBackground};
   /* Label colour applied to small uppercase column / card / meta
-   * labels (REGION, METHODS, REFUND, DOCUMENT NUMBER …). Matches
-   * tier-color-1 (#2358EA) so headings and the first tier read in
-   * the same blue shade. */
-  --label-color: #2358EA;
+   * labels (REGION, METHODS, REFUND, DOCUMENT NUMBER …). Grey per the
+   * reference (2026-05-30, was blue #2358EA) — every table/card/cell
+   * header across sections 1 / 1.1 / 2 / 3 / 4 and the cover meta now
+   * reads in the same neutral grey, matching --table-header-text. */
+  --label-color: #9aa3b5;
 
   /* ──────────────────────────────────────────────────────────────
    * Spacing scale (2026-05-12).
@@ -59,8 +56,25 @@ export function buildPdfUiKitStyles(tokens: PdfUiKitTokens): string {
    *   --space-card-y/x:    padding inside big-value fee cards
    *                        (.fee-card)
    * ──────────────────────────────────────────────────────────── */
-  --space-section-gap: 22px;
-  --space-header-gap: 10px;
+  /* Standardised vertical rhythm (2026-05-30). TWO gap tokens drive
+   * the whole document so spacing reads identically on every page:
+   *   --space-section-gap = the LARGE gap before each numbered section
+   *     heading (1 / 1.1 / 2 / 3 / 4) AND cover → section 1. Repeats on
+   *     every page → consistent rhythm. Set to 6mm: 10mm (the original
+   *     spec value) made page 1 so tall that section 1's custom note
+   *     was pushed onto page 2 — the reference keeps that note with
+   *     section 1 before the footer, so we trade a little air for the
+   *     same fit.
+   *   --space-header-gap = the SMALL gap used everywhere else: section
+   *     heading → its table/cards, table → custom note, and every
+   *     cover sub-block (eyebrow → title → subtitle → meta → note).
+   * No other ad-hoc vertical margins — same transition type, same gap.
+   * header-gap is 8px (not larger): the cover stacks ~5 of these, so
+   * each extra px there is what pushes section 1's note past the
+   * footer onto page 2. 8px keeps the cover compact enough that the
+   * note stays with section 1, like the reference. */
+  --space-section-gap: 6mm;
+  --space-header-gap: 8px;
   --space-grid-gap: 12px;
   --space-cell-y: 8px;
   --space-cell-x: 11px;
@@ -81,37 +95,22 @@ body {
   print-color-adjust: exact;
 }
 
-/* Page layout table. Wraps all content so the disclaimer footer in
- * <tfoot> is repeated on every printed page by Chrome's print engine,
- * which also reserves vertical space for it on each page (preventing
- * the overlap that position: fixed footers cause). */
+/* Page layout table. Wraps all content so that per-row
+ * 'force-page-break-before' gives Chrome a clean break point between
+ * top-level blocks. The running footer is NOT in <tfoot> here — it
+ * lives in Puppeteer's footerTemplate (see pdf.service.ts) so it sits
+ * at the page bottom instead of flush against the last content row. */
 table.page-layout {
   width: 100%;
   border-collapse: collapse;
   border: 0;
 }
 
-table.page-layout > tbody > tr > td.page-content-cell,
-table.page-layout > tfoot > tr > td.page-footer-cell {
+table.page-layout > tbody > tr > td.page-content-cell {
   padding: 0;
   border: 0;
   vertical-align: top;
 }
-
-table.page-layout > tfoot > tr > td.page-footer-cell {
-  /* Ensure tfoot is treated as a running footer rather than placed at
-   * the end of the table only. Chrome respects table-footer-group. */
-  display: table-cell;
-}
-
-/* Explicit display roles for the page-layout table — these are the
- * defaults but stating them here is defensive against vendor stylesheet
- * regressions or future CSS resets that might change them. The single
- * largest reason for a non-repeating tfoot in print is when one of
- * these gets overridden somewhere up the cascade. */
-table.page-layout > thead { display: table-header-group; }
-table.page-layout > tbody { display: table-row-group; }
-table.page-layout > tfoot { display: table-footer-group; }
 
 /* Forces the matching <tr> to start on a new printed page. Applied
  * to section-2 (Pay Out) when section-1 (Card Acquiring) is heavy
@@ -129,10 +128,12 @@ table.page-layout > tbody > tr.force-page-break-before {
   width: 100%;
   max-width: 100%;
   margin: 0 auto;
-  padding-bottom: 2.8cm;
 }
 
-.offer-header { padding-bottom: 6px; }
+/* No bottom padding — the gap from the cover to section 1 is owned
+ * entirely by section 1's --space-section-gap (10mm), so it equals
+ * every other section-to-section gap. */
+.offer-header { padding-bottom: 0; }
 .offer-top-line {
   height: 4px;
   width: 100%;
@@ -149,9 +150,8 @@ table.page-layout > tbody > tr.force-page-break-before {
 }
 
 .offer-title {
-  /* Slightly trimmed vs. design-original 36pt to keep page-1 budget
-   * comfortable for tiered offers; still the dominant element. */
-  margin: 6px 0 0;
+  /* Standardised cover gap (eyebrow → title). */
+  margin: var(--space-header-gap) 0 0;
   font-size: 32pt;
   line-height: 1;
   font-weight: 700;
@@ -161,16 +161,22 @@ table.page-layout > tbody > tr.force-page-break-before {
 .offer-title .accent { color: var(--accent); }
 
 .offer-subtitle {
-  margin: 6px 0 0;
+  margin: var(--space-header-gap) 0 0;
   font-size: 10pt;
   line-height: 1.4;
   color: var(--text-muted);
 }
 
 .meta-grid {
-  margin: 8px 0 0;
+  margin: var(--space-header-gap) 0 0;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* FIXED uniform row height (2026-05-30) — every meta cell is the
+   * same height regardless of whether its value is 1 or 2 lines, so
+   * the grid always reads as a clean even block. 64px comfortably
+   * fits the tallest realistic value (2 lines, e.g. "Daily (unless
+   * agreed otherwise)" ≈63px); 1-line cells share the same height. */
+  grid-auto-rows: 64px;
   gap: 0;
   /* Only top + left container borders. Right and bottom outer edges
    * are provided by item borders, so an empty trailing cell (e.g. the
@@ -211,7 +217,7 @@ table.page-layout > tbody > tr.force-page-break-before {
 }
 
 .meta-note {
-  margin: 8px 0 0;
+  margin: var(--space-header-gap) 0 0;
   background: #f5f6fb;
   border-left: 3px solid var(--accent);
   color: var(--text-muted);
@@ -226,101 +232,6 @@ table.page-layout > tbody > tr.force-page-break-before {
    * whole sections to the next page rather than splitting them. */
   page-break-inside: avoid;
   break-inside: avoid;
-}
-
-/* ────────────────────────────────────────────────────────────────
- * Compact preset.
- *
- * Auto-applied at render time when a section's row count
- * approaches its worst-case fill (so it would otherwise push the
- * table onto a second page). The preset shrinks vertical space
- * via tighter padding, smaller fonts, slimmer line-heights — it
- * does NOT remove or restructure content. Activation rules per
- * section live in the renderers (payin/payout/terms.ts).
- *
- * Worst-case fills the preset is calibrated against:
- *   - payin tiered + both regions = 6 data rows
- *   - payout tiered = 3 data rows
- *   - terms = ~10 built-in rows + N custom blocks
- *
- * Calibration 2026-05-12 (two-pass):
- *   Pass 1 — relaxed everything ~10-15% closer to default to fix
- *     "squished" cards in sections 3 (fees) and 4 (terms) and the
- *     section-header. Target: 3-4 line custom note instead of 6.
- *   Pass 2 — reverted the TABLE-CELL relaxations only, because the
- *     6-tiered-rows + 3-line note layout pushed the note to page 2.
- *     Tables dominate the page-1 vertical footprint at the worst
- *     case (7 rows × the per-row height); cards and terms are
- *     smaller and didn't contribute to the overflow. So the table
- *     cells now use the original tight padding/fonts/line-heights,
- *     while cards / terms / section-header keep their breathing
- *     room from Pass 1.
- *
- * Standard accent-text / tier-color / value-na / cell-subtitle
- * colour rules are unaffected.
- * ──────────────────────────────────────────────────────────────── */
-.offer-section.compact {
-  /* Section-level top gap tightened in compact too — saves ~6px of
-   * page-1 budget vs the default 22px without visibly cramming. */
-  margin-top: 14px;
-}
-.offer-section.compact th,
-.offer-section.compact td {
-  /* TABLE CELLS — kept tight (pass 2 revert). Each ~1px saved per
-   * cell × 7 rows × 2 (top + bottom) = ~14px page-1 budget back. */
-  padding: 3px 7px;
-  font-size: 8.5pt;
-  line-height: 1.22;
-}
-.offer-section.compact th {
-  font-size: 7pt;
-}
-.offer-section.compact .cell-line {
-  line-height: 1.2;
-}
-.offer-section.compact .section-header {
-  /* Mid-point between the original tight (4px) and pass-1 relaxed
-   * (7px). Saves ~2px vs pass 1 while keeping breathing room. */
-  margin-bottom: 5px;
-}
-.offer-section.compact .section-header h2 {
-  /* Reverted to the original tight 12pt — at 13pt the heading was
-   * costing another ~2-3mm that the heavy-payin layout could not
-   * spare without pushing the note off-page. */
-  font-size: 12pt;
-}
-.offer-section.compact .terms-item {
-  /* Relaxed (pass 1) — kept. Section 4 is the original "squished"
-   * complaint; it doesn't share page-1 budget with section 1's
-   * table when payin is heavy (force-page-break-before kicks in). */
-  padding: 6px 9px;
-  min-height: 36px;
-}
-.offer-section.compact .terms-label {
-  font-size: 7.25pt;
-}
-.offer-section.compact .terms-value {
-  font-size: 9pt;
-}
-.offer-section.compact .fee-card {
-  /* Relaxed (pass 1) — kept. Same reasoning as .terms-item: section
-   * 3 sits on page 2 in the heavy-payin layout. */
-  padding: 8px 10px;
-  min-height: 60px;
-}
-.offer-section.compact .fee-value {
-  font-size: 13pt;
-}
-.offer-section.compact .fee-card h3 {
-  font-size: 7pt;
-}
-.offer-section.compact .fee-subtitle {
-  font-size: 7pt;
-}
-.offer-section.compact .section-custom-note {
-  font-size: 7.5pt;
-  line-height: 1.35;
-  margin-top: 8px;
 }
 
 .section-header {
@@ -368,6 +279,16 @@ table.page-layout > tbody > tr.force-page-break-before {
 }
 
 .section-badge {
+  /* Fixed width + no-wrap so EVERY section badge (FIXED RATE / VOLUME
+   * TIERED / PER ACTION / GLOBAL) is identical in size and lines up
+   * vertically down the right edge of the page. flex:none stops the
+   * flex row from squeezing it when the section title is long (which
+   * used to wrap "VOLUME TIERED" onto two lines, making it taller). */
+  flex: none;
+  width: 30mm;
+  box-sizing: border-box;
+  text-align: center;
+  white-space: nowrap;
   border: 1px solid var(--accent-soft);
   color: var(--accent);
   background: var(--accent-surface);
@@ -398,8 +319,8 @@ td {
 
 /* Keep individual data-table rows (Card Acquiring / Pay Out) intact
  * across page breaks. Excludes the page-layout wrapper table — that
- * table MUST be allowed to break across pages so its tfoot can repeat
- * the per-page footer. */
+ * table MUST be allowed to break across pages so multi-section
+ * documents flow naturally. */
 table:not(.page-layout) tr {
   page-break-inside: avoid;
   break-inside: avoid;
@@ -419,12 +340,13 @@ th {
   letter-spacing: 0.02em;
 }
 
-/* Body cells: left-aligned with a noticeable left indent so values do
- * not hug the cell edge. All cells share the same indent so values
- * line up vertically across rows. */
+/* Body cells: left-aligned with a left indent so values do not hug
+ * the cell edge. All cells share the same indent so values line up
+ * vertically across rows. Trimmed 14px → 10px on 2026-05-30 to free
+ * horizontal room for the full-size METHODS cell (see col widths). */
 td {
   text-align: left;
-  padding-left: 14px;
+  padding-left: 10px;
 }
 
 tbody tr:nth-child(even) {
@@ -458,34 +380,48 @@ tbody tr:nth-child(even) {
 .cell-subtitle { color: var(--text-light); }
 
 /* Card Acquiring (payin) table column widths.
- * Numbers sum proportionally when all six columns are shown; when
- * optional columns are hidden the browser scales the remaining ones
- * proportionally because table-layout fixed is set on the table.
- * Compact columns (region/currency/mdr) are narrower than the default
- * equal split so METHODS can grow.
  *
- * Calibration 2026-05-14: bumped col-methods 25% → 30% and trimmed
- * col-minfee 22% → 17% so that "Credit / Debit - Visa, Mastercard"
- * and "APM - Apple Pay, Google Pay" each fit on a single line in the
- * compact preset, producing the intended 2-line cell instead of 3-4
- * line wraps. MIN. TRX FEE column content ("≤Xm: €Y" / ">Xm: N/A") is
- * short enough that 17% still holds it on a single line per row. */
+ * The 7 columns sum to EXACTLY 100% so the widths are literal (no
+ * proportional re-normalisation to reason about). When optional
+ * columns are hidden, table-layout:fixed re-scales the rest.
+ *
+ * Calibration 2026-05-30 (match reference): the METHODS cell uses
+ * EXPLICIT <br> line breaks (see PAYIN_METHODS_CELL in payin.ts), so
+ * it is ALWAYS the same 4-line block in every config regardless of
+ * column width:
+ *     Credit / Debit —
+ *     Visa, Mastercard
+ *     APM — Apple Pay,
+ *     Google Pay
+ * The column therefore only needs to be wide enough that the longest
+ * single line — "APM — Apple Pay," ≈77pt @9pt (em-dash) — does not
+ * wrap further. METHODS at 20% (~95pt) minus the 10px+7px cell
+ * padding leaves ~82pt of text width, a comfortable margin. */
 .col-region   { width: 11%; }
-.col-methods  { width: 30%; }
-.col-currency { width: 11%; }
-.col-tier     { width: 13%; }
-.col-mdr      { width: 12%; }
-.col-trxfee   { width: 17%; }
-.col-minfee   { width: 17%; }
+.col-methods  { width: 20%; }
+/* nowrap so the single-word "CURRENCY" header never breaks to a stray
+ * "Y" on a second line. Data values (EUR/USD/USDT) are short codes that
+ * never wrap, so the whole column reads on one line. */
+.col-currency { width: 11%; white-space: nowrap; }
+.col-tier     { width: 13.5%; }
+.col-mdr      { width: 12.5%; }
+.col-trxfee   { width: 16%; }
+.col-minfee   { width: 16%; }
 
 .fees-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-grid-gap);
+  /* Connected grid (no gaps) like the reference — the container draws
+   * the top + left edges, each card draws its right + bottom edge, so
+   * adjacent cells share one hairline border (same technique as
+   * .meta-grid). Trailing empty slots in the last row stay invisible. */
+  border-top: 1px solid var(--border);
+  border-left: 1px solid var(--border);
 }
 
 .fee-card {
-  border: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   /* Big-value card padding — fee-card holds three lines (label,
    * big numeric value, subtitle) so it gets a slightly larger
    * pad than .meta-item / .terms-item. */
@@ -507,17 +443,61 @@ tbody tr:nth-child(even) {
 
 .fee-value {
   margin: 4px 0 0;
-  font-size: 14pt;
+  font-size: 18pt;
   font-weight: 700;
   color: var(--text-primary);
   line-height: 1.15;
 }
 
 .fee-subtitle {
+  /* Accent (blue) per the reference — the meta line under each fee
+   * value reads in the brand colour, not muted grey. */
   margin: 3px 0 0;
   font-size: 7.5pt;
-  color: var(--text-muted);
+  color: var(--accent);
   line-height: 1.3;
+}
+
+/* Pay Out (section 2) — FIXED RATE card row. A single bordered row of
+ * big-value cards (region / rate / trx fee / min fee), matching the
+ * reference. Rendered ONLY for the non-tiered case; the tiered case
+ * keeps the standard table. grid-auto-flow:column lets the card count
+ * flex (3 or 4) while every card stays equal width. */
+.payout-cards {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  border-top: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  background: #f5f6fb;
+}
+.payout-card {
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 12px;
+  min-height: 72px;
+}
+.payout-card-label {
+  display: block;
+  font-size: 7pt;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--label-color);
+}
+.payout-card-value {
+  display: block;
+  margin: 5px 0 0;
+  font-size: 22pt;
+  font-weight: 700;
+  line-height: 1.05;
+  color: var(--accent);
+}
+.payout-card-sub {
+  display: block;
+  margin: 4px 0 0;
+  font-size: 7.5pt;
+  color: var(--text-muted);
 }
 
 .terms-grid {
@@ -581,34 +561,10 @@ tbody tr:nth-child(even) {
 .section-custom-note {
   margin: var(--space-header-gap) 0 0;
   color: var(--text-light);
-  font-size: 8pt;
-  line-height: 1.4;
+  font-size: 7.5pt;
+  line-height: 1.35;
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-.print-footer {
-  /* Lives inside table.page-layout > tfoot so Chrome repeats it on every
-   * printed page. No position: fixed — that approach overlapped content
-   * because fixed elements do not reserve flow space. */
-  font-size: 7.6pt;
-  color: var(--text-muted);
-  padding-top: 8pt;
-}
-
-.print-footer p {
-  margin: 0;
-  line-height: 1.3;
-  border-top: 1px solid var(--border);
-  padding-top: 6px;
-}
-
-.footer-meta {
-  margin-top: 4px;
-  display: flex;
-  justify-content: space-between;
-  font-size: 8pt;
-  color: var(--text-muted);
 }
 
 .kit-panel {
@@ -676,15 +632,6 @@ tbody tr:nth-child(even) {
   .section-header h2 { font-size: 45px; }
   th, td { font-size: 13px; }
   .meta-value { font-size: 34px; }
-
-  .print-footer {
-    margin-top: 16px;
-  }
-
-  .footer-meta {
-    justify-content: flex-start;
-    gap: 16px;
-  }
 }
 
 /* AGREEMENT (long-form) typography and layout */
@@ -840,6 +787,13 @@ tbody tr:nth-child(even) {
     padding: 0 !important;
   }
 
+  /* The accent bar at the top of the cover is shown ONLY on screen
+   * (in the wizard's HTML preview). In the PDF the bar is drawn by
+   * Puppeteer's running headerTemplate (pdf.service.ts) on every page,
+   * so the in-body copy is hidden here to avoid a doubled bar on
+   * page 1. */
+  .offer-top-line { display: none; }
+
   .agreement-h2 { page-break-after: avoid; }
   .agreement-h3 { page-break-after: avoid; }
 
@@ -853,14 +807,6 @@ tbody tr:nth-child(even) {
 
   .sheet { padding: 0; }
   .kit-panel { display: none; }
-
-  /* The footer lives in table.page-layout > tfoot so Chrome's print
-   * engine repeats it on every printed page and reserves flow space
-   * for it (no overlap with content). */
-  .print-footer {
-    page-break-inside: avoid;
-    break-inside: avoid;
-  }
 }
 `;
 }

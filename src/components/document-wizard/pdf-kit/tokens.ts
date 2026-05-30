@@ -28,9 +28,12 @@ export const OFFER_REFERENCE_TOKENS: PdfUiKitTokens = {
   colorTextMuted: "#6b7280",
   colorTextLight: "#9ca3af",
   colorBorder: "#d7dce8",
-  colorTableHeaderBg: "#eef1f7",
+  // Tables 1 / 1.1 / 2 / 3 / 4 render on a plain white background per
+  // user request (2026-05-30) — header fill and row striping removed.
+  // Cell borders alone separate header from data and row from row.
+  colorTableHeaderBg: "#ffffff",
   colorTableHeaderText: "#9aa3b5",
-  colorTableAltRow: "#fafbff",
+  colorTableAltRow: "#ffffff",
   colorPaper: "#ffffff",
   colorScreenBackground: "#f1f5fb",
   shadowPaper: "0 10px 30px rgba(15, 23, 42, 0.08)",

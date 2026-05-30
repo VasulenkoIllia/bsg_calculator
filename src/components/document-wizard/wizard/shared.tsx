@@ -322,6 +322,61 @@ export function ModedNumericField({
   );
 }
 
+// Uniform add-on for section-3 fee cards: a Value / Waived / N/A mode
+// selector (sets the fee's `valueModes` entry — "waived"/"na" override
+// the card to render "Waived"/"N/A") plus an optional custom note that
+// renders as a second subtitle line (the fee's `feeNotes` entry).
+// Sits UNDER each fee's existing value control so the section reads
+// consistently across all six fees.
+export function FeeModeNote({
+  mode,
+  onModeChange,
+  note,
+  onNoteChange,
+  ariaPrefix,
+  notePlaceholder
+}: {
+  mode: ValueMode;
+  onModeChange: (next: ValueMode) => void;
+  note: string;
+  onNoteChange: (next: string) => void;
+  ariaPrefix: string;
+  notePlaceholder?: string;
+}) {
+  return (
+    <div className="mt-2 space-y-2">
+      <div className="flex flex-wrap gap-2">
+        <MiniToggle
+          label="Value"
+          selected={mode === "value"}
+          onSelect={() => onModeChange("value")}
+          ariaLabel={`${ariaPrefix} mode: value`}
+        />
+        <MiniToggle
+          label="Waived"
+          selected={mode === "waived"}
+          onSelect={() => onModeChange("waived")}
+          ariaLabel={`${ariaPrefix} mode: waived`}
+        />
+        <MiniToggle
+          label="N/A"
+          selected={mode === "na"}
+          onSelect={() => onModeChange("na")}
+          ariaLabel={`${ariaPrefix} mode: N/A`}
+        />
+      </div>
+      <input
+        className="field-input"
+        type="text"
+        value={note}
+        onChange={event => onNoteChange(event.target.value)}
+        placeholder={notePlaceholder ?? "Custom note (optional)"}
+        aria-label={`${ariaPrefix} custom note`}
+      />
+    </div>
+  );
+}
+
 // Fee input paired with an "N/A" checkbox. When the checkbox is on,
 // the numeric field is disabled and the corresponding cell in the PDF
 // renders the literal "N/A" instead of the value (handled by the

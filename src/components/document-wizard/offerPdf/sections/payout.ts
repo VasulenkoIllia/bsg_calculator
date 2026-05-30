@@ -49,28 +49,16 @@ function hasPayoutMinFeeContent(data: DocumentTemplatePayload): boolean {
   );
 }
 
+// Tiered Pay Out rows (one per volume tier). The non-tiered / fixed
+// case is rendered as a big-value CARD instead — see buildPayoutCards.
 function buildPayoutRows(
   data: DocumentTemplatePayload,
   layout: DocumentWizardLayout,
   showMinimumFeeColumn: boolean
 ): string {
   const showRegionColumn = layout.payout.regionMode === "global";
-  const showTierColumn = layout.payout.tableMode === "globalTiered";
   const payout = data.payoutPricing;
   const minimumFeeCell = showMinimumFeeColumn ? renderPayoutMinFeeCell(data) : "";
-
-  if (!showTierColumn) {
-    return `<tr>
-      ${
-        showRegionColumn
-          ? "<td><span class=\"cell-line\">Global</span><span class=\"cell-line cell-subtitle\">All Visa & Mastercard</span></td>"
-          : ""
-      }
-      <td><span class="cell-line">${escapeHtml(formatPercent(payout.single.mdrPercent))}</span><span class="cell-line cell-subtitle">Non-tiered, fixed</span></td>
-      <td>${renderPayoutTrxFeeSpan(payout.single, "cell-line")}<span class="cell-line cell-subtitle">Credit / Debit & APM</span></td>
-      ${showMinimumFeeColumn ? `<td>${minimumFeeCell}</td>` : ""}
-    </tr>`;
-  }
 
   return payout.tiers
     .map((tier, index) => {
@@ -87,6 +75,50 @@ function buildPayoutRows(
     .join("");
 }
 
+// One big-value card: small grey label, large accent value, grey
+// subtitle. `valueHtml` is inserted verbatim (callers pass either an
+// already-escaped string or a span, e.g. the muted "N/A").
+function payoutCard(label: string, valueHtml: string, subtitle: string): string {
+  return `<div class="payout-card">
+    <span class="payout-card-label">${label}</span>
+    <span class="payout-card-value">${valueHtml}</span>
+    <span class="payout-card-sub">${escapeHtml(subtitle)}</span>
+  </div>`;
+}
+
+// Non-tiered / FIXED RATE Pay Out — a single row of big-value cards
+// (REGION / MDR / TRANSACTION FEE / MINIMUM FEE), matching the
+// reference. Card count adapts to which optional fields are present.
+function buildPayoutCards(
+  data: DocumentTemplatePayload,
+  layout: DocumentWizardLayout
+): string {
+  const showRegion = layout.payout.regionMode === "global";
+  const showMinFee = hasPayoutMinFeeContent(data);
+  const single = data.payoutPricing.single;
+
+  const cards: string[] = [];
+  if (showRegion) {
+    cards.push(payoutCard("REGION", "Global", "All Visa & Mastercard"));
+  }
+  cards.push(
+    payoutCard(
+      "MDR / PROCESSING RATE",
+      escapeHtml(formatPercent(single.mdrPercent)),
+      "Non-tiered, fixed"
+    )
+  );
+  const trxValue = single.trxFeeNa
+    ? `<span class="value-na">N/A</span>`
+    : escapeHtml(formatEuro(single.trxFee));
+  cards.push(payoutCard("TRANSACTION FEE", trxValue, "Credit / Debit & APM"));
+  if (showMinFee) {
+    cards.push(payoutCard("MINIMUM FEE", renderPayoutMinFeeCell(data), "Per transaction"));
+  }
+
+  return `<div class="payout-cards">${cards.join("")}</div>`;
+}
+
 export function buildPayoutSection(data: DocumentTemplatePayload, layout: DocumentWizardLayout): string {
   if (!data.calculatorType.payout || layout.payout.regionMode === "none") {
     return "";
@@ -99,11 +131,25 @@ export function buildPayoutSection(data: DocumentTemplatePayload, layout: Docume
   // "no data, no block" promise from the OFFER fidelity audit.
   const showMinimumFeeColumn = hasPayoutMinFeeContent(data);
 
-  // Auto-compact when the table hits its worst case (3 tiered rows)
-  // or when the section already carries a custom note that adds
-  // vertical weight to the same page.
-  const isCompact = showTierColumn || hasPayoutCustomNote(data);
-  const sectionClass = `offer-section${isCompact ? " compact" : ""}`;
+  // Universal layout — no compact preset (removed 2026-05-30).
+  const sectionClass = "offer-section";
+
+  // Non-tiered / FIXED RATE → big-value card row (reference style).
+  // Tiered → standard table (mirrors section 1's tiered table).
+  const body = showTierColumn
+    ? `<table>
+      <thead>
+        <tr>
+          ${showRegionColumn ? "<th>REGION</th>" : ""}
+          <th>MONTHLY VOLUME TIER</th>
+          <th>MDR / PROCESSING RATE</th>
+          <th>TRANSACTION FEE</th>
+          ${showMinimumFeeColumn ? "<th>MINIMUM FEE</th>" : ""}
+        </tr>
+      </thead>
+      <tbody>${buildPayoutRows(data, layout, showMinimumFeeColumn)}</tbody>
+    </table>`
+    : buildPayoutCards(data, layout);
 
   // The section returns ONLY the section element. The custom note (if
   // any) is emitted by the orchestrator as a separate sibling so it
@@ -111,24 +157,12 @@ export function buildPayoutSection(data: DocumentTemplatePayload, layout: Docume
   // and the per-page footer fix it enables).
   return `<section class="${sectionClass}">
     ${renderSectionHeader(2, "Card Acquiring — Pay Out / Push to Card", showTierColumn ? "VOLUME TIERED" : "FIXED RATE")}
-    <table>
-      <thead>
-        <tr>
-          ${showRegionColumn ? "<th>REGION</th>" : ""}
-          ${showTierColumn ? "<th>MONTHLY VOLUME TIER</th>" : ""}
-          <th>MDR / PROCESSING RATE</th>
-          <th>TRANSACTION FEE</th>
-          ${showMinimumFeeColumn ? "<th>MINIMUM FEE</th>" : ""}
-        </tr>
-      </thead>
-      <tbody>${buildPayoutRows(data, layout, showMinimumFeeColumn)}</tbody>
-    </table>
+    ${body}
   </section>`;
 }
 
 // Single source of truth for "is the payout section custom note
-// active?". Used by the auto-compact heuristic in buildPayoutSection
-// and by the renderer below.
+// active?". Used by buildPayoutSection and the renderer below.
 export function hasPayoutCustomNote(data: DocumentTemplatePayload): boolean {
   return (
     data.contractSummary.payoutCustomNoteEnabled &&

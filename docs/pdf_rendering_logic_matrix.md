@@ -1,7 +1,7 @@
 # PDF Rendering Logic Matrix
 
-Date: 2026-05-07 (refreshed for 2026-05-07 visual pass + custom blocks + custom notes)
-Status: Active. Derived from specification + 8 reference commercial offers + MSA docx + 2026-05-07 product additions.
+Date: 2026-05-30 (refreshed for the universal-layout redesign — compact mode removed, Puppeteer running header/footer, natural page flow, ValueMode + feeNotes)
+Status: Active. Derived from specification + 8 reference commercial offers + MSA docx + the 2026-05-30 "Be There Solutions Commercial Offer 1.1" reference redesign.
 
 ## 1. Sources used
 
@@ -39,79 +39,73 @@ The OFFER and AGREEMENT share the same Sections 1–4 layout. AGREEMENT adds the
 5. Meta grid with 5 cells in a 3-column layout: `DOCUMENT NUMBER`, `DOCUMENT DATE`, `DOCUMENT TYPE` (top row), then `COLLECTION MODEL`/`SETTLEMENT MODEL`, `COLLECTION FREQUENCY` (bottom row spanning 2 cells; 6th slot intentionally borderless). Container border is top + left only; item borders form the rest, so the empty 6th slot does not draw a closed rectangle.
 6. Followed by amber/blue note: `All fees are collected on a daily basis unless otherwise instructed in writing. Rates are subject to applicable interchange and scheme fees under the IC++ model unless otherwise instructed in writing.`
 7. Sections 1–4 with numeric badges and right-aligned variant tag.
-8. **Per-page footer** (repeated on every printed page via `<table class="page-layout">` + `<tfoot>`): full confidentiality notice + meta line `CONFIDENTIAL · BSG-XXXXX`. Page counter (`Page N of M`) lives in the `@page { @bottom-right }` margin box because `counter(page)` inside `<tfoot>` evaluates to 0 in Chrome (Chromium issue 678485).
-   - Each top-level OFFER block (header / sections 1–4 / agreement / per-section custom note) is wrapped in **its own `<tr><td>` row** inside `<tbody>` so Chrome's print engine has reliable break points. A single-row `<tbody>` made the per-page footer disappear when content overflowed across pages.
-   - Custom notes are emitted as **siblings of the corresponding section**, not children. Each note lives in its own `<tr>` so a long note can flow across pages without dragging the section's `page-break-inside: avoid` rule down with it.
+8. **Running header + footer** — repeated on every printed page, rendered by **Puppeteer page templates** (`buildHeaderTemplate()` / `buildFooterTemplate()` in `server/modules/pdf/pdf.service.ts`), NOT in the document HTML. The header is a thin purple accent bar (`border-top: 4px solid var(--accent)`, 20 mm side inset, on every page incl. the Agreement). The footer carries the full confidentiality disclaimer + meta line `CONFIDENTIAL · BSG-XXXXX` with the page counter `Page N of M`. Both live in the `@page` top/bottom margins (top 20 mm / bottom 26 mm), so they never affect content flow and never overlap the body.
+   - The old in-HTML `<tfoot>` footer (and its Chromium `counter()` workaround for issue 678485) was **removed 2026-05-30** when the footer moved to the Puppeteer template.
+   - Each top-level OFFER block (header / sections 1–4 / agreement / per-section custom note) is still wrapped in **its own `<tr><td>` row** inside `<tbody>` so the print engine has reliable break points between sections.
+   - Custom notes are emitted as **siblings of the corresponding section**, not children. Each note lives in its own `<tr>` so a long note can flow across pages without dragging the section's `break-inside: avoid` rule down with it.
 
-### 3.1 Colour scheme (2026-05-07)
+### 3.1 Colour scheme (2026-05-30)
 
 | Element | Class | Colour |
 |---|---|---|
-| Small uppercase labels (REGION, METHODS, REFUND, DOCUMENT NUMBER, …) | `--label-color` | `#2358EA` |
+| Small uppercase labels (REGION, METHODS, REFUND, DOCUMENT NUMBER, …) | `--label-color` | `#9aa3b5` (grey — changed from blue `#2358EA` on 2026-05-30) |
 | Tier 1 row (model, label, trx fee) — also single-mode default | `tier-color-1` | `#2358EA` |
 | Tier 2 row | `tier-color-2` | `#3F38E3` |
 | Tier 3 row | `tier-color-3` | `#7D2AEB` |
 | MDR percent (every tier, single mode) | (default body colour) | `var(--text-primary)` `#0F172A` |
-| `N/A` text wherever it appears (fee tables, terms grid, fee cards) | `value-na` | `var(--text-muted)` `#6B7280` |
-| Cell subtitle (APM list, "All Visa & Mastercard", "Non-tiered, fixed", "Credit / Debit & APM") | `cell-subtitle` | `var(--text-light)` `#9CA3AF` |
-| Custom Terms blocks (user-picked) | `terms-value-{blue,black,orange}` | `#2358EA` / `var(--text-primary)` / `#DB7712` |
+| `N/A` in payin / fee tables (e.g. MIN. TRX FEE) | `value-na` | `var(--text-muted)` `#6B7280` |
+| Terms grid values (built-in + custom) | `terms-value-{blue,black,orange}` | pricing → blue `#2358EA`, risk/attention → orange `#DB7712`, sentinel `N/A`/`TBD` → black `var(--text-primary)` |
+| Fee card value | `fee-value` | `var(--text-primary)`, 18 pt |
+| Fee card subtitle note (operator free-form) | `fee-subtitle` | `var(--accent)` |
+| Pay Out card value (non-tiered) | `payout-card-value` | `var(--accent)`, 22 pt |
+| Cell subtitle (APM list, "Non-tiered, fixed", …) | `cell-subtitle` | `var(--text-light)` `#9CA3AF` |
 | Section custom note (user free-form, under each pricing table) | `section-custom-note` | `var(--text-light)` `#9CA3AF` |
+
+**Built-in terms colour rule (2026-05-30):** each field has a "natural" colour (pricing values → blue, risk fields such as Restricted Jurisdictions / Rolling Reserve → orange), but a sentinel value (`N/A` / `TBD`) always renders **black** — see `termColor()` in `offerPdf/sections/terms.ts`. The terms grid no longer wraps `N/A` in muted-grey `value-na`.
 
 Percent format: always exactly 2 decimals (`5.00%`, `4.50%`, `0.30%`, `0.01%`) — `formatPercent` in `offerPdf/formatters.ts`.
 
-### 3.2 Per-fee N/A toggles
+### 3.2 Per-fee value modes + custom notes (2026-05-30)
 
-Every numeric fee value in the OFFER PDF is paired with a boolean `*Na` flag on the wizard payload. Three render states:
+Fee and limit values resolve through a shared **`ValueMode`** (`value` | `waived` | `na` | `tbd`) stored in `payload.valueModes`, rendered by `resolveModeValue()`:
 
-1. flag false + value > 0 → display the formatted value
-2. flag false + value = 0/empty → row hides via the global hide-if-empty rule
-3. flag true → display the literal `N/A` (in `value-na` gray)
+1. `value` + amount > 0 → display the formatted amount
+2. `value` + amount = 0/empty → row/card hides via the hide-if-empty rule
+3. `waived` → literal `Waived`
+4. `na` → literal `N/A`; `tbd` → literal `TBD`
 
-Flag wins over the value; the user toggles flags via `FeeFieldWithNa` (boolean) or `ModedNumericField` (Number / N/A / TBD picker for `number | null` fields).
+The mode wins over the raw amount. In Section 3 the six fee cards (Account Setup, Refund, Dispute / Chargeback, 3DS, Settlement, Min. Monthly Account Fee) each expose a **Value / Waived / N/A** toggle plus an optional **custom subtitle note** stored in `payload.feeNotes` (`DocumentWizardFeeNotes`) and rendered as a second `fee-subtitle` line. **FAILED TRX CHARGING** is the exception — it has no Waived state and always renders (`0` when the toggle is off; the charging mode when on).
+
+Limit/terms fields (Min/Max Collection & Payout size, Rolling Reserve Cap) use the same modes via `ModedNumericField` (Number / N/A / TBD). The legacy per-field boolean `*Na` flags were superseded by `valueModes`.
 
 ### 3.3 Region label
 
 `payinPricing.eu` is data-key only — the user-facing label is `EEA + UK` (changed from `EU` on 2026-05-07). Lives in `wizard/shared.tsx:PAYIN_REGION_LABELS` and the OFFER renderer's `payinRegionContexts`.
 
-### 3.4 Page-budget strategy
+### 3.4 Page flow — natural, no forced breaks (2026-05-30)
 
-Page 1 is laid out around the payin section's "weight" — whether the
-Card Acquiring table has tiers:
+There is **one universal full-size layout** and **no compact mode**.
+Page breaks are not forced or budgeted; the document grows to as many
+pages as the data needs and looks identical at every data volume
+(fewer fields → fewer pages, same sizing).
 
-| `layout.payin.tableMode` | Has tiers? | Page-1 content | Page-2 content | Forced break |
-|---|---|---|---|---|
-| `byRegionTiered` | yes (6 rows, both regions) | header + section 1 + payin custom note | section 2 + payout note + sections 3 + 4 | before Pay Out |
-| `flatTiered` | yes (3 rows, one region) | header + section 1 + payin custom note | section 2 + payout note + sections 3 + 4 | before Pay Out |
-| `byRegionFlat` | no (2 rows, both regions) | header + sections 1 + 2 + their notes | sections 3 + 4 | before Other Services & Fees |
-| `flatSingle` | no (1 row) | header + sections 1 + 2 + their notes | sections 3 + 4 | before Other Services & Fees |
+- Each `<section class="offer-section">` carries `break-inside: avoid`,
+  so a numbered section is never split mid-table — the print engine
+  pushes a whole section to the next page when it doesn't fit, and
+  otherwise lets sections flow continuously.
+- Inter-section spacing is one standardized token,
+  `--space-section-gap` (6 mm), applied uniformly on every page.
+- Custom notes stay in their own `<tr>` rows (siblings of their
+  section) so a long note never drags its section's
+  `break-inside: avoid` across a page boundary.
+- A section with no data returns `""` and is omitted entirely (e.g.
+  Pay Out when payout is disabled), so sparse documents never leave
+  empty frames.
 
-Implementation: the orchestrator marks the corresponding row's `<tr>`
-with `force-page-break-before` (CSS `page-break-before: always`). When
-the payin section is absent (`calculatorType.payin === false`), no
-forced break fires — sections flow naturally.
-
-### 3.5 Auto-compact mode (added 2026-05-08)
-
-Each `<section class="offer-section">` carries an optional `compact`
-modifier class. CSS in `pdf-kit/styles.ts` shrinks padding, font
-sizes (th/td 9pt → 8pt, h2 14pt → 12pt, etc.), and line-heights by
-~20% without removing content. Standard colour rules
-(accent-text / tier-color / value-na / cell-subtitle) are
-unaffected.
-
-Activation rules (data-driven, computed at render time):
-
-| Section | Compact when |
-|---|---|
-| Card Acquiring (payin) | `totalRows >= 4` (tiered + both regions = 6, tiered + one region = 3) OR (`totalRows >= 2` AND has custom note) |
-| Pay Out (payout) | `showTierColumn` (3 tiered rows) OR has custom note |
-| Terms & Limitations | `items.length >= 8` (built-ins + custom blocks) |
-| Other Services & Fees | never (cards layout already efficient at 3 per row) |
-
-The preset is calibrated against worst-case fills (payin 6 rows,
-payout 3 rows, terms ~10 built-ins + N custom blocks) so a busy
-offer fits page 1 (header + sections 1 + 2) without spilling onto
-page 2 just for vertical-spacing reasons.
+This replaced the previous *force-page-break + auto-compact* heuristics
+(both removed 2026-05-30), which assumed a fixed 2-page budget and
+orphaned content once section heights changed. `buildOfferBodyRows()`
+no longer sets any per-row break flag.
 
 ## 4. Per-sample variation matrix
 
@@ -166,8 +160,10 @@ Identical across all samples: `≤2.5M: €1.00 / >2.5M: N/A`.
 
 **Refactored same day** (initial implementation 95ba2ce appended
 custom rows to section 1's table; second pass moved them into a
-separate sibling section to give the orchestrator a clean
-force-page-break boundary).
+separate sibling `offer-section` so each gets its own
+`break-inside: avoid` page-break boundary — originally a
+force-page-break boundary, now natural flow after the 2026-05-30
+redesign).
 
 Operator can add ad-hoc rows via the wizard's "Custom Payin Rows"
 section (placed AFTER the Payin Section Note in Step 2). Each row
@@ -194,12 +190,11 @@ of section 1:
 - MIN. TRX FEE column shown when at least one custom row produces
   a non-null min-fee render (via `hasAnyCustomRowMinFee`)
 
-**Page-break orchestration** (`buildOfferBodyRows`):
-- `breakBefore: heavyPayin` on the section-1.1 row.
-- Heavy payin (standard rows tiered) → section 1.1 on page 2 with
-  section 2.
-- Light payin (standard rows single) → section 1.1 flows naturally
-  on page 1 after section 1 + payin note.
+**Page flow** (`buildOfferBodyRows`): section 1.1 is its own
+`offer-section` row with `break-inside: avoid` and flows naturally —
+when section 1 is heavy, 1.1 cascades onto the next page on its own;
+no forced break is applied (the `breakBefore` mechanism was removed
+2026-05-30).
 
 Type: `PayinCustomRow` in `document-wizard/types.ts`. Field is
 optional (`payinPricing.customRows?`) for back-compat.
@@ -215,10 +210,10 @@ Renderers:
   horizontal padding so single-digit indices stay square while
   multi-char indices ("1.1") expand to fit.
 
-Auto-compact preset: section 1.1 has its OWN compact decision
-based on its own row count (`>= 4` threshold, same as section 1).
-Section 1's calibration is no longer at risk regardless of how
-many custom rows operators add.
+Universal layout: section 1.1 renders at the same full size as
+section 1 (no compact preset). Section 1's layout is unaffected by
+how many custom rows operators add — extra rows simply cascade onto
+the next page via `break-inside: avoid`.
 
 ### 4.5.2 Section 1 column widths
 
@@ -228,17 +223,19 @@ Defined in `pdf-kit/styles.ts` `:root` as proportional weights
 | Column | CSS class | Width |
 |---|---|---|
 | REGION | `.col-region` | 11% |
-| METHODS | `.col-methods` | 30% |
-| CURRENCY | `.col-currency` | 11% |
-| MONTHLY VOLUME TIER | `.col-tier` | 13% |
-| MDR / RATE | `.col-mdr` | 12% |
-| TRANSACTION FEE | `.col-trxfee` | 17% |
-| MIN. TRANSACTION FEE | `.col-minfee` | 17% |
+| METHODS | `.col-methods` | 20% |
+| CURRENCY | `.col-currency` | 11% (`white-space: nowrap`) |
+| MONTHLY VOLUME TIER | `.col-tier` | 13.5% |
+| MDR / RATE | `.col-mdr` | 12.5% |
+| TRANSACTION FEE | `.col-trxfee` | 16% |
+| MIN. TRANSACTION FEE | `.col-minfee` | 16% |
 
-History: METHODS was 25% and MIN. TRX FEE was 22% before the
-2026-05-14 rebalance — METHODS widened to fit "Credit / Debit -
-Visa, Mastercard" + "APM - Apple Pay, Google Pay" on single lines
-per cell-line in compact preset.
+History: METHODS was 30% before the 2026-05-30 rebalance. Under the
+universal (non-compact) layout the METHODS cell renders **4 lines**
+(`Credit / Debit —` / `Visa, Mastercard` / `APM —` / `Apple Pay,
+Google Pay`) via hardcoded `<br>` breaks + em-dash, so it no longer
+needs the extra width; CURRENCY is pinned `nowrap` so the currency
+code never wraps.
 
 ### 4.6 Section 1 footnotes (annotations under the table)
 
@@ -264,6 +261,8 @@ bottom of Step 2 (Payin) and Step 3 (Payout).
 ### 4.7 Section 2 (Payout)
 
 All 8 samples use **non-tiered fixed rate, Global region only**. No tiered payout sample exists in the reference set, even though our renderer supports `globalTiered`.
+
+**Layout (2026-05-30):** the non-tiered case renders as a **card row** (`.payout-cards` — MDR / Transaction Fee / Min. Transaction Fee as large accent values at 22 pt on a `#f5f6fb` panel), matching the reference; the **tiered** case keeps the multi-row table. Branch lives in `offerPdf/sections/payout.ts:buildPayoutSection()` (`showTierColumn ? table : buildPayoutCards()`). When payout is disabled the whole section is omitted.
 
 | Sample | MDR | TRX | Min Fee |
 |---|---|---|---|
@@ -299,7 +298,7 @@ Observed extra annotation lines under values (rendered as small note below the p
 | MIN. MONTHLY ACCOUNT FEE | `· MMAF to be charged from 4th month` | Aron only |
 | SETTLEMENT | `Waived for EU only` | TodaPay only |
 
-**Renderer gap**: `FeeCardItem` only supports a single `subtitle`. Cards do not support secondary annotation lines.
+**✅ Closed (2026-05-30):** all six fee cards support an optional operator-entered second line. `FeeCardItem.subtitleNote` renders as a second `fee-subtitle` paragraph (accent colour) under the primary subtitle; the text is stored per-fee in `payload.feeNotes` (`DocumentWizardFeeNotes`) and edited in the wizard's Other Fees step via the `FeeModeNote` control.
 
 ### 4.10 Section 4 (Terms & Limitations)
 
@@ -381,12 +380,21 @@ A grouped list of discrepancies between the current OFFER renderer and the 8 sam
 
 OFFER renderer layout:
 - `src/components/document-wizard/buildOfferPdfHtml.ts` — orchestrator.
-  Wraps content in `<table class="page-layout">` with the disclaimer
-  footer in `<tfoot>`. Each top-level block (header / OFFER section /
-  agreement body / per-section custom note) lives in its own
-  `<tr><td>` row inside `<tbody>` via the `wrap()` helper +
-  `buildOfferBodyRows()` — that layout is what makes Chrome reliably
-  repeat the footer on every printed page.
+  Wraps content in `<table class="page-layout">`; each top-level block
+  (header / OFFER section / agreement body / per-section custom note)
+  lives in its own `<tr><td>` row inside `<tbody>` via the `wrap()`
+  helper + `buildOfferBodyRows()`, giving the print engine clean break
+  points between sections. **No `<tfoot>`** — the running header +
+  footer are Puppeteer page templates (see below).
+- `server/modules/pdf/pdf.service.ts` — Puppeteer renderer.
+  `buildHeaderTemplate()` (purple accent bar) + `buildFooterTemplate()`
+  (confidentiality disclaimer + `CONFIDENTIAL · BSG-XXXXX` + `Page N of
+  M`) are injected via `displayHeaderFooter` into the `@page` margins
+  (top 20 mm / bottom 26 mm / sides 20 mm, kept in sync with the CSS
+  `@page` rule under `preferCSSPageSize`).
+- `server/modules/pdf/pdf.controller.ts` — passes `documentNumber` into
+  the renderer so the footer prints the BSG number on both the download
+  and preview paths.
 - `src/components/document-wizard/offerPdf/formatters.ts` — money /
   percent (`#.##%`) / date helpers + `resolveModeValue` for
   Number / N/A / TBD / Waived sentinels.
@@ -402,10 +410,14 @@ OFFER renderer layout:
   can place each note in its own `<tr>`. `terms.ts` appends the user's
   `customTermsItems` after the built-in rows in the same terms grid.
 - `src/components/document-wizard/pdf-kit/` — visual primitives + style
-  tokens. CSS in `pdf-kit/styles.ts` defines `--label-color`,
-  `tier-color-{1,2,3}`, `value-na`, `cell-subtitle`,
-  `terms-value-{blue,black,orange}`, `section-custom-note`,
-  `@page { @bottom-right }` page counter.
+  tokens. CSS in `pdf-kit/styles.ts` defines `--label-color` (grey),
+  `--space-section-gap` (6 mm), `tier-color-{1,2,3}`, `value-na`,
+  `cell-subtitle`, `terms-value-{blue,black,orange}`,
+  `section-custom-note`, `.payout-cards`, `.fees-grid`, and the `@page`
+  margin rule (kept in sync with Puppeteer's margins). The page counter
+  now lives in the Puppeteer footer template, not CSS.
+  Note: the in-HTML `renderFooter` primitive (`pdf-kit/components/footer.ts`)
+  is retained but no longer wired into the OFFER render path.
 - `src/lib/printHtmlViaIframe.ts` — hidden iframe + Blob URL print
   path (replaces popup-based print to avoid popup blockers and
   Safari `srcdoc` bugs).
