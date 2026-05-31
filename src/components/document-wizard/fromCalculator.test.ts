@@ -273,8 +273,39 @@ describe("buildOfferPdfHtml", () => {
     data.toggles.failedTrxOverLimitThresholdPercent = 70;
 
     const html = buildOfferPdfHtml(data);
-    expect(html).toContain("FAILED TRX CHARGING");
-    expect(html).toContain("Under limit only (70.00%)");
+    expect(html).toContain("FAILED TRANSACTION CHARGING");
+    expect(html).toContain("Under limit only 70.00%");
+    expect(html).toContain("Per transaction");
+  });
+
+  it("renders failed trx charging 'free' mode as €0.00", () => {
+    const data = buildBaseTemplateData();
+    data.toggles.failedTrxEnabled = true;
+    data.toggles.failedTrxMode = "free";
+
+    const html = buildOfferPdfHtml(data);
+    expect(html).toContain("FAILED TRANSACTION CHARGING");
+    expect(html).toContain("€0.00");
+    expect(html).toContain("Per transaction");
+  });
+
+  it("omits the failed trx charging card entirely when disabled", () => {
+    const data = buildBaseTemplateData();
+    data.toggles.failedTrxEnabled = false;
+
+    const html = buildOfferPdfHtml(data);
+    expect(html).not.toContain("FAILED TRANSACTION CHARGING");
+  });
+
+  it("renders the failed trx operator memo when set", () => {
+    const data = buildBaseTemplateData();
+    data.toggles.failedTrxEnabled = true;
+    data.toggles.failedTrxMode = "allFailedVolume";
+    data.feeNotes = { ...(data.feeNotes ?? {}), failedTrx: "Charged from 2nd month" };
+
+    const html = buildOfferPdfHtml(data);
+    expect(html).toContain("All Failed volume");
+    expect(html).toContain("Charged from 2nd month");
   });
 
   it("renders payout minimum fee in section 2 when enabled", () => {
@@ -442,15 +473,16 @@ describe("buildOfferPdfHtml", () => {
       expect(html).toContain('<span class="cell-line value-na">&gt;2.5M: N/A</span>');
     });
 
-    it("FAILED TRX CHARGING card no longer shows the Calculator mode subtitle", () => {
+    it("FAILED TRANSACTION CHARGING card shows value + Per transaction, no calc-mode subtitle", () => {
       const data = buildBaseTemplateData();
       data.toggles.failedTrxEnabled = true;
       data.toggles.failedTrxMode = "allFailedVolume";
 
       const html = buildOfferPdfHtml(data);
-      expect(html).toContain("FAILED TRX CHARGING");
-      expect(html).toContain("All failed volume");
-      // The hint subtitle was removed by request.
+      expect(html).toContain("FAILED TRANSACTION CHARGING");
+      expect(html).toContain("All Failed volume");
+      expect(html).toContain("Per transaction");
+      // The old Calculator-mode hint subtitle stays removed.
       expect(html).not.toContain("Calculator mode");
     });
 

@@ -57,6 +57,12 @@ export interface BuildDocumentTemplatePayloadInput {
   monthlyMinimumFeeEnabled: boolean;
   monthlyMinimumFeeAmount: number;
   failedTrxEnabled: boolean;
+  /**
+   * Calculator-side mode only (2-valued). "free" is a WIZARD-ONLY
+   * display mode and must NEVER originate here — it is intentionally
+   * not part of FailedTrxChargingMode. The one-way calc → wizard flow
+   * keeps the frozen calculator free of wizard-only concepts.
+   */
   failedTrxMode: FailedTrxChargingMode;
   failedTrxOverLimitThresholdPercent: number;
   contractSummarySettings: ContractSummarySettings;

@@ -59,6 +59,14 @@ export function OtherFeesStep({
       feeNotes: { ...(draft.feeNotes ?? {}), [key]: text }
     });
 
+  // FAILED TRANSACTION CHARGING has its own memo (feeNotes.failedTrx),
+  // separate from the six Value/Waived/N/A fees above.
+  const updateFailedTrxNote = (text: string) =>
+    onDraftChange({
+      ...draft,
+      feeNotes: { ...(draft.feeNotes ?? {}), failedTrx: text }
+    });
+
   // Uniform Value / Waived / N/A selector + custom note for one fee.
   const renderFeeModeNote = (key: FeeKey, notePlaceholder?: string) => (
     <FeeModeNote
@@ -213,33 +221,57 @@ export function OtherFeesStep({
             onChange={enabled => updateToggles({ failedTrxEnabled: enabled })}
             label="Failed TRX Charging"
           />
-          <div className="mt-3 grid gap-3">
-            <div>
-              <span className="field-label">Charging Mode</span>
-              <div className="flex flex-wrap gap-2">
-                <MiniToggle
-                  label="Under limit only"
-                  selected={draft.toggles.failedTrxMode === "overLimitOnly"}
-                  onSelect={() => updateToggles({ failedTrxMode: "overLimitOnly" })}
-                  ariaLabel="Failed trx mode over limit only"
+          {draft.toggles.failedTrxEnabled ? (
+            <div className="mt-3 grid gap-3">
+              <div>
+                <span className="field-label">Charging Mode</span>
+                <div className="flex flex-wrap gap-2">
+                  <MiniToggle
+                    label="Free"
+                    selected={draft.toggles.failedTrxMode === "free"}
+                    onSelect={() => updateToggles({ failedTrxMode: "free" })}
+                    ariaLabel="Failed trx mode free"
+                  />
+                  <MiniToggle
+                    label="Under limit only"
+                    selected={draft.toggles.failedTrxMode === "overLimitOnly"}
+                    onSelect={() => updateToggles({ failedTrxMode: "overLimitOnly" })}
+                    ariaLabel="Failed trx mode over limit only"
+                  />
+                  <MiniToggle
+                    label="All Failed volume"
+                    selected={draft.toggles.failedTrxMode === "allFailedVolume"}
+                    onSelect={() => updateToggles({ failedTrxMode: "allFailedVolume" })}
+                    ariaLabel="Failed trx mode all failed volume"
+                  />
+                </div>
+              </div>
+              {draft.toggles.failedTrxMode === "overLimitOnly" ? (
+                <NumberField
+                  label="Under Limit Threshold (%)"
+                  value={draft.toggles.failedTrxOverLimitThresholdPercent}
+                  onChange={value => updateToggles({ failedTrxOverLimitThresholdPercent: value })}
+                  min={0}
+                  max={100}
+                  step={1}
                 />
-                <MiniToggle
-                  label="All failed volume"
-                  selected={draft.toggles.failedTrxMode === "allFailedVolume"}
-                  onSelect={() => updateToggles({ failedTrxMode: "allFailedVolume" })}
-                  ariaLabel="Failed trx mode all failed volume"
+              ) : null}
+              {/* Raw input (not the shared FeeModeNote): Failed TRX has
+                  its own on/off + 3-mode selector above, so it doesn't
+                  use the Value/Waived/N/A control the six other fees do. */}
+              <div>
+                <span className="field-label">Memo (optional)</span>
+                <input
+                  className="field-input"
+                  type="text"
+                  value={draft.feeNotes?.failedTrx ?? ""}
+                  onChange={event => updateFailedTrxNote(event.target.value)}
+                  placeholder="Custom note rendered under the card value"
+                  aria-label="Failed trx memo"
                 />
               </div>
             </div>
-            <NumberField
-              label="Under Limit Threshold (%)"
-              value={draft.toggles.failedTrxOverLimitThresholdPercent}
-              onChange={value => updateToggles({ failedTrxOverLimitThresholdPercent: value })}
-              min={0}
-              max={100}
-              step={1}
-            />
-          </div>
+          ) : null}
         </div>
       </div>
 

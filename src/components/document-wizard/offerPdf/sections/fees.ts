@@ -12,9 +12,8 @@ import {
 interface ServiceCard {
   title: string;
   value: string;
-  // Optional secondary line under the value (e.g. "Per action · EUR").
-  // FAILED TRX CHARGING omits this on purpose since its value already
-  // describes the mode.
+  // Optional secondary line under the value (e.g. "Per action · EUR",
+  // "Per transaction").
   subtitle?: string;
   // Optional custom note rendered on its own line under `subtitle`
   // (operator-entered; currently only the MIN. MONTHLY ACCOUNT FEE).
@@ -93,18 +92,28 @@ function buildOtherServicesCards(data: DocumentTemplatePayload, layout: Document
     });
   }
 
-  // FAILED TRX CHARGING is ALWAYS shown and has NO "Waived" state
-  // (unlike the other fees). When the checkbox is OFF it reads "0"
-  // (Доработки.docx #7: "waive = 0 по чек боксу"); when ON it conveys
-  // the charging mode. No subtitle — the value already says it all.
-  cards.push({
-    title: "FAILED TRX CHARGING",
-    value: !data.toggles.failedTrxEnabled
-      ? "0"
-      : data.toggles.failedTrxMode === "allFailedVolume"
-        ? "All failed volume"
-        : `Under limit only (${formatPercent(data.toggles.failedTrxOverLimitThresholdPercent)})`
-  });
+  // FAILED TRANSACTION CHARGING is wizard-driven with its own on/off +
+  // 3-mode selector (NOT the Value/Waived/N/A system):
+  //   - toggle OFF        → card omitted entirely (nothing renders)
+  //   - "free"            → "€0.00"
+  //   - "overLimitOnly"   → "Under limit only N.NN%" (no parentheses)
+  //   - "allFailedVolume" → "All Failed volume"
+  // Always carries the "Per transaction" subtitle + an optional operator
+  // memo (feeNotes.failedTrx).
+  if (data.toggles.failedTrxEnabled) {
+    const failedTrxValue =
+      data.toggles.failedTrxMode === "free"
+        ? formatEuro(0)
+        : data.toggles.failedTrxMode === "allFailedVolume"
+          ? "All Failed volume"
+          : `Under limit only ${formatPercent(data.toggles.failedTrxOverLimitThresholdPercent)}`;
+    cards.push({
+      title: "FAILED TRANSACTION CHARGING",
+      value: failedTrxValue,
+      subtitle: "Per transaction",
+      subtitleNote: noteFor("failedTrx")
+    });
+  }
 
   if (strictHideMissing) {
     return cards.filter(card => hasText(card.value));

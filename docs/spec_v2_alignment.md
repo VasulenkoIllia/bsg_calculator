@@ -11,8 +11,9 @@ Status: Active reference. Reviewed when scope changes.
   section) replaced the force-page-break + auto-compact heuristics.
 - **Running header + footer via Puppeteer page templates**
   (`server/modules/pdf/pdf.service.ts`): purple accent bar on top, full
-  confidentiality disclaimer + `CONFIDENTIAL · BSG-XXXXX · Page N of M`
-  on the bottom, both in the `@page` margins. Replaced the in-HTML
+  confidentiality disclaimer + a right-aligned `CONFIDENTIAL · Page N of
+  M` line (no document number) on the bottom, both in the `@page`
+  margins. Replaced the in-HTML
   `<tfoot>`.
 - **Per-fee value modes** (`ValueMode` = value / waived / na / tbd in
   `payload.valueModes`) + **custom fee subtitle notes**
@@ -144,7 +145,7 @@ The spec defines Zones 0–4 of the **document** (not calculator). Mapping to cu
 | A4, margins 2.5cm, professional fonts | ✅ | `pdf-kit/tokens.ts`. |
 | Header on every page | ✅ | Renderer header block. |
 | Sections 1–4 in fixed order | ✅ | Enforced in `buildBody()`. |
-| Footer with confidentiality + page numbering | ✅ | `renderFooter()`. |
+| Footer with confidentiality + page numbering | ✅ | Puppeteer footer template (`pdf.service.ts`). |
 | Table styling (`#366092` header, alt rows, borders, padding) | ✅ | Matched to spec tokens. |
 | Offer vs Offer + Terms of Agreement | ✅ | Two scopes (`offer` / `offerAndAgreement`) selectable via Document Type dropdown. Bundle scope appends static MSA text + party placeholders + signature block. |
 

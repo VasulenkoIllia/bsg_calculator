@@ -36,10 +36,10 @@ The OFFER and AGREEMENT share the same Sections 1–4 layout. AGREEMENT adds the
 2. Header begins with `CONFIDENTIAL · PAYMENT INFRASTRUCTURE`.
 3. Title block: `Service / Agreement` (two lines, accent color on "Agreement").
 4. Subtitle: `Card Acquiring, Payout Infrastructure & Settlement Terms — structured for scale-up and enterprise merchants operating globally.`
-5. Meta grid with 5 cells in a 3-column layout: `DOCUMENT NUMBER`, `DOCUMENT DATE`, `DOCUMENT TYPE` (top row), then `COLLECTION MODEL`/`SETTLEMENT MODEL`, `COLLECTION FREQUENCY` (bottom row spanning 2 cells; 6th slot intentionally borderless). Container border is top + left only; item borders form the rest, so the empty 6th slot does not draw a closed rectangle.
+5. Cover meta laid out in two parts (redesigned 2026-05-30): `DOCUMENT NUMBER` + `DOCUMENT DATE` sit **top-right, opposite the Service / Agreement title** (`.offer-title-aside` — right-aligned label/value pairs in a flex `.offer-title-row`); the bordered meta-grid below holds the remaining **3 cells on a single row** — `DOCUMENT TYPE`, `COLLECTION MODEL`/`SETTLEMENT MODEL`, `COLLECTION FREQUENCY`. Container border is top + left only; item borders form the rest. Removing the old second meta row freed ~64px, redistributed into proportionally larger cover + section gaps (`--space-header-gap` 8→11px, `--space-section-gap` 6→8mm) with **no change to page counts**.
 6. Followed by amber/blue note: `All fees are collected on a daily basis unless otherwise instructed in writing. Rates are subject to applicable interchange and scheme fees under the IC++ model unless otherwise instructed in writing.`
 7. Sections 1–4 with numeric badges and right-aligned variant tag.
-8. **Running header + footer** — repeated on every printed page, rendered by **Puppeteer page templates** (`buildHeaderTemplate()` / `buildFooterTemplate()` in `server/modules/pdf/pdf.service.ts`), NOT in the document HTML. The header is a thin purple accent bar (`border-top: 4px solid var(--accent)`, 20 mm side inset, on every page incl. the Agreement). The footer carries the full confidentiality disclaimer + meta line `CONFIDENTIAL · BSG-XXXXX` with the page counter `Page N of M`. Both live in the `@page` top/bottom margins (top 20 mm / bottom 26 mm), so they never affect content flow and never overlap the body.
+8. **Running header + footer** — repeated on every printed page, rendered by **Puppeteer page templates** (`buildHeaderTemplate()` / `buildFooterTemplate()` in `server/modules/pdf/pdf.service.ts`), NOT in the document HTML. The header is a thin purple accent bar (`border-top: 4px solid var(--accent)`, 20 mm side inset, on every page incl. the Agreement). The footer carries the full confidentiality disclaimer + a single **right-aligned** meta line `CONFIDENTIAL · Page N of M` (the document number was removed from the footer 2026-05-30 — it now lives in the cover top-right + the PDF `<title>`). Both live in the `@page` top/bottom margins (top 20 mm / bottom 26 mm), so they never affect content flow and never overlap the body.
    - The old in-HTML `<tfoot>` footer (and its Chromium `counter()` workaround for issue 678485) was **removed 2026-05-30** when the footer moved to the Puppeteer template.
    - Each top-level OFFER block (header / sections 1–4 / agreement / per-section custom note) is still wrapped in **its own `<tr><td>` row** inside `<tbody>` so the print engine has reliable break points between sections.
    - Custom notes are emitted as **siblings of the corresponding section**, not children. Each note lives in its own `<tr>` so a long note can flow across pages without dragging the section's `break-inside: avoid` rule down with it.
@@ -54,14 +54,14 @@ The OFFER and AGREEMENT share the same Sections 1–4 layout. AGREEMENT adds the
 | Tier 3 row | `tier-color-3` | `#7D2AEB` |
 | MDR percent (every tier, single mode) | (default body colour) | `var(--text-primary)` `#0F172A` |
 | `N/A` in payin / fee tables (e.g. MIN. TRX FEE) | `value-na` | `var(--text-muted)` `#6B7280` |
-| Terms grid values (built-in + custom) | `terms-value-{blue,black,orange}` | pricing → blue `#2358EA`, risk/attention → orange `#DB7712`, sentinel `N/A`/`TBD` → black `var(--text-primary)` |
+| Terms grid values (built-in + custom) | `terms-value-{blue,black,orange}` | pricing → purple `var(--accent)` `#4f46e5` (key still named "blue"; changed from `#2358EA` 2026-05-30), risk/attention → orange `#DB7712`, sentinel `N/A`/`TBD` → black `var(--text-primary)` |
 | Fee card value | `fee-value` | `var(--text-primary)`, 18 pt |
 | Fee card subtitle note (operator free-form) | `fee-subtitle` | `var(--accent)` |
 | Pay Out card value (non-tiered) | `payout-card-value` | `var(--accent)`, 22 pt |
 | Cell subtitle (APM list, "Non-tiered, fixed", …) | `cell-subtitle` | `var(--text-light)` `#9CA3AF` |
 | Section custom note (user free-form, under each pricing table) | `section-custom-note` | `var(--text-light)` `#9CA3AF` |
 
-**Built-in terms colour rule (2026-05-30):** each field has a "natural" colour (pricing values → blue, risk fields such as Restricted Jurisdictions / Rolling Reserve → orange), but a sentinel value (`N/A` / `TBD`) always renders **black** — see `termColor()` in `offerPdf/sections/terms.ts`. The terms grid no longer wraps `N/A` in muted-grey `value-na`.
+**Built-in terms colour rule (2026-05-30):** each field has a "natural" colour (pricing values → purple `--accent`, risk fields such as Restricted Jurisdictions / Rolling Reserve → orange), but a sentinel value (`N/A` / `TBD`) always renders **black** — see `termColor()` in `offerPdf/sections/terms.ts`. The `termColor` key for pricing is still named `"blue"` but renders the purple accent (reference look — the values are not the `#2358EA` table blue). The terms grid no longer wraps `N/A` in muted-grey `value-na`.
 
 Percent format: always exactly 2 decimals (`5.00%`, `4.50%`, `0.30%`, `0.01%`) — `formatPercent` in `offerPdf/formatters.ts`.
 
@@ -74,7 +74,18 @@ Fee and limit values resolve through a shared **`ValueMode`** (`value` | `waived
 3. `waived` → literal `Waived`
 4. `na` → literal `N/A`; `tbd` → literal `TBD`
 
-The mode wins over the raw amount. In Section 3 the six fee cards (Account Setup, Refund, Dispute / Chargeback, 3DS, Settlement, Min. Monthly Account Fee) each expose a **Value / Waived / N/A** toggle plus an optional **custom subtitle note** stored in `payload.feeNotes` (`DocumentWizardFeeNotes`) and rendered as a second `fee-subtitle` line. **FAILED TRX CHARGING** is the exception — it has no Waived state and always renders (`0` when the toggle is off; the charging mode when on).
+The mode wins over the raw amount. In Section 3 the six fee cards (Account Setup, Refund, Dispute / Chargeback, 3DS, Settlement, Min. Monthly Account Fee) each expose a **Value / Waived / N/A** toggle plus an optional **custom subtitle note** stored in `payload.feeNotes` (`DocumentWizardFeeNotes`) and rendered as a second `fee-subtitle` line.
+
+**FAILED TRANSACTION CHARGING** is the exception — instead of Value/Waived/N/A it has its own on/off toggle + a **3-mode selector** and an operator memo:
+
+| `toggles.failedTrxMode` | Card value | Notes |
+|---|---|---|
+| toggle **off** | — | card **omitted entirely** (changed 2026-05-30 from the old `0` placeholder) |
+| `free` | `€0.00` | `formatEuro(0)` |
+| `overLimitOnly` | `Under limit only N.NN%` | parentheses removed 2026-05-30 |
+| `allFailedVolume` | `All Failed volume` | — |
+
+Always carries a fixed `Per transaction` subtitle plus an optional operator memo (`feeNotes.failedTrx`) on the second subtitle line. Wizard-only — the calculator's failed-trx revenue math (`FailedTrxChargingMode`, 2-valued) is frozen and `"free"` never flows back to it.
 
 Limit/terms fields (Min/Max Collection & Payout size, Rolling Reserve Cap) use the same modes via `ModedNumericField` (Number / N/A / TBD). The legacy per-field boolean `*Na` flags were superseded by `valueModes`.
 
@@ -388,13 +399,14 @@ OFFER renderer layout:
   footer are Puppeteer page templates (see below).
 - `server/modules/pdf/pdf.service.ts` — Puppeteer renderer.
   `buildHeaderTemplate()` (purple accent bar) + `buildFooterTemplate()`
-  (confidentiality disclaimer + `CONFIDENTIAL · BSG-XXXXX` + `Page N of
-  M`) are injected via `displayHeaderFooter` into the `@page` margins
+  (confidentiality disclaimer + a right-aligned `CONFIDENTIAL · Page N
+  of M` line — no document number) are injected via `displayHeaderFooter`
+  into the `@page` margins
   (top 20 mm / bottom 26 mm / sides 20 mm, kept in sync with the CSS
   `@page` rule under `preferCSSPageSize`).
-- `server/modules/pdf/pdf.controller.ts` — passes `documentNumber` into
-  the renderer so the footer prints the BSG number on both the download
-  and preview paths.
+- `server/modules/pdf/pdf.controller.ts` — resolves the OFFER payload
+  and runs the render pipeline on the download + preview paths. (The
+  footer no longer needs a document number — removed 2026-05-30.)
 - `src/components/document-wizard/offerPdf/formatters.ts` — money /
   percent (`#.##%`) / date helpers + `resolveModeValue` for
   Number / N/A / TBD / Waived sentinels.
@@ -415,9 +427,9 @@ OFFER renderer layout:
   `cell-subtitle`, `terms-value-{blue,black,orange}`,
   `section-custom-note`, `.payout-cards`, `.fees-grid`, and the `@page`
   margin rule (kept in sync with Puppeteer's margins). The page counter
-  now lives in the Puppeteer footer template, not CSS.
-  Note: the in-HTML `renderFooter` primitive (`pdf-kit/components/footer.ts`)
-  is retained but no longer wired into the OFFER render path.
+  now lives in the Puppeteer footer template, not CSS. (The old in-HTML
+  `renderFooter` primitive was deleted 2026-05-30 — the footer is
+  rendered entirely by the Puppeteer template.)
 - `src/lib/printHtmlViaIframe.ts` — hidden iframe + Blob URL print
   path (replaces popup-based print to avoid popup blockers and
   Safari `srcdoc` bugs).

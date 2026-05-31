@@ -162,7 +162,7 @@ function buildBody(data, layout) {
 }
 ```
 
-The existing footer (`renderFooter`) keeps emitting per-page numbers because CSS `counter(pages)` works regardless of how many sections are added.
+The running footer (Puppeteer page template in `server/modules/pdf/pdf.service.ts`) keeps emitting per-page numbers regardless of how many sections are added.
 
 ## 7. Out-of-scope (current phase)
 

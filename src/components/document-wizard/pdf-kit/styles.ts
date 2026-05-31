@@ -41,10 +41,9 @@ export function buildPdfUiKitStyles(tokens: PdfUiKitTokens): string {
    * Centralised so the OFFER PDF reads as one coherent layout —
    * every section, grid and cell pulls its padding/gap from these
    * five variables. Calibrated against an A4 page assuming the
-   * 2cm @page margin defined above. Compact preset overrides a
-   * subset of these to ~80% to fit 3-4 line custom notes alongside
-   * tall content (was 6-line target before; relaxed per product on
-   * 2026-05-12 — see docs/decisions.md).
+   * 2cm @page margin defined above. ONE universal layout — there is
+   * no compact override path (the compact preset was removed
+   * 2026-05-30; see docs/decisions.md).
    *
    *   --space-section-gap: gap between numbered sections (1 → 3 → 4)
    *   --space-header-gap:  section title → its grid/table
@@ -69,12 +68,13 @@ export function buildPdfUiKitStyles(tokens: PdfUiKitTokens): string {
    *     heading → its table/cards, table → custom note, and every
    *     cover sub-block (eyebrow → title → subtitle → meta → note).
    * No other ad-hoc vertical margins — same transition type, same gap.
-   * header-gap is 8px (not larger): the cover stacks ~5 of these, so
-   * each extra px there is what pushes section 1's note past the
-   * footer onto page 2. 8px keeps the cover compact enough that the
-   * note stays with section 1, like the reference. */
-  --space-section-gap: 6mm;
-  --space-header-gap: 8px;
+   * header-gap was raised 8px → 11px and section-gap 6mm → 8mm on
+   * 2026-05-30: removing the DOCUMENT NUMBER/DATE row from the cover
+   * meta-grid freed ~64px, redistributed proportionally into these
+   * gaps so the cover + sections breathe WITHOUT adding net height
+   * (page counts unchanged — verified against the heaviest configs). */
+  --space-section-gap: 8mm;
+  --space-header-gap: 11px;
   --space-grid-gap: 12px;
   --space-cell-y: 8px;
   --space-cell-x: 11px;
@@ -160,6 +160,48 @@ table.page-layout > tbody > tr.force-page-break-before {
 
 .offer-title .accent { color: var(--accent); }
 
+/* Title row: Service / Agreement on the left, DOCUMENT NUMBER + DATE
+ * top-right (moved out of the meta-grid 2026-05-30 so the grid is one
+ * clean 3-cell row and the cover has more breathing room). */
+.offer-title-row {
+  margin: var(--space-header-gap) 0 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+.offer-title-row .offer-title { margin-top: 0; }
+.offer-title-aside {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: right;
+  padding-top: 6px;
+}
+/* One NUMBER/DATE pair. The wrapper groups label+value so the
+ * .offer-title-aside flex gap (12px) falls BETWEEN pairs, not between a
+ * label and its value. */
+.title-aside-item {
+  display: block;
+}
+.title-aside-label {
+  display: block;
+  font-size: 7pt;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--label-color);
+}
+.title-aside-value {
+  display: block;
+  margin: 3px 0 0;
+  font-size: 11pt;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
 .offer-subtitle {
   margin: var(--space-header-gap) 0 0;
   font-size: 10pt;
@@ -179,10 +221,10 @@ table.page-layout > tbody > tr.force-page-break-before {
   grid-auto-rows: 64px;
   gap: 0;
   /* Only top + left container borders. Right and bottom outer edges
-   * are provided by item borders, so an empty trailing cell (e.g. the
-   * 6th slot when there are 5 items) is invisible — the item before
-   * it draws its own right edge and the row below it just doesn't
-   * exist. */
+   * are provided by item borders, so any empty trailing cell stays
+   * invisible. Common case is 3 items (DOCUMENT TYPE, MODEL,
+   * FREQUENCY) filling one full row; if pricing meta is hidden the
+   * grid collapses to a single cell and the empties draw nothing. */
   border-top: 1px solid var(--border);
   border-left: 1px solid var(--border);
 }
@@ -539,10 +581,12 @@ tbody tr:nth-child(even) {
   line-height: 1.25;
 }
 
-/* Colour overrides for user-added Terms & Limitations rows. Built-in
- * rows render in the default --text-primary; custom rows use one of
- * these three explicit choices picked in the wizard. */
-.terms-value-blue { color: #2358EA; }
+/* Colour overrides for Terms & Limitations values. Pricing / built-in
+ * "blue" rows render in the purple --accent (reference look — changed
+ * from #2358EA on 2026-05-30; the data key stays "blue"). Risk rows use
+ * orange; sentinels (N/A / TBD) and notes use black. Custom rows pick
+ * one of the three in the wizard. */
+.terms-value-blue { color: var(--accent); }
 .terms-value-black { color: var(--text-primary); }
 .terms-value-orange { color: #DB7712; }
 
@@ -606,32 +650,34 @@ tbody tr:nth-child(even) {
 @media screen {
   body {
     background: var(--screen-bg);
-    padding: 16px;
+    padding: 24px 16px;
   }
 
-  .sheet {
-    background: var(--paper);
-    max-width: 1000px;
+  /* Render the document as ONE continuous A4 page so the on-screen
+   * preview matches the generated PDF. The multiple .sheet blocks are
+   * per-section page-break units for PRINT; on screen they flow inside
+   * a single page frame (table.page-layout). The previous per-element
+   * font up-scaling (title 66px, h2 45px, meta-value 34px, …) was
+   * removed 2026-05-30 — it overflowed the fixed 64px meta-grid rows
+   * and skewed proportions; the print pt sizes now drive both. */
+  table.page-layout {
+    width: 210mm;
+    max-width: 100%;
     margin: 0 auto;
+    background: var(--paper);
     border: 1px solid var(--border);
     box-shadow: ${tokens.shadowPaper};
-    padding: 20px;
+    box-sizing: border-box;
   }
-
-  .offer-title { font-size: 66px; }
-  .offer-subtitle { font-size: 17px; }
-  /* Screen preview override — uses min-width so multi-char indices
-   * like "1.1" (Additional Card Acquiring sub-section) expand
-   * instead of being clipped. Matches the print rule pattern. */
-  .section-index {
-    min-width: 32px;
-    height: 32px;
-    padding: 0 8px;
-    font-size: 30px;
+  td.page-content-cell {
+    padding: 0 20mm;
   }
-  .section-header h2 { font-size: 45px; }
-  th, td { font-size: 13px; }
-  .meta-value { font-size: 34px; }
+  .page-layout-body tr:first-child td.page-content-cell {
+    padding-top: 16mm;
+  }
+  .page-layout-body tr:last-child td.page-content-cell {
+    padding-bottom: 18mm;
+  }
 }
 
 /* AGREEMENT (long-form) typography and layout */

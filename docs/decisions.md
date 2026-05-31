@@ -5676,8 +5676,9 @@ Use this file to record meaningful technical decisions for the project.
     `toggles.monthlyMinimumFeeNote` in favour of `feeNotes`.
   - **Pay Out (non-tiered) → card row** (`.payout-cards`, 22 pt accent
     values); tiered keeps the multi-row table.
-  - **Terms semantic colours** (`termColor()`): pricing → blue, risk →
-    orange, sentinel `N/A` / `TBD` → black. Section labels are grey
+  - **Terms semantic colours** (`termColor()`): pricing → purple
+    (`--accent`; key still named "blue", changed from `#2358EA`
+    2026-05-30), risk → orange, sentinel `N/A` / `TBD` → black. Section labels are grey
     (`--label-color: #9aa3b5`). METHODS cell renders 4 lines; CURRENCY
     is `nowrap`; meta grid uses a fixed `grid-auto-rows: 64px`.
 - Supersedes:
@@ -5705,10 +5706,99 @@ Use this file to record meaningful technical decisions for the project.
     (1 pp), and a saved DB document (2 pp) end-to-end to confirm the
     layout holds from sparse to dense data.
   - Code hygiene: removed the inert `breakBefore` mechanism + stale
-    page-budget comments; the `renderFooter` primitive
-    (`pdf-kit/components/footer.ts`) is retained but no longer wired
-    into the OFFER render path.
+    page-budget comments. (The then-orphaned `renderFooter` primitive
+    `pdf-kit/components/footer.ts` was deleted in a 2026-05-30 follow-up.)
 - Verification: 329 FE + 68 BE (pdf/documents) tests pass; `tsc` clean
   (FE + BE); lint clean.
+
+### Decision: FAILED TRANSACTION CHARGING card — wizard on/off + 3 modes + memo
+- Date: 2026-05-30
+- Context:
+  - The FAILED TRX CHARGING card always rendered (showing "0" when the
+    toggle was off) and exposed only 2 modes (Under limit only / All
+    failed volume) with no operator memo. Product wanted: off → nothing
+    shown; on → one of THREE display modes incl. a new "Free" (`€0.00`);
+    a fixed "Per transaction" subtitle; an optional memo; and the title
+    renamed to "FAILED TRANSACTION CHARGING".
+  - Must stay wizard-only — the calculator's failed-trx revenue math is
+    FROZEN.
+- Decision:
+  - **Wizard-only.** The calculator's `FailedTrxChargingMode`
+    (`"overLimitOnly" | "allFailedVolume"`) and `zone6/offerSummary.ts`
+    revenue logic are untouched. The wizard payload's
+    `toggles.failedTrxMode` was widened to add `"free"`; because
+    `fromCalculator` flows calc → wizard one-way, `"free"` never reaches
+    the calculator.
+  - **Renderer** (`offerPdf/sections/fees.ts`): the card is omitted when
+    `failedTrxEnabled` is false; otherwise title "FAILED TRANSACTION
+    CHARGING", subtitle "Per transaction", value by mode — `free` →
+    `€0.00` (`formatEuro(0)`), `overLimitOnly` → `Under limit only
+    N.NN%` (parentheses removed), `allFailedVolume` → `All Failed
+    volume`. Optional memo via `feeNotes.failedTrx` renders as the
+    second subtitle line.
+  - **Wizard UI** (`wizard/steps/OtherFeesStep.tsx`): the mode selector
+    + threshold + memo show only when the enable toggle is on; a third
+    "Free" mini-toggle was added; the threshold field shows only for
+    "Under limit only"; a memo input writes `feeNotes.failedTrx`.
+- Supersedes:
+  - The "FAILED TRX always renders 0 when off" behaviour
+    (Доработки.docx #7).
+- Consequences:
+  - 332 frontend tests pass (+3 new: free → `€0.00`, off → card omitted,
+    memo renders; 2 existing assertions updated for the new title /
+    no-parens value); FE `tsc` + lint clean.
+  - Rendered all four states end-to-end (free / under-limit / all-volume
+    / off) — the card matches the reference and sits consistently beside
+    the other Section-3 cards.
+- Verification: 332 FE tests pass; `tsc` clean (FE); lint clean; visual
+  render of all four states confirmed.
+
+### Decision: PDF cover, footer & on-screen preview refinements
+- Date: 2026-05-30
+- Context:
+  - After the universal-layout redesign, several cover/footer polish
+    items + an on-screen preview regression remained. Product wanted:
+    DOCUMENT NUMBER/DATE moved out of the meta-grid up beside the title;
+    the footer document number removed with CONFIDENTIAL pulled right to
+    the page counter; more even spacing; and the wizard preview (which
+    had broken) to look like the real PDF.
+- Decision:
+  - **Cover header** (`buildOfferPdfHtml.ts` + `pdf-kit/styles.ts`):
+    DOCUMENT NUMBER + DATE render top-right opposite the Service /
+    Agreement title (`.offer-title-aside` inside a flex
+    `.offer-title-row`); the meta-grid drops to a single 3-cell row
+    (DOCUMENT TYPE, MODEL, FREQUENCY). Removing the old second meta row
+    freed ~64px.
+  - **Spacing**: the freed ~64px was redistributed proportionally into
+    `--space-header-gap` (8→11px) and `--space-section-gap` (6→8mm) so
+    the cover + sections breathe WITHOUT adding net height — page counts
+    unchanged (verified: heaviest 3pp / mid 2pp / sparse 1pp).
+  - **Footer** (`server/modules/pdf/pdf.service.ts` + `pdf.controller.ts`):
+    the document number was removed end-to-end (footer template param,
+    `RenderPdfOptions.documentNumber`, both controller call sites, and
+    the now-unused `escapeHtml` import). The footer meta line is a single
+    RIGHT-aligned `CONFIDENTIAL · Page N of M`. The number still lives in
+    the cover top-right + the PDF `<title>`.
+  - **On-screen preview** (`pdf-kit/styles.ts` `@media screen`): the
+    wizard PreviewStep renders the same HTML in an iframe. It carried
+    per-element font up-scaling (title 66px, h2 45px, meta-value 34px,
+    td 13px) that diverged from print proportions and — once the
+    meta-grid got fixed 64px rows — overflowed those cells, so the cover
+    looked broken. Replaced with ONE source of truth: the print `pt`
+    sizes drive both PDF and preview, and the multiple `.sheet`
+    page-break blocks flow inside a single A4 page frame
+    (`table.page-layout`, 20mm side insets) so the preview matches the
+    generated PDF.
+- Consequences:
+  - All changes are presentation-only; the calculator stays frozen
+    (the diff touches no `src/domain/calculator/**` or
+    `src/components/calculator/**`).
+  - 332 FE + 68 BE (pdf/documents) tests pass; FE + BE `tsc` clean; lint
+    clean. PDF output is unchanged by the `@media screen` preview fix
+    (print ignores screen rules — page counts 3/2/1 verified).
+  - Verified each change with real renders (Puppeteer print PDF + a
+    screen-media Puppeteer screenshot of the preview).
+- Verification: 332 FE + 68 BE tests; `tsc` (FE+BE) + lint clean; PDF +
+  screen-preview screenshots confirmed.
 
 

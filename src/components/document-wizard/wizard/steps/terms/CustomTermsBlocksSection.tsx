@@ -16,7 +16,7 @@ function generateCustomTermsId(): string {
 }
 
 const CUSTOM_TERMS_COLORS: ReadonlyArray<{ value: CustomTermsItemColor; label: string }> = [
-  { value: "blue", label: "Blue" },
+  { value: "blue", label: "Purple" },
   { value: "black", label: "Black" },
   { value: "orange", label: "Orange" }
 ];

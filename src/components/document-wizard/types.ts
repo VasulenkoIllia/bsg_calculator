@@ -69,6 +69,8 @@ export interface DocumentWizardFeeNotes {
   threeDsFee?: string;
   settlementFee?: string;
   monthlyMinimumFee?: string;
+  // Operator memo under the FAILED TRANSACTION CHARGING card.
+  failedTrx?: string;
 }
 
 export interface DocumentHeaderMetaDraft {
@@ -169,7 +171,13 @@ export interface DocumentTemplatePayload {
     monthlyMinimumFeeEnabled: boolean;
     monthlyMinimumFeeAmount: number;
     failedTrxEnabled: boolean;
-    failedTrxMode: "overLimitOnly" | "allFailedVolume";
+    // Wizard-only display mode for the FAILED TRANSACTION CHARGING card.
+    // "free" → "€0.00"; "overLimitOnly" → "Under limit only N.NN%";
+    // "allFailedVolume" → "All Failed volume". The calculator's own
+    // FailedTrxChargingMode stays 2-valued (no "free") and is FROZEN —
+    // "free" never flows back to the calculator (fromCalculator is
+    // calc → wizard, one-way).
+    failedTrxMode: "overLimitOnly" | "allFailedVolume" | "free";
     failedTrxOverLimitThresholdPercent: number;
   };
 }

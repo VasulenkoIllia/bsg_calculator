@@ -68,7 +68,12 @@ the PDF + Wizard wording.
     Rolling Reserve renders as `10.00% · 90 days`.
   - `src/components/document-wizard/offerPdf/sections/fees.ts` — call
     `formatPercent(data.toggles.failedTrxOverLimitThresholdPercent)`
-    (was `..., 0`) so Failed TRX renders as `Over limit only (70.00%)`.
+    (was `..., 0`). (2026-05-30: the card was reworked — title renamed
+    to `FAILED TRANSACTION CHARGING`, value reformatted to
+    `Under limit only 70.00%` (no parentheses), a wizard-only `free`
+    mode (`€0.00`) + `Per transaction` subtitle + `feeNotes.failedTrx`
+    memo added, and the card is omitted when the toggle is off. See
+    decisions.md.)
   - `src/components/document-wizard/fromCalculator.test.ts` — assertion
     updated from `"Over limit only (70%)"` to `"Over limit only (70.00%)"`.
 - **Pending in calculator (do NOT touch until calculator is unfrozen):**

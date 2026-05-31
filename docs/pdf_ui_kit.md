@@ -38,8 +38,9 @@ Core visual intent:
 2. `renderSectionHeader`
 3. `renderFeesGrid`
 4. `renderTermsGrid`
-5. `renderFooter` — retained, but the production OFFER path now uses the Puppeteer footer template (`pdf.service.ts`) instead
-6. `buildPdfUiKitStyles`
+5. `buildPdfUiKitStyles`
+
+(The running header + footer are Puppeteer page templates in `pdf.service.ts`, not pdf-kit primitives — the old in-HTML `renderFooter` was deleted 2026-05-30.)
 
 ## Preview / sandbox
 
@@ -53,6 +54,15 @@ The kit page includes:
 3. Fees cards sample
 4. Terms grid sample
 5. Color swatch panel for token calibration
+
+**Wizard on-screen preview (`@media screen`)**: the wizard PreviewStep
+renders the OFFER HTML in an iframe. The `@media screen` block in
+`styles.ts` styles the document as ONE continuous A4 page
+(`table.page-layout` frame, 20mm side insets) using the SAME print `pt`
+font sizes — no per-element up-scaling — so the preview matches the
+generated PDF 1:1. (Earlier per-element screen font overrides diverged
+from print and overflowed the fixed-height meta cells; removed
+2026-05-30.)
 
 ## Change rules
 

@@ -129,9 +129,7 @@ export async function downloadPdfController(
     );
   }
 
-  const buffer = await renderHtmlToPdf(html, {
-    documentNumber: doc.payload.header.documentNumber
-  });
+  const buffer = await renderHtmlToPdf(html);
 
   // `number` already passed the regex check above, so safe to use in
   // Content-Disposition without further escaping.
@@ -230,9 +228,7 @@ export async function previewPdfController(
     );
   }
 
-  const buffer = await renderHtmlToPdf(html, {
-    documentNumber: payload.header.documentNumber
-  });
+  const buffer = await renderHtmlToPdf(html);
 
   res.setHeader("Content-Type", "application/pdf");
   // Hardcoded filename — there's no BSG number yet (this endpoint is

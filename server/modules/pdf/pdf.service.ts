@@ -1,8 +1,8 @@
 /**
  * PDF render service.
  *
- * The running footer (disclaimer + CONFIDENTIAL + BSG number +
- * Page X of Y) is rendered via Puppeteer's `footerTemplate`, not a
+ * The running footer (disclaimer + a right-aligned CONFIDENTIAL ·
+ * Page X of Y line) is rendered via Puppeteer's `footerTemplate`, not a
  * <tfoot> in the document body. A <tfoot> footer DOES repeat on
  * each page but Chrome places it flush against the last content
  * block — leaving an empty gap below it on short pages. The
@@ -17,7 +17,6 @@
 import { env } from "../../config/env";
 import { logger } from "../../middleware/logger";
 import { InternalError } from "../../shared/errors";
-import { escapeHtml } from "../../shared/html";
 import { acquireBrowser } from "./browser-pool";
 
 export interface RenderPdfOptions {
@@ -25,12 +24,6 @@ export interface RenderPdfOptions {
    * Custom timeout override. Defaults to env.PDF_RENDER_TIMEOUT_MS.
    */
   timeoutMs?: number;
-  /**
-   * Document number rendered in the centre cell of the running
-   * footer (e.g. "BSG-7100007-001"). Optional — preview renders
-   * before a number is assigned pass an empty string / undefined.
-   */
-  documentNumber?: string;
 }
 
 const FOOTER_DISCLAIMER =
@@ -62,27 +55,19 @@ function buildHeaderTemplate(): string {
   </div>`;
 }
 
-function buildFooterTemplate(documentNumber: string): string {
+function buildFooterTemplate(): string {
   // Puppeteer renders the footer template in an isolated context that
   // does NOT share the main document's <style>. Default font-size is
   // 0 (Chromium quirk) — every text element must set its own size.
   // Fonts trimmed 2026-05-30 (disclaimer 7.6→7pt, meta 8→7pt) so the
   // whole footer fits a SHORTER bottom margin (26mm, see page.pdf
-  // below) — that reclaims ~4mm of content area on EVERY page so
-  // section 1's custom note stays on page 1. It's fine print, so the
-  // smaller size is invisible in practice.
-  const docCell = documentNumber
-    ? `<td style="text-align:center;color:#6b7280;padding:0;font-size:7pt;">${escapeHtml(documentNumber)}</td>`
-    : `<td style="padding:0;"></td>`;
+  // below). The meta line is a single RIGHT-aligned row — CONFIDENTIAL
+  // (accent) next to the page counter. The document number was removed
+  // from the footer 2026-05-30; it now lives in the cover top-right +
+  // the PDF <title>.
   return `<div style="width:100%;padding:0 ${PAGE_SIDE_MARGIN};box-sizing:border-box;font-family:Arial,Helvetica,sans-serif;color:#6b7280;">
     <p style="margin:0;padding-top:5pt;border-top:1px solid #d7dce8;font-size:7pt;line-height:1.25;">${FOOTER_DISCLAIMER}</p>
-    <table style="width:100%;margin-top:3pt;border-collapse:collapse;">
-      <tr>
-        <td style="text-align:left;color:${ACCENT};font-weight:700;padding:0;font-size:7pt;">CONFIDENTIAL</td>
-        ${docCell}
-        <td style="text-align:right;color:#6b7280;font-size:7pt;padding:0;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></td>
-      </tr>
-    </table>
+    <p style="margin:3pt 0 0;text-align:right;font-size:7pt;line-height:1;"><span style="color:${ACCENT};font-weight:700;">CONFIDENTIAL</span><span style="color:#6b7280;">&nbsp;&nbsp;·&nbsp;&nbsp;Page <span class="pageNumber"></span> of <span class="totalPages"></span></span></p>
   </div>`;
 }
 
@@ -109,7 +94,7 @@ export async function renderHtmlToPdf(
       timeout: timeoutMs,
       displayHeaderFooter: true,
       headerTemplate: buildHeaderTemplate(),
-      footerTemplate: buildFooterTemplate(options.documentNumber ?? ""),
+      footerTemplate: buildFooterTemplate(),
       // Margins kept in sync with the CSS @page rule (styles.ts). Under
       // preferCSSPageSize:true the CSS margins win for body layout; these
       // also define the header (top) / footer (bottom) template bands.

@@ -118,14 +118,12 @@ export function buildOfferPdfHtml(
     `<tr><td class="page-content-cell">${innerHtml}</td></tr>`;
 
   const showPricingMeta = shouldShowPricingMeta(scope);
-  // Order: identification first (NUMBER, DATE, TYPE), then pricing meta
-  // (MODEL, FREQUENCY). When pricing meta is hidden, the grid collapses
-  // to a single 3-column row with no empty trailing cell. When pricing
-  // meta is shown the grid has exactly 5 items; the .meta-item rule in
-  // styles.ts widens the 5th item to fill the empty 6th column.
+  // Cover meta-grid: DOCUMENT TYPE + pricing meta (MODEL, FREQUENCY) —
+  // exactly 3 cells on a single row. DOCUMENT NUMBER + DATE were moved
+  // up beside the title (see `titleAside`, 2026-05-30), which freed the
+  // old second grid row. When pricing meta is hidden the grid collapses
+  // to just DOCUMENT TYPE.
   const metaItems = [
-    renderMetaItem({ label: "DOCUMENT NUMBER", value: data.header.documentNumber }),
-    renderMetaItem({ label: "DOCUMENT DATE", value: displayDate }),
     renderMetaItem({ label: "DOCUMENT TYPE", value: data.header.documentType }),
     showPricingMeta
       ? renderMetaItem({ label: modelLabel, value: data.header.collectionModel })
@@ -136,6 +134,18 @@ export function buildOfferPdfHtml(
   ]
     .filter(Boolean)
     .join("");
+
+  // DOCUMENT NUMBER + DATE rendered top-right, opposite the title.
+  const titleAside = `<div class="offer-title-aside">
+        <div class="title-aside-item">
+          <span class="title-aside-label">DOCUMENT NUMBER</span>
+          <span class="title-aside-value">${escapeHtml(data.header.documentNumber)}</span>
+        </div>
+        <div class="title-aside-item">
+          <span class="title-aside-label">DOCUMENT DATE</span>
+          <span class="title-aside-value">${escapeHtml(displayDate)}</span>
+        </div>
+      </div>`;
 
   const metaNote = `<p class="meta-note">
         All fees are collected on a daily basis unless otherwise instructed in writing. Rates are subject to applicable interchange and scheme fees under the IC++ model unless otherwise instructed in writing.
@@ -156,7 +166,10 @@ export function buildOfferPdfHtml(
             <header class="offer-header">
               <div class="offer-top-line"></div>
               <p class="offer-eyebrow">${OFFER_CONFIDENTIAL_TITLE}</p>
-              <h1 class="offer-title">Service<br/><span class="accent">Agreement</span></h1>
+              <div class="offer-title-row">
+                <h1 class="offer-title">Service<br/><span class="accent">Agreement</span></h1>
+                ${titleAside}
+              </div>
               <p class="offer-subtitle">${escapeHtml(OFFER_SUBTITLE)}</p>
               <div class="meta-grid">${metaItems}</div>
               ${metaNote}
