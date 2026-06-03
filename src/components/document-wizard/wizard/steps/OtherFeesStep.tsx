@@ -7,6 +7,7 @@ import {
   StepNavigation,
   ToggleCheckbox
 } from "../shared.js";
+import { DISPUTE_COST_MIN, REFUND_COST_MIN, THREE_DS_FEE_MIN } from "../../wizardDefaults.js";
 
 // The six section-3 fee cards that share the uniform Value / Waived /
 // N/A mode selector + custom note. Keys match DocumentWizardValueModes
@@ -129,7 +130,7 @@ export function OtherFeesStep({
                 label="Refund Cost (€)"
                 value={draft.contractSummary.refundCost}
                 onChange={value => updateContractSummary({ refundCost: value })}
-                min={0}
+                min={REFUND_COST_MIN}
                 step={0.01}
               />
               {renderFeeModeNote("refundCost")}
@@ -139,7 +140,7 @@ export function OtherFeesStep({
                 label="Dispute / Chargeback Cost (€)"
                 value={draft.contractSummary.disputeCost}
                 onChange={value => updateContractSummary({ disputeCost: value })}
-                min={0}
+                min={DISPUTE_COST_MIN}
                 step={0.01}
               />
               {renderFeeModeNote("disputeCost")}
@@ -162,7 +163,7 @@ export function OtherFeesStep({
                   threeDsRevenuePerSuccessfulTransaction: value
                 })
               }
-              min={0}
+              min={THREE_DS_FEE_MIN}
               step={0.01}
             />
           </div>

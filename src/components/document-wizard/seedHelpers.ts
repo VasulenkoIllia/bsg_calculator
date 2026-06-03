@@ -8,6 +8,7 @@ import {
   DOCUMENT_TYPE_LABELS
 } from "./legalDefaults.js";
 import type { DocumentHeaderMetaDraft, DocumentTemplatePayload, PayinCustomRow } from "./types.js";
+import { PAYIN_TRX_APM_MIN, PAYIN_TRX_CC_MIN } from "./wizardDefaults.js";
 
 export const DEFAULT_COLLECTION_FREQUENCY = "Daily (unless agreed otherwise)";
 
@@ -90,6 +91,30 @@ export function clonePayinRegionPricing(
   };
 }
 
+// Override a cloned payin region's TRX fees to the provider-cost floor
+// defaults (C/D, APM) on the single block + all three tiers, preserving
+// MDR + N/A flags. Lets the manual "defaults" seed start a fresh
+// document at provider cost while the frozen calculator config (0.35)
+// stays untouched.
+export function applyPayinTrxFloorDefaults(
+  region: DocumentTemplatePayload["payinPricing"]["eu"]
+): DocumentTemplatePayload["payinPricing"]["eu"] {
+  const floor = <T extends { trxCc: number; trxApm: number }>(block: T): T => ({
+    ...block,
+    trxCc: PAYIN_TRX_CC_MIN,
+    trxApm: PAYIN_TRX_APM_MIN
+  });
+  return {
+    ...region,
+    single: floor(region.single),
+    tiers: [
+      floor(region.tiers[0]),
+      floor(region.tiers[1]),
+      floor(region.tiers[2])
+    ] as DocumentTemplatePayload["payinPricing"]["eu"]["tiers"]
+  };
+}
+
 export function clonePayoutPricing(
   pricing: PayoutPricingConfig
 ): DocumentTemplatePayload["payoutPricing"] {
@@ -117,11 +142,13 @@ function generateCustomRowId(): string {
 // the wizard EU defaults (icpp / single / EUR / TRX enabled) so the
 // UI fields render in a familiar starting state.
 export function makeDefaultPayinCustomRow(): PayinCustomRow {
-  const zeroFeeBlock = {
+  // TRX fees start at provider cost (C/D, APM); MDR stays 0 for the
+  // operator to fill. The wizard min props block going below cost.
+  const defaultFeeBlock = {
     mdrPercent: 0,
-    trxCc: 0,
+    trxCc: PAYIN_TRX_CC_MIN,
     trxCcNa: false,
-    trxApm: 0,
+    trxApm: PAYIN_TRX_APM_MIN,
     trxApmNa: false
   };
   return {
@@ -133,11 +160,11 @@ export function makeDefaultPayinCustomRow(): PayinCustomRow {
     trxFeeEnabled: true,
     tier1UpToMillion: 5,
     tier2UpToMillion: 10,
-    single: { ...zeroFeeBlock },
+    single: { ...defaultFeeBlock },
     tiers: [
-      { ...zeroFeeBlock },
-      { ...zeroFeeBlock },
-      { ...zeroFeeBlock }
+      { ...defaultFeeBlock },
+      { ...defaultFeeBlock },
+      { ...defaultFeeBlock }
     ],
     minTrxFeeThresholdMillion: 0,
     minTrxFeePerTransaction: 0,

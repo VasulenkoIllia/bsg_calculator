@@ -47,6 +47,11 @@ describe("manual wizard builders", () => {
     expect(draft.payoutPricing.single.trxFee).toBe(0);
     expect(draft.payinPricing.eu.model).toBe("blended");
     expect(draft.payinPricing.ww.model).toBe("icpp");
+    // Blank still starts TRX at provider cost (never below) + limits N/A · TBD.
+    expect(draft.payinPricing.eu.single.trxCc).toBe(0.22);
+    expect(draft.payinPricing.ww.tiers[0].trxApm).toBe(0.27);
+    expect(draft.valueModes?.payoutLimitMax).toBe("na");
+    expect(draft.valueModes?.rollingReserveCap).toBe("tbd");
   });
 
   it("creates manual default-values draft", () => {
@@ -58,7 +63,23 @@ describe("manual wizard builders", () => {
     expect(draft.payinPricing.eu.single.mdrPercent).toBe(4.5);
     expect(draft.payinPricing.ww.single.mdrPercent).toBe(5);
     expect(draft.payoutPricing.single.trxFee).toBe(0.5);
-    expect(draft.contractSummary.refundCost).toBe(15);
+    // Provider-cost fee defaults (wizard layer; calculator stays frozen).
+    expect(draft.contractSummary.refundCost).toBe(10);
+    expect(draft.contractSummary.disputeCost).toBe(50);
+    expect(draft.contractSummary.rollingReserveHoldDays).toBe(180);
+    expect(draft.contractSummary.restrictedJurisdictions).toBe("OFAC, US, Israel");
+    // Payin TRX defaults to provider cost (C/D 0.22, APM 0.27) on single + tiers.
+    expect(draft.payinPricing.eu.single.trxCc).toBe(0.22);
+    expect(draft.payinPricing.eu.single.trxApm).toBe(0.27);
+    expect(draft.payinPricing.ww.tiers[1].trxCc).toBe(0.22);
+    // The 6 Step-4 fees are shown by default.
+    expect(draft.toggles.threeDsEnabled).toBe(true);
+    expect(draft.toggles.threeDsRevenuePerSuccessfulTransaction).toBe(0.03);
+    expect(draft.toggles.settlementFeeEnabled).toBe(true);
+    expect(draft.toggles.monthlyMinimumFeeEnabled).toBe(true);
+    // Limits default to N/A · TBD.
+    expect(draft.valueModes?.payoutLimitMax).toBe("na");
+    expect(draft.valueModes?.rollingReserveCap).toBe("tbd");
     expect(draft.toggles.failedTrxOverLimitThresholdPercent).toBe(70);
   });
 
@@ -295,6 +316,25 @@ describe("buildOfferPdfHtml", () => {
 
     const html = buildOfferPdfHtml(data);
     expect(html).not.toContain("FAILED TRANSACTION CHARGING");
+  });
+
+  it("ACCOUNT SETUP always shows, rendering 'Waived' when the value is 0", () => {
+    const data = buildBaseTemplateData();
+    data.contractSummary.accountSetupFee = 0;
+    data.valueModes = { ...(data.valueModes ?? {}), accountSetupFee: "value" };
+
+    const html = buildOfferPdfHtml(data);
+    expect(html).toContain("ACCOUNT SETUP");
+    expect(html).toMatch(/ACCOUNT SETUP<\/h3>\s*<p[^>]*>Waived/);
+  });
+
+  it("ACCOUNT SETUP renders the amount when value > 0", () => {
+    const data = buildBaseTemplateData();
+    data.contractSummary.accountSetupFee = 1000;
+    data.valueModes = { ...(data.valueModes ?? {}), accountSetupFee: "value" };
+
+    const html = buildOfferPdfHtml(data);
+    expect(html).toMatch(/ACCOUNT SETUP<\/h3>\s*<p[^>]*>€1,000/);
   });
 
   it("renders the failed trx operator memo when set", () => {

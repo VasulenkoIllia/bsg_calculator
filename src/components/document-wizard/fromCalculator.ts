@@ -80,12 +80,17 @@ export function buildDocumentTemplatePayloadFromCalculator({
   payoutPricing,
   payoutMinimumFeeEnabled,
   payoutMinimumFeePerTransaction,
-  threeDsEnabled,
+  // 3DS / Settlement / Monthly-Min enabled flags arrive from the
+  // calculator but are intentionally IGNORED — these fees are shown by
+  // default in the document layer (forced `true` in `toggles` below);
+  // the manager toggles them off in Step 4 if needed. Destructured with
+  // `_` (the `_payout` pattern) to keep the input contract honest.
+  threeDsEnabled: _threeDsEnabled,
   threeDsRevenuePerSuccessfulTransaction,
   settlementIncluded,
-  settlementFeeEnabled,
+  settlementFeeEnabled: _settlementFeeEnabled,
   settlementFeeRatePercent,
-  monthlyMinimumFeeEnabled,
+  monthlyMinimumFeeEnabled: _monthlyMinimumFeeEnabled,
   monthlyMinimumFeeAmount,
   failedTrxEnabled,
   failedTrxMode,
@@ -165,16 +170,24 @@ export function buildDocumentTemplatePayloadFromCalculator({
       customRows: []
     },
     payoutPricing: clonePayoutPricing(payoutPricing),
+    // Default the optional limits to N/A · TBD (wizard-only display
+    // modes) when the calculator left them unset; a real value > 0 still
+    // renders as a number.
+    valueModes: {
+      payoutLimitMax: (contractSummarySettings.payoutLimitMax ?? 0) > 0 ? "value" : "na",
+      rollingReserveCap: (contractSummarySettings.rollingReserveCap ?? 0) > 0 ? "value" : "tbd"
+    },
     toggles: {
       settlementIncluded,
       payoutMinimumFeeEnabled,
       payoutMinimumFeePerTransaction,
       payoutMinimumFeePerTransactionNa: false,
-      threeDsEnabled,
+      // Always shown by default (manager can still toggle off in Step 4).
+      threeDsEnabled: true,
       threeDsRevenuePerSuccessfulTransaction,
-      settlementFeeEnabled,
+      settlementFeeEnabled: true,
       settlementFeeRatePercent,
-      monthlyMinimumFeeEnabled,
+      monthlyMinimumFeeEnabled: true,
       monthlyMinimumFeeAmount,
       failedTrxEnabled,
       failedTrxMode,

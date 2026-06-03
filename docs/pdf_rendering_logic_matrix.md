@@ -76,6 +76,8 @@ Fee and limit values resolve through a shared **`ValueMode`** (`value` | `waived
 
 The mode wins over the raw amount. In Section 3 the six fee cards (Account Setup, Refund, Dispute / Chargeback, 3DS, Settlement, Min. Monthly Account Fee) each expose a **Value / Waived / N/A** toggle plus an optional **custom subtitle note** stored in `payload.feeNotes` (`DocumentWizardFeeNotes`) and rendered as a second `fee-subtitle` line.
 
+**Defaults + provider-cost floors (2026-05-31):** the wizard seeds provider-cost defaults and enforces hard input minimums — a manager can only mark UP from cost (`document-wizard/wizardDefaults.ts` is the single source for both the UI `min` and the seed default). The six fee cards are **shown by default** (3DS / Settlement / Monthly Min default ON but stay toggleable). **ACCOUNT SETUP always renders**, showing `Waived` when its value resolves empty (value-mode + 0). Floors: Refund ≥ 10, Dispute ≥ 50, 3DS ≥ 0.03, and payin TRX C/D ≥ 0.22 / APM ≥ 0.27 on every construction (single / tiered / both regions / section 1.1). Terms defaults: Restricted Jurisdictions "OFAC, US, Israel", Rolling Reserve 180 days, Max Payout → N/A, Reserve Cap → TBD. Wizard-layer only — the calculator stays frozen; calculator-sourced documents carry the calculator's pricing values. See `docs/decisions.md`.
+
 **FAILED TRANSACTION CHARGING** is the exception — instead of Value/Waived/N/A it has its own on/off toggle + a **3-mode selector** and an operator memo:
 
 | `toggles.failedTrxMode` | Card value | Notes |

@@ -5801,4 +5801,55 @@ Use this file to record meaningful technical decisions for the project.
 - Verification: 332 FE + 68 BE tests; `tsc` (FE+BE) + lint clean; PDF +
   screen-preview screenshots confirmed.
 
+### Decision: Wizard document defaults + provider-cost floors
+- Date: 2026-05-31
+- Context:
+  - Managers must never price a commercial offer below provider cost
+    (they only mark UP — "менеджер сам накрутит маркап"), every offer
+    should start from consistent provider-cost defaults, and the core
+    fee set should be visible by default. The wizard inherited payin /
+    fee defaults from the FROZEN calculator and several fields hid when
+    empty.
+- Decision (WIZARD / DOCUMENT LAYER ONLY — calculator stays frozen):
+  - **Provider-cost floors + defaults** via one constants module
+    `document-wizard/wizardDefaults.ts` — the SAME constant drives both
+    the UI `min` prop and the manual-seed default, so they can't drift:
+    - Payin TRX C/D 0.22 / APM 0.27 — default + hard min, on EVERY
+      construction (single / tiered / both regions / section 1.1). The
+      min is a `NumberField` clamp (`clampNumber`); the seed default is
+      applied by `applyPayinTrxFloorDefaults` (manual seeds) and
+      `makeDefaultPayinCustomRow` (section 1.1 rows).
+    - Refund 10, Dispute 50, 3DS 0.03 — default + hard min. Settlement
+      0.3, Monthly Min 5000 — defaults (no floor).
+  - **6 Step-4 fees shown by default.** 3DS / Settlement / Monthly Min
+    default ON but stay toggleable (seeded `true` in the manual defaults
+    AND forced `true` in `fromCalculator`). Refund / Dispute always > 0
+    via the floor. ACCOUNT SETUP ALWAYS renders, showing "Waived" when
+    the value is 0 (value-mode) — `offerPdf/sections/fees.ts`.
+  - **Terms defaults:** Restricted Jurisdictions "OFAC, US, Israel"
+    (`legalDefaults.ts`); Rolling Reserve 180 days; Max Payout → N/A,
+    Reserve Cap → TBD (seeded `valueModes` na/tbd in both manual seeds +
+    `fromCalculator`, the latter only when the calculator left the value
+    unset so a real limit still renders as a number).
+- Boundary / consequences:
+  - Zero changes under `src/domain/calculator/**` or
+    `src/components/calculator/**`. `fromCalculator` deliberately IGNORES
+    the calculator's 3DS / Settlement / Monthly enabled flags (forced
+    on); they are destructured with `_` (the `_payout` pattern) to keep
+    the input contract honest.
+  - Calculator-sourced documents keep the calculator's PRICING values
+    (TRX, refund, … — the manager's markup); the new default *values*
+    shape manually-built docs, and the floor guards wizard edits.
+    `applyPayinTrxFloorDefaults` is intentionally NOT applied to the calc
+    path because it OVERWRITES TRX to cost (would flatten the manager's
+    real TRX); the calculator default (0.35) already sits above the floor.
+  - "Blank" manual seed also starts TRX at cost (never below) + limits
+    N/A · TBD, for consistency.
+- Verification: 334 FE + 68 BE tests pass (incl. manual-defaults +
+  Account-Setup-Waived coverage); `tsc` (FE+BE) + lint clean. Rendered a
+  manual-defaults document confirming TRX 0.22/0.27, all 6 fees shown,
+  Account Setup "Waived", Refund €10 / Dispute €50 / 3DS €0.03 /
+  Settlement 0.30% / Monthly €5,000, Restricted "OFAC, US, Israel", Max
+  Payout N/A, Reserve Cap TBD, Rolling Reserve 180 days.
+
 

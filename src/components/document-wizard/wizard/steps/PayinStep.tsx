@@ -1,5 +1,6 @@
 import { MiniToggle, NumberField } from "../../../calculator/index.js";
 import { makeDefaultPayinCustomRow } from "../../seedHelpers.js";
+import { PAYIN_TRX_APM_MIN, PAYIN_TRX_CC_MIN } from "../../wizardDefaults.js";
 import type { DocumentTemplatePayload, PayinCustomRow, PayinRegionMode } from "../../types.js";
 import {
   FeeFieldWithNa,
@@ -140,7 +141,7 @@ function PayinRegionEditor({
                   single: { ...current.single, trxCcNa: na }
                 }))
               }
-              min={0}
+              min={PAYIN_TRX_CC_MIN}
               step={0.01}
               ariaPrefix={`payin-${region}-single-cc`}
             />
@@ -160,7 +161,7 @@ function PayinRegionEditor({
                   single: { ...current.single, trxApmNa: na }
                 }))
               }
-              min={0}
+              min={PAYIN_TRX_APM_MIN}
               step={0.01}
               ariaPrefix={`payin-${region}-single-apm`}
             />
@@ -239,7 +240,7 @@ function PayinRegionEditor({
                           ) as typeof current.tiers
                         }))
                       }
-                      min={0}
+                      min={PAYIN_TRX_CC_MIN}
                       step={0.01}
                       ariaPrefix={`payin-${region}-tier-${index}-cc`}
                     />
@@ -263,7 +264,7 @@ function PayinRegionEditor({
                           ) as typeof current.tiers
                         }))
                       }
-                      min={0}
+                      min={PAYIN_TRX_APM_MIN}
                       step={0.01}
                       ariaPrefix={`payin-${region}-tier-${index}-apm`}
                     />
@@ -411,7 +412,7 @@ function PayinCustomRowCard({
             na={row.single.trxCcNa}
             onValueChange={value => onPatchSingle({ trxCc: value })}
             onNaChange={na => onPatchSingle({ trxCcNa: na })}
-            min={0}
+            min={PAYIN_TRX_CC_MIN}
             step={0.01}
             ariaPrefix={`payin-custom-${index}-single-cc`}
           />
@@ -421,7 +422,7 @@ function PayinCustomRowCard({
             na={row.single.trxApmNa}
             onValueChange={value => onPatchSingle({ trxApm: value })}
             onNaChange={na => onPatchSingle({ trxApmNa: na })}
-            min={0}
+            min={PAYIN_TRX_APM_MIN}
             step={0.01}
             ariaPrefix={`payin-custom-${index}-single-apm`}
           />
@@ -479,7 +480,7 @@ function PayinCustomRowCard({
                       na={tier.trxCcNa}
                       onValueChange={value => onPatchTier(tierIndex, { trxCc: value })}
                       onNaChange={na => onPatchTier(tierIndex, { trxCcNa: na })}
-                      min={0}
+                      min={PAYIN_TRX_CC_MIN}
                       step={0.01}
                       ariaPrefix={`payin-custom-${index}-tier-${tierIndex}-cc`}
                     />
@@ -489,7 +490,7 @@ function PayinCustomRowCard({
                       na={tier.trxApmNa}
                       onValueChange={value => onPatchTier(tierIndex, { trxApm: value })}
                       onNaChange={na => onPatchTier(tierIndex, { trxApmNa: na })}
-                      min={0}
+                      min={PAYIN_TRX_APM_MIN}
                       step={0.01}
                       ariaPrefix={`payin-custom-${index}-tier-${tierIndex}-apm`}
                     />

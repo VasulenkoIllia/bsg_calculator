@@ -37,9 +37,15 @@ function buildOtherServicesCards(data: DocumentTemplatePayload, layout: Document
       ? formatEuroInteger(data.contractSummary.accountSetupFee)
       : ""
   );
-  if (hasText(accountSetupLabel)) {
-    cards.push({ title: "ACCOUNT SETUP", value: accountSetupLabel, subtitle: "One-time · EUR", subtitleNote: noteFor("accountSetupFee") });
-  }
+  // ACCOUNT SETUP always shows. A value-mode label that resolves empty
+  // (value 0 / blank) renders "Waived" by default (product rule); the
+  // "waived" / "na" modes already produce "Waived" / "N/A".
+  cards.push({
+    title: "ACCOUNT SETUP",
+    value: hasText(accountSetupLabel) ? accountSetupLabel : "Waived",
+    subtitle: "One-time · EUR",
+    subtitleNote: noteFor("accountSetupFee")
+  });
 
   const refundLabel = resolveModeValue(
     modes.refundCost,

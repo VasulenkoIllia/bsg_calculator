@@ -1,13 +1,10 @@
 import {
-  DEFAULT_3DS_FEE_CONFIG,
   DEFAULT_CONTRACT_SUMMARY_SETTINGS,
   DEFAULT_FAILED_TRX_CHARGING_CONFIG,
-  DEFAULT_MONTHLY_MINIMUM_FEE_CONFIG,
   DEFAULT_PAYIN_EU_PRICING_CONFIG,
   DEFAULT_PAYIN_WW_PRICING_CONFIG,
   DEFAULT_PAYOUT_MINIMUM_FEE_CONFIG,
-  DEFAULT_PAYOUT_PRICING_CONFIG,
-  DEFAULT_SETTLEMENT_FEE_CONFIG
+  DEFAULT_PAYOUT_PRICING_CONFIG
 } from "../../domain/calculator/index.js";
 import {
   DEFAULT_AGREEMENT_PARTIES,
@@ -15,11 +12,22 @@ import {
   DEFAULT_DOCUMENT_SCOPE
 } from "./legalDefaults.js";
 import {
+  applyPayinTrxFloorDefaults,
   buildDocumentHeaderMetaFromCalculator,
   clonePayinRegionPricing,
   clonePayoutPricing
 } from "./seedHelpers.js";
 import type { DocumentTemplatePayload } from "./types.js";
+import {
+  DISPUTE_COST_MIN,
+  MONTHLY_MINIMUM_FEE_DEFAULT,
+  PAYIN_TRX_APM_MIN,
+  PAYIN_TRX_CC_MIN,
+  REFUND_COST_MIN,
+  ROLLING_RESERVE_HOLD_DAYS_DEFAULT,
+  SETTLEMENT_FEE_RATE_DEFAULT,
+  THREE_DS_FEE_MIN
+} from "./wizardDefaults.js";
 
 export function buildDocumentTemplatePayloadManualDefaults(): DocumentTemplatePayload {
   const header = buildDocumentHeaderMetaFromCalculator(
@@ -55,6 +63,11 @@ export function buildDocumentTemplatePayloadManualDefaults(): DocumentTemplatePa
     contractSummary: {
       ...DEFAULT_CONTRACT_SUMMARY_SETTINGS,
       ...DEFAULT_DOCUMENT_LEGAL_TERMS,
+      // Provider-cost fee defaults (override the frozen calculator
+      // config); the wizard min props prevent going below.
+      refundCost: REFUND_COST_MIN,
+      disputeCost: DISPUTE_COST_MIN,
+      rollingReserveHoldDays: ROLLING_RESERVE_HOLD_DAYS_DEFAULT,
       payoutMinimumFeeEuNa: false,
       payoutMinimumFeeWwNa: false,
       customTermsItems: [],
@@ -64,23 +77,29 @@ export function buildDocumentTemplatePayloadManualDefaults(): DocumentTemplatePa
       payoutCustomNoteText: ""
     },
     payinPricing: {
-      eu: clonePayinRegionPricing(DEFAULT_PAYIN_EU_PRICING_CONFIG),
-      ww: clonePayinRegionPricing(DEFAULT_PAYIN_WW_PRICING_CONFIG),
+      eu: applyPayinTrxFloorDefaults(clonePayinRegionPricing(DEFAULT_PAYIN_EU_PRICING_CONFIG)),
+      ww: applyPayinTrxFloorDefaults(clonePayinRegionPricing(DEFAULT_PAYIN_WW_PRICING_CONFIG)),
       // Operator-added rows; manual seed never starts with any.
       customRows: []
     },
     payoutPricing: clonePayoutPricing(DEFAULT_PAYOUT_PRICING_CONFIG),
+    // Manual docs start with the limits unset → render N/A · TBD.
+    valueModes: {
+      payoutLimitMax: "na",
+      rollingReserveCap: "tbd"
+    },
     toggles: {
       settlementIncluded: false,
       payoutMinimumFeeEnabled: DEFAULT_PAYOUT_MINIMUM_FEE_CONFIG.enabled,
       payoutMinimumFeePerTransaction: DEFAULT_PAYOUT_MINIMUM_FEE_CONFIG.minimumFeePerTransaction,
       payoutMinimumFeePerTransactionNa: false,
-      threeDsEnabled: DEFAULT_3DS_FEE_CONFIG.enabled,
-      threeDsRevenuePerSuccessfulTransaction: DEFAULT_3DS_FEE_CONFIG.revenuePerSuccessfulTransaction,
-      settlementFeeEnabled: DEFAULT_SETTLEMENT_FEE_CONFIG.enabled,
-      settlementFeeRatePercent: DEFAULT_SETTLEMENT_FEE_CONFIG.ratePercent,
-      monthlyMinimumFeeEnabled: DEFAULT_MONTHLY_MINIMUM_FEE_CONFIG.enabled,
-      monthlyMinimumFeeAmount: DEFAULT_MONTHLY_MINIMUM_FEE_CONFIG.minimumMonthlyRevenue,
+      // 3DS / Settlement / Monthly Min shown by default (toggleable).
+      threeDsEnabled: true,
+      threeDsRevenuePerSuccessfulTransaction: THREE_DS_FEE_MIN,
+      settlementFeeEnabled: true,
+      settlementFeeRatePercent: SETTLEMENT_FEE_RATE_DEFAULT,
+      monthlyMinimumFeeEnabled: true,
+      monthlyMinimumFeeAmount: MONTHLY_MINIMUM_FEE_DEFAULT,
       failedTrxEnabled: DEFAULT_FAILED_TRX_CHARGING_CONFIG.enabled,
       failedTrxMode: DEFAULT_FAILED_TRX_CHARGING_CONFIG.mode,
       failedTrxOverLimitThresholdPercent: DEFAULT_FAILED_TRX_CHARGING_CONFIG.overLimitThresholdPercent
@@ -151,9 +170,9 @@ export function buildDocumentTemplatePayloadManualBlank(): DocumentTemplatePaylo
         tier2UpToMillion: 0,
         single: {
           mdrPercent: 0,
-          trxCc: 0,
+          trxCc: PAYIN_TRX_CC_MIN,
           trxCcNa: false,
-          trxApm: 0,
+          trxApm: PAYIN_TRX_APM_MIN,
           trxApmNa: false
         },
         // Zero-tier triplet — wizard `tiers` is a fixed-length tuple
@@ -161,9 +180,9 @@ export function buildDocumentTemplatePayloadManualBlank(): DocumentTemplatePaylo
         // shape is spelled out here rather than via `.map()` which
         // widens to a plain array.
         tiers: [
-          { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
-          { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
-          { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false }
+          { mdrPercent: 0, trxCc: PAYIN_TRX_CC_MIN, trxCcNa: false, trxApm: PAYIN_TRX_APM_MIN, trxApmNa: false },
+          { mdrPercent: 0, trxCc: PAYIN_TRX_CC_MIN, trxCcNa: false, trxApm: PAYIN_TRX_APM_MIN, trxApmNa: false },
+          { mdrPercent: 0, trxCc: PAYIN_TRX_CC_MIN, trxCcNa: false, trxApm: PAYIN_TRX_APM_MIN, trxApmNa: false }
         ]
       },
       ww: {
@@ -172,15 +191,15 @@ export function buildDocumentTemplatePayloadManualBlank(): DocumentTemplatePaylo
         tier2UpToMillion: 0,
         single: {
           mdrPercent: 0,
-          trxCc: 0,
+          trxCc: PAYIN_TRX_CC_MIN,
           trxCcNa: false,
-          trxApm: 0,
+          trxApm: PAYIN_TRX_APM_MIN,
           trxApmNa: false
         },
         tiers: [
-          { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
-          { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false },
-          { mdrPercent: 0, trxCc: 0, trxCcNa: false, trxApm: 0, trxApmNa: false }
+          { mdrPercent: 0, trxCc: PAYIN_TRX_CC_MIN, trxCcNa: false, trxApm: PAYIN_TRX_APM_MIN, trxApmNa: false },
+          { mdrPercent: 0, trxCc: PAYIN_TRX_CC_MIN, trxCcNa: false, trxApm: PAYIN_TRX_APM_MIN, trxApmNa: false },
+          { mdrPercent: 0, trxCc: PAYIN_TRX_CC_MIN, trxCcNa: false, trxApm: PAYIN_TRX_APM_MIN, trxApmNa: false }
         ]
       },
       // Operator-added rows; blank manual seed never starts with any.
@@ -200,6 +219,12 @@ export function buildDocumentTemplatePayloadManualBlank(): DocumentTemplatePaylo
         trxFee: 0,
         trxFeeNa: false
       }))
+    },
+    // Blank docs start with the limits unset → render N/A · TBD
+    // (consistent with the defaults seed + fromCalculator).
+    valueModes: {
+      payoutLimitMax: "na",
+      rollingReserveCap: "tbd"
     },
     toggles: {
       settlementIncluded: false,
