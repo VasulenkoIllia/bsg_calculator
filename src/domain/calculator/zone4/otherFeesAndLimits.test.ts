@@ -51,9 +51,9 @@ describe("zone4/otherFeesAndLimits", () => {
       totalAttempts: 12_500
     });
 
-    expect(result.revenue).toBe(500);
+    expect(result.revenue).toBe(300);
     expect(result.cost).toBe(375);
-    expect(result.net).toBe(125);
+    expect(result.net).toBe(-75);
   });
 
   it("applies settlement fee only when settlement is not included and toggle is enabled", () => {

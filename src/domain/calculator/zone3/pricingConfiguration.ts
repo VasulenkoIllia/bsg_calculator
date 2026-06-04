@@ -156,15 +156,21 @@ export const DEFAULT_PAYIN_EU_PRICING_CONFIG: PayinRegionPricingConfig = {
   rateMode: "single",
   tier1UpToMillion: 5,
   tier2UpToMillion: 10,
+  // TRX defaults start at PROVIDER COST — C/D €0.22, APM €0.27 — equal to
+  // DEFAULT_PROVIDER_PAYIN_TRX_CC_COST / _APM_COST in zone5/constants.ts (kept
+  // as literals here to preserve the zone5→zone3 dependency direction). A fresh
+  // calculator therefore starts at ZERO TRX margin and the manager marks up;
+  // this keeps the calculator and the document wizard on one default. MDR % is
+  // a selling default and is intentionally left as-is.
   single: {
     mdrPercent: 4.5,
-    trxCc: 0.35,
-    trxApm: 0.35
+    trxCc: 0.22,
+    trxApm: 0.27
   },
   tiers: [
-    { mdrPercent: 4.5, trxCc: 0.35, trxApm: 0.35 },
-    { mdrPercent: 4.25, trxCc: 0.3, trxApm: 0.35 },
-    { mdrPercent: 4.0, trxCc: 0.25, trxApm: 0.35 }
+    { mdrPercent: 4.5, trxCc: 0.22, trxApm: 0.27 },
+    { mdrPercent: 4.25, trxCc: 0.22, trxApm: 0.27 },
+    { mdrPercent: 4.0, trxCc: 0.22, trxApm: 0.27 }
   ],
   schemeFeesPercent: 0.75,
   interchangePercent: 0.75,
@@ -186,15 +192,17 @@ export const DEFAULT_PAYIN_WW_PRICING_CONFIG: PayinRegionPricingConfig = {
   rateMode: "single",
   tier1UpToMillion: 5,
   tier2UpToMillion: 10,
+  // TRX defaults start at PROVIDER COST (C/D €0.22, APM €0.27) — see the EU
+  // config above for the rationale. MDR % left as-is.
   single: {
     mdrPercent: 5.0,
-    trxCc: 0.35,
-    trxApm: 0.35
+    trxCc: 0.22,
+    trxApm: 0.27
   },
   tiers: [
-    { mdrPercent: 5.0, trxCc: 0.35, trxApm: 0.35 },
-    { mdrPercent: 4.75, trxCc: 0.3, trxApm: 0.35 },
-    { mdrPercent: 4.5, trxCc: 0.25, trxApm: 0.35 }
+    { mdrPercent: 5.0, trxCc: 0.22, trxApm: 0.27 },
+    { mdrPercent: 4.75, trxCc: 0.22, trxApm: 0.27 },
+    { mdrPercent: 4.5, trxCc: 0.22, trxApm: 0.27 }
   ],
   schemeFeesPercent: 2,
   interchangePercent: 2

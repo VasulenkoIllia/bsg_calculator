@@ -135,7 +135,7 @@ describe("Zone 3 and Zone 4", () => {
 
     expect(screen.getByText(/3DS Revenue \(EU €0 \+ WW €0\)/)).toBeInTheDocument();
     await user.click(screen.getByRole("checkbox", { name: "3D Secure Fee" }));
-    expect(screen.getByText(/3DS Revenue \(EU €400 \+ WW €100\)/)).toBeInTheDocument();
+    expect(screen.getByText(/3DS Revenue \(EU €240 \+ WW €60\)/)).toBeInTheDocument();
     const threeDsRevenueInput = screen.getByRole("textbox", {
       name: "3DS Revenue per Successful TRX (€)"
     });
@@ -147,7 +147,7 @@ describe("Zone 3 and Zone 4", () => {
 
     await user.click(screen.getByRole("checkbox", { name: "Failed TRX Charging" }));
     await user.click(screen.getByRole("button", { name: "Failed TRX all failed volume" }));
-    expect(screen.getAllByText("€875").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("€562").length).toBeGreaterThanOrEqual(1);
 
     await user.click(screen.getByRole("checkbox", { name: "Settlement Included" }));
     expect(

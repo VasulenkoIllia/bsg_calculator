@@ -8,7 +8,7 @@
 export const DEFAULT_DOCUMENT_LEGAL_TERMS = {
   settlementNote: "Does not apply on weekends and bank holidays",
   clientType: "STD",
-  restrictedJurisdictions: "OFAC, US, Israel"
+  restrictedJurisdictions: "OFAC, US, ISRAEL"
 } as const;
 
 // Only two document scopes are exposed to users:

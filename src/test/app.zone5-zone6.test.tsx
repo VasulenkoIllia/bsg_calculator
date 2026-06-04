@@ -17,7 +17,7 @@ describe("Zone 5 and Zone 6", () => {
 
     expect(screen.getByText(/3DS Revenue \(EU €0 \+ WW €0\)/)).toBeInTheDocument();
     await user.click(screen.getByRole("checkbox", { name: "3D Secure Fee" }));
-    expect(screen.getByText(/3DS Revenue \(EU €400 \+ WW €100\)/)).toBeInTheDocument();
+    expect(screen.getByText(/3DS Revenue \(EU €240 \+ WW €60\)/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("checkbox", { name: "Agent / Introducer" }));
     await user.click(screen.getByRole("button", { name: "Commission model: Rev Share" }));

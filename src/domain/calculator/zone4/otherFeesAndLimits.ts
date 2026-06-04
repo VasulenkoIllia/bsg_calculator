@@ -132,7 +132,10 @@ export interface FailedTrxImpact {
   belowLimitAttempts: number;
 }
 
-export const DEFAULT_3DS_REVENUE_PER_SUCCESSFUL = 0.05;
+// Default 3DS revenue starts at the provider-cost level (= PROVIDER_3DS_COST_PER_ATTEMPT)
+// so a fresh offer begins at zero 3DS margin and the manager marks up — unified with the
+// document wizard's 3DS default.
+export const DEFAULT_3DS_REVENUE_PER_SUCCESSFUL = 0.03;
 export const PROVIDER_3DS_COST_PER_ATTEMPT = 0.03;
 
 export const DEFAULT_PAYOUT_MINIMUM_FEE_CONFIG: PayoutMinimumFeeConfig = {
@@ -164,8 +167,10 @@ export const DEFAULT_FAILED_TRX_CHARGING_CONFIG: FailedTrxChargingConfig = {
 
 export const DEFAULT_CONTRACT_SUMMARY_SETTINGS: ContractSummarySettings = {
   accountSetupFee: 0,
-  refundCost: 15,
-  disputeCost: 75,
+  // Refund / Dispute default to provider cost (manager marks up) — unified with
+  // the document wizard's defaults.
+  refundCost: 10,
+  disputeCost: 50,
   settlementPeriod: "T+3",
   payoutMinimumFeeMode: "overall",
   payoutMinimumFeeThresholdMillion: 2.5,
@@ -179,7 +184,8 @@ export const DEFAULT_CONTRACT_SUMMARY_SETTINGS: ContractSummarySettings = {
   payoutLimitMin: 60,
   payoutLimitMax: null,
   rollingReservePercent: 10,
-  rollingReserveHoldDays: 90,
+  // Unified with the document wizard's default hold period.
+  rollingReserveHoldDays: 180,
   rollingReserveCap: null
 };
 

@@ -67,7 +67,7 @@ describe("manual wizard builders", () => {
     expect(draft.contractSummary.refundCost).toBe(10);
     expect(draft.contractSummary.disputeCost).toBe(50);
     expect(draft.contractSummary.rollingReserveHoldDays).toBe(180);
-    expect(draft.contractSummary.restrictedJurisdictions).toBe("OFAC, US, Israel");
+    expect(draft.contractSummary.restrictedJurisdictions).toBe("OFAC, US, ISRAEL");
     // Payin TRX defaults to provider cost (C/D 0.22, APM 0.27) on single + tiers.
     expect(draft.payinPricing.eu.single.trxCc).toBe(0.22);
     expect(draft.payinPricing.eu.single.trxApm).toBe(0.27);

@@ -79,10 +79,10 @@ describe("zone3/pricingConfiguration", () => {
     expect(payinTierRows[1].mdrRevenue).toBeCloseTo(212_500, 6);
     expect(payinTierRows[2].mdrRevenue).toBe(200_000);
     expect(result.mdrRevenue).toBeCloseTo(637_500, 6);
-    expect(result.trxRevenue).toBeCloseTo(9_450, 4);
-    expect(result.totalRevenue).toBeCloseTo(646_950, 4);
+    expect(result.trxRevenue).toBeCloseTo(7_050, 4);
+    expect(result.totalRevenue).toBeCloseTo(644_550, 4);
     expect(result.schemeCostImpact).toBe(0);
-    expect(result.revenueAfterSchemePreview).toBeCloseTo(646_950, 4);
+    expect(result.revenueAfterSchemePreview).toBeCloseTo(644_550, 4);
   });
 
   it("applies scheme-cost impact only for blended model", () => {

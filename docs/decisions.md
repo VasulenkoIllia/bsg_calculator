@@ -5912,4 +5912,64 @@ Use this file to record meaningful technical decisions for the project.
   pages — the repo has no `no-console` rule). Frozen check: no
   `src/domain/calculator/**` or `src/components/calculator/**` diff.
 
+### Decision: Unified calculator + wizard defaults at PROVIDER COST
+- Date: 2026-06-04
+- Context:
+  - Two default sets had diverged. The document wizard's MANUAL defaults
+    were provider COST (TRX C/D €0.22 / APM €0.27, Refund €10, Dispute
+    €50, 3DS €0.03, Rolling Reserve 180d), but the CALCULATOR's own
+    defaults were higher legacy SELLING values (TRX €0.35, Refund €15,
+    Dispute €75, 3DS €0.05, Rolling Reserve 90d). Because most documents
+    are generated FROM the calculator, they inherited the higher values —
+    so "the same offer" started differently depending on how it was made,
+    and a fresh-calculator document never showed the cost defaults.
+  - The calculator (normally FROZEN) was temporarily unfrozen with
+    explicit user approval to bring both onto ONE default, then re-frozen.
+- Decision:
+  - Lower the CALCULATOR's default SELLING values to provider COST so the
+    calculator and the wizard share one default. A fresh calculator now
+    starts at ZERO TRX margin (revenue = cost) and the manager marks up;
+    manager-entered custom prices still flow through unchanged.
+  - Changed (`src/domain/calculator/**`, VALUES only):
+    - zone3 `DEFAULT_PAYIN_EU_PRICING_CONFIG` + `_WW_`: TRX C/D 0.35→0.22,
+      APM 0.35→0.27 on the single block AND all 3 tiers (the tiered C/D
+      discounts 0.30/0.25 flattened to cost 0.22). MDR % left as-is.
+    - zone4 `DEFAULT_3DS_REVENUE_PER_SUCCESSFUL` 0.05→0.03;
+      `DEFAULT_CONTRACT_SUMMARY_SETTINGS` refundCost 15→10, disputeCost
+      75→50, rollingReserveHoldDays 90→180.
+  - Also: Restricted Jurisdictions casing "Israel"→"ISRAEL"
+    (`legalDefaults.ts`, applies to manual + calc-sourced documents).
+- Boundary / consequences:
+  - FORMULAS UNCHANGED — only default INPUT values. The provider-COST
+    constants are untouched (zone5 `DEFAULT_PROVIDER_PAYIN_TRX_CC_COST` =
+    0.22 / `_APM_COST` = 0.27; zone4 `PROVIDER_3DS_COST_PER_ATTEMPT` =
+    0.03). The new selling defaults EQUAL those costs — documented in
+    comments and kept as literals (NOT imported) to preserve the
+    zone5→zone3 dependency direction.
+  - Unchanged: MDR %, Payout (0.5 / 2%), Settlement (T+3, 0.3%), Monthly
+    Min (5000), Account Setup (0), all limits, Rolling Reserve % (10%).
+  - Updated the test expectations that RECOMPUTE from these defaults
+    (not blind edits): zone3 tiered trxRevenue 7050 / totalRevenue
+    644550; zone4 3DS revenue 300 / net −75; zone6 tier row "€0.22 CC +
+    €0.27 APM" (its 3DS line stays €0.05 — `buildBaseInput` hardcodes it);
+    app integration tests 3DS "EU €240 + WW €60" and Failed-TRX "€562"
+    (2250×0.22 + 250×0.27 = 562.5, `formatAmount2` truncates).
+- Known follow-ups (decomposition — assessed, intentionally deferred):
+  - `document-wizard/manualSeeds.ts` now redundantly re-applies cost
+    (`applyPayinTrxFloorDefaults` + refundCost/disputeCost/rollingReserve
+    overrides) which EQUAL the calc defaults. KEPT as an explicit safety
+    net (keeps the wizard's manual defaults at cost even if a future calc
+    default moves); removable in a follow-up once the unified default is
+    confirmed stable. The cost value 0.22/0.27 lives in 3 places (zone5
+    cost, zone3 selling, `wizardDefaults` floor) — a shared constant
+    module would fully DRY it but requires reworking the zone dependency
+    graph; deferred to keep this change low-risk.
+  - `buildPdfUiKitHtml.ts` is a static design-showcase mock (illustrative
+    sample numbers incl. €0.35; never rendered in the app, not tested) —
+    not part of the defaults system; left as-is.
+- Verification: FE 338 tests pass; `tsc` (FE) + lint clean on all changed
+  files. (BE 349/350 — the one failure, `auth.tokens.test.ts`
+  refresh-token-TTL ~12h vs 30d, is a PRE-EXISTING env/config test
+  unrelated to this FE-only change; zero `server/**` files touched.)
+
 
