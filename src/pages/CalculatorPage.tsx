@@ -21,6 +21,7 @@ import {
   isCalculatorSnapshotPayload,
   seedCalculatorStateFromSnapshot
 } from "../components/calculator/snapshotShape.js";
+import { isDocumentTemplatePayload } from "../components/document-wizard/isDocumentTemplatePayload.js";
 import { CalculatorStickyToolbar } from "../components/calculator/CalculatorStickyToolbar.js";
 import { EventHistoryPanel } from "../components/EventHistoryPanel.js";
 import { SaveCalculatorModal } from "../components/SaveCalculatorModal.js";
@@ -91,8 +92,18 @@ export function CalculatorPage() {
     // skipped hydration (the auto-save stays disarmed because
     // hydratedFromIdRef never advances).
     const payload = configQuery.data.payload;
+    // A config created by "Use as template" carries a DocumentTemplatePayload
+    // (a ready wizard draft), NOT a calculator snapshot — it can't hydrate the
+    // calculator. Redirect to the wizard, which detects this payload shape and
+    // loads it. `replace` so Back returns to the list rather than this
+    // redirecting page. Without this branch the snapshot guard below would log
+    // an error and strand the user on an empty calculator.
+    if (isDocumentTemplatePayload(payload)) {
+      hydratedFromIdRef.current = configId ?? null;
+      navigate(`/wizard?calc=${configId}`, { replace: true });
+      return;
+    }
     if (!isCalculatorSnapshotPayload(payload)) {
-      // eslint-disable-next-line no-console
       console.error(
         "[CalculatorPage] saved payload is not a valid CalculatorSnapshotPayload — skipping hydration",
         { configId, payloadKeys: Object.keys(payload ?? {}) }
@@ -108,10 +119,9 @@ export function CalculatorPage() {
       // probe) can still throw inside seedCalculatorStateFromSnapshot.
       // Caught here and logged; the badge will show "Unsaved" because
       // savedAtIso stays null until a real save lands.
-      // eslint-disable-next-line no-console
       console.error("[CalculatorPage] hydrate failed", err);
     }
-  }, [configId, configQuery.data, isEditMode]);
+  }, [configId, configQuery.data, isEditMode, navigate]);
 
   // ─── Auto-save (1s debounce) ─────────────────────────────────────
   // Extract a snapshot from the live state on every render. The
@@ -130,7 +140,6 @@ export function CalculatorPage() {
     // of fields. The safe approach: use `calc` in deps despite its
     // reference instability; useMemo always re-runs but the produced
     // STRING is what useDebouncedValue de-dupes against.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditMode, calc]);
   const debouncedSnapshotJson = useDebouncedValue(liveSnapshotJson, 1_000);
   const updateMutation = useUpdateCalculatorConfig(configId);

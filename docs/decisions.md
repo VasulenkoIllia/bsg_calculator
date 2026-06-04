@@ -5852,4 +5852,64 @@ Use this file to record meaningful technical decisions for the project.
   Settlement 0.30% / Monthly €5,000, Restricted "OFAC, US, Israel", Max
   Payout N/A, Reserve Cap TBD, Rolling Reserve 180 days.
 
+### Decision: Linked-config hydration routes by payload SHAPE (fixes "Use as template" + saved-calc → wizard data loss)
+- Date: 2026-06-04
+- Context:
+  - A calculator-config row (routes `/calc/:id`, `?calc=<id>`) carries a
+    JSONB `payload` that is EITHER a `CalculatorSnapshotPayload` (a saved
+    calculator) OR a `DocumentTemplatePayload` (a saved wizard draft —
+    "Use as template" stores the whole document payload into a NEW
+    calc-config so it can reuse the same `?calc=` linking). The two
+    shapes are DISTINCT: a document has `header` / `layout` /
+    `payinPricing` / `contractSummary` / `documentScope`; a snapshot has
+    `schemaVersion` / `payinEuPricing` / `payinWwPricing` /
+    `payoutPricing`.
+  - BUG (reported by user): both the wizard and the calculator hydrated a
+    linked config by running `isCalculatorSnapshotPayload` ONLY. A
+    document payload fails that guard, so the row was silently dropped
+    (console error + empty screen). Symptoms: "Use as template" opened an
+    EMPTY wizard, and a saved calculator deep-linked into the wizard
+    rendered an EMPTY draft.
+- Decision:
+  - Add a `DocumentTemplatePayload` runtime guard
+    (`document-wizard/isDocumentTemplatePayload.ts`) and branch on SHAPE
+    at every linked-config hydration site:
+    - `WizardPage` — snapshot → hydrate the shared calculator context,
+      then re-seed the wizard draft from it; document → load the payload
+      straight in as the draft (it already IS a wizard draft).
+    - `CalculatorPage` (`/calc/:id`) — document → redirect to
+      `/wizard?calc=<id>` (`replace`), because a document can't hydrate
+      the calculator. Same bug class: templated configs appear in the
+      saved-calc list and link to `/calc/:id`.
+  - "Use as template" (`DocumentViewPage`) opens the WIZARD directly
+    (`/wizard?calc=<configId>`), not the calculator — the payload is a
+    ready wizard draft. The backend `use-as-template` is UNCHANGED (still
+    creates a calc-config and returns a `redirectUrl`); the frontend now
+    ignores `redirectUrl` and navigates by `configId` (the API return
+    type drops it).
+  - The wizard's saved-calc re-seed is DEFERRED: `applyStatePreset` fires
+    ~20 setStates whose derived `calculatorWizardSeed` only reflects them
+    on the NEXT render, so the draft re-seed runs in a follow-up effect
+    keyed on a one-shot TICK (state) rather than a ref flag — a ref flag
+    LEAKS on a warm-navigation no-op (preset already applied → seed never
+    changes → deferred effect never clears the flag) and a later calc
+    change would then fire it and clobber the user's wizard edits.
+- Boundary / consequences:
+  - Wizard / page layer only — ZERO changes under
+    `src/domain/calculator/**` or `src/components/calculator/**`.
+  - The document guard deliberately does NOT require `toggles`: older
+    stored documents predate it and it adds no discriminating power vs a
+    snapshot. The unique discriminators are header / layout /
+    payinPricing / contractSummary / documentScope.
+  - The document branch sets the wizard source mode to `manualDefaults`
+    (there is no dedicated "template" mode) so the URL/radio don't claim
+    "calculator" and a refresh doesn't re-init in calculator mode and
+    race the load.
+- Verification: 338 FE tests pass (40 files; +1 guard migration-safety
+  test asserting a `toggles`-less document still passes); `tsc` (FE) +
+  lint clean on all changed files (also removed pre-existing DEAD
+  `no-console` / `exhaustive-deps` disable directives in the touched
+  pages — the repo has no `no-console` rule). Frozen check: no
+  `src/domain/calculator/**` or `src/components/calculator/**` diff.
+
 

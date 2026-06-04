@@ -96,13 +96,16 @@ export async function listDocuments(
 }
 
 /**
- * Returns the new calculator-config id created from the document's
- * payload + the path the frontend should navigate to.
+ * Creates a new calculator-config from the document's payload and returns
+ * its id. The caller opens the WIZARD at `/wizard?calc=<configId>`: a
+ * templated config holds a DocumentTemplatePayload (a ready wizard draft),
+ * not a calculator snapshot. The backend also returns a `redirectUrl`
+ * (`/calc/:id`), but the frontend ignores it for that reason.
  */
 export async function useDocumentAsTemplate(
   number: string
-): Promise<{ configId: string; redirectUrl: string }> {
-  const { data } = await apiClient.post<{ configId: string; redirectUrl: string }>(
+): Promise<{ configId: string }> {
+  const { data } = await apiClient.post<{ configId: string }>(
     `/documents/${number}/use-as-template`
   );
   return data;

@@ -105,7 +105,7 @@ describe("DocumentViewPage — Download PDF", () => {
 });
 
 describe("DocumentViewPage — Use as Template", () => {
-  it("calls useDocumentAsTemplate and navigates to the returned URL", async () => {
+  it("calls useDocumentAsTemplate when 'Use as template' is clicked", async () => {
     // Sprint 9.R — button is admin+ gated now. Bring the auth
     // context into "logged-in as admin" so the button renders.
     vi.spyOn(authApi, "refresh").mockResolvedValue({ accessToken: "tok" });
@@ -121,8 +121,7 @@ describe("DocumentViewPage — Use as Template", () => {
       fixtureDocument()
     );
     const spy = vi.spyOn(documentsApi, "useDocumentAsTemplate").mockResolvedValue({
-      configId: "new-cfg-id",
-      redirectUrl: "/calc/new-cfg-id"
+      configId: "new-cfg-id"
     });
 
     renderAt("BSG-7100001-512587");

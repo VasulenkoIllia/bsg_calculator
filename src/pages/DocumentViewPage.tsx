@@ -142,7 +142,10 @@ export function DocumentViewPage() {
     setTemplatePending(true);
     try {
       const result = await documentsApi.useDocumentAsTemplate(number);
-      navigate(result.redirectUrl);
+      // Open the WIZARD directly — the template payload is already a
+      // wizard draft. The wizard detects the linked-config payload shape
+      // and loads it; `?calc=` also auto-links the inherited company/deal.
+      navigate(`/wizard?calc=${result.configId}`);
     } catch (err) {
       // Sprint 6.3: surface failures via the global toast viewport
       // instead of an inline alert beside the button — keeps the
@@ -174,7 +177,6 @@ export function DocumentViewPage() {
       if (err instanceof ApiError) {
         toast.error(err.message);
       } else {
-        // eslint-disable-next-line no-console
         console.error("[DocumentViewPage] PDF download unexpected", err);
         toast.error("Failed to download PDF.");
       }
@@ -489,7 +491,6 @@ function DocumentPreviewSection({
     try {
       return buildOfferPdfHtml(wizardPayload);
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.warn(
         "[DocumentViewPage] buildOfferPdfHtml threw on document",
         number,

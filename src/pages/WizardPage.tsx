@@ -8,7 +8,8 @@ import {
   buildDocumentTemplatePayloadManualDefaults,
   buildDocumentTemplatePayloadFromCalculator,
   buildOfferPdfHtml,
-  clampStepToScope
+  clampStepToScope,
+  isDocumentTemplatePayload
 } from "../components/document-wizard/index.js";
 import type { DocumentTemplatePayload, WizardStep } from "../components/document-wizard/index.js";
 import type { DocumentScope } from "../components/document-wizard/legalDefaults.js";
@@ -303,39 +304,92 @@ export function WizardPage() {
   // "DRY both refs into one" refactor doesn't silently introduce
   // that wait.
   const hydratedCalcStateForRef = useRef<string | null>(null);
+  // A linked config's payload is EITHER a CalculatorSnapshotPayload
+  // (a saved calculator) OR a DocumentTemplatePayload ("Use as template"
+  // forwards the whole document payload). We detect the shape and branch.
+  //
+  // A saved-calculator hydration applies ~20 setState calls to the shared
+  // calculator context; `calculatorWizardSeed` (derived) only reflects them
+  // on the NEXT render. We bump this tick right after applyStatePreset to
+  // force exactly one post-hydration render whose effect re-seeds the wizard
+  // draft. A tick (state) is used instead of a ref flag on purpose: when
+  // applyStatePreset is a no-op (warm navigation — the context is already
+  // correct), a ref flag would never clear and could later clobber the user's
+  // edits; the tick fires its effect exactly once per hydration.
+  const [calcReseedTick, setCalcReseedTick] = useState(0);
   useEffect(() => {
     if (!linkedConfigId) return;
     if (!linkedConfigQuery.data) return;
     if (hydratedCalcStateForRef.current === linkedConfigId) return;
-    // Sprint 6.F.3 (audit Q3): runtime-validate the JSONB payload
-    // before hydration. See snapshotShape.ts → isCalculatorSnapshotPayload.
+    // Sprint 6.F.3 (audit Q3): runtime-validate the JSONB payload before
+    // use. See snapshotShape.ts → isCalculatorSnapshotPayload.
     const payload = linkedConfigQuery.data.payload;
-    if (!isCalculatorSnapshotPayload(payload)) {
-      // eslint-disable-next-line no-console
-      console.error(
-        "[WizardPage] linked calc payload not a valid CalculatorSnapshotPayload — skipping hydration",
-        { linkedConfigId, payloadKeys: Object.keys(payload ?? {}) }
-      );
+
+    // (a) Saved-calculator config → hydrate the calculator context, then
+    // re-seed the wizard draft from it. `calculatorWizardSeed` is derived
+    // from the context, which only updates on the NEXT render after
+    // applyStatePreset — so the draft re-seed is DEFERRED to the effect
+    // below (doing it inline here would capture the pre-hydration seed).
+    // Fixes "saved calculator → wizard" rendering an empty draft on
+    // deep-link / refresh.
+    if (isCalculatorSnapshotPayload(payload)) {
+      try {
+        const preset = seedCalculatorStateFromSnapshot(payload);
+        calc.applyStatePreset(preset);
+        hydratedCalcStateForRef.current = linkedConfigId;
+        setCalcReseedTick(t => t + 1);
+        setWizardSourceMode("calculator");
+      } catch (err) {
+        console.error("[WizardPage] linked calc hydrate failed", err);
+      }
       return;
     }
-    try {
-      const preset = seedCalculatorStateFromSnapshot(payload);
-      calc.applyStatePreset(preset);
+
+    // (b) "Use as template" config → the payload IS a wizard draft, so
+    // load it straight in. A document payload is NOT a valid calculator
+    // snapshot, so the old calc round-trip silently dropped it — that is
+    // why "use as template" loaded no data.
+    if (isDocumentTemplatePayload(payload)) {
       hydratedCalcStateForRef.current = linkedConfigId;
-      // Also re-seed the wizard draft itself from the freshly-applied
-      // calculator state so the on-screen preview reflects the
-      // linked config immediately (without waiting for the user to
-      // hit the "Source: Calculator" radio).
-      setWizardSourceMode("calculator");
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error("[WizardPage] linked calc hydrate failed", err);
+      setWizardDraft(payload);
+      setWizardStep(1);
+      // The draft is a stored template, not a live calculator link, so mark
+      // the source as non-calculator: otherwise the URL emits
+      // `?source=calculator`, the radio reads "Calculator", and a refresh
+      // re-inits in calculator mode and races this load. "manualDefaults"
+      // (there is no dedicated "template" mode) keeps "Refill from calculator"
+      // from being the implied default for a template draft.
+      setWizardSourceMode("manualDefaults");
+      return;
     }
+
+    console.error(
+      "[WizardPage] linked config payload is neither a CalculatorSnapshot nor a DocumentTemplatePayload — skipping",
+      { linkedConfigId, payloadKeys: Object.keys(payload ?? {}) }
+    );
     // We deliberately exclude `calc` from the dep array — applyStatePreset
     // is referentially stable across re-renders, and including the whole
     // context would re-trigger the effect on every state mutation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linkedConfigId, linkedConfigQuery.data]);
+
+  // Deferred draft re-seed after a saved-calculator hydration (branch (a)
+  // above). The tick is bumped there once the calculator context has settled,
+  // so `calculatorWizardSeed` is fresh by the time this runs. Keying on the
+  // tick (NOT on `calculatorWizardSeed`) fires this exactly once per
+  // hydration and never clobbers the user's later edits.
+  useEffect(() => {
+    if (calcReseedTick === 0) return; // initial mount — nothing hydrated yet
+    setWizardDraft(prev => ({
+      ...calculatorWizardSeed,
+      documentScope: prev.documentScope,
+      agreementParties: { ...prev.agreementParties }
+    }));
+    // `calculatorWizardSeed` is read fresh from the post-hydration render and
+    // is intentionally NOT a dependency — adding it would re-fire on every
+    // later calculator edit and clobber the draft.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calcReseedTick]);
 
   // (3): seed WizardBackendBar selection from the linked config.
   // Only fires once per configId so a manual change in the bar
