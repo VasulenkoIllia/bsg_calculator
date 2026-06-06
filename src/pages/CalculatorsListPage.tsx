@@ -25,6 +25,7 @@
 
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { isDocumentTemplatePayload } from "../components/document-wizard/isDocumentTemplatePayload.js";
 import { ApiError } from "../api/client.js";
 import { CompanyTypeahead } from "../components/CompanyTypeahead.js";
 import { LastActionCell } from "../components/LastActionCell.js";
@@ -208,10 +209,30 @@ export function CalculatorsListPage() {
               </tr>
             ) : null}
 
-            {configs.items.map(cfg => (
+            {configs.items.map(cfg => {
+              // A config created via "Use as Template" on a DOCUMENT carries a
+              // DocumentTemplatePayload (a wizard draft), NOT a calculator
+              // snapshot — /calc/:id can't hydrate it and bounces to the
+              // wizard. Detect it here so the row is badged "Document draft"
+              // and its Open link goes STRAIGHT to the wizard (no surprise
+              // redirect). See CalculatorPage's hydration guard.
+              const isDocDraft = isDocumentTemplatePayload(cfg.payload);
+              return (
               <tr key={cfg.id} className="hover:bg-slate-50">
                 <td className="px-4 py-3 font-medium text-slate-800">
-                  {cfg.title ?? <span className="text-slate-400">(untitled)</span>}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>
+                      {cfg.title ?? <span className="text-slate-400">(untitled)</span>}
+                    </span>
+                    {isDocDraft ? (
+                      <span
+                        className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700"
+                        title="Created via “Use as Template” on a document — opens in the Contract Wizard, not the calculator."
+                      >
+                        Document draft
+                      </span>
+                    ) : null}
+                  </div>
                 </td>
                 <td className="px-4 py-3 text-slate-700">
                   {/*
@@ -267,14 +288,15 @@ export function CalculatorsListPage() {
                 </td>
                 <td className="px-4 py-3 text-right">
                   <Link
-                    to={`/calc/${cfg.id}`}
+                    to={isDocDraft ? `/wizard?calc=${cfg.id}` : `/calc/${cfg.id}`}
                     className="font-semibold text-blue-700 hover:text-blue-900 hover:underline"
                   >
-                    Open →
+                    {isDocDraft ? "Open in wizard →" : "Open →"}
                   </Link>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

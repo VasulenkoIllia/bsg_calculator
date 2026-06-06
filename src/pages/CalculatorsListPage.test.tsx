@@ -120,6 +120,37 @@ describe("CalculatorsListPage — base rendering", () => {
     expect(openLinks[1]).toHaveAttribute("href", "/calc/cfg-b");
   });
 
+  it("badges a document-draft config and routes its Open link straight to the wizard", async () => {
+    vi.spyOn(configsApi, "listCalculatorConfigs").mockResolvedValueOnce({
+      items: [
+        fixtureConfig({
+          id: "cfg-doc",
+          title: "Template of BSG-7100015-340105",
+          // DocumentTemplatePayload shape (created via "Use as Template" on a
+          // document) — isDocumentTemplatePayload() classifies this as a draft.
+          payload: {
+            documentScope: "offer",
+            header: {},
+            layout: {},
+            payinPricing: {},
+            contractSummary: {}
+          }
+        })
+      ],
+      nextCursor: null,
+      limit: 25
+    });
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("Template of BSG-7100015-340105")).toBeInTheDocument();
+    });
+    // Badged as a document draft.
+    expect(screen.getByText("Document draft")).toBeInTheDocument();
+    // Open link goes STRAIGHT to the wizard (not /calc) — honest, no bounce.
+    const link = screen.getByRole("link", { name: /open in wizard →$/i });
+    expect(link).toHaveAttribute("href", "/wizard?calc=cfg-doc");
+  });
+
   it("falls back to '(untitled)' when title is null", async () => {
     vi.spyOn(configsApi, "listCalculatorConfigs").mockResolvedValueOnce({
       items: [fixtureConfig({ title: null })],
