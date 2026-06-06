@@ -217,6 +217,8 @@ docker compose exec app npx tsx server/scripts/reconcile-companies.ts --purge <d
 
 `--repoint` re-points the drifted company's documents/configs/deals onto the survivor and then removes it (the same path as a live `company.merge`). `--purge` is for a company that was DELETED upstream (so has no survivor): it permanently removes the company + its documents/configs/deals — and refuses unless HubSpot 404s the id (it never deletes the documents of a company that still exists upstream). Always run the dry-run / preview first.
 
+> **Admin UI alternative (no SSH):** an `admin` / `super_admin` can do the equivalent of `--purge` from the app — open a company badged **"Deleted in HubSpot"** and click **"Delete from system…"** (`DELETE /api/v1/companies/:id`). It is role-gated AND refuses unless the company is flagged `hubspot_deleted_at`, and every purge is audited (`admin_actions` → `company.purged`, with the deleted document/deal counts). The reconcile script stays the tool for bulk drift discovery + the merge `--repoint` path.
+
 > **What happens when HubSpot deletes a company that owns documents:** `documents.company_id → companies.id` is **ON DELETE RESTRICT** — a guard so a HubSpot deletion can never silently wipe offer documents (legal records). The `company.deletion` webhook therefore can't hard-delete such a company; instead it now **marks it `hubspot_deleted_at`** and keeps the row + its documents (the admin shows a red "Deleted in HubSpot" badge; Note-sync is skipped; a later HubSpot restore auto-clears the marker). The pre-fix leftovers ("test" / "(M) TEST 1 c") predate this behavior and lingered as `failed` webhook events instead — clean them up with `--purge` (they were DELETED upstream, so have no survivor to `--repoint` into).
 
 ---
