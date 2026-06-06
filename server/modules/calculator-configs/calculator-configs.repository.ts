@@ -434,3 +434,26 @@ export async function dealBelongsToCompany(
   `);
   return rows.rows.length > 0;
 }
+
+/**
+ * Re-point every calculator-config owned by `fromCompanyId` onto
+ * `toCompanyId`. Used by the HubSpot `company.merge` handler so a
+ * merged-away company's saved configs follow the surviving primary.
+ *
+ * NOTE: the configs FK to companies is ON DELETE CASCADE, so without
+ * this re-point the configs would be destroyed when the secondary
+ * company is deleted. Re-pointing preserves them. Returns rows moved;
+ * accepts a TX so it composes with the company delete atomically.
+ */
+export async function repointCalculatorConfigsToCompany(
+  fromCompanyId: string,
+  toCompanyId: string,
+  tx: DbOrTx = db
+): Promise<number> {
+  const rows = await tx
+    .update(calculatorConfigs)
+    .set({ companyId: toCompanyId, updatedAt: new Date() })
+    .where(eq(calculatorConfigs.companyId, fromCompanyId))
+    .returning({ id: calculatorConfigs.id });
+  return rows.length;
+}

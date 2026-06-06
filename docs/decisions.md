@@ -6088,4 +6088,80 @@ Use this file to record meaningful technical decisions for the project.
   different test fails per run, all green on re-run / in isolation) — a
   pre-existing test-harness issue, not this change.
 
+### Decision: Handle HubSpot `company.merge` by re-pointing (Option A) + stop dropping unmodeled webhook batches
+- Date: 2026-06-06
+- Context:
+  - Our Postgres is a CACHE of HubSpot, synced by webhooks. When a company
+    is MERGED in HubSpot, the merged-away (secondary) company's id starts
+    404ing and HubSpot fires `company.merge` — NOT `company.deletion`. We
+    didn't model `company.merge`, so the secondary lingered in our cache
+    forever: repeated 404 `GET /companies/<id>` (the API-call CSV showed
+    `430570099930` "(M) TEST 1 c" 404ing 32×) + 400 "associations are
+    invalid" whenever a document Note tried to attach to the dead id.
+  - SECOND root cause: `webhookBodySchema = z.array(webhookEventSchema)`
+    validates the WHOLE array, so a SINGLE unmodeled event (merge,
+    associationChange, restore — all delivered on the same subscriptions;
+    company.associationChange alone = 208 events) failed the parse and the
+    receiver dropped the ENTIRE batch, taking its creation/propertyChange
+    siblings with it. A broad cache-drift source beyond merges.
+  - HubSpot's `company.merge` payload carries `primaryObjectId` (survivor)
+    + `mergedObjectIds` (the merged-away secondaries); the event schema's
+    `.passthrough()` already persists them in the stored `raw` JSONB.
+- Decision (Option A — re-point, NEVER delete documents):
+  - Model the missing types in `SUPPORTED_SUBSCRIPTION_TYPES` (company +
+    deal × merge/restore/associationChange) so no batch is dropped.
+    restore/associationChange fall through to the existing fetch+upsert
+    (re-sync); merge gets a dedicated branch. `readMergeIds(raw)` extracts
+    the participant ids off the stored event (numeric-id constrained).
+  - On `company.merge` (`companies.merge.service.handleCompanyMerge`):
+    ensure the surviving primary is cached (fetch+upsert on demand,
+    bypassing the company_type filter since it now owns documents), then
+    for each secondary, in ONE transaction, RE-POINT its documents +
+    calculator-configs (UUID FK) + deals (natural-key FK) onto the primary
+    and delete the secondary. Order is LOAD-BEARING: documents/deals are ON
+    DELETE RESTRICT (delete would FK-fail otherwise); calculator_configs
+    are ON DELETE CASCADE (re-pointing first is what PRESERVES them).
+    Idempotent — a re-delivery finds the secondary already gone.
+    `deal.merge` (handleDealMerge) just removes the secondary deals (the
+    doc/config → deal FK is SET NULL; deals own no legal records).
+  - EXISTING drift + safety net: a manual `server/scripts/reconcile-
+    companies.ts` — `--dry-run` lists drifted companies (those 404ing in
+    HubSpot) + doc/deal counts; `--prune-empty` removes ZERO-document
+    drift; `--repoint <from> <to>` folds a document-owning drifted company
+    into its survivor via the same re-point path. Chosen OVER an automatic
+    backfill prune ON PURPOSE: an auto "delete everything not in the fetch"
+    step would wrongly delete real companies on a partial/rate-limited
+    HubSpot fetch — drift cleanup must be operator-reviewed.
+- Boundary / consequences:
+  - Server-only; NO migration (re-point is UPDATEs; merge events record
+    `outcome="deleted"`, already allowed by the existing CHECK).
+  - Re-pointed documents keep their frozen `number` suffix (last-6 of the
+    OLD company's hubspot id) as an immutable historical identifier — the
+    authoritative parent is the `company_id` FK; nothing re-validates the
+    suffix. Soft-deleted documents are re-pointed too (still FK-bound +
+    part of the survivor's history).
+  - Post-implementation AUDIT fix folded in: backfill `cleanupNonMatching`
+    now SKIPS any company that owns documents (`NOT EXISTS … documents`) —
+    a merge survivor can be a filtered-out type that INHERITED documents,
+    and deleting it would FK-RESTRICT-fail the whole cleanup pass. The
+    reconcile `--repoint` also validates `from != to` and that the
+    survivor exists (no silent no-op).
+- Verification: BE `tsc` clean; webhook integration suite green incl. new
+  cases (merge re-points documents[+soft-deleted]/configs/deals & removes
+  the secondary; idempotent re-delivery; primary-not-cached → fetch+upsert;
+  deal.merge; a mixed batch containing an associationChange is no longer
+  dropped); new `reconcile-companies` integration suite (404→drift +
+  counts, non-404 aborts, --prune-empty keeps document-owners, --repoint
+  delegation + from==to / missing-survivor rejection). An adversarial
+  multi-agent audit (4 lenses, findings independently re-verified)
+  confirmed the core re-point / transaction / FK-ordering logic correct
+  and surfaced the cleanup-FK + reconcile-ergonomics fixes above. NOTE: a
+  LOCAL-ONLY `auth.tokens` test fails because the dev `.env` sets
+  `JWT_REFRESH_EXPIRES=30d` vs the test's 12h expectation — pre-existing,
+  unrelated (proven by re-running with this change `git stash`ed).
+- Prod rollout: `git pull && docker compose up -d --build app` (no
+  migration). Then repair the existing drift with the reconcile script
+  (dry-run → repoint "(M) TEST 1 c" into its survivor) — see
+  `docs/deployment.md` §4.7.
+
 

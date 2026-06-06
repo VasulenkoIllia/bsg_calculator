@@ -560,3 +560,49 @@ export async function restoreDocument(
   return rows[0];
 }
 
+/**
+ * Re-point every document owned by `fromCompanyId` onto `toCompanyId`.
+ *
+ * Used by the HubSpot `company.merge` handler (Option A): when two
+ * companies are merged in HubSpot, the merged-away (secondary)
+ * company's documents move to the surviving primary rather than being
+ * deleted — documents are legal records and the FK to companies is
+ * RESTRICT, so they MUST be re-pointed before the secondary company
+ * row can be removed.
+ *
+ * Moves ALL rows including soft-deleted ones: a soft-deleted document
+ * still references its company (the FK ignores `deleted_at`) AND is
+ * part of the survivor's history. The frozen `documents.number`
+ * suffix (last-6 of the OLD company's hubspot id) is left as a
+ * harmless historical artifact — nothing re-validates it against the
+ * current parent.
+ *
+ * Returns the number of rows moved. Accepts a TX so the caller can
+ * compose the re-point + the secondary-company delete atomically.
+ */
+export async function repointDocumentsToCompany(
+  fromCompanyId: string,
+  toCompanyId: string,
+  tx: DbOrTx = db
+): Promise<number> {
+  const rows = await tx
+    .update(documents)
+    .set({ companyId: toCompanyId, updatedAt: new Date() })
+    .where(eq(documents.companyId, fromCompanyId))
+    .returning({ id: documents.id });
+  return rows.length;
+}
+
+/**
+ * Count ALL documents (including soft-deleted) owned by a company.
+ * Used by the reconcile script to decide whether a drifted company is
+ * safe to prune (zero documents) or must be re-pointed (has documents).
+ */
+export async function countDocumentsByCompanyId(companyId: string): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(documents)
+    .where(eq(documents.companyId, companyId));
+  return row?.n ?? 0;
+}
+

@@ -45,11 +45,16 @@ import {
 } from "../../deals/deals.repository";
 import { resolveDealCompany } from "../../deals/deals.service";
 import {
+  handleCompanyMerge,
+  handleDealMerge
+} from "../../companies/companies.merge.service";
+import {
   listPendingEvents,
   markFailed,
   markProcessed,
   recordFailure
 } from "./webhooks.repository";
+import { readMergeIds } from "./webhooks.schemas";
 
 /** After this many failed attempts the row moves to `failed` permanently. */
 const MAX_ATTEMPTS = 5;
@@ -97,6 +102,30 @@ async function processOne(
     } else {
       await deleteDealByHubspotId(event.hubspotObjectId);
     }
+    return "deleted";
+  }
+
+  // Merge: HubSpot folded one or more SECONDARY objects into a
+  // surviving PRIMARY. The secondary ids 404 from now on, so leaving
+  // them in our cache causes perpetual 404 GETs + 400 Note-association
+  // failures (the original "(M) TEST 1 c" drift). Re-point the
+  // secondaries' owned rows onto the primary (companies) or drop them
+  // (deals) — see companies.merge.service. The merge participant ids
+  // live in the stored `raw` event JSONB (HubSpot's primaryObjectId +
+  // mergedObjectIds), which `readMergeIds` parses defensively.
+  if (subType === "company.merge" || subType === "deal.merge") {
+    const { primaryObjectId, mergedObjectIds } = readMergeIds(event.raw);
+    // The top-level objectId on a merge event is the survivor; prefer
+    // the explicit primaryObjectId, fall back to it.
+    const primaryId = primaryObjectId ?? event.hubspotObjectId;
+    if (isCompany) {
+      await handleCompanyMerge(primaryId, mergedObjectIds);
+    } else {
+      await handleDealMerge(primaryId, mergedObjectIds);
+    }
+    // The CHECK on hubspot_webhook_events.outcome allows only
+    // upserted/deleted/filtered_out; a merge's observable cache change
+    // is the secondary's removal, so we record it as "deleted".
     return "deleted";
   }
 

@@ -26,7 +26,7 @@
  *   - Per-row errors are logged + counted but don't abort the loop.
  */
 
-import { ne, sql } from "drizzle-orm";
+import { and, ne, sql } from "drizzle-orm";
 import { env } from "../config/env";
 import { db, pool } from "../db/client";
 import { companies as companiesTable } from "../db/schema";
@@ -74,27 +74,47 @@ async function cleanupNonMatching(filter: string): Promise<CleanupResult> {
 
   logger.info({ filter }, "[hubspot:backfill] cleanup pass — removing non-matching rows");
 
+  // All three steps SKIP any company that owns documents (NOT EXISTS …
+  // documents). A `company.merge` survivor can be a filtered-out type
+  // that INHERITED the merged-away company's documents (the merge handler
+  // re-points docs onto the survivor regardless of company_type). Deleting
+  // such a company would FK-RESTRICT-fail (documents.company_id is ON
+  // DELETE RESTRICT) and abort the whole cleanup pass — so we never
+  // attempt it. Document-owning companies are kept; they are legitimate
+  // parents of legal records.
+
   // Step 1: delete deals whose company is about to be removed.
   const orphanedDealsResult = await db.execute(sql`
     DELETE FROM deals
     WHERE hubspot_company_id IN (
-      SELECT hubspot_company_id FROM companies
-      WHERE company_type IS DISTINCT FROM ${filter}
+      SELECT c.hubspot_company_id FROM companies c
+      WHERE c.company_type IS DISTINCT FROM ${filter}
+        AND NOT EXISTS (SELECT 1 FROM documents d WHERE d.company_id = c.id)
     )
     RETURNING hubspot_deal_id
   `);
   const dealsDeleted = orphanedDealsResult.rowCount ?? 0;
 
-  // Step 2: delete non-matching companies (covers explicit non-match).
+  // Step 2: delete non-matching companies (covers explicit non-match),
+  // except those that own documents.
   const removedCompanies = await db
     .delete(companiesTable)
-    .where(ne(companiesTable.companyType, filter))
+    .where(
+      and(
+        ne(companiesTable.companyType, filter),
+        sql`NOT EXISTS (SELECT 1 FROM documents d WHERE d.company_id = ${companiesTable.id})`
+      )
+    )
     .returning({ id: companiesTable.id });
   let companiesDeleted = removedCompanies.length;
 
-  // Step 3: also remove records with NULL company_type — ne() ignores NULLs.
+  // Step 3: also remove records with NULL company_type — ne() ignores
+  // NULLs — again skipping any that own documents.
   const removedNullType = await db.execute(sql`
-    DELETE FROM companies WHERE company_type IS NULL RETURNING id
+    DELETE FROM companies
+    WHERE company_type IS NULL
+      AND NOT EXISTS (SELECT 1 FROM documents d WHERE d.company_id = companies.id)
+    RETURNING id
   `);
   companiesDeleted += removedNullType.rowCount ?? 0;
 

@@ -22,8 +22,10 @@ import request from "supertest";
 import { eq } from "drizzle-orm";
 import { db } from "../db/client";
 import {
+  calculatorConfigs,
   companies,
   deals,
+  documents,
   hubspotWebhookEvents
 } from "../db/schema";
 import { env } from "../config/env";
@@ -280,6 +282,42 @@ describe("POST /api/v1/hubspot/webhooks — receiver", () => {
     expect(res.status).toBe(200);
     expect(res.body.malformed).toBe(true);
     expect(res.body.dropped).toBe(1);
+  });
+
+  it("does NOT drop a batch containing merge / associationChange events (modeled types)", async () => {
+    // Regression: company.merge + company.associationChange used to be
+    // outside SUPPORTED_SUBSCRIPTION_TYPES. Because webhookBodySchema
+    // validates the WHOLE array, ONE such event failed the parse and
+    // the receiver dropped EVERY event in the batch — including the
+    // creation/propertyChange events that shared it. Now they're
+    // modeled, so a mixed batch queues all of them.
+    const body = [
+      {
+        eventId: "10000201",
+        subscriptionType: "company.associationChange",
+        objectId: "1201",
+        occurredAt: Date.now()
+      },
+      {
+        eventId: "10000202",
+        subscriptionType: "company.merge",
+        objectId: "1202",
+        primaryObjectId: "1202",
+        mergedObjectIds: ["1203"],
+        occurredAt: Date.now()
+      },
+      {
+        eventId: "10000203",
+        subscriptionType: "company.creation",
+        objectId: "1204",
+        occurredAt: Date.now()
+      }
+    ];
+    const res = await postSignedWebhook(body);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ accepted: 3, deduped: 0 });
+    const rows = await db.select().from(hubspotWebhookEvents);
+    expect(rows).toHaveLength(3);
   });
 });
 
@@ -677,6 +715,247 @@ describe("processWebhookBatch() — async event processing", () => {
 
     const order = getCompanySpy.mock.calls.map(c => c[0]);
     expect(order).toEqual(["HS-OLD", "HS-MID", "HS-NEW"]);
+  });
+
+  // ─── company.merge / deal.merge (Option A — re-point) ───────────────
+  // NOTE: merge ids flow through readMergeIds, which enforces the
+  // numeric HubSpot-id shape — so these fixtures use numeric ids (as
+  // real HubSpot does), NOT companyFixture's default `hubspot-<rand>`.
+
+  it("company.merge: re-points documents/configs/deals to the surviving primary, removes the secondary", async () => {
+    const user = await createTestUser({ email: "merge1@test.dev", password: "password123" });
+    const [primary] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "9100000001", name: "Survivor" }))
+      .returning();
+    const [secondary] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "9100000002", name: "Merged Away" }))
+      .returning();
+
+    await db.insert(deals).values({
+      hubspotDealId: "9100000003",
+      hubspotCompanyId: secondary.hubspotCompanyId,
+      name: "Secondary Deal",
+      hubspotCreatedAt: new Date(),
+      hubspotModifiedAt: new Date(),
+      hubspotRaw: {}
+    });
+    const [doc] = await db
+      .insert(documents)
+      .values({
+        number: "BSG-9000001-000001",
+        companyId: secondary.id,
+        scope: "offer",
+        payload: {},
+        createdByUserId: user.id
+      })
+      .returning();
+    // A SOFT-DELETED document must ALSO follow the merge — it still
+    // references the company (FK ignores deleted_at) and is part of the
+    // survivor's history. Guards against a future "alive-only" filter.
+    const [softDeletedDoc] = await db
+      .insert(documents)
+      .values({
+        number: "BSG-9000001-000099",
+        companyId: secondary.id,
+        scope: "offer",
+        payload: {},
+        createdByUserId: user.id,
+        deletedAt: new Date(),
+        deletedByUserId: user.id,
+        deletionReason: "other"
+      })
+      .returning();
+    const [cfg] = await db
+      .insert(calculatorConfigs)
+      .values({ companyId: secondary.id, payload: {}, createdByUserId: user.id })
+      .returning();
+
+    await db.insert(hubspotWebhookEvents).values({
+      hubspotEventId: "evt-merge-1",
+      subscriptionType: "company.merge",
+      objectType: "company",
+      hubspotObjectId: primary.hubspotCompanyId,
+      occurredAt: new Date(),
+      raw: {
+        primaryObjectId: primary.hubspotCompanyId,
+        mergedObjectIds: [secondary.hubspotCompanyId]
+      }
+    });
+
+    const result = await processWebhookBatch();
+    expect(result.processed).toBe(1);
+    expect(result.failed).toBe(0);
+    // Primary already cached → no HubSpot fetch.
+    expect(getCompanySpy).not.toHaveBeenCalled();
+
+    // Secondary company gone; primary survives.
+    const cos = await db.select().from(companies);
+    expect(cos.map(c => c.hubspotCompanyId)).toEqual(["9100000001"]);
+
+    // Owned rows now point at the primary.
+    const [movedDoc] = await db.select().from(documents).where(eq(documents.id, doc.id));
+    expect(movedDoc.companyId).toBe(primary.id);
+    const [movedSoftDeleted] = await db
+      .select()
+      .from(documents)
+      .where(eq(documents.id, softDeletedDoc.id));
+    expect(movedSoftDeleted.companyId).toBe(primary.id);
+    const [movedCfg] = await db
+      .select()
+      .from(calculatorConfigs)
+      .where(eq(calculatorConfigs.id, cfg.id));
+    expect(movedCfg.companyId).toBe(primary.id);
+    const [movedDeal] = await db
+      .select()
+      .from(deals)
+      .where(eq(deals.hubspotDealId, "9100000003"));
+    expect(movedDeal.hubspotCompanyId).toBe(primary.hubspotCompanyId);
+
+    const [evt] = await db.select().from(hubspotWebhookEvents);
+    expect(evt.status).toBe("processed");
+    expect(evt.outcome).toBe("deleted");
+  });
+
+  it("company.merge: idempotent — re-delivering after the secondary is gone is a no-op", async () => {
+    const user = await createTestUser({ email: "merge2@test.dev", password: "password123" });
+    const [primary] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "9100000011" }))
+      .returning();
+    const [secondary] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "9100000012" }))
+      .returning();
+    const [doc] = await db
+      .insert(documents)
+      .values({
+        number: "BSG-9000002-000002",
+        companyId: secondary.id,
+        scope: "offer",
+        payload: {},
+        createdByUserId: user.id
+      })
+      .returning();
+
+    const raw = {
+      primaryObjectId: primary.hubspotCompanyId,
+      mergedObjectIds: [secondary.hubspotCompanyId]
+    };
+    await db.insert(hubspotWebhookEvents).values({
+      hubspotEventId: "evt-merge-2a",
+      subscriptionType: "company.merge",
+      objectType: "company",
+      hubspotObjectId: primary.hubspotCompanyId,
+      occurredAt: new Date(),
+      raw
+    });
+    await processWebhookBatch();
+
+    await db.insert(hubspotWebhookEvents).values({
+      hubspotEventId: "evt-merge-2b",
+      subscriptionType: "company.merge",
+      objectType: "company",
+      hubspotObjectId: primary.hubspotCompanyId,
+      occurredAt: new Date(),
+      raw
+    });
+    const result = await processWebhookBatch();
+    expect(result.failed).toBe(0);
+
+    expect(await db.select().from(companies)).toHaveLength(1);
+    const [movedDoc] = await db.select().from(documents).where(eq(documents.id, doc.id));
+    expect(movedDoc.companyId).toBe(primary.id);
+  });
+
+  it("company.merge: fetches + upserts the surviving primary when it isn't cached yet", async () => {
+    const user = await createTestUser({ email: "merge3@test.dev", password: "password123" });
+    const [secondary] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "9100000022" }))
+      .returning();
+    const [doc] = await db
+      .insert(documents)
+      .values({
+        number: "BSG-9000003-000003",
+        companyId: secondary.id,
+        scope: "offer",
+        payload: {},
+        createdByUserId: user.id
+      })
+      .returning();
+
+    getCompanySpy.mockResolvedValue(
+      hubspotCompanyObject("9100000021", { name: "Fetched Survivor" })
+    );
+
+    await db.insert(hubspotWebhookEvents).values({
+      hubspotEventId: "evt-merge-3",
+      subscriptionType: "company.merge",
+      objectType: "company",
+      hubspotObjectId: "9100000021",
+      occurredAt: new Date(),
+      raw: { primaryObjectId: "9100000021", mergedObjectIds: [secondary.hubspotCompanyId] }
+    });
+    const result = await processWebhookBatch();
+    expect(result.processed).toBe(1);
+    expect(getCompanySpy).toHaveBeenCalledWith("9100000021");
+
+    const [primary] = await db
+      .select()
+      .from(companies)
+      .where(eq(companies.hubspotCompanyId, "9100000021"));
+    expect(primary).toBeDefined();
+    expect(primary.name).toBe("Fetched Survivor");
+    const [movedDoc] = await db.select().from(documents).where(eq(documents.id, doc.id));
+    expect(movedDoc.companyId).toBe(primary.id);
+    // Secondary removed.
+    const remaining = await db
+      .select()
+      .from(companies)
+      .where(eq(companies.hubspotCompanyId, secondary.hubspotCompanyId));
+    expect(remaining).toHaveLength(0);
+  });
+
+  it("deal.merge: removes the merged-away secondary deal without fetching", async () => {
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "9100000040" }))
+      .returning();
+    await db.insert(deals).values([
+      {
+        hubspotDealId: "9100000031",
+        hubspotCompanyId: company.hubspotCompanyId,
+        name: "Primary Deal",
+        hubspotCreatedAt: new Date(),
+        hubspotModifiedAt: new Date(),
+        hubspotRaw: {}
+      },
+      {
+        hubspotDealId: "9100000032",
+        hubspotCompanyId: company.hubspotCompanyId,
+        name: "Secondary Deal",
+        hubspotCreatedAt: new Date(),
+        hubspotModifiedAt: new Date(),
+        hubspotRaw: {}
+      }
+    ]);
+
+    await db.insert(hubspotWebhookEvents).values({
+      hubspotEventId: "evt-merge-deal",
+      subscriptionType: "deal.merge",
+      objectType: "deal",
+      hubspotObjectId: "9100000031",
+      occurredAt: new Date(),
+      raw: { primaryObjectId: "9100000031", mergedObjectIds: ["9100000032"] }
+    });
+    const result = await processWebhookBatch();
+    expect(result.processed).toBe(1);
+    expect(getDealSpy).not.toHaveBeenCalled();
+
+    const remaining = (await db.select().from(deals)).map(d => d.hubspotDealId);
+    expect(remaining).toEqual(["9100000031"]);
   });
 });
 

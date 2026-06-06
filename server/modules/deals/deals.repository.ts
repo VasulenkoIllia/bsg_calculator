@@ -173,6 +173,41 @@ export async function deleteDealsByCompanyId(
   return rows.length;
 }
 
+/**
+ * Re-point every deal owned by `fromHubspotCompanyId` onto
+ * `toHubspotCompanyId`. Deals reference the company via the NATURAL
+ * key (`hubspot_company_id`), so the re-point updates that column.
+ *
+ * Used by the HubSpot `company.merge` handler: the merged-away
+ * company's deals follow the surviving primary instead of blocking
+ * the secondary's delete (the FK is ON DELETE RESTRICT). The primary
+ * company must already exist (the caller ensures it). Returns rows
+ * moved; accepts a TX so it composes with the company delete.
+ */
+export async function repointDealsToCompany(
+  fromHubspotCompanyId: string,
+  toHubspotCompanyId: string,
+  tx: DbOrTx = db
+): Promise<number> {
+  const rows = await tx
+    .update(deals)
+    .set({ hubspotCompanyId: toHubspotCompanyId, updatedAt: new Date() })
+    .where(eq(deals.hubspotCompanyId, fromHubspotCompanyId))
+    .returning({ id: deals.id });
+  return rows.length;
+}
+
+/** Count deals owned by a company (by HubSpot natural key). */
+export async function countDealsByCompanyHubspotId(
+  hubspotCompanyId: string
+): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(deals)
+    .where(eq(deals.hubspotCompanyId, hubspotCompanyId));
+  return row?.n ?? 0;
+}
+
 /** Upsert a deal row from the HubSpot mapper output. */
 export async function upsertDeal(row: NewDeal): Promise<Deal> {
   const rows = await db

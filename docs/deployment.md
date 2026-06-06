@@ -191,6 +191,26 @@ docker compose exec app npx tsx server/scripts/hubspot-backfill.ts
 
 This pulls every `direct_client` company + its deals from HubSpot. Expect ~1 minute for a few hundred merchants. Subsequent updates flow through the webhook receiver.
 
+### 4.7 Reconciling merged / deleted companies (drift)
+
+`company.merge` and `company.deletion` webhooks keep the cache in sync going forward (a merge re-points the merged-away company's documents/configs/deals onto the surviving company, then removes it — documents are never deleted). To repair **pre-existing drift** — a company that was merged/deleted in HubSpot while the merge handler wasn't deployed, so it lingers locally and 404s — use the reconcile script:
+
+```bash
+# 1. Review (dry-run): lists local companies that no longer exist in
+#    HubSpot, with document/deal counts and the recommended action.
+docker compose exec app npx tsx server/scripts/reconcile-companies.ts
+
+# 2a. Drifted company with NO documents → prune it (safe; deals first).
+docker compose exec app npx tsx server/scripts/reconcile-companies.ts --prune-empty
+
+# 2b. Drifted company WITH documents → fold it into its survivor. Find the
+#     survivor id by opening the drifted company in HubSpot (a merged
+#     record redirects to the surviving company).
+docker compose exec app npx tsx server/scripts/reconcile-companies.ts --repoint <driftedHubspotId> <survivorHubspotId>
+```
+
+`--repoint` re-points the drifted company's documents/configs/deals onto the survivor and then removes it (the same path as a live `company.merge`). Always run the dry-run first; the script never deletes a company that still owns documents.
+
 ---
 
 ## 5. HubSpot configuration
