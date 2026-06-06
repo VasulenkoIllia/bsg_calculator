@@ -19,7 +19,7 @@ import { __internals } from "../scripts/reconcile-companies";
 import { companyFixture } from "./fixtures/company";
 import { createTestUser } from "./test-helpers";
 
-const { findDriftedCompanies, scan, repoint, purge } = __internals;
+const { findDriftedCompanies, scan, repoint, purge, markDrifted } = __internals;
 
 function hubspotCompanyObject(id: string): HubspotObject {
   return {
@@ -231,5 +231,50 @@ describe("reconcile-companies script", () => {
     await purge("8000000701", false); // no --yes → preview only
     expect(await db.select().from(companies)).toHaveLength(1);
     expect(await db.select().from(documents)).toHaveLength(1);
+  });
+
+  it("markDrifted: flags document-owning drift as deleted-from-HubSpot (drops deals), skips no-doc drift", async () => {
+    const user = await createTestUser({ email: "rec7@test.dev", password: "password123" });
+    const [withDocs] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "8000000801" }))
+      .returning();
+    await db.insert(documents).values({
+      number: "BSG-8000008-000001",
+      companyId: withDocs.id,
+      scope: "offer",
+      payload: {},
+      createdByUserId: user.id
+    });
+    await db.insert(deals).values({
+      hubspotDealId: "8000000810",
+      hubspotCompanyId: withDocs.hubspotCompanyId,
+      name: "Drifted Deal",
+      hubspotCreatedAt: new Date(),
+      hubspotModifiedAt: new Date(),
+      hubspotRaw: {}
+    });
+    await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "8000000802" })); // no docs
+
+    getCompanySpy.mockRejectedValue(hubspot404()); // both drifted upstream
+
+    await markDrifted();
+
+    const [marked] = await db
+      .select()
+      .from(companies)
+      .where(eq(companies.hubspotCompanyId, "8000000801"));
+    expect(marked.hubspotDeletedAt).not.toBeNull(); // doc-owner → marked + kept
+    expect(
+      await db.select().from(deals).where(eq(deals.hubspotCompanyId, "8000000801"))
+    ).toHaveLength(0); // deals dropped (matches the webhook)
+
+    const [emptyCo] = await db
+      .select()
+      .from(companies)
+      .where(eq(companies.hubspotCompanyId, "8000000802"));
+    expect(emptyCo.hubspotDeletedAt).toBeNull(); // no docs → NOT marked
   });
 });

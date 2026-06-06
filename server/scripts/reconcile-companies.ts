@@ -29,6 +29,14 @@
  *                    its documents/configs/deals — for a company DELETED
  *                    upstream (no survivor to re-point onto). Refuses if A
  *                    still exists in HubSpot; previews unless --yes given.
+ *   --mark           RETROACTIVELY flag every document-owning drifted
+ *                    company as deleted-from-HubSpot (= what the
+ *                    company.deletion webhook now does). Use this for
+ *                    PRE-FIX drift whose deletion event already `failed`
+ *                    before the marker existed — afterwards those companies
+ *                    show the "Deleted in HubSpot" badge + the admin
+ *                    "Delete from system" button so the whole flow is
+ *                    visible in the UI. (No-doc drift → use --prune-empty.)
  *
  * Finding the survivor id (B) for --repoint: open the drifted company in
  * the HubSpot UI — a merged record redirects to its surviving company,
@@ -57,7 +65,8 @@ import {
 } from "../modules/deals/deals.repository";
 import {
   deleteCompanyByHubspotId,
-  findCompanyByHubspotId
+  findCompanyByHubspotId,
+  markCompanyHubspotDeleted
 } from "../modules/companies/companies.repository";
 import { handleCompanyMerge } from "../modules/companies/companies.merge.service";
 
@@ -269,6 +278,61 @@ async function scan(prune: boolean): Promise<void> {
   );
 }
 
+/**
+ * RETROACTIVELY mark drifted companies (gone from HubSpot) that own
+ * documents as deleted-from-HubSpot — the same thing the company.deletion
+ * webhook now does (drop the deals, stamp hubspot_deleted_at, keep the row
+ * + its documents). For PRE-FIX drift whose deletion event already
+ * `failed` before the marker existed. Afterwards those companies show the
+ * "Deleted in HubSpot" badge + the admin "Delete from system" button.
+ * No-document drift is skipped (it should be removed via --prune-empty,
+ * not marked).
+ */
+async function markDrifted(): Promise<void> {
+  // eslint-disable-next-line no-console
+  console.log("[reconcile] scanning for drifted companies to MARK deleted-from-HubSpot…");
+  let drifted: DriftedCompany[];
+  try {
+    drifted = await findDriftedCompanies();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `[reconcile] scan aborted on a non-404 HubSpot error: ${msg}. No changes were made — fix the upstream issue and re-run.`
+    );
+  }
+  if (drifted.length === 0) {
+    // eslint-disable-next-line no-console
+    console.log("[reconcile] no drift — every local company still exists in HubSpot.");
+    return;
+  }
+
+  let marked = 0;
+  let skipped = 0;
+  for (const d of drifted) {
+    if (d.documents === 0) {
+      skipped += 1;
+      // eslint-disable-next-line no-console
+      console.log(
+        `  • ${d.company.name} [${d.company.hubspotCompanyId}] — no documents → use --prune-empty (marking is only for document-owning companies)`
+      );
+      continue;
+    }
+    await db.transaction(async tx => {
+      await deleteDealsByCompanyId(d.company.hubspotCompanyId, tx);
+      await markCompanyHubspotDeleted(d.company.hubspotCompanyId, tx);
+    });
+    marked += 1;
+    // eslint-disable-next-line no-console
+    console.log(
+      `  ✓ marked ${d.company.name} [${d.company.hubspotCompanyId}] deleted-from-HubSpot (${d.documents} document(s) kept) — now shows the badge + admin "Delete from system" button`
+    );
+  }
+  // eslint-disable-next-line no-console
+  console.log(
+    `\n[reconcile] mark complete: ${marked} marked, ${skipped} skipped (no documents → --prune-empty).`
+  );
+}
+
 async function main(): Promise<void> {
   try {
     if (!hubspot.isConfigured()) {
@@ -297,6 +361,11 @@ async function main(): Promise<void> {
       return;
     }
 
+    if (args.includes("--mark")) {
+      await markDrifted();
+      return;
+    }
+
     await scan(args.includes("--prune-empty"));
   } finally {
     // Await the pool close so connections drain before the process exits
@@ -308,7 +377,7 @@ async function main(): Promise<void> {
 // Exported for integration testing. The drift scan + --prune-empty path
 // delete prod data, so they are covered directly (see
 // server/tests/reconcile-companies.integration.test.ts).
-export const __internals = { findDriftedCompanies, scan, repoint, purge };
+export const __internals = { findDriftedCompanies, scan, repoint, purge, markDrifted };
 
 const isMain =
   process.argv[1]?.endsWith("reconcile-companies.ts") ||

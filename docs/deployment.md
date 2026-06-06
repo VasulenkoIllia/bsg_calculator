@@ -213,6 +213,13 @@ docker compose exec app npx tsx server/scripts/reconcile-companies.ts --repoint 
 #     with its documents. Previews first; add --yes to actually delete.
 docker compose exec app npx tsx server/scripts/reconcile-companies.ts --purge <driftedHubspotId>
 docker compose exec app npx tsx server/scripts/reconcile-companies.ts --purge <driftedHubspotId> --yes
+
+# 2d. RETROACTIVELY flag all document-owning drift as "Deleted in HubSpot"
+#     (= what the deletion webhook now does). Use this for PRE-FIX drift
+#     whose deletion event already failed before the marker existed — after
+#     it, those companies show the badge + the admin "Delete from system"
+#     button, so the whole flow is visible/testable in the UI.
+docker compose exec app npx tsx server/scripts/reconcile-companies.ts --mark
 ```
 
 `--repoint` re-points the drifted company's documents/configs/deals onto the survivor and then removes it (the same path as a live `company.merge`). `--purge` is for a company that was DELETED upstream (so has no survivor): it permanently removes the company + its documents/configs/deals — and refuses unless HubSpot 404s the id (it never deletes the documents of a company that still exists upstream). Always run the dry-run / preview first.
