@@ -13,7 +13,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { companies, deals, documents } from "../db/schema";
 import { hubspot } from "../modules/hubspot/hubspot.client";
-import { NotFoundError } from "../shared/errors";
+import { HubspotUnreachableError } from "../shared/errors";
 import type { HubspotObject } from "../modules/hubspot/hubspot.types";
 import { __internals } from "../scripts/reconcile-companies";
 import { companyFixture } from "./fixtures/company";
@@ -32,6 +32,18 @@ function hubspotCompanyObject(id: string): HubspotObject {
       hs_lastmodifieddate: "2026-02-01T00:00:00.000Z"
     }
   } as HubspotObject;
+}
+
+/**
+ * The real shape the HubSpot client throws on a 404 — ALL 4xx surface as
+ * HubspotUnreachableError carrying details.status (NOT NotFoundError). The
+ * reconcile drift detection must key on this, not on the error class.
+ */
+function hubspot404(): HubspotUnreachableError {
+  return new HubspotUnreachableError("HubSpot returned 404: <html>…not found</html>", {
+    status: 404,
+    url: "https://api.hubapi.com/crm/v3/objects/companies/x"
+  });
 }
 
 describe("reconcile-companies script", () => {
@@ -72,7 +84,7 @@ describe("reconcile-companies script", () => {
 
     getCompanySpy.mockImplementation(async (id: string) => {
       if (id === "8000000001") return hubspotCompanyObject(id);
-      throw new NotFoundError("Company");
+      throw hubspot404();
     });
 
     const result = await findDriftedCompanies();
@@ -82,10 +94,12 @@ describe("reconcile-companies script", () => {
     expect(result[0].deals).toBe(1);
   });
 
-  it("findDriftedCompanies: rethrows a non-404 error to abort (never misclassifies)", async () => {
+  it("findDriftedCompanies: rethrows a non-404 (e.g. 503) to abort (never misclassifies)", async () => {
     await db.insert(companies).values(companyFixture({ hubspotCompanyId: "8000000050" }));
-    getCompanySpy.mockRejectedValue(new Error("HubSpot 503"));
-    await expect(findDriftedCompanies()).rejects.toThrow("HubSpot 503");
+    getCompanySpy.mockRejectedValue(
+      new HubspotUnreachableError("HubSpot returned 503.", { status: 503, url: "x" })
+    );
+    await expect(findDriftedCompanies()).rejects.toThrow(/503/);
   });
 
   it("scan --prune-empty: removes no-document drift, keeps document-owning drift", async () => {
@@ -103,7 +117,7 @@ describe("reconcile-companies script", () => {
       createdByUserId: user.id
     });
 
-    getCompanySpy.mockRejectedValue(new NotFoundError("Company")); // both drifted
+    getCompanySpy.mockRejectedValue(hubspot404()); // both drifted
 
     await scan(true);
 
@@ -146,7 +160,7 @@ describe("reconcile-companies script", () => {
   });
 
   it("repoint: rejects a survivor absent from both cache and HubSpot", async () => {
-    getCompanySpy.mockRejectedValue(new NotFoundError("Company"));
+    getCompanySpy.mockRejectedValue(hubspot404());
     await expect(repoint("8000000401", "8000000402")).rejects.toThrow(/not found/);
   });
 });

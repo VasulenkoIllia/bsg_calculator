@@ -30,7 +30,7 @@ import {
 } from "../db/schema";
 import { env } from "../config/env";
 import { hubspot } from "../modules/hubspot/hubspot.client";
-import { HubspotUnreachableError, NotFoundError } from "../shared/errors";
+import { HubspotUnreachableError } from "../shared/errors";
 import { processWebhookBatch } from "../modules/hubspot/webhooks/webhooks.processor";
 import type { HubspotObject } from "../modules/hubspot/hubspot.types";
 import { companyFixture } from "./fixtures/company";
@@ -451,9 +451,12 @@ describe("processWebhookBatch() — async event processing", () => {
   });
 
   it("HubSpot 404 on creation → treats it as a delete (race protection)", async () => {
-    // HubSpot returns a NotFoundError-shaped response when the object
-    // has been removed between the event and our fetch.
-    getCompanySpy.mockRejectedValue(new NotFoundError("gone"));
+    // The client surfaces a 404 as HubspotUnreachableError(status=404)
+    // (NOT NotFoundError) when the object was removed between the event
+    // and our fetch — the processor detects it by status.
+    getCompanySpy.mockRejectedValue(
+      new HubspotUnreachableError("HubSpot returned 404: gone", { status: 404, url: "x" })
+    );
 
     // Pre-seed a row so we can verify the deletion path actually runs.
     await db

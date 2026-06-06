@@ -42,8 +42,7 @@
 import { db, pool } from "../db/client";
 import { companies as companiesTable, type Company } from "../db/schema";
 import { logger } from "../middleware/logger";
-import { NotFoundError } from "../shared/errors";
-import { hubspot } from "../modules/hubspot/hubspot.client";
+import { hubspot, isHubspotNotFound } from "../modules/hubspot/hubspot.client";
 import { countDocumentsByCompanyId } from "../modules/documents/documents.repository";
 import {
   countDealsByCompanyHubspotId,
@@ -75,7 +74,10 @@ async function findDriftedCompanies(): Promise<DriftedCompany[]> {
     try {
       await hubspot.getCompany(company.hubspotCompanyId);
     } catch (err) {
-      if (err instanceof NotFoundError) present = false;
+      // A 404 (any shape) means the company is gone upstream → drift.
+      // Transient/auth errors (401/403/429/5xx) re-throw to abort the
+      // scan so we never misclassify a blip as drift.
+      if (isHubspotNotFound(err)) present = false;
       else throw err;
     }
     if (present) continue;
@@ -98,7 +100,7 @@ async function repoint(fromHubspotId: string, toHubspotId: string): Promise<void
     try {
       await hubspot.getCompany(toHubspotId);
     } catch (err) {
-      if (err instanceof NotFoundError) {
+      if (isHubspotNotFound(err)) {
         throw new Error(
           `survivor company ${toHubspotId} not found in HubSpot or local cache — pick a company that still exists`
         );

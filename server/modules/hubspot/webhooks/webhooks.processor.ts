@@ -31,8 +31,8 @@ import { db } from "../../../db/client";
 import { type HubspotWebhookEvent } from "../../../db/schema";
 import { env } from "../../../config/env";
 import { logger } from "../../../middleware/logger";
-import { HubspotUnreachableError, NotFoundError } from "../../../shared/errors";
-import { hubspot } from "../hubspot.client";
+import { HubspotUnreachableError } from "../../../shared/errors";
+import { hubspot, isHubspotNotFound } from "../hubspot.client";
 import { mapHubspotCompanyToRow, mapHubspotDealToRow } from "../hubspot.mapper";
 import {
   deleteCompanyByHubspotId,
@@ -175,9 +175,11 @@ async function processOne(
     }
   } catch (err) {
     // HubSpot 404 on a creation/propertyChange event means HubSpot
-    // already deleted the object before we got around to fetching
-    // it (race). Treat it as a delete.
-    if (err instanceof NotFoundError) {
+    // already deleted (or merged away) the object before we got around
+    // to fetching it (race). Treat it as a delete. NOTE: the client
+    // surfaces a 404 as HubspotUnreachableError(status=404), NOT
+    // NotFoundError — detect it by status via isHubspotNotFound.
+    if (isHubspotNotFound(err)) {
       // Same TX guarantee as the explicit deletion path above.
       if (isCompany) {
         await db.transaction(async tx => {

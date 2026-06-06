@@ -32,8 +32,7 @@
 import { db } from "../../db/client";
 import type { Company } from "../../db/schema";
 import { logger } from "../../middleware/logger";
-import { NotFoundError } from "../../shared/errors";
-import { hubspot } from "../hubspot/hubspot.client";
+import { hubspot, isHubspotNotFound } from "../hubspot/hubspot.client";
 import { mapHubspotCompanyToRow } from "../hubspot/hubspot.mapper";
 import { repointDocumentsToCompany } from "../documents/documents.repository";
 import { repointCalculatorConfigsToCompany } from "../calculator-configs/calculator-configs.repository";
@@ -64,7 +63,9 @@ async function ensureCompanyCached(hubspotCompanyId: string): Promise<Company | 
     if (!row) return undefined;
     return await upsertCompany(row);
   } catch (err) {
-    if (err instanceof NotFoundError) return undefined;
+    // 404 → the company is gone upstream too; can't re-point onto a ghost.
+    // Anything else (transient/auth) propagates so the worker retries.
+    if (isHubspotNotFound(err)) return undefined;
     throw err;
   }
 }

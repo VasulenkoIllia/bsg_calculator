@@ -18,8 +18,29 @@
 
 import type { ZodTypeAny } from "zod";
 import { env } from "../../config/env";
-import { HubspotUnreachableError } from "../../shared/errors";
+import { HubspotUnreachableError, NotFoundError } from "../../shared/errors";
 import { logger } from "../../middleware/logger";
+
+/**
+ * True when an error from a HubSpot GET means the object DOES NOT EXIST
+ * upstream (HTTP 404). The client surfaces ALL 4xx as
+ * `HubspotUnreachableError` carrying `details.status` (it never throws
+ * `NotFoundError` itself), so a 404 must be detected by status — checking
+ * only `instanceof NotFoundError` misses every real HubSpot 404. We accept
+ * NotFoundError too (defensive, in case a caller wraps it). Anything else
+ * (401/403/429/5xx/network) is NOT a 404 and callers should treat it as
+ * transient — never as "the object is gone".
+ */
+export function isHubspotNotFound(err: unknown): boolean {
+  if (err instanceof NotFoundError) return true;
+  return (
+    err instanceof HubspotUnreachableError &&
+    typeof err.details === "object" &&
+    err.details !== null &&
+    "status" in err.details &&
+    (err.details as { status?: number }).status === 404
+  );
+}
 import {
   COMPANY_PROPERTIES,
   DEAL_PROPERTIES,
