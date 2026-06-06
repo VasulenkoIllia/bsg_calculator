@@ -25,6 +25,10 @@
  *   --repoint A B    fold drifted company A into surviving company B —
  *                    re-points A's documents/configs/deals onto B then
  *                    removes A (same path as a live company.merge).
+ *   --purge A [--yes] permanently delete drifted company A together with
+ *                    its documents/configs/deals — for a company DELETED
+ *                    upstream (no survivor to re-point onto). Refuses if A
+ *                    still exists in HubSpot; previews unless --yes given.
  *
  * Finding the survivor id (B) for --repoint: open the drifted company in
  * the HubSpot UI — a merged record redirects to its surviving company,
@@ -39,8 +43,9 @@
  *   docker compose exec app npx tsx server/scripts/reconcile-companies.ts --repoint 430570099930 <survivorHubspotId>
  */
 
+import { eq } from "drizzle-orm";
 import { db, pool } from "../db/client";
-import { companies as companiesTable, type Company } from "../db/schema";
+import { companies as companiesTable, documents, type Company } from "../db/schema";
 import { logger } from "../middleware/logger";
 import { hubspot, isHubspotNotFound } from "../modules/hubspot/hubspot.client";
 import { countDocumentsByCompanyId } from "../modules/documents/documents.repository";
@@ -123,6 +128,75 @@ async function repoint(fromHubspotId: string, toHubspotId: string): Promise<void
   await handleCompanyMerge(toHubspotId, [fromHubspotId]);
   // eslint-disable-next-line no-console
   console.log("[reconcile] re-point complete.");
+}
+
+/**
+ * Permanently delete a company that NO LONGER EXISTS in HubSpot, together
+ * with its documents (their events cascade), deals, and calculator-configs
+ * (cascade on company delete). For drift that is a DELETE upstream (not a
+ * merge) — so there is no survivor to re-point onto. Typically leftover
+ * test data.
+ *
+ * SAFETY: refuses unless HubSpot 404s the id (never deletes the documents
+ * of a company that still exists upstream), and unless `--yes` is passed
+ * (otherwise it only previews). IRREVERSIBLE.
+ */
+async function purge(hubspotId: string, confirmed: boolean): Promise<void> {
+  const company = await findCompanyByHubspotId(hubspotId);
+  if (!company) {
+    // eslint-disable-next-line no-console
+    console.log(`[reconcile] ${hubspotId} is not in the local cache — nothing to purge.`);
+    return;
+  }
+
+  // Guard: only purge a company that is genuinely GONE from HubSpot.
+  let existsUpstream = false;
+  try {
+    await hubspot.getCompany(hubspotId);
+    existsUpstream = true;
+  } catch (err) {
+    if (!isHubspotNotFound(err)) throw err; // transient/auth → abort, don't guess
+  }
+  if (existsUpstream) {
+    throw new Error(
+      `refusing to purge ${hubspotId} (${company.name}) — it STILL EXISTS in HubSpot. Purge is only for companies DELETED upstream; for a merge use --repoint.`
+    );
+  }
+
+  const docs = await countDocumentsByCompanyId(company.id);
+  const deals = await countDealsByCompanyHubspotId(company.hubspotCompanyId);
+  // eslint-disable-next-line no-console
+  console.log(
+    `[reconcile] purge target: ${company.name} [hs ${company.hubspotCompanyId} · uuid ${company.id}] — will PERMANENTLY delete ${docs} document(s), ${deals} deal(s), the company, and any calculator-configs/events (cascade).`
+  );
+
+  if (!confirmed) {
+    // eslint-disable-next-line no-console
+    console.log(
+      "[reconcile] DRY-RUN — re-run with --yes to actually delete. THIS IS IRREVERSIBLE."
+    );
+    return;
+  }
+
+  await db.transaction(async tx => {
+    // documents first (RESTRICT on company); their events cascade.
+    const removedDocs = await tx
+      .delete(documents)
+      .where(eq(documents.companyId, company.id))
+      .returning({ id: documents.id });
+    // deals next (RESTRICT on company).
+    await deleteDealsByCompanyId(company.hubspotCompanyId, tx);
+    // finally the company — calculator_configs + their events cascade.
+    await deleteCompanyByHubspotId(company.hubspotCompanyId, tx);
+    logger.info(
+      { hubspotId, documents: removedDocs.length, deals },
+      "[reconcile] purged deleted-upstream company"
+    );
+    // eslint-disable-next-line no-console
+    console.log(
+      `[reconcile] purged ${company.name}: ${removedDocs.length} document(s) + ${deals} deal(s) + company removed.`
+    );
+  });
 }
 
 async function scan(prune: boolean): Promise<void> {
@@ -214,6 +288,16 @@ async function main(): Promise<void> {
       return;
     }
 
+    const purgeIdx = args.indexOf("--purge");
+    if (purgeIdx !== -1) {
+      const id = args[purgeIdx + 1];
+      if (!id) {
+        throw new Error("--purge requires a company HubSpot id: --purge <hubspotId> [--yes]");
+      }
+      await purge(id, args.includes("--yes"));
+      return;
+    }
+
     await scan(args.includes("--prune-empty"));
   } finally {
     // Await the pool close so connections drain before the process exits
@@ -225,7 +309,7 @@ async function main(): Promise<void> {
 // Exported for integration testing. The drift scan + --prune-empty path
 // delete prod data, so they are covered directly (see
 // server/tests/reconcile-companies.integration.test.ts).
-export const __internals = { findDriftedCompanies, scan, repoint };
+export const __internals = { findDriftedCompanies, scan, repoint, purge };
 
 const isMain =
   process.argv[1]?.endsWith("reconcile-companies.ts") ||

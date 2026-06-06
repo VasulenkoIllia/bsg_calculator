@@ -19,7 +19,7 @@ import { __internals } from "../scripts/reconcile-companies";
 import { companyFixture } from "./fixtures/company";
 import { createTestUser } from "./test-helpers";
 
-const { findDriftedCompanies, scan, repoint } = __internals;
+const { findDriftedCompanies, scan, repoint, purge } = __internals;
 
 function hubspotCompanyObject(id: string): HubspotObject {
   return {
@@ -162,5 +162,74 @@ describe("reconcile-companies script", () => {
   it("repoint: rejects a survivor absent from both cache and HubSpot", async () => {
     getCompanySpy.mockRejectedValue(hubspot404());
     await expect(repoint("8000000401", "8000000402")).rejects.toThrow(/not found/);
+  });
+
+  it("purge: refuses to delete a company that STILL EXISTS in HubSpot", async () => {
+    const user = await createTestUser({ email: "rec4@test.dev", password: "password123" });
+    const [c] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "8000000501" }))
+      .returning();
+    await db.insert(documents).values({
+      number: "BSG-8000005-000001",
+      companyId: c.id,
+      scope: "offer",
+      payload: {},
+      createdByUserId: user.id
+    });
+    getCompanySpy.mockResolvedValue(hubspotCompanyObject("8000000501")); // still exists upstream
+
+    await expect(purge("8000000501", true)).rejects.toThrow(/STILL EXISTS/);
+    expect(await db.select().from(companies)).toHaveLength(1);
+    expect(await db.select().from(documents)).toHaveLength(1);
+  });
+
+  it("purge --yes: deletes a deleted-upstream company together with its documents", async () => {
+    const user = await createTestUser({ email: "rec5@test.dev", password: "password123" });
+    const [c] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "8000000601" }))
+      .returning();
+    await db.insert(documents).values([
+      {
+        number: "BSG-8000006-000001",
+        companyId: c.id,
+        scope: "offer",
+        payload: {},
+        createdByUserId: user.id
+      },
+      {
+        number: "BSG-8000006-000002",
+        companyId: c.id,
+        scope: "offer",
+        payload: {},
+        createdByUserId: user.id
+      }
+    ]);
+    getCompanySpy.mockRejectedValue(hubspot404()); // gone upstream
+
+    await purge("8000000601", true);
+    expect(await db.select().from(companies)).toHaveLength(0);
+    expect(await db.select().from(documents)).toHaveLength(0);
+  });
+
+  it("purge dry-run (no --yes): previews without deleting anything", async () => {
+    const user = await createTestUser({ email: "rec6@test.dev", password: "password123" });
+    const [c] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "8000000701" }))
+      .returning();
+    await db.insert(documents).values({
+      number: "BSG-8000007-000001",
+      companyId: c.id,
+      scope: "offer",
+      payload: {},
+      createdByUserId: user.id
+    });
+    getCompanySpy.mockRejectedValue(hubspot404());
+
+    await purge("8000000701", false); // no --yes → preview only
+    expect(await db.select().from(companies)).toHaveLength(1);
+    expect(await db.select().from(documents)).toHaveLength(1);
   });
 });

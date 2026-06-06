@@ -203,13 +203,21 @@ docker compose exec app npx tsx server/scripts/reconcile-companies.ts
 # 2a. Drifted company with NO documents → prune it (safe; deals first).
 docker compose exec app npx tsx server/scripts/reconcile-companies.ts --prune-empty
 
-# 2b. Drifted company WITH documents → fold it into its survivor. Find the
-#     survivor id by opening the drifted company in HubSpot (a merged
-#     record redirects to the surviving company).
+# 2b. Drifted company WITH documents, MERGED upstream → fold it into its
+#     survivor. Find the survivor id by opening the drifted company in
+#     HubSpot (a merged record redirects to the surviving company).
 docker compose exec app npx tsx server/scripts/reconcile-companies.ts --repoint <driftedHubspotId> <survivorHubspotId>
+
+# 2c. Drifted company WITH documents, DELETED upstream (no survivor — the
+#     HubSpot URL shows "not found", not a redirect) → purge it together
+#     with its documents. Previews first; add --yes to actually delete.
+docker compose exec app npx tsx server/scripts/reconcile-companies.ts --purge <driftedHubspotId>
+docker compose exec app npx tsx server/scripts/reconcile-companies.ts --purge <driftedHubspotId> --yes
 ```
 
-`--repoint` re-points the drifted company's documents/configs/deals onto the survivor and then removes it (the same path as a live `company.merge`). Always run the dry-run first; the script never deletes a company that still owns documents.
+`--repoint` re-points the drifted company's documents/configs/deals onto the survivor and then removes it (the same path as a live `company.merge`). `--purge` is for a company that was DELETED upstream (so has no survivor): it permanently removes the company + its documents/configs/deals — and refuses unless HubSpot 404s the id (it never deletes the documents of a company that still exists upstream). Always run the dry-run / preview first.
+
+> **Why a deleted company can linger in the first place:** the `company.deletion` webhook is handled, but `documents.company_id → companies.id` is **ON DELETE RESTRICT** — a safety guard so a HubSpot deletion can never silently wipe offer documents (legal records). When HubSpot deletes a company that still owns documents, our delete FK-fails, retries, and gives up → the company lingers as a `failed` webhook event. That is intentional protection for real clients; the `--purge` above is the explicit, operator-reviewed way to remove the leftovers (e.g. test data).
 
 ---
 
