@@ -11,6 +11,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api/client.js";
 import type { CompanySortField } from "../api/companies.js";
+import { HubspotDeletedBadge } from "../components/HubspotDeletedBadge.js";
 import { LoadMoreButton } from "../components/LoadMoreButton.js";
 import { SortableTh } from "../components/SortableTh.js";
 import { useCompanies } from "../hooks/useCompanies.js";
@@ -135,12 +136,15 @@ export function CompaniesPage() {
             {items.map(company => (
               <tr key={company.id} className="hover:bg-slate-50">
                 <td className="px-4 py-3">
-                  <Link
-                    to={`/companies/${company.id}`}
-                    className="font-semibold text-blue-700 hover:text-blue-900 hover:underline"
-                  >
-                    {company.name}
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      to={`/companies/${company.id}`}
+                      className="font-semibold text-blue-700 hover:text-blue-900 hover:underline"
+                    >
+                      {company.name}
+                    </Link>
+                    <HubspotDeletedBadge deletedAt={company.hubspotDeletedAt} />
+                  </div>
                 </td>
                 <td className="px-4 py-3 text-slate-700">{company.segmentType ?? "—"}</td>
                 <td className="px-4 py-3 text-slate-700">{company.lifecycleStage ?? "—"}</td>

@@ -52,6 +52,15 @@ export const companies = pgTable(
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    // Set when HubSpot deleted (or merged away) this company but we
+    // CANNOT remove the row because it still owns documents (the
+    // documents→companies FK is ON DELETE RESTRICT, protecting legal
+    // records). NULL = live in HubSpot. Non-NULL = confirmed gone
+    // upstream; the row + its documents are retained, the admin shows a
+    // "Deleted in HubSpot" badge, and Note-sync is skipped. Auto-cleared
+    // by any successful re-sync (upsert) — i.e. if the company is
+    // restored upstream.
+    hubspotDeletedAt: timestamp("hubspot_deleted_at", { withTimezone: true }),
     // First time we saw this company in our DB.
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     // Application-managed on every UPDATE.

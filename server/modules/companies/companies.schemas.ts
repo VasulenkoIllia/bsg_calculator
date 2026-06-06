@@ -53,6 +53,10 @@ export const companyPublicSchema = z.object({
   hsTaskLabel: z.string().nullable(),
   hubspotCreatedAt: z.string(),
   hubspotModifiedAt: z.string(),
-  lastSyncedAt: z.string()
+  lastSyncedAt: z.string(),
+  // ISO timestamp when HubSpot deleted/merged-away this company while it
+  // still owned documents (so we retained the row). NULL = live in
+  // HubSpot. Drives the admin "Deleted in HubSpot" badge.
+  hubspotDeletedAt: z.string().nullable()
 });
 export type CompanyPublic = z.infer<typeof companyPublicSchema>;

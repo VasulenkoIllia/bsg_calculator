@@ -450,6 +450,94 @@ describe("processWebhookBatch() — async event processing", () => {
     expect(evt.outcome).toBe("deleted");
   });
 
+  it("deletion: company WITH documents → marks hubspot_deleted_at (keeps company + docs, drops deals, no FK-fail loop)", async () => {
+    const user = await createTestUser({ email: "del-docs@test.dev", password: "password123" });
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "HS-DEL-DOCS" }))
+      .returning();
+    await db.insert(deals).values({
+      hubspotDealId: "DEAL-DEL-DOCS",
+      hubspotCompanyId: company.hubspotCompanyId,
+      name: "Doomed Deal",
+      hubspotCreatedAt: new Date(),
+      hubspotModifiedAt: new Date(),
+      hubspotRaw: {}
+    });
+    const [doc] = await db
+      .insert(documents)
+      .values({
+        number: "BSG-9100001-DEL001",
+        companyId: company.id,
+        scope: "offer",
+        payload: {},
+        createdByUserId: user.id
+      })
+      .returning();
+
+    await db.insert(hubspotWebhookEvents).values({
+      hubspotEventId: "evt-del-docs",
+      subscriptionType: "company.deletion",
+      objectType: "company",
+      hubspotObjectId: company.hubspotCompanyId,
+      occurredAt: new Date(),
+      raw: {}
+    });
+
+    const result = await processWebhookBatch();
+    expect(result.processed).toBe(1);
+    expect(result.failed).toBe(0); // no more FK-fail retry loop
+
+    // Company RETAINED + flagged; document retained; deal dropped.
+    const [kept] = await db
+      .select()
+      .from(companies)
+      .where(eq(companies.hubspotCompanyId, company.hubspotCompanyId));
+    expect(kept).toBeDefined();
+    expect(kept.hubspotDeletedAt).not.toBeNull();
+    const [keptDoc] = await db.select().from(documents).where(eq(documents.id, doc.id));
+    expect(keptDoc).toBeDefined();
+    expect((await db.select().from(deals)).length).toBe(0);
+
+    const [evt] = await db.select().from(hubspotWebhookEvents);
+    expect(evt.status).toBe("processed");
+    expect(evt.outcome).toBe("deleted");
+  });
+
+  it("upsert (restore / propertyChange) clears the hubspot_deleted_at marker", async () => {
+    const user = await createTestUser({ email: "del-restore@test.dev", password: "password123" });
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "HS-RESTORE", hubspotDeletedAt: new Date() }))
+      .returning();
+    expect(company.hubspotDeletedAt).not.toBeNull();
+    await db.insert(documents).values({
+      number: "BSG-9100002-RES001",
+      companyId: company.id,
+      scope: "offer",
+      payload: {},
+      createdByUserId: user.id
+    });
+
+    getCompanySpy.mockResolvedValue(hubspotCompanyObject("HS-RESTORE", { name: "Back Alive" }));
+    await db.insert(hubspotWebhookEvents).values({
+      hubspotEventId: "evt-restore",
+      subscriptionType: "company.restore",
+      objectType: "company",
+      hubspotObjectId: "HS-RESTORE",
+      occurredAt: new Date(),
+      raw: {}
+    });
+    await processWebhookBatch();
+
+    const [healed] = await db
+      .select()
+      .from(companies)
+      .where(eq(companies.hubspotCompanyId, "HS-RESTORE"));
+    expect(healed.hubspotDeletedAt).toBeNull();
+    expect(healed.name).toBe("Back Alive");
+  });
+
   it("HubSpot 404 on creation → treats it as a delete (race protection)", async () => {
     // The client surfaces a 404 as HubspotUnreachableError(status=404)
     // (NOT NotFoundError) when the object was removed between the event

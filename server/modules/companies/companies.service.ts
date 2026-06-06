@@ -42,7 +42,8 @@ function toPublic(row: Company): CompanyPublic {
       hsTaskLabel: row.hsTaskLabel,
       hubspotCreatedAt: row.hubspotCreatedAt.toISOString(),
       hubspotModifiedAt: row.hubspotModifiedAt.toISOString(),
-      lastSyncedAt: row.lastSyncedAt.toISOString()
+      lastSyncedAt: row.lastSyncedAt.toISOString(),
+      hubspotDeletedAt: row.hubspotDeletedAt ? row.hubspotDeletedAt.toISOString() : null
     },
     "companies.toPublic"
   );

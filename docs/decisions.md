@@ -6164,4 +6164,57 @@ Use this file to record meaningful technical decisions for the project.
   (dry-run → repoint "(M) TEST 1 c" into its survivor) — see
   `docs/deployment.md` §4.7.
 
+### Decision: Mark companies "deleted from HubSpot" instead of FK-failing the deletion (when they own documents)
+- Date: 2026-06-06
+- Context:
+  - Follow-up to the `company.merge` work. A prod query confirmed the
+    lingering "(M) TEST 1 c" + "test" companies each received a
+    `company.deletion` webhook that FAILED with `delete from companies …
+    FK` — because `documents.company_id → companies.id` is ON DELETE
+    RESTRICT (a guard so a HubSpot deletion never silently wipes offer
+    documents, which are legal records). The delete FK-failed, burned its
+    5-retry budget, landed `failed`, and the company lingered with NO
+    indication it was gone from HubSpot — the ambiguity the operator
+    flagged ("чому в нас не позначено, що компанію видалено?").
+- Decision:
+  - New nullable `companies.hubspot_deleted_at` (migration 0015,
+    HAND-WRITTEN — see boundary). NULL = live in HubSpot; non-NULL =
+    confirmed gone upstream but retained because it owns documents.
+  - The webhook deletion handler (+ the 404-race path) now call
+    `deleteOrMarkCompany`: drop the (disposable, re-fetchable) deals
+    either way, then HARD-DELETE the company if it owns no documents,
+    else stamp `hubspot_deleted_at` and KEEP the row + its documents. The
+    event now SUCCEEDS — no more retry/`failed` loop.
+  - Self-healing: `upsertCompany` clears `hubspot_deleted_at` on every
+    successful sync, so a `company.restore` (or any creation/
+    propertyChange that re-fetches a 200) un-marks it automatically.
+  - Consumers: the company DTO exposes `hubspotDeletedAt`; the admin
+    shows a red "Deleted in HubSpot" badge (companies list + detail); the
+    document→HubSpot Note sync fails fast with a clear reason for a marked
+    company instead of 400 "associations are invalid".
+  - Cleanup unchanged: `reconcile-companies.ts --purge` still fully
+    removes a marked/drifted company + its documents when the operator
+    decides (e.g. test data); `--repoint` for a merge survivor.
+- Boundary / consequences:
+  - Migration 0015 is a single nullable ADD COLUMN — safe; applies on
+    deploy via the entrypoint. IMPORTANT: `npm run db:generate` produces a
+    BROKEN migration here (it re-creates tables/columns from 0009-0014
+    that already exist, because the drizzle-kit snapshots are frozen at
+    0008 and migrations 0009+ are authored by hand). 0015 is therefore
+    hand-written to match that pattern — do NOT regenerate it.
+  - The deletion `outcome` stays "deleted" (CHECK-allowed) whether we
+    hard-delete or mark.
+- Verification: FE + BE `tsc` clean; lint 0 errors; FE 367/367; webhook
+  suite green incl. new cases (deletion of a document-owning company
+  MARKS + keeps docs + drops deals + no FK-fail; an upsert/restore clears
+  the marker) + a HubspotDeletedBadge unit. Migration applied locally
+  (single column; nothing else touched). The lone full-server-suite
+  failure is the pre-existing LOCAL-only `auth.tokens` env flake
+  (`JWT_REFRESH_EXPIRES=30d` vs 12h).
+- Prod rollout: `git pull && docker compose up -d --build app` — the
+  entrypoint auto-applies migration 0015. Going forward, a HubSpot
+  deletion of a document-owning company is marked + badged automatically;
+  the existing "test" / "(M) TEST 1 c" leftovers were DELETED upstream
+  (no survivor) → remove with `reconcile-companies.ts --purge <id> --yes`.
+
 

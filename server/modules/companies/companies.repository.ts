@@ -157,11 +157,38 @@ export async function upsertCompany(row: NewCompany): Promise<Company> {
         hubspotModifiedAt: row.hubspotModifiedAt,
         hubspotRaw: row.hubspotRaw,
         lastSyncedAt: sql`now()`,
-        updatedAt: sql`now()`
+        updatedAt: sql`now()`,
+        // Any successful re-sync means the company is alive in HubSpot
+        // again (e.g. it was restored after a deletion) — clear the
+        // "deleted from HubSpot" marker so the badge/sync-skip go away.
+        hubspotDeletedAt: null
       }
     })
     .returning();
   return expectSingle(rows, "upsertCompany");
+}
+
+/**
+ * Mark a company as DELETED-FROM-HUBSPOT without removing the row.
+ *
+ * Used when HubSpot deleted (or merged away) a company that still OWNS
+ * documents: `documents.company_id → companies.id` is ON DELETE RESTRICT
+ * (a guard so a HubSpot deletion never silently wipes legal records), so
+ * we cannot hard-delete the row. Instead we retain the row + its
+ * documents and stamp `hubspot_deleted_at` so the admin can badge it and
+ * Note-sync can skip it. Idempotent. Accepts an optional TX so the caller
+ * can compose it with the cascading deal delete.
+ */
+export async function markCompanyHubspotDeleted(
+  hubspotCompanyId: string,
+  tx: DbOrTx = db
+): Promise<Company | undefined> {
+  const rows = await tx
+    .update(companies)
+    .set({ hubspotDeletedAt: sql`now()`, updatedAt: sql`now()` })
+    .where(eq(companies.hubspotCompanyId, hubspotCompanyId))
+    .returning();
+  return rows[0];
 }
 
 /**

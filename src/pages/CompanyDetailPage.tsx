@@ -27,6 +27,7 @@ import type { DocumentSortField } from "../api/documents.js";
 import { LoadMoreButton } from "../components/LoadMoreButton.js";
 import { SortableTh, type SortDirection } from "../components/SortableTh.js";
 import { DocumentOfferStatus } from "../components/OfferStatusBadge.js";
+import { HubspotDeletedBadge } from "../components/HubspotDeletedBadge.js";
 import { useCalculatorConfigs } from "../hooks/useCalculatorConfig.js";
 import { useCompany, useCompanyDeals } from "../hooks/useCompany.js";
 import { useDocuments } from "../hooks/useDocuments.js";
@@ -137,7 +138,10 @@ export function CompanyDetailPage() {
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Company
         </p>
-        <h1 className="text-xl font-semibold text-slate-900">{company.name}</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-xl font-semibold text-slate-900">{company.name}</h1>
+          <HubspotDeletedBadge deletedAt={company.hubspotDeletedAt} />
+        </div>
         <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm text-slate-600 sm:grid-cols-2 md:grid-cols-3">
           <div>
             <dt className="font-semibold text-slate-500">Segment</dt>

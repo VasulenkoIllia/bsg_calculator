@@ -78,6 +78,10 @@ export interface PublicCompany {
   hubspotCreatedAt: string;
   hubspotModifiedAt: string;
   lastSyncedAt: string;
+  // ISO timestamp when HubSpot deleted/merged-away this company while it
+  // still owned documents (so the row was retained). NULL = live in
+  // HubSpot. Drives the "Deleted in HubSpot" badge.
+  hubspotDeletedAt: string | null;
 }
 
 // ─── Deals ────────────────────────────────────────────────────────

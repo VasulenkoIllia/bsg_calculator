@@ -99,6 +99,41 @@ export async function syncDocumentToHubspot(
     throw new NotFoundError("Parent company");
   }
 
+  // Parent company was DELETED in HubSpot (retained locally only because
+  // it owns documents). There is nothing upstream to attach a Note to —
+  // an association would 400 ("associations are invalid"). Fail fast with
+  // a clear reason instead of creating an orphan Note + spamming HubSpot.
+  if (company.hubspotDeletedAt) {
+    await updateDocumentHubspotSync(document.id, {
+      hubspotSyncState: "failed",
+      hubspotNoteId: null
+    });
+    await tryRecordEvent(
+      () =>
+        insertDocumentEvent({
+          documentId: document.id,
+          eventType: "sync_failed",
+          actorUserId,
+          meta: { stage: "precheck", error: "parent company deleted in HubSpot" }
+        }),
+      {
+        label: "documents:sync",
+        context: { documentId: document.id, documentNumber: document.number }
+      }
+    );
+    logger.warn(
+      {
+        documentId: document.id,
+        documentNumber: document.number,
+        hubspotCompanyId: company.hubspotCompanyId
+      },
+      "[documents:sync] skipped — parent company was deleted in HubSpot"
+    );
+    throw new ValidationError(
+      "Cannot sync: the parent company was deleted in HubSpot."
+    );
+  }
+
   // Phase 9.H — Note body now carries `Created … by <displayName>
   // (<email>)`. Look up the operator who created the document.
   const actor = await findUserById(document.createdByUserId);

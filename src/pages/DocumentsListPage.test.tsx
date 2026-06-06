@@ -27,6 +27,7 @@ const fixtureCompany = (overrides: Partial<PublicCompany> = {}): PublicCompany =
   hubspotCreatedAt: "2026-01-01T00:00:00.000Z",
   hubspotModifiedAt: "2026-05-01T00:00:00.000Z",
   lastSyncedAt: "2026-05-15T00:00:00.000Z",
+  hubspotDeletedAt: null,
   ...overrides
 });
 

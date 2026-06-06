@@ -1,0 +1,21 @@
+-- Sprint 9.X (2026-06-06) — mark companies deleted-from-HubSpot.
+--
+-- When HubSpot deletes (or merges away) a company that still OWNS
+-- documents, the company.deletion webhook cannot remove the row:
+-- documents.company_id -> companies.id is ON DELETE RESTRICT (a guard so
+-- a HubSpot deletion never silently wipes offer documents, which are
+-- legal records). Before this column such a deletion FK-failed, retried,
+-- and the company lingered ambiguously as a `failed` webhook event.
+--
+-- Now the deletion handler sets this timestamp instead: the row + its
+-- documents are RETAINED, the admin shows a "Deleted in HubSpot" badge,
+-- and Note-sync is skipped (no more 400 "associations are invalid").
+-- NULL = live upstream; non-NULL = confirmed gone upstream. Auto-cleared
+-- by any successful re-sync (upsert) — i.e. if the company is restored.
+--
+-- Hand-written: drizzle-kit snapshots are frozen at 0008; migrations
+-- 0009+ are authored by hand (see 0014's header). `generate` against the
+-- stale 0008 snapshot would re-create existing tables, so we do NOT use
+-- it here.
+
+ALTER TABLE "companies" ADD COLUMN "hubspot_deleted_at" timestamp with time zone;

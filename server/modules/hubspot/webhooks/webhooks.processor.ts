@@ -36,8 +36,11 @@ import { hubspot, isHubspotNotFound } from "../hubspot.client";
 import { mapHubspotCompanyToRow, mapHubspotDealToRow } from "../hubspot.mapper";
 import {
   deleteCompanyByHubspotId,
+  findCompanyByHubspotId,
+  markCompanyHubspotDeleted,
   upsertCompany
 } from "../../companies/companies.repository";
+import { countDocumentsByCompanyId } from "../../documents/documents.repository";
 import {
   deleteDealByHubspotId,
   deleteDealsByCompanyId,
@@ -73,6 +76,34 @@ function passesCompanyTypeFilter(companyType: string | null | undefined): boolea
 }
 
 /**
+ * Remove a company that's gone from HubSpot — OR, if it still owns
+ * documents, mark it deleted-from-HubSpot instead of failing.
+ *
+ * `documents.company_id → companies.id` is ON DELETE RESTRICT (legal
+ * records must not vanish when a company is deleted upstream). Before
+ * this, deleting a document-owning company FK-failed, burned its retry
+ * budget, and the row lingered ambiguously as a `failed` event. Now:
+ * drop the (disposable, re-fetchable) deals either way, then hard-delete
+ * the company if it owns NO documents, else stamp `hubspot_deleted_at`
+ * and keep the row + its documents (the admin badges it; Note-sync skips
+ * it; a later restore re-sync clears the flag). One transaction so we
+ * never observe a half-applied state.
+ */
+async function deleteOrMarkCompany(hubspotCompanyId: string): Promise<void> {
+  const company = await findCompanyByHubspotId(hubspotCompanyId);
+  if (!company) return; // already gone from our cache — nothing to do
+  const documentCount = await countDocumentsByCompanyId(company.id);
+  await db.transaction(async tx => {
+    await deleteDealsByCompanyId(hubspotCompanyId, tx);
+    if (documentCount > 0) {
+      await markCompanyHubspotDeleted(hubspotCompanyId, tx);
+    } else {
+      await deleteCompanyByHubspotId(hubspotCompanyId, tx);
+    }
+  });
+}
+
+/**
  * Process exactly one event. Throws on transient failures so the
  * caller can record an attempt; returns successfully (with outcome)
  * on success or hard-skip cases.
@@ -91,14 +122,10 @@ async function processOne(
   // observable to readers until the next webhook retry.
   if (subType.endsWith(".deletion")) {
     if (isCompany) {
-      // Deals first because the FK is RESTRICT in our schema — the
-      // company DELETE would fail with FK violation if any deal still
-      // pointed at it. Both deletes share one transaction so we never
-      // observe "deals gone, company survives".
-      await db.transaction(async tx => {
-        await deleteDealsByCompanyId(event.hubspotObjectId, tx);
-        await deleteCompanyByHubspotId(event.hubspotObjectId, tx);
-      });
+      // Delete the company, or — if it owns documents — mark it
+      // deleted-from-HubSpot (the documents FK is RESTRICT). See
+      // deleteOrMarkCompany.
+      await deleteOrMarkCompany(event.hubspotObjectId);
     } else {
       await deleteDealByHubspotId(event.hubspotObjectId);
     }
@@ -180,12 +207,9 @@ async function processOne(
     // surfaces a 404 as HubspotUnreachableError(status=404), NOT
     // NotFoundError — detect it by status via isHubspotNotFound.
     if (isHubspotNotFound(err)) {
-      // Same TX guarantee as the explicit deletion path above.
+      // Same delete-or-mark handling as the explicit deletion path above.
       if (isCompany) {
-        await db.transaction(async tx => {
-          await deleteDealsByCompanyId(event.hubspotObjectId, tx);
-          await deleteCompanyByHubspotId(event.hubspotObjectId, tx);
-        });
+        await deleteOrMarkCompany(event.hubspotObjectId);
       } else {
         await deleteDealByHubspotId(event.hubspotObjectId);
       }
