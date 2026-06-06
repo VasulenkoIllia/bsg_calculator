@@ -9,6 +9,7 @@ import {
 } from "./legalDefaults.js";
 import type { DocumentHeaderMetaDraft, DocumentTemplatePayload, PayinCustomRow } from "./types.js";
 import { PAYIN_TRX_APM_MIN, PAYIN_TRX_CC_MIN } from "./wizardDefaults.js";
+import { OFFER_VALID_DAYS_DEFAULT } from "../../shared/offerValidity.js";
 
 export const DEFAULT_COLLECTION_FREQUENCY = "Daily (unless agreed otherwise)";
 
@@ -51,6 +52,7 @@ export function buildDocumentHeaderMetaFromCalculator(
     documentType: DOCUMENT_TYPE_LABELS[DEFAULT_DOCUMENT_SCOPE],
     documentNumber: defaultDraftNumber(),
     documentDateIso: todayIsoDate(),
+    offerValidDays: OFFER_VALID_DAYS_DEFAULT,
     collectionModel: resolveCollectionModelDisplay(payinEuModel, payinWwModel),
     collectionFrequency: DEFAULT_COLLECTION_FREQUENCY
   };

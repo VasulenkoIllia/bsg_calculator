@@ -77,6 +77,14 @@ export interface DocumentHeaderMetaDraft {
   documentType: string;
   documentNumber: string;
   documentDateIso: string;
+  // "Offer valid till" — number of days the offer is valid FROM
+  // `documentDateIso`. The valid-till DATE is derived at render time (see
+  // src/shared/offerValidity.ts) so it tracks the document date. Only
+  // surfaced when documentScope === "offer". OPTIONAL on purpose: documents
+  // stored before this feature omit it — the badge + PDF line are suppressed
+  // for them (see hasExplicitOfferValidity), and reads coerce via
+  // resolveOfferValidDays(). New documents are seeded with the default.
+  offerValidDays?: number;
   collectionModel: string;
   collectionFrequency: string;
 }

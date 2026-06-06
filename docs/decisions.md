@@ -5972,4 +5972,70 @@ Use this file to record meaningful technical decisions for the project.
   refresh-token-TTL ~12h vs 30d, is a PRE-EXISTING env/config test
   unrelated to this FE-only change; zero `server/**` files touched.)
 
+### Decision: "Offer valid till" — expiry date on Pricing Schedule offers
+- Date: 2026-06-04
+- Context:
+  - A Commercial Pricing Schedule offer is time-bound, but the document
+    had no expiry. Sales need to set how long an offer stays valid, show
+    that date on the PDF, and see at a glance (in the app) which offers
+    are still live vs expired.
+- Decision (wizard + PDF + app only — ZERO calculator-domain changes):
+  - **Data model — store the DAY COUNT, derive the DATE.** Added
+    `offerValidDays: number` to `DocumentHeaderMetaDraft`
+    (`document-wizard/types.ts`). The valid-till DATE is NEVER stored — it
+    is derived at render time as `documentDateIso + offerValidDays`, so it
+    automatically tracks the document date. Default 15 days, seeded once in
+    `seedHelpers.ts:buildDocumentHeaderMetaFromCalculator` (the single
+    funnel all seed paths flow through).
+  - **Shared leaf util** `src/shared/offerValidity.ts` (zero React/PDF
+    deps; imported by the wizard, the PDF builder, and `src/pages/**`):
+    `addDaysToIso` (UTC string math — never `new Date(isoString)`, which
+    is TZ-shifted), `offerValidTillIso`, `isOfferExpired` (today >
+    valid-till; zero-padded ISO compares lexicographically; valid THROUGH
+    the end of the valid-till day), `formatIsoDdMmYyyy`,
+    `resolveOfferValidDays` (BACK-COMPAT coercion to 15), and
+    `readOfferValidityHeader` (safe narrow of a raw JSONB payload).
+  - **Wizard Step 1 control** (`HeaderMetaStep.tsx`) gated to
+    `documentScope === "offer"`: 7/15/30 presets (`MiniToggle`) + a custom
+    `NumberField` + a live "Valid till DD.MM.YYYY" preview. Hidden for the
+    offer+agreement bundle.
+  - **PDF** (`buildOfferPdfHtml.ts`): an "OFFER VALID TILL <DD.MM.YYYY>"
+    line directly under DOCUMENT DATE in the cover title-aside, NEUTRAL
+    color, gated to `scope === "offer"` AND `hasExplicitOfferValidity(...)`
+    (a static PDF has no live valid/expired styling; old offers with no
+    validity are not labeled).
+  - **App colored status** (`components/OfferStatusBadge.tsx` +
+    `DocumentOfferStatus` wrapper): green "Valid till X" / red "Expired X"
+    (two states), shown on the document detail page, the documents list,
+    and the Company → Documents tab (new "Validity" column). NO backend
+    change — the list/detail rows already carry the full JSONB `payload`,
+    so the pages read `doc.payload.header` directly. Gated on the app scope
+    value `"offer"` AND `hasExplicitOfferValidity` (the divergent scope
+    value is the bundle).
+  - **Layout polish:** capped the per-section custom note input
+    (`SectionCustomNoteCard`, `maxLength` + fixed box + counter) to ~2-3
+    lines (no PDF truncation), and widened `--space-section-gap` 8mm → 9mm
+    (`pdf-kit/styles.ts`).
+- PROD back-compat (already has data): existing stored documents have NO
+  `offerValidDays`. EVERY read coerces a missing value via
+  `resolveOfferValidDays`, so old payloads never crash / render NaN, and
+  `maxLength` never truncates an existing longer note (it only blocks new
+  input; an over-cap note shows a red counter). DECISION (user sign-off,
+  2026-06-04): old offers are NOT retroactively labeled — the badge + PDF
+  line are GATED on `hasExplicitOfferValidity` (a finite day count >= 1),
+  which only new/edited documents carry, so old stored offers show no badge
+  and no PDF line. `OfferValidTillField` backfills the default for any offer
+  being BUILT in the wizard (incl. one opened via "use as template"), so
+  editing an offer gives it an explicit validity while the immutable stored
+  original stays unlabeled. `offerValidDays` is OPTIONAL in the type to
+  match this reality (forces future code to handle the undefined case).
+- Verification: FE + BE `tsc`, lint clean; 364 FE tests pass (date-util
+  boundaries + the explicit-validity gate; badge incl. no-badge-for-old;
+  PDF-line present / absent-on-bundle / absent-on-old); FE build OK.
+  Puppeteer render (`visual-diff`): the line shows on the offer cover /
+  omitted on the bundle; PAGE COUNTS UNCHANGED (2/2, 11/11); the section-
+  gap change touches only `.offer-section` (agreement uses
+  `.agreement-section`). The ~1% backend/frontend pixel delta is
+  PRE-EXISTING (proven identical via `git stash`), not a regression.
+
 

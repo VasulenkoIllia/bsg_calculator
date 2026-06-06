@@ -26,6 +26,7 @@ import type { CompanyDealSortField } from "../api/companies.js";
 import type { DocumentSortField } from "../api/documents.js";
 import { LoadMoreButton } from "../components/LoadMoreButton.js";
 import { SortableTh, type SortDirection } from "../components/SortableTh.js";
+import { DocumentOfferStatus } from "../components/OfferStatusBadge.js";
 import { useCalculatorConfigs } from "../hooks/useCalculatorConfig.js";
 import { useCompany, useCompanyDeals } from "../hooks/useCompany.js";
 import { useDocuments } from "../hooks/useDocuments.js";
@@ -492,6 +493,7 @@ function DocumentsTable({
           >
             Scope
           </SortableTh>
+          <th className="px-4 py-3 text-left font-semibold text-slate-600">Validity</th>
           <SortableTh
             field="createdAt"
             activeField={sort.field}
@@ -506,7 +508,7 @@ function DocumentsTable({
       <tbody className="divide-y divide-slate-100">
         {documents.isLoading ? (
           <tr>
-            <td colSpan={4} className="px-4 py-6 text-center text-sm text-slate-500">
+            <td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-500">
               Loading documents…
             </td>
           </tr>
@@ -514,7 +516,7 @@ function DocumentsTable({
 
         {documents.isError ? (
           <tr>
-            <td colSpan={4} className="px-4 py-6 text-center text-sm text-red-600">
+            <td colSpan={5} className="px-4 py-6 text-center text-sm text-red-600">
               Failed to load documents
               {documents.error instanceof ApiError ? `: ${documents.error.message}` : "."}
             </td>
@@ -523,7 +525,7 @@ function DocumentsTable({
 
         {!documents.isLoading && !documents.isError && documents.items.length === 0 ? (
           <tr>
-            <td colSpan={4} className="px-4 py-6 text-center text-sm text-slate-500">
+            <td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-500">
               No documents saved for this company yet. Use the wizard
               to create one.
             </td>
@@ -537,6 +539,9 @@ function DocumentsTable({
             </td>
             <td className="px-4 py-3 text-slate-700">
               {formatScopeLabel(doc.scope)}
+            </td>
+            <td className="px-4 py-3">
+              <DocumentOfferStatus scope={doc.scope} payload={doc.payload} />
             </td>
             <td className="px-4 py-3 text-slate-500">{formatDateTime(doc.createdAt)}</td>
             <td className="px-4 py-3 text-right">

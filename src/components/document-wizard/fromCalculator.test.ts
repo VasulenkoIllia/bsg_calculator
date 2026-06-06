@@ -58,6 +58,9 @@ describe("manual wizard builders", () => {
     const draft = buildDocumentTemplatePayloadManualDefaults();
 
     expect(draft.layout.source).toBe("manual");
+    // "Offer valid till" seeds to the 15-day default through the shared
+    // header funnel (buildDocumentHeaderMetaFromCalculator).
+    expect(draft.header.offerValidDays).toBe(15);
     expect(draft.payin.euPercent).toBe(80);
     expect(draft.payin.wwPercent).toBe(20);
     expect(draft.payinPricing.eu.single.mdrPercent).toBe(4.5);
@@ -117,6 +120,7 @@ describe("buildOfferPdfHtml", () => {
         documentType: "Commercial Pricing Schedule",
         documentNumber: "BSG-DRAFT-10001",
         documentDateIso: "2026-05-02",
+        offerValidDays: 15,
         collectionModel: "IC++",
         collectionFrequency: "Daily (unless agreed otherwise)"
       },
@@ -238,6 +242,26 @@ describe("buildOfferPdfHtml", () => {
       }
     };
   }
+
+  it("renders OFFER VALID TILL on the offer cover (derived from date + days)", () => {
+    const html = buildOfferPdfHtml(buildBaseTemplateData());
+    expect(html).toContain("OFFER VALID TILL");
+    expect(html).toContain("17.05.2026"); // 2026-05-02 + 15 days
+  });
+
+  it("omits OFFER VALID TILL for the agreement bundle scope", () => {
+    const data = buildBaseTemplateData();
+    data.documentScope = "offerAndAgreement";
+    const html = buildOfferPdfHtml(data);
+    expect(html).not.toContain("OFFER VALID TILL");
+  });
+
+  it("omits OFFER VALID TILL for an offer with no explicit validity (old payload)", () => {
+    const data = buildBaseTemplateData();
+    delete (data.header as { offerValidDays?: number }).offerValidDays;
+    const html = buildOfferPdfHtml(data);
+    expect(html).not.toContain("OFFER VALID TILL");
+  });
 
   it("omits unavailable calculator blocks in preview html", () => {
     const data = buildBaseTemplateData();

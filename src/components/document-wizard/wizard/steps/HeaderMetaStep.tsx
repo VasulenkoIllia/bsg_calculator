@@ -3,6 +3,7 @@ import { DOCUMENT_TYPE_HINTS, DOCUMENT_TYPE_LABELS } from "../../legalDefaults.j
 import type { DocumentScope } from "../../legalDefaults.js";
 import type { DocumentHeaderMetaDraft, DocumentTemplatePayload } from "../../types.js";
 import { StepNavigation } from "../shared.js";
+import { OfferValidTillField } from "./OfferValidTillField.js";
 
 const SCOPE_VALUES: DocumentScope[] = ["offer", "offerAndAgreement"];
 
@@ -23,6 +24,15 @@ export function HeaderMetaStep({
 }) {
   const manualSource = draft.layout.source === "manual";
   const scope = draft.documentScope;
+
+  // "Offer valid till" setter (offer scope only). The control + its derived
+  // preview + the backfill live in OfferValidTillField; this just patches the
+  // day count on the draft header.
+  const setOfferValidDays = (days: number) =>
+    onDraftChange({
+      ...draft,
+      header: { ...draft.header, offerValidDays: days }
+    });
 
   const update = <K extends keyof DocumentHeaderMetaDraft>(
     field: K,
@@ -96,6 +106,13 @@ export function HeaderMetaStep({
             aria-label="Document Date"
           />
         </label>
+        {scope === "offer" ? (
+          <OfferValidTillField
+            documentDateIso={draft.header.documentDateIso}
+            offerValidDays={draft.header.offerValidDays}
+            onChange={setOfferValidDays}
+          />
+        ) : null}
         <label>
           <span className="field-label">Collection Model</span>
           <input

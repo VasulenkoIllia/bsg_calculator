@@ -1,4 +1,5 @@
 import { escapeHtml } from "../../shared/html.js";
+import { hasExplicitOfferValidity, offerValidTillIso } from "../../shared/offerValidity.js";
 import { buildAgreementBodyHtml } from "./agreementPdf/index.js";
 import {
   buildPdfUiKitStyles,
@@ -135,7 +136,23 @@ export function buildOfferPdfHtml(
     .filter(Boolean)
     .join("");
 
-  // DOCUMENT NUMBER + DATE rendered top-right, opposite the title.
+  // "Offer valid till" — only on the standalone Commercial Pricing Schedule
+  // (offer scope) AND only when the document carries an explicit validity.
+  // Documents stored before this feature have none, so they are not
+  // retroactively labeled. Derived from the document date + the chosen day
+  // count; neutral color (no valid/expired styling in the static PDF).
+  const offerValidTillItem =
+    scope === "offer" && hasExplicitOfferValidity(data.header.offerValidDays)
+      ? `<div class="title-aside-item">
+          <span class="title-aside-label">OFFER VALID TILL</span>
+          <span class="title-aside-value">${escapeHtml(
+            formatDisplayDate(offerValidTillIso(data.header.documentDateIso, data.header.offerValidDays))
+          )}</span>
+        </div>`
+      : "";
+
+  // DOCUMENT NUMBER + DATE (+ OFFER VALID TILL for offers) rendered
+  // top-right, opposite the title.
   const titleAside = `<div class="offer-title-aside">
         <div class="title-aside-item">
           <span class="title-aside-label">DOCUMENT NUMBER</span>
@@ -145,6 +162,7 @@ export function buildOfferPdfHtml(
           <span class="title-aside-label">DOCUMENT DATE</span>
           <span class="title-aside-value">${escapeHtml(displayDate)}</span>
         </div>
+        ${offerValidTillItem}
       </div>`;
 
   const metaNote = `<p class="meta-note">

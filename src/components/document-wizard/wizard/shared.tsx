@@ -189,6 +189,13 @@ export function ToggleCheckbox({
 // a free-form note that renders under the corresponding pricing
 // table in the OFFER PDF. The textarea is locked while the toggle is
 // off so the user opts in explicitly.
+//
+// The note is capped to a short length + fixed box height (~2-3 lines) so a
+// long note can't blow out the PDF section spacing. The PDF renderer is
+// unchanged — this is purely an input constraint. Tune against the rendered
+// 7.5pt note width in the visual-diff pass.
+const SECTION_NOTE_MAX_LENGTH = 280;
+
 export function SectionCustomNoteCard({
   title,
   description,
@@ -226,20 +233,37 @@ export function SectionCustomNoteCard({
       </div>
       <textarea
         className={[
-          "field-input mt-3 min-h-[72px] resize-y",
+          "field-input mt-3 resize-none",
           !enabled ? LOCKED_INPUT_CLASSES : ""
         ].join(" ")}
+        rows={3}
+        maxLength={SECTION_NOTE_MAX_LENGTH}
         value={text}
         onChange={event => onTextChange(event.target.value)}
         placeholder={
           enabled
-            ? "Free text rendered in muted gray under the table. Use line breaks freely."
+            ? "Short free text (~2-3 lines) rendered in muted gray under the table."
             : "Toggle 'Add note' to enable this textarea."
         }
         aria-label={`${ariaPrefix} text`}
         readOnly={!enabled}
         aria-readonly={!enabled}
       />
+      {enabled ? (
+        <p
+          className={[
+            "mt-1 text-right text-[11px]",
+            // An existing stored note can exceed the cap (maxLength only
+            // blocks NEW input, never truncates the value) — flag it so the
+            // operator knows the over-limit text is kept, not cut.
+            text.length > SECTION_NOTE_MAX_LENGTH
+              ? "font-semibold text-red-600"
+              : "text-slate-400"
+          ].join(" ")}
+        >
+          {text.length}/{SECTION_NOTE_MAX_LENGTH}
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -72,8 +72,11 @@ export function buildPdfUiKitStyles(tokens: PdfUiKitTokens): string {
    * 2026-05-30: removing the DOCUMENT NUMBER/DATE row from the cover
    * meta-grid freed ~64px, redistributed proportionally into these
    * gaps so the cover + sections breathe WITHOUT adding net height
-   * (page counts unchanged — verified against the heaviest configs). */
-  --space-section-gap: 8mm;
+   * (page counts unchanged — verified against the heaviest configs).
+   * 2026-06-04: 8mm to 9mm — section custom notes are now input-capped to
+   * ~2-3 lines, reclaiming height to widen inter-section breathing room
+   * (page counts re-verified via the visual-diff harness). */
+  --space-section-gap: 9mm;
   --space-header-gap: 11px;
   --space-grid-gap: 12px;
   --space-cell-y: 8px;

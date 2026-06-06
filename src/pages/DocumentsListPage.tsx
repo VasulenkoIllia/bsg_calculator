@@ -34,6 +34,7 @@ import { CompanyTypeahead } from "../components/CompanyTypeahead.js";
 import { LastActionCell } from "../components/LastActionCell.js";
 import { LoadMoreButton } from "../components/LoadMoreButton.js";
 import { SortableTh } from "../components/SortableTh.js";
+import { DocumentOfferStatus } from "../components/OfferStatusBadge.js";
 import { useAuth } from "../contexts/AuthContext.js";
 import { useToast } from "../contexts/ToastContext.js";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
@@ -411,7 +412,12 @@ export function DocumentsListPage() {
                     {doc.companyName} →
                   </Link>
                 </td>
-                <td className="px-4 py-3 text-slate-700">{formatScopeLabel(doc.scope)}</td>
+                <td className="px-4 py-3 text-slate-700">
+                  <div className="flex flex-col items-start gap-1">
+                    <span>{formatScopeLabel(doc.scope)}</span>
+                    <DocumentOfferStatus scope={doc.scope} payload={doc.payload} />
+                  </div>
+                </td>
                 <td className="px-4 py-3">
                   <StatusCell
                     doc={doc}

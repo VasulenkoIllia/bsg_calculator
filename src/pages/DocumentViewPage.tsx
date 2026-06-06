@@ -23,6 +23,7 @@ import type { DocumentDeletionReason } from "../api/types.js";
 import { buildOfferPdfHtml } from "../components/document-wizard/index.js";
 import type { DocumentTemplatePayload } from "../components/document-wizard/index.js";
 import { DeleteDocumentModal } from "../components/DeleteDocumentModal.js";
+import { DocumentOfferStatus } from "../components/OfferStatusBadge.js";
 import { EventHistoryPanel } from "../components/EventHistoryPanel.js";
 import { useAuth } from "../contexts/AuthContext.js";
 import { useToast } from "../contexts/ToastContext.js";
@@ -252,6 +253,7 @@ export function DocumentViewPage() {
               {doc.number}
             </h1>
             <p className="text-sm text-slate-500">Created {formatDateTime(doc.createdAt)}</p>
+            <DocumentOfferStatus scope={doc.scope} payload={doc.payload} className="mt-1" />
           </div>
           {/*
             Phase 9 — HubSpot sync status badge. Three states:
