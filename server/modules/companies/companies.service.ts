@@ -12,15 +12,19 @@
  */
 
 import { env } from "../../config/env";
+import { db } from "../../db/client";
 import { parseDtoOrInternalError } from "../../shared/dto-parse";
-import { NotFoundError } from "../../shared/errors";
+import { NotFoundError, ValidationError } from "../../shared/errors";
 import { buildSortedPage, type PageResult } from "../../shared/sorted-pagination";
 import { scheduleTtlRefresh as runTtlRefresh } from "../../shared/ttl-refresh";
 import { hubspot } from "../hubspot/hubspot.client";
 import { mapHubspotCompanyToRow } from "../hubspot/hubspot.mapper";
+import { hardDeleteDocumentsByCompanyId } from "../documents/documents.repository";
+import { deleteDealsByCompanyId } from "../deals/deals.repository";
 import type { Company } from "../../db/schema";
 import {
   cursorValueForRow,
+  deleteCompanyByHubspotId,
   findCompanyById,
   findCompanyByHubspotId,
   listCompanies,
@@ -115,4 +119,45 @@ export async function loadCompanyByHubspotIdOrNull(
   hubspotCompanyId: string
 ): Promise<Company | undefined> {
   return findCompanyByHubspotId(hubspotCompanyId);
+}
+
+export interface PurgedCompanySummary {
+  id: string;
+  name: string;
+  hubspotCompanyId: string;
+  documents: number;
+  deals: number;
+}
+
+/**
+ * ADMIN action — fully remove a company from OUR system (NOT HubSpot):
+ * the company + ALL its documents (their `document_events` cascade), its
+ * deals, and its calculator-configs (cascade on the company delete). One
+ * transaction. Returns the deleted counts for the audit log.
+ *
+ * GUARD: only a company that HubSpot ALREADY deleted (`hubspot_deleted_at`
+ * is set) may be purged — we must never hard-delete the documents of a
+ * company that is still live in HubSpot. The admin/super_admin
+ * authorization is enforced at the route. IRREVERSIBLE.
+ */
+export async function purgeDeletedCompany(companyId: string): Promise<PurgedCompanySummary> {
+  const company = await findCompanyById(companyId);
+  if (!company) throw new NotFoundError("Company");
+  if (!company.hubspotDeletedAt) {
+    throw new ValidationError(
+      "Only a company that was deleted from HubSpot can be removed from the system."
+    );
+  }
+  return db.transaction(async tx => {
+    const documents = await hardDeleteDocumentsByCompanyId(company.id, tx);
+    const deals = await deleteDealsByCompanyId(company.hubspotCompanyId, tx);
+    await deleteCompanyByHubspotId(company.hubspotCompanyId, tx);
+    return {
+      id: company.id,
+      name: company.name,
+      hubspotCompanyId: company.hubspotCompanyId,
+      documents,
+      deals
+    };
+  });
 }

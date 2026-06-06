@@ -14,6 +14,8 @@ import { ApiError } from "../api/client.js";
 import * as companiesApi from "../api/companies.js";
 import type { PublicCompany, PublicDeal } from "../api/types.js";
 import { CompanyDetailPage } from "./CompanyDetailPage.js";
+import { AuthProvider } from "../contexts/AuthContext.js";
+import { ToastProvider } from "../contexts/ToastContext.js";
 
 const fixtureCompany = (overrides: Partial<PublicCompany> = {}): PublicCompany => ({
   id: "11111111-1111-1111-1111-111111111111",
@@ -54,11 +56,19 @@ function renderAt(id: string) {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[`/companies/${id}`]}>
-        <Routes>
-          <Route path="/companies/:id" element={<CompanyDetailPage />} />
-        </Routes>
-      </MemoryRouter>
+      {/* CompanyDetailPage now reads useAuth().hasRole + useToast for the
+          admin "Delete from system" action, so the tree needs both
+          providers (mirrors DocumentViewPage.test). The AuthProvider
+          cold-boot refresh is a fast no-op with no refresh cookie. */}
+      <AuthProvider>
+        <ToastProvider>
+          <MemoryRouter initialEntries={[`/companies/${id}`]}>
+            <Routes>
+              <Route path="/companies/:id" element={<CompanyDetailPage />} />
+            </Routes>
+          </MemoryRouter>
+        </ToastProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

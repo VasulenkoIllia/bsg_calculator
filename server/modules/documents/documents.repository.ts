@@ -606,3 +606,24 @@ export async function countDocumentsByCompanyId(companyId: string): Promise<numb
   return row?.n ?? 0;
 }
 
+/**
+ * HARD-delete every document (alive + soft-deleted) owned by a company —
+ * their `document_events` cascade away via FK. Returns the number removed.
+ *
+ * This is irreversible and bypasses the normal soft-delete flow. Reserved
+ * for the admin "purge a HubSpot-deleted company" path + the reconcile
+ * script's --purge, both of which gate on the company being gone from
+ * HubSpot. NOT for routine document deletion (use softDeleteDocument).
+ * Accepts a TX so it composes with the company delete.
+ */
+export async function hardDeleteDocumentsByCompanyId(
+  companyId: string,
+  tx: DbOrTx = db
+): Promise<number> {
+  const rows = await tx
+    .delete(documents)
+    .where(eq(documents.companyId, companyId))
+    .returning({ id: documents.id });
+  return rows.length;
+}
+

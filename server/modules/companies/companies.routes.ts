@@ -10,8 +10,9 @@
 import { Router } from "express";
 import { dealsByCompanyController } from "../deals/deals.controller";
 import { requireAuth } from "../../middleware/require-auth";
+import { requireRole } from "../../middleware/require-role";
 import { asyncHandler } from "../../shared/async-handler";
-import { getController, listController } from "./companies.controller";
+import { getController, listController, purgeController } from "./companies.controller";
 
 export const companiesRouter = Router();
 
@@ -21,3 +22,8 @@ companiesRouter.use(requireAuth());
 companiesRouter.get("/", asyncHandler(listController));
 companiesRouter.get("/:id", asyncHandler(getController));
 companiesRouter.get("/:id/deals", asyncHandler(dealsByCompanyController));
+
+// ADMIN — fully purge a HubSpot-deleted company + its documents from our
+// system. requireRole("admin") accepts admin AND super_admin; the service
+// additionally refuses unless the company is flagged deleted-from-HubSpot.
+companiesRouter.delete("/:id", requireRole("admin"), asyncHandler(purgeController));

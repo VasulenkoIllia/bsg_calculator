@@ -4,15 +4,18 @@
  */
 
 import type { Request, Response } from "express";
+import { TokenInvalidError } from "../../shared/errors";
+import { auditActor } from "../../shared/audit-actor";
 import {
   decodeSortedCursor,
   encodeSortKey,
   parseSortQuery
 } from "../../shared/sorted-pagination";
 import { parseUuidParam } from "../../shared/uuid-param";
+import { recordAdminAction } from "../admin-actions/admin-actions.service";
 import { companySortFields } from "./companies.repository";
 import { listCompaniesQuerySchema } from "./companies.schemas";
-import { getCompany, searchCompanies } from "./companies.service";
+import { getCompany, purgeDeletedCompany, searchCompanies } from "./companies.service";
 
 export async function listController(req: Request, res: Response): Promise<void> {
   const query = listCompaniesQuerySchema.parse(req.query);
@@ -36,4 +39,30 @@ export async function getController(req: Request, res: Response): Promise<void> 
   const id = parseUuidParam(req, "id");
   const company = await getCompany(id);
   res.status(200).json(company);
+}
+
+/**
+ * ADMIN — fully delete a HubSpot-deleted company + ALL its documents from
+ * OUR system (route-gated to admin/super_admin). The service refuses
+ * unless `hubspot_deleted_at` is set; the action is audited. Irreversible.
+ */
+export async function purgeController(req: Request, res: Response): Promise<void> {
+  if (!req.user) {
+    throw new TokenInvalidError("Token references a deleted user.");
+  }
+  const id = parseUuidParam(req, "id");
+  const summary = await purgeDeletedCompany(id);
+  await recordAdminAction({
+    ...auditActor(req),
+    actionType: "company.purged",
+    targetType: "company",
+    targetId: id,
+    meta: {
+      hubspotCompanyId: summary.hubspotCompanyId,
+      name: summary.name,
+      documentsDeleted: summary.documents,
+      dealsDeleted: summary.deals
+    }
+  });
+  res.status(200).json(summary);
 }

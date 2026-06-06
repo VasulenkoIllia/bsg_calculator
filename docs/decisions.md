@@ -6217,4 +6217,48 @@ Use this file to record meaningful technical decisions for the project.
   the existing "test" / "(M) TEST 1 c" leftovers were DELETED upstream
   (no survivor) → remove with `reconcile-companies.ts --purge <id> --yes`.
 
+### Decision: Admin UI to fully delete a HubSpot-deleted company from our system
+- Date: 2026-06-06
+- Context:
+  - Follow-up to the "deleted from HubSpot" marker. Once a company is
+    flagged `hubspot_deleted_at` (gone upstream, retained because it owns
+    documents), the operator needs an in-app way to fully remove it +
+    its documents from OUR DB — without SSH + the reconcile CLI. The
+    operator asked for this to be admin-gated and limited to
+    already-deleted-from-HubSpot companies.
+- Decision:
+  - `DELETE /api/v1/companies/:id` — gated by `requireRole("admin")`
+    (admin AND super_admin) at the route; the service additionally REFUSES
+    unless `company.hubspot_deleted_at` is set (a live company can never be
+    purged this way). One transaction hard-deletes the documents (their
+    `document_events` cascade), the deals, then the company (its
+    calculator-configs + events cascade). Returns the deleted counts.
+  - Audited: new `admin_actions.action_type = 'company.purged'` (migration
+    0016, hand-written CHECK extension mirroring 0014) + a new `'company'`
+    target type (TS-only — `target_type` has no DB CHECK). The controller
+    records actor + counts in `meta`.
+  - Shared cascade: `documents.repository.hardDeleteDocumentsByCompanyId`
+    is reused by BOTH this endpoint and the reconcile script's `--purge`
+    (which keeps its own HubSpot-404 guard for the CLI path).
+  - UI: CompanyDetailPage shows a red "Delete from system…" button ONLY
+    when `hubspotDeletedAt` is set AND `hasRole("admin")`; a confirm modal
+    (DeleteCompanyModal) warns it's permanent + HubSpot-untouched, calls
+    the endpoint, toasts the counts, and navigates back to /companies.
+- Boundary / consequences:
+  - This is the ONE hard-delete path for documents (the normal flow is
+    soft-delete). It is safe because it is double-gated (admin role + the
+    upstream-deleted marker) and audited. Irreversible by design.
+  - Migration 0016 is a CHECK-constraint swap (DROP IF EXISTS + ADD) —
+    safe + idempotent; applies on deploy.
+- Verification: FE + BE `tsc` clean; lint 0 errors; FE 367/367 (+ a
+  DeleteCompanyModal unit; CompanyDetailPage.test wrapped in Auth/Toast
+  providers); new `companies-purge.integration` suite 6/6 (401 unauth; 403
+  non-admin deletes nothing; 404 missing; 400 still-live deletes nothing;
+  admin purge removes company+docs+deals + writes the audit row;
+  super_admin allowed). Migration 0016 applied locally (CHECK now accepts
+  `company.purged`).
+- Prod rollout: `git pull && docker compose up -d --build app` (entrypoint
+  applies 0016). Admins then get the "Delete from system" button on any
+  company badged "Deleted in HubSpot".
+
 

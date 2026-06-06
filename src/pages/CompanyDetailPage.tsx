@@ -19,7 +19,8 @@
  * cross-check against HubSpot exactly.
  */
 
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { useState } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client.js";
 import type { CalculatorConfigSortField } from "../api/calculator-configs.js";
 import type { CompanyDealSortField } from "../api/companies.js";
@@ -28,6 +29,9 @@ import { LoadMoreButton } from "../components/LoadMoreButton.js";
 import { SortableTh, type SortDirection } from "../components/SortableTh.js";
 import { DocumentOfferStatus } from "../components/OfferStatusBadge.js";
 import { HubspotDeletedBadge } from "../components/HubspotDeletedBadge.js";
+import { DeleteCompanyModal } from "../components/DeleteCompanyModal.js";
+import { useAuth } from "../contexts/AuthContext.js";
+import { useToast } from "../contexts/ToastContext.js";
 import { useCalculatorConfigs } from "../hooks/useCalculatorConfig.js";
 import { useCompany, useCompanyDeals } from "../hooks/useCompany.js";
 import { useDocuments } from "../hooks/useDocuments.js";
@@ -76,6 +80,10 @@ export function CompanyDetailPage() {
   };
 
   const companyQuery = useCompany(id);
+  const navigate = useNavigate();
+  const { hasRole } = useAuth();
+  const toast = useToast();
+  const [purgeOpen, setPurgeOpen] = useState(false);
 
   // All three tab queries are kicked off in parallel so switching
   // tabs feels instant. TanStack Query's `enabled` flag is left at
@@ -160,6 +168,21 @@ export function CompanyDetailPage() {
             <dd>{formatDateTime(company.lastSyncedAt)}</dd>
           </div>
         </dl>
+        {company.hubspotDeletedAt && hasRole("admin") ? (
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={() => setPurgeOpen(true)}
+              className="rounded-lg border border-red-600 px-3 py-1.5 text-sm font-semibold text-red-700 transition hover:bg-red-50"
+            >
+              Delete from system…
+            </button>
+            <p className="mt-1 text-xs text-slate-500">
+              This company was deleted in HubSpot. Permanently remove it and all
+              its documents from our system.
+            </p>
+          </div>
+        ) : null}
       </header>
     );
   };
@@ -176,6 +199,22 @@ export function CompanyDetailPage() {
       <div className="rounded-2xl border border-slate-200 bg-white p-6">
         {renderHeader()}
       </div>
+
+      {companyQuery.data ? (
+        <DeleteCompanyModal
+          open={purgeOpen}
+          companyId={companyQuery.data.id}
+          companyName={companyQuery.data.name}
+          onClose={() => setPurgeOpen(false)}
+          onPurged={summary => {
+            setPurgeOpen(false);
+            toast.success(
+              `Deleted ${summary.name}: ${summary.documents} document(s), ${summary.deals} deal(s)`
+            );
+            navigate("/companies");
+          }}
+        />
+      ) : null}
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="flex items-center gap-1 border-b border-slate-200 bg-slate-50 px-2 py-2">

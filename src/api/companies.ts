@@ -54,6 +54,25 @@ export async function getCompany(id: string): Promise<PublicCompany> {
   return data;
 }
 
+/** Summary returned by the admin company-purge endpoint. */
+export interface PurgedCompanySummary {
+  id: string;
+  name: string;
+  hubspotCompanyId: string;
+  documents: number;
+  deals: number;
+}
+
+/**
+ * ADMIN — fully delete a HubSpot-deleted company + ALL its documents from
+ * OUR system (DELETE /companies/:id). The server gates on admin/super_admin
+ * AND refuses unless the company is flagged deleted-from-HubSpot.
+ */
+export async function purgeCompany(id: string): Promise<PurgedCompanySummary> {
+  const { data } = await apiClient.delete<PurgedCompanySummary>(`/companies/${id}`);
+  return data;
+}
+
 /**
  * GET /companies/:id/deals — deals belonging to a company.
  *

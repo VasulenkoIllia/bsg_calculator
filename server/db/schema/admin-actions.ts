@@ -46,7 +46,9 @@ export const ADMIN_ACTION_TYPES = [
   "calc.created",
   "calc.updated",
   "calc.deleted",
-  "calc.synced"
+  "calc.synced",
+  // Companies — full LOCAL purge of a HubSpot-deleted company (admin).
+  "company.purged"
 ] as const;
 
 export type AdminActionType = (typeof ADMIN_ACTION_TYPES)[number];
@@ -67,7 +69,8 @@ export const ADMIN_ACTION_TARGET_TYPES = [
   "document",
   "calc_config",
   "invite",
-  "reset"
+  "reset",
+  "company"
 ] as const;
 
 export type AdminActionTargetType = (typeof ADMIN_ACTION_TARGET_TYPES)[number];
@@ -126,7 +129,8 @@ export const adminActions = pgTable(
         'auth.password_changed', 'auth.signed_out_everywhere',
         'document.created', 'document.synced',
         'document.deleted', 'document.restored',
-        'calc.created', 'calc.updated', 'calc.deleted', 'calc.synced'
+        'calc.created', 'calc.updated', 'calc.deleted', 'calc.synced',
+        'company.purged'
       )`
     )
   })

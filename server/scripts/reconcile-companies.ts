@@ -43,12 +43,14 @@
  *   docker compose exec app npx tsx server/scripts/reconcile-companies.ts --repoint 430570099930 <survivorHubspotId>
  */
 
-import { eq } from "drizzle-orm";
 import { db, pool } from "../db/client";
-import { companies as companiesTable, documents, type Company } from "../db/schema";
+import { companies as companiesTable, type Company } from "../db/schema";
 import { logger } from "../middleware/logger";
 import { hubspot, isHubspotNotFound } from "../modules/hubspot/hubspot.client";
-import { countDocumentsByCompanyId } from "../modules/documents/documents.repository";
+import {
+  countDocumentsByCompanyId,
+  hardDeleteDocumentsByCompanyId
+} from "../modules/documents/documents.repository";
 import {
   countDealsByCompanyHubspotId,
   deleteDealsByCompanyId
@@ -180,21 +182,18 @@ async function purge(hubspotId: string, confirmed: boolean): Promise<void> {
 
   await db.transaction(async tx => {
     // documents first (RESTRICT on company); their events cascade.
-    const removedDocs = await tx
-      .delete(documents)
-      .where(eq(documents.companyId, company.id))
-      .returning({ id: documents.id });
+    const removedDocs = await hardDeleteDocumentsByCompanyId(company.id, tx);
     // deals next (RESTRICT on company).
     await deleteDealsByCompanyId(company.hubspotCompanyId, tx);
     // finally the company — calculator_configs + their events cascade.
     await deleteCompanyByHubspotId(company.hubspotCompanyId, tx);
     logger.info(
-      { hubspotId, documents: removedDocs.length, deals },
+      { hubspotId, documents: removedDocs, deals },
       "[reconcile] purged deleted-upstream company"
     );
     // eslint-disable-next-line no-console
     console.log(
-      `[reconcile] purged ${company.name}: ${removedDocs.length} document(s) + ${deals} deal(s) + company removed.`
+      `[reconcile] purged ${company.name}: ${removedDocs} document(s) + ${deals} deal(s) + company removed.`
     );
   });
 }
