@@ -6038,4 +6038,54 @@ Use this file to record meaningful technical decisions for the project.
   `.agreement-section`). The ~1% backend/frontend pixel delta is
   PRE-EXISTING (proven identical via `git stash`), not a regression.
 
+### Decision: Stamp server-authoritative fields into the document payload
+- Date: 2026-06-04
+- Context:
+  - A document row has authoritative columns (`number`, `scope`, …) AND a
+    JSONB `payload` (the wizard `DocumentTemplatePayload`) that DUPLICATES
+    some of them (`payload.header.documentNumber`, `payload.documentScope`).
+    The **PDF renders entirely from the payload**, while the `/documents`
+    list + the HubSpot Note read the **row columns**.
+  - BUG (reported): `createDocument` allocated the row `number` but stored
+    `body.payload` VERBATIM, so `payload.header.documentNumber` kept the
+    FRONTEND value. Via "Use as Template" the template's OLD number rode
+    along, so the new document's row showed `BSG-7100016-…` while its PDF
+    rendered the template's `BSG-7100015-…`. (Also bites any case where the
+    wizard's numbering-PEEK preview diverged from the real allocation.)
+  - AUDIT (payload-staleness sweep of the whole duplication surface) found
+    exactly ONE more instance of the same class: `payload.documentScope`
+    was likewise not reconciled with the authoritative `scope` column. The
+    PDF gates the MSA appendix on `data.documentScope`; the list + Note use
+    `document.scope`. The wizard derives both from one source so a normal
+    save stays consistent, but it is UNGUARDED against template / clone /
+    non-wizard-client saves — same row≠payload≠PDF≠Note split.
+- Decision:
+  - In `createDocument` (server), STAMP the authoritative row values into
+    the payload before INSERT via `stampServerAuthoritativeFields`:
+    `payload.header.documentNumber` ← the allocated `number`;
+    `payload.documentScope` ← the `scope` column (snake_case →
+    camelCase: `offer` → `offer`, else → `offerAndAgreement`). The server
+    owns these (atomic allocation + CHECK-constrained column), so it wins
+    over whatever the wizard/template supplied. Now row = payload = PDF =
+    Note, always.
+- Boundary / consequences:
+  - Server-only change (`documents.service.ts`); no migration (payload is
+    JSONB). FORWARD-only: new documents are consistent; pre-fix rows keep a
+    stale number/scope in their payload (mostly test data) — a one-time
+    backfill (`payload.header.documentNumber = number`,
+    `payload.documentScope` from `scope`) would repair existing rows if
+    needed.
+  - Audit confirmed the rest of the duplication surface is SAFE: the BSG
+    suffix (derived from the same `companyId` in-TX), `addendum` /
+    `hubspotDealId` / `calculatorConfigId` (row-only, not in the payload),
+    `header.documentDateIso` vs `createdAt` (deliberately distinct concepts
+    — operator-chosen document date vs insert timestamp), and
+    `calculator_configs` (no server-authoritative value in its payload).
+- Verification: BE `tsc` clean; documents integration tests 31/31 (added a
+  test asserting a stale number + a DIVERGENT scope in the posted payload
+  are both overwritten with the row values). NOTE: the documents
+  integration suite is intermittently flaky under parallel DB state (a
+  different test fails per run, all green on re-run / in isolation) — a
+  pre-existing test-harness issue, not this change.
+
 

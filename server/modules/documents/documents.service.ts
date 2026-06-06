@@ -151,6 +151,37 @@ function toPublic(
 export type DocumentListPage = PageResult<DocumentPublic>;
 
 /**
+ * Stamp the SERVER-AUTHORITATIVE fields into the JSONB payload so the stored
+ * payload — and therefore the rendered PDF + preview — always matches the
+ * row's authoritative columns:
+ *   - `header.documentNumber` <- the allocated `number` (the PDF renders the
+ *     number from here);
+ *   - `documentScope`         <- the CHECK-constrained `scope` column (what the
+ *     /documents list + the HubSpot Note read), mapped to the camelCase payload
+ *     form; the PDF gates the MSA appendix on this.
+ * The wizard supplies these too, but only as a PREVIEW (numbering peek) or as a
+ * VERBATIM copy via "Use as Template" — the server owns them, so it overwrites
+ * here. Without this the row, the payload, the PDF, and the HubSpot Note can
+ * silently disagree. Defensive: returns the payload untouched if not an object.
+ */
+function stampServerAuthoritativeFields<T>(
+  payload: T,
+  documentNumber: string,
+  scope: string
+): T {
+  if (!payload || typeof payload !== "object") return payload;
+  const root: Record<string, unknown> = { ...(payload as Record<string, unknown>) };
+  // PDF gates the MSA appendix on documentScope; map the snake_case column to
+  // the camelCase payload form (offer | offerAndAgreement).
+  root.documentScope = scope === "offer" ? "offer" : "offerAndAgreement";
+  const header = root.header;
+  if (header && typeof header === "object") {
+    root.header = { ...(header as Record<string, unknown>), documentNumber };
+  }
+  return root as T;
+}
+
+/**
  * Create a document. Wraps `allocateNextNumber` + `INSERT documents`
  * in a single transaction so a rollback returns the BSG-XXXXX number
  * to the pool (no gaps from failed FK checks etc.).
@@ -226,7 +257,12 @@ export async function createDocument(
       hubspotDealId: body.hubspotDealId ?? null,
       calculatorConfigId: body.calculatorConfigId ?? null,
       scope: body.scope,
-      payload: body.payload,
+      // Stamp the allocated number + the authoritative scope into the payload
+      // so the PDF/preview/Note match the row. Fixes the stale number shown
+      // when a document is built via "Use as Template" (the template's values
+      // rode along in the payload), and any case where the wizard's preview /
+      // a non-wizard client diverged from the actual server allocation.
+      payload: stampServerAuthoritativeFields(body.payload, number, body.scope),
       addendum: body.addendum ?? null,
       createdByUserId: actorUserId
     });

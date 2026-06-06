@@ -157,6 +157,36 @@ describe("POST /api/v1/documents", () => {
     expect(res.body.calculatorConfigId).toBeNull();
   });
 
+  it("stamps the allocated number + authoritative scope into the saved payload (overrides template/divergent values)", async () => {
+    const token = await setupAuth();
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "111122223333" }))
+      .returning();
+
+    // Simulates "Use as Template" / a non-wizard client: the payload carries a
+    // STALE number AND a documentScope that DIVERGES from the request scope.
+    const res = await request(app)
+      .post("/api/v1/documents")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        companyId: company.id,
+        scope: "offer_and_agreement",
+        payload: {
+          ...samplePayload,
+          documentScope: "offer",
+          header: { documentNumber: "BSG-7100015-999999", documentDateIso: "2026-01-01" }
+        }
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.number).toBe("BSG-7100001-223333");
+    // The PDF renders from the payload, so the authoritative row values MUST be
+    // stamped into it — number AND scope — or row/payload/PDF/Note disagree.
+    expect(res.body.payload.header.documentNumber).toBe(res.body.number);
+    expect(res.body.payload.documentScope).toBe("offerAndAgreement");
+  });
+
   it("persists the addendum text + scope=offer_and_agreement", async () => {
     const token = await setupAuth();
     const [company] = await db.insert(companies).values(companyFixture()).returning();
