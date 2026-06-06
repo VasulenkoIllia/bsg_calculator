@@ -29,7 +29,10 @@ import { companies, type Document } from "../../db/schema";
 import { insertDocumentEvent } from "../events/events.repository";
 import { tryRecordEvent } from "../events/events.helpers";
 import { hubspot } from "../hubspot/hubspot.client";
-import { insertCalculatorConfig } from "../calculator-configs/calculator-configs.repository";
+import {
+  findUnchangedTemplateConfig,
+  insertCalculatorConfig
+} from "../calculator-configs/calculator-configs.repository";
 import {
   cursorValueForRow,
   findByNumber,
@@ -405,15 +408,27 @@ export async function useDocumentAsTemplate(
     throw new NotFoundError("Document");
   }
 
+  const title = `Template of ${doc.number}`;
+
+  // Idempotent: a document is immutable, so repeated "Use as Template"
+  // clicks would otherwise proliferate identical "Template of <n>" drafts
+  // (the operator saw four copies of one). If an UNCHANGED draft for this
+  // document already exists (same company + title + identical payload),
+  // reuse it. Once the operator edits a draft its payload diverges, so a
+  // later click correctly makes a fresh pristine copy.
+  const existing = await findUnchangedTemplateConfig(doc.companyId, title, doc.payload);
+  if (existing) {
+    return { configId: existing.id, redirectUrl: `/calc/${existing.id}` };
+  }
+
   // The document's payload contains both calc snapshot fields AND
-  // wizard meta (header / parties / signatures). We forward the
-  // ENTIRE payload — the frontend's calculator hydration will pick
-  // up only the calc fields it knows about; wizard meta is
-  // effectively ignored at the calc layer.
+  // wizard meta (header / parties / signatures) — a DocumentTemplatePayload.
+  // We forward the ENTIRE payload; the frontend detects this shape and
+  // opens the draft in the wizard (the calculator can't hydrate it).
   const newConfig = await insertCalculatorConfig({
     companyId: doc.companyId,
     hubspotDealId: doc.hubspotDealId,
-    title: `Template of ${doc.number}`,
+    title,
     payload: doc.payload,
     createdByUserId: actorUserId
   });

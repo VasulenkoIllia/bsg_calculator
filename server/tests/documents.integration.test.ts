@@ -728,6 +728,66 @@ describe("POST /api/v1/documents/:number/use-as-template", () => {
     expect(newConfig[0].title).toBe(`Template of ${docRes.body.number}`);
   });
 
+  it("is idempotent — a second use-as-template on the same doc reuses the draft (no duplicate)", async () => {
+    const token = await setupAuth();
+    const [company] = await db.insert(companies).values(companyFixture()).returning();
+    const [deal] = await db.insert(deals).values(dealFixture(company.hubspotCompanyId)).returning();
+    const docRes = await request(app)
+      .post("/api/v1/documents")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        companyId: company.id,
+        hubspotDealId: deal.hubspotDealId,
+        scope: "offer",
+        payload: samplePayload
+      });
+    expect(docRes.status).toBe(201);
+
+    const first = await request(app)
+      .post(`/api/v1/documents/${docRes.body.number}/use-as-template`)
+      .set("Authorization", `Bearer ${token}`);
+    const second = await request(app)
+      .post(`/api/v1/documents/${docRes.body.number}/use-as-template`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(first.body.configId).toBe(second.body.configId); // same draft reused
+    const configs = await db
+      .select()
+      .from(calculatorConfigs)
+      .where(eq(calculatorConfigs.title, `Template of ${docRes.body.number}`));
+    expect(configs).toHaveLength(1); // no duplicate
+  });
+
+  it("makes a fresh draft once the existing one has been edited (payload diverged)", async () => {
+    const token = await setupAuth();
+    const [company] = await db.insert(companies).values(companyFixture()).returning();
+    const docRes = await request(app)
+      .post("/api/v1/documents")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, scope: "offer", payload: samplePayload });
+    expect(docRes.status).toBe(201);
+
+    const first = await request(app)
+      .post(`/api/v1/documents/${docRes.body.number}/use-as-template`)
+      .set("Authorization", `Bearer ${token}`);
+    // Operator edits the draft → its payload diverges from the document.
+    await db
+      .update(calculatorConfigs)
+      .set({ payload: { ...samplePayload, _edited: true } })
+      .where(eq(calculatorConfigs.id, first.body.configId));
+
+    const second = await request(app)
+      .post(`/api/v1/documents/${docRes.body.number}/use-as-template`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(second.body.configId).not.toBe(first.body.configId); // fresh pristine copy
+    const configs = await db
+      .select()
+      .from(calculatorConfigs)
+      .where(eq(calculatorConfigs.title, `Template of ${docRes.body.number}`));
+    expect(configs).toHaveLength(2);
+  });
+
   it("returns 404 on missing source doc", async () => {
     const token = await setupAuth();
     const res = await request(app)

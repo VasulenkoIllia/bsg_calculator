@@ -6261,4 +6261,47 @@ Use this file to record meaningful technical decisions for the project.
   applies 0016). Admins then get the "Delete from system" button on any
   company badged "Deleted in HubSpot".
 
+### Decision: Idempotent "Use as Template" + Saved-calculators document-draft badge (template/hydration audit)
+- Date: 2026-06-06
+- Context:
+  - Audit of the calculator ↔ wizard ↔ saved-config flows (operator
+    reported a pile of identical "Template of BSG-…" drafts + confusion
+    that opening one bounces to the wizard).
+  - HYDRATION audit — ALL three directions are CORRECT, no data lost:
+    snapshot → calculator (full restore), DocumentTemplatePayload →
+    wizard (full restore via `?calc=<id>`), calculator → wizard (full,
+    except `dedicatedCountries` which is intentionally calculator-only).
+    No fix needed there.
+  - Two real findings: (1) `useDocumentAsTemplate` inserted a NEW
+    `calculator_config` on EVERY click — documents are immutable, so
+    repeated clicks proliferated identical "Template of <n>" drafts;
+    (2) those document-draft configs sit in "Saved calculators" and
+    `/calc/:id` silently redirected them to the wizard (their payload
+    can't hydrate the calculator), with no visual cue.
+- Decision:
+  - **Idempotent template:** before inserting, `useDocumentAsTemplate`
+    now reuses an existing UNCHANGED draft for the document
+    (`findUnchangedTemplateConfig` — same company + title + jsonb-equal
+    payload). Repeated clicks return the same draft; once the operator
+    edits it (payload diverges) a later click makes a fresh pristine copy.
+    No schema change — the dedup key is (company, title, payload).
+  - **Document-draft badge + honest link** (shipped just prior): the
+    "Saved calculators" list detects document drafts
+    (`isDocumentTemplatePayload`) and badges them "Document draft" + links
+    "Open in wizard →" straight to `/wizard?calc=:id` (no /calc bounce).
+- Boundary / consequences:
+  - The calculator DOMAIN (`src/domain/calculator/**`,
+    `src/components/calculator/**`) was NOT touched — analysis only.
+  - NOTE: the operator half-remembered a "don't save if unchanged" doc
+    rule; the actual doc statement was that the original DOCUMENT stays
+    immutable — there was never a no-save-on-no-change guard. The template
+    dedup is the concrete expression of that intent for templates.
+  - `docs/client_and_hubspot_workflow.md` "Use as template" flow updated
+    (it had a stale title "From BSG-<n>" + a stale `/calc` redirect).
+- Verification: BE `tsc` clean; use-as-template suite green incl. new
+  cases (second click reuses the draft → exactly one config; after editing
+  the draft a click makes a 2nd pristine copy); FE list badge/link covered
+  by the CalculatorsListPage unit. Server-only logic change + FE list
+  presentation; no migration.
+
 

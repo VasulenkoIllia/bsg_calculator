@@ -95,6 +95,37 @@ export async function findById(id: string): Promise<CalculatorConfig | undefined
   return rows[0];
 }
 
+/**
+ * Find an existing, UNCHANGED "Use as Template" draft for a document —
+ * same company + same title + a SEMANTICALLY-IDENTICAL payload (Postgres
+ * jsonb `=`, so key order / whitespace don't matter).
+ *
+ * Used by `useDocumentAsTemplate` to be idempotent: repeated "Use as
+ * Template" clicks on the same (immutable) document reuse the pristine
+ * draft instead of proliferating identical "Template of <n>" rows. Once
+ * the operator EDITS the draft (its payload diverges from the document),
+ * a fresh click no longer matches and makes a new pristine copy.
+ */
+export async function findUnchangedTemplateConfig(
+  companyId: string,
+  title: string,
+  payload: unknown
+): Promise<CalculatorConfig | undefined> {
+  const rows = await db
+    .select()
+    .from(calculatorConfigs)
+    .where(
+      and(
+        eq(calculatorConfigs.companyId, companyId),
+        eq(calculatorConfigs.title, title),
+        sql`${calculatorConfigs.payload} = ${JSON.stringify(payload)}::jsonb`
+      )
+    )
+    .orderBy(asc(calculatorConfigs.createdAt))
+    .limit(1);
+  return rows[0];
+}
+
 export async function insertCalculatorConfig(
   row: NewCalculatorConfig,
   /**

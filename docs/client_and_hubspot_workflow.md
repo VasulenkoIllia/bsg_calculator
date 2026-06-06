@@ -65,13 +65,22 @@ Concrete flow:
 From `/documents/<number>` view, clicking "Use as template":
 
 1. `POST /api/v1/documents/:number/use-as-template`
-2. Backend creates a NEW `calculator_configs` row, seeded with the
-   document's payload + same company + same deal + auto-name "From
-   BSG-<n> · <date>".
-3. Returns `{ calculator_config_id, redirect_to: '/calc/<uuid>' }`.
-4. Frontend redirects. Operator edits as in step 4 above. Saving
-   produces a NEW document with a NEW number; the original document
-   is unchanged.
+2. Backend returns a `calculator_configs` draft seeded with the
+   document's FULL payload (a `DocumentTemplatePayload`) + the same
+   company + deal, titled `Template of <BSG-XXXXX>`.
+   **Idempotent (Sprint 9.X):** a document is immutable, so if an
+   UNCHANGED draft for it already exists (same company + title +
+   semantically-identical payload) the backend REUSES it instead of
+   proliferating identical copies. Once the operator edits a draft its
+   payload diverges, so a later click makes a fresh pristine copy.
+3. Returns `{ configId, redirectUrl }`.
+4. The frontend opens the draft in the **Contract Wizard**
+   (`/wizard?calc=<configId>`): the payload is a wizard draft, which the
+   calculator can't hydrate — opening `/calc/<id>` directly just redirects
+   to the wizard anyway. In "Saved calculators" these drafts are badged
+   **"Document draft"** and their Open link points straight to the wizard.
+   Editing + saving produces a NEW document with a NEW number; the
+   original document is unchanged.
 
 This is the ONLY way to "edit" an existing document. The original
 stays immutable forever.
