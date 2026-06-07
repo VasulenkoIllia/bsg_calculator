@@ -25,6 +25,7 @@
 import { useState } from "react";
 import { ApiError } from "../api/client.js";
 import { deleteCalculatorConfig } from "../api/calculator-configs.js";
+import { REASON_OPTIONS } from "../shared/deletionReason.js";
 import type { CalculatorConfigDeletionReason } from "../api/calculator-configs.js";
 
 interface DeleteCalculatorModalProps {
@@ -35,14 +36,6 @@ interface DeleteCalculatorModalProps {
   onClose: () => void;
   onDeleted: () => void;
 }
-
-const REASON_OPTIONS: { value: CalculatorConfigDeletionReason; label: string }[] = [
-  { value: "client_request", label: "Client request" },
-  { value: "created_in_error", label: "Created in error" },
-  { value: "replaced_by_new_version", label: "Replaced by new version" },
-  { value: "duplicate", label: "Duplicate" },
-  { value: "other", label: "Other (note required)" }
-];
 
 export function DeleteCalculatorModal({
   open,

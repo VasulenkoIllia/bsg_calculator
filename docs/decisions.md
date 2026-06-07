@@ -6424,4 +6424,59 @@ Use this file to record meaningful technical decisions for the project.
 - Verification: FE + BE `tsc` clean; lint 0 errors; full FE + server suites
   green (only the known `auth.tokens` env flake). Build green.
 
+### Decision: Unify Documents & Saved-calculators lists + `dealScope` filter + post-audit dedup
+- Date: 2026-06-07
+- Context:
+  - The two list pages (`DocumentsListPage`, `CalculatorsListPage`) drifted
+    apart across sprints. Operator asked to bring them to "one look": add
+    inline Open/Delete actions to Documents like the calculators list, align
+    filters, and remove onboarding captions that clutter the power-user UI.
+    A follow-up adversarial audit of the change then flagged duplication +
+    one empty-state bug to clean up.
+- Decision (commit cab9e26 — unification):
+  - **Documents list** gained an inline actions column: an `Open →` link +
+    an admin-only `Delete` button (alive rows) that opens the existing
+    `DeleteDocumentModal` at list level (onDeleted → invalidate + toast +
+    close). The BSG number stays a link (operator decision). No backend
+    change — soft-delete/restore endpoints already existed.
+  - **Shared `HubspotSyncBadge`** (5 states) extracted from the inline
+    Documents JSX; Documents reuse it and the **calculators list gained a
+    matching "HubSpot sync" column** (DTO already carried the state;
+    non-sortable to avoid a backend sort-key, unlike the documents column).
+  - **Calc list `dealScope` filter** (`all | company_level | deal_pinned`,
+    default `all`) — schema + repository (`hubspotDealId IS NULL/IS NOT NULL`)
+    + controller, mirroring the existing `status`/`deletedScope` plumbing;
+    FE Deal dropdown symmetric to the Documents Scope filter. Independent of
+    the wizard-picker `showAll`/`hubspotDealId` scope (they compose).
+  - **Decorative copy removed** (functional text kept): the Documents and
+    Saved-calculators page subtitles, the Invites "Pending links…" blurb, the
+    DocumentView "Same render the wizard uses…" caption, and the Create-user
+    modal subtitle.
+- Decision (post-audit dedup — this commit):
+  - Extracted **`src/shared/deletionReason.ts`** (`DELETION_REASONS` tuple,
+    `DeletionReason` type, `humanReason`, `REASON_OPTIONS`) — the reason
+    humanizer was copy-pasted in 3 files (with a `"Replaced by new"` vs
+    `"Replaced by new version"` skew, now one canonical label) and the option
+    table in both delete modals. The two FE enums alias the shared type.
+  - Extracted **`src/components/DeletionStatusCell.tsx`** (props: `deletedAt`,
+    `deletionReason`, `onRestore`, `restoring`) — replaced two byte-identical
+    local `StatusCell` copies. Takes primitives, not a DTO, so it stays
+    decoupled from the document vs calc row shapes.
+  - Fixed a real bug: the calculators **empty-state** message ignored the new
+    Status/Deal filters (showed "no calculators yet" when a filter yielded
+    zero) — now mirrors the documents check. Normalized filter-strip widths
+    across both pages; added the `DOCUMENT_DELETE_IN_PROGRESS` 409 branch to
+    `DeleteDocumentModal` (parity with the calc modal).
+  - Audit verdict: NO regressions/logic bugs in the unification work; the
+    delete-modal full unification + test-helper/actions-column dedup were
+    deliberately DEFERRED as over-abstraction (the per-entity error map +
+    routing are the only variable axes).
+- Boundary: all work is list pages / shared components / the calc-config
+  list+API — the frozen calculator domain (`src/components/calculator/**`,
+  `src/domain/calculator/**`) is untouched. No DB migration.
+- Verification: FE + server `tsc` clean; lint 0 errors; FE 392/392 (+ list
+  tests for Open/Delete, sync column, Deal filter); server 387/388 (only the
+  known `auth.tokens` env flake) incl. a new `dealScope` integration test;
+  build green.
+
 

@@ -32,6 +32,7 @@ import { ApiError } from "../api/client.js";
 import * as documentsApi from "../api/documents.js";
 import { CompanyTypeahead } from "../components/CompanyTypeahead.js";
 import { DeleteDocumentModal } from "../components/DeleteDocumentModal.js";
+import { DeletionStatusCell } from "../components/DeletionStatusCell.js";
 import { HubspotSyncBadge } from "../components/HubspotSyncBadge.js";
 import { LastActionCell } from "../components/LastActionCell.js";
 import { LoadMoreButton } from "../components/LoadMoreButton.js";
@@ -49,87 +50,13 @@ import type {
   DocumentSortField
 } from "../api/documents.js";
 import type {
-  DocumentDeletionReason,
   PublicCompany,
   PublicDocumentListItem
 } from "../api/types.js";
 
-/**
- * Sprint 9.N — humanise the deletion reason enum for the Status
- * badge. Mirrors the labels in DeleteDocumentModal / DocumentViewPage
- * — kept inline because the helper is 7 lines and the duplication
- * keeps each page self-contained.
- */
-function humanReason(reason: DocumentDeletionReason): string {
-  switch (reason) {
-    case "client_request":
-      return "Client request";
-    case "created_in_error":
-      return "Created in error";
-    case "replaced_by_new_version":
-      return "Replaced by new";
-    case "duplicate":
-      return "Duplicate";
-    case "other":
-      return "Other";
-    default: {
-      const _exhaustive: never = reason;
-      return String(_exhaustive);
-    }
-  }
-}
-
-/**
- * Sprint 9.N — Status column renderer. Two states today: Active
- * (the row is alive) and Deleted (with the reason inline). When
- * Stage 6 adds delete_pending / delete_failed transition states we
- * can extend this without touching the row JSX.
- *
- * Sprint 9.R — added inline Restore button for super_admin on
- * deleted rows. The previous flow forced a click-into-detail-page
- * just to restore; operator brief explicitly asked for inline
- * action ("додати на сторінку документів також можливість
- * відновити документ").
- */
-function StatusCell({
-  doc,
-  onRestore,
-  restoring
-}: {
-  doc: PublicDocumentListItem;
-  onRestore: (() => void) | null;
-  restoring: boolean;
-}) {
-  if (doc.deletedAt) {
-    return (
-      <div className="flex flex-col gap-1">
-        <span className="inline-flex w-fit items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700">
-          Deleted
-        </span>
-        {doc.deletionReason ? (
-          <span className="text-xs text-slate-500">
-            {humanReason(doc.deletionReason)}
-          </span>
-        ) : null}
-        {onRestore ? (
-          <button
-            type="button"
-            onClick={onRestore}
-            disabled={restoring}
-            className="mt-0.5 w-fit rounded border border-green-500 bg-white px-2 py-0.5 text-[10px] font-semibold text-green-700 hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {restoring ? "Restoring…" : "Restore"}
-          </button>
-        ) : null}
-      </div>
-    );
-  }
-  return (
-    <span className="inline-flex w-fit items-center rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-700">
-      Active
-    </span>
-  );
-}
+// Audit dedup — the Status-cell badge + the deletion-reason humanizer
+// now live in shared modules (DeletionStatusCell + deletionReason),
+// previously copy-pasted here and in CalculatorsListPage.
 
 /**
  * Inline company filter — Sprint 6.6 uses the shared CompanyTypeahead
@@ -423,8 +350,9 @@ export function DocumentsListPage() {
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <StatusCell
-                    doc={doc}
+                  <DeletionStatusCell
+                    deletedAt={doc.deletedAt}
+                    deletionReason={doc.deletionReason}
                     onRestore={
                       hasRole("super_admin") && doc.deletedAt
                         ? () => restoreMutation.mutate(doc.number)

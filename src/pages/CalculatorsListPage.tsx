@@ -31,6 +31,7 @@ import { ApiError } from "../api/client.js";
 import * as configsApi from "../api/calculator-configs.js";
 import { CompanyTypeahead } from "../components/CompanyTypeahead.js";
 import { DeleteCalculatorModal } from "../components/DeleteCalculatorModal.js";
+import { DeletionStatusCell } from "../components/DeletionStatusCell.js";
 import { HubspotSyncBadge } from "../components/HubspotSyncBadge.js";
 import { LastActionCell } from "../components/LastActionCell.js";
 import { LoadMoreButton } from "../components/LoadMoreButton.js";
@@ -41,84 +42,11 @@ import { useCalculatorConfigs } from "../hooks/useCalculatorConfig.js";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
 import { useSortState } from "../hooks/useSortState.js";
 import { formatDateTime } from "../shared/format.js";
-import type {
-  CalculatorConfigDeletionReason,
-  CalculatorConfigSortField
-} from "../api/calculator-configs.js";
+import type { CalculatorConfigSortField } from "../api/calculator-configs.js";
 import type {
   PublicCalculatorConfigListItem,
   PublicCompany
 } from "../api/types.js";
-
-/**
- * Cycle 2 — humanise the deletion reason enum for the Status badge.
- * Mirrors DocumentsListPage.humanReason; kept inline (7 lines) so the
- * page stays self-contained.
- */
-function humanReason(reason: CalculatorConfigDeletionReason): string {
-  switch (reason) {
-    case "client_request":
-      return "Client request";
-    case "created_in_error":
-      return "Created in error";
-    case "replaced_by_new_version":
-      return "Replaced by new";
-    case "duplicate":
-      return "Duplicate";
-    case "other":
-      return "Other";
-    default: {
-      const _exhaustive: never = reason;
-      return String(_exhaustive);
-    }
-  }
-}
-
-/**
- * Cycle 2 — Status column renderer (parity with DocumentsListPage).
- * Active (alive) vs Deleted (with reason inline + an optional inline
- * Restore button for super_admin). The calculator DOMAIN is frozen —
- * this lives only in the list, never the sticky toolbar.
- */
-function StatusCell({
-  cfg,
-  onRestore,
-  restoring
-}: {
-  cfg: PublicCalculatorConfigListItem;
-  onRestore: (() => void) | null;
-  restoring: boolean;
-}) {
-  if (cfg.deletedAt) {
-    return (
-      <div className="flex flex-col gap-1">
-        <span className="inline-flex w-fit items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700">
-          Deleted
-        </span>
-        {cfg.deletionReason ? (
-          <span className="text-xs text-slate-500">
-            {humanReason(cfg.deletionReason)}
-          </span>
-        ) : null}
-        {onRestore ? (
-          <button
-            type="button"
-            onClick={onRestore}
-            disabled={restoring}
-            className="mt-0.5 w-fit rounded border border-green-500 bg-white px-2 py-0.5 text-[10px] font-semibold text-green-700 hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {restoring ? "Restoring…" : "Restore"}
-          </button>
-        ) : null}
-      </div>
-    );
-  }
-  return (
-    <span className="inline-flex w-fit items-center rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-700">
-      Active
-    </span>
-  );
-}
 
 type StatusFilter = "all" | "active" | "deleted";
 type DealScopeFilter = "all" | "company_level" | "deal_pinned";
@@ -174,6 +102,10 @@ export function CalculatorsListPage() {
     // operator sees BOTH deal-pinned and company-level drafts for
     // that company. Without showAll the list would default to
     // company-level only.
+    // NOTE: `showAll` governs the wizard-PICKER scope; the operator's
+    // `dealScope` filter below is independent and composes with it —
+    // with a company selected, the two combine to
+    // `company_id=… AND <deal-pin predicate>`.
     showAll: selectedCompany ? true : undefined,
     status: statusFilter,
     dealScope: dealScopeFilter,
@@ -234,7 +166,7 @@ export function CalculatorsListPage() {
             onChange={e => setSearchInput(e.target.value)}
             placeholder="e.g. Q1 pricing"
             aria-label="Search saved calculators by title"
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:w-64"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:w-56"
           />
         </label>
         {/* UI-parity — deal-pin scope filter (mirrors the Documents
@@ -247,7 +179,7 @@ export function CalculatorsListPage() {
             value={dealScopeFilter}
             onChange={e => setDealScopeFilter(e.target.value as DealScopeFilter)}
             aria-label="Filter saved calculators by deal pin"
-            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:w-44"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:w-48"
           >
             <option value="all">All</option>
             <option value="company_level">Company-level</option>
@@ -353,7 +285,10 @@ export function CalculatorsListPage() {
             {!configs.isLoading && !configs.isError && configs.items.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-4 py-6 text-center text-sm text-slate-500">
-                  {q.trim() || selectedCompany
+                  {q.trim() ||
+                  selectedCompany ||
+                  statusFilter !== "all" ||
+                  dealScopeFilter !== "all"
                     ? "No saved calculators match the current filters."
                     : "No saved calculators yet. Open the calculator and click Save calculator to persist one."}
                 </td>
@@ -444,8 +379,9 @@ export function CalculatorsListPage() {
                 {/* Cycle 2 — Status (Active / Deleted + reason +
                     super_admin inline Restore). */}
                 <td className="px-4 py-3">
-                  <StatusCell
-                    cfg={cfg}
+                  <DeletionStatusCell
+                    deletedAt={cfg.deletedAt}
+                    deletionReason={cfg.deletionReason}
                     onRestore={
                       hasRole("super_admin") && isDeleted
                         ? () => restoreMutation.mutate(cfg.id)

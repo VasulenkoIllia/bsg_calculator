@@ -12,6 +12,8 @@
  * minimum surface the UI needs.
  */
 
+import type { DeletionReason } from "../shared/deletionReason.js";
+
 // ─── Error envelope (backend `shared/errors.ts`) ──────────────────
 /**
  * Wire shape returned by the backend error-handler middleware for
@@ -318,15 +320,12 @@ export type PublicDocumentListItem = PublicDocument & {
 
 /**
  * Phase 8 Stage 5 — soft-delete reason enum mirrors the server
- * `documents.deletion_reason` CHECK constraint. The FE delete
- * modal exposes these as a dropdown.
+ * `documents.deletion_reason` CHECK constraint. Aliased to the shared
+ * `DeletionReason` (src/shared/deletionReason.ts) — documents and
+ * calculator-configs use the identical 5-value vocabulary. The name is
+ * kept for call-site readability + backwards-compat of existing imports.
  */
-export type DocumentDeletionReason =
-  | "client_request"
-  | "created_in_error"
-  | "replaced_by_new_version"
-  | "duplicate"
-  | "other";
+export type DocumentDeletionReason = DeletionReason;
 
 // ─── Event log (Phase 8 Stage 4) ──────────────────────────────────
 /**

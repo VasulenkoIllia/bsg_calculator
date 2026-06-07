@@ -6,6 +6,7 @@
  */
 
 import { apiClient } from "./client.js";
+import type { DeletionReason } from "../shared/deletionReason.js";
 import type {
   CursorPage,
   PublicCalculatorConfig,
@@ -94,13 +95,12 @@ export interface DeleteCalculatorConfigRequest {
   note?: string | null;
 }
 
-/** Cycle 2 — same enum as documents; the delete modal renders a dropdown. */
-export type CalculatorConfigDeletionReason =
-  | "client_request"
-  | "created_in_error"
-  | "replaced_by_new_version"
-  | "duplicate"
-  | "other";
+/**
+ * Cycle 2 — same vocabulary as documents; aliased to the shared
+ * `DeletionReason` (src/shared/deletionReason.ts). Name kept for
+ * call-site readability.
+ */
+export type CalculatorConfigDeletionReason = DeletionReason;
 
 export async function createCalculatorConfig(
   body: CreateCalculatorConfigRequest

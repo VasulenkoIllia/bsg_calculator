@@ -1,6 +1,6 @@
 # Server (Backend API) Codemap
 
-**Last Updated:** 2026-05-16  
+**Last Updated:** 2026-06-07 (partial refresh — added documents / calculator-configs / events / invites modules + list filters; full regen pending)  
 **Framework:** Express.js (Node.js + TypeScript)  
 **Database:** PostgreSQL + Drizzle ORM  
 **Entry Point:** `server/index.ts` → `server/app.ts` (app factory)
@@ -71,8 +71,14 @@ All modules follow the **routes → controller → service → repository → sc
 | **users** | `/api/v1/users` | GET /, GET /:id, POST, PATCH /:id | CRUD ops, toPublic projection | DB queries | UserPublic |
 | **companies** | `/api/v1/companies` | GET /, GET /:id | TTL-refresh, HubSpot sync, toPublic | list/find, upsert | CompanyPublic |
 | **deals** | `/api/v1/deals` | GET /, GET /:id, GET /companies/:id/deals | TTL-refresh, toPublic | list/find, upsert | DealPublic |
-| **hubspot** | `/api/v1/hubspot` | sync trigger, batch upsert | HubSpot API calls | N/A | N/A |
+| **hubspot** | `/api/v1/hubspot` | sync trigger, batch upsert, webhooks (incl. company/deal merge) | HubSpot API calls, webhook processor | N/A | N/A |
 | **health** | `/health` | liveness + readiness probes | N/A | N/A | N/A |
+| **documents** (Phase 4+) | `/api/v1/documents` | CRUD, `/sync`, `/restore` | numbering, HubSpot Note write-back (create-fresh each sync), soft-delete (advisory lock + Note teardown) | list (filters: scope, status/`deletedScope`), find, soft-delete/restore | DocumentPublic |
+| **calculator-configs** (Phase 4+) | `/api/v1/calculator-configs` | CRUD, `/sync`, `/restore` | HubSpot Note write-back, soft-delete parity with documents | list (filters: `status`/`deletedScope` = alive\|deleted_only\|include_deleted [default include_deleted], `dealScope` = all\|company_level\|deal_pinned) | CalculatorConfigPublic |
+| **events** | (mounted under documents/calc-configs `/:id/events`) | per-entity history (created/synced/deleted/restored) | record + list | insert/list events | EventPublic |
+| **invites** + **admin-actions** | under `/api/v1/users/invites`, `/api/v1/admin/audit-log` | invite create / re-issue / revoke; audit log | hashed-token invites, re-issue (revoke old + fresh link), append-only audit | invites, admin_actions | — |
+
+> **Note:** the diagram above ("6 modules") and parts of this file predate Phase 4+. The documents / calculator-configs / events / invites / admin-actions modules listed here are current; a full `/update-codemaps` regen of the rest is pending.
 
 ---
 

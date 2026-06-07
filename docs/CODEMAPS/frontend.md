@@ -1,6 +1,6 @@
 # Frontend (SPA) Codemap
 
-**Last Updated:** 2026-05-17 (post-Sprint 4.F)
+**Last Updated:** 2026-06-07 (partial refresh — list pages + soft-delete surface; older tables below predate Phase 4+ and a full `/update-codemaps` regen is pending)
 **Framework:** React 19 + Vite 6 + TypeScript (NodeNext modules)
 **Entry Point:** `src/main.tsx` → `src/App.tsx`
 **Router:** react-router-dom v7 (BrowserRouter)
@@ -169,9 +169,14 @@ Constants in `src/shared/constants.ts`:
 | `LoginPage.tsx` | `/login` | react-hook-form + zod, validates against backend `loginRequestSchema`. Renders splash during `isBooting`. Bounces logged-in users to `state.from` or `/companies`. |
 | `CompaniesPage.tsx` | `/companies` | Search box + table (name → segment → lifecycle → updated). LoadMoreButton at tail. `isFetching && !isLoading` → "refreshing…" badge next to Search label. |
 | `CompanyDetailPage.tsx` | `/companies/:id` | Company info header (dl with segment, lifecycle, HubSpot id, last synced) + deals table with LoadMoreButton. |
-| `CalculatorPage.tsx` | `/calculator` | Pre-2.8 calculator — untouched, sits behind auth gate now. |
+| `CalculatorPage.tsx` | `/calculator`, `/calc/:id` | Pre-2.8 calculator (frozen domain) + edit mode for a saved config (hydrate + auto-save + Sync-to-HubSpot button with re-sync confirm). |
 | `WizardPage.tsx` | `/wizard` | Pre-2.8 contract wizard — same as above. |
 | `NotFoundPage.tsx` | `*` | 404 with links to /calculator and /wizard. |
+| `DocumentsListPage.tsx` | `/documents` | Offers/agreements list. Filters: Company + Number search + Scope + Status. Columns incl. `HubspotSyncBadge`, `DeletionStatusCell` (Active/Deleted + inline super_admin Restore), and an inline **Open → / Delete** (admin) actions column → `DeleteDocumentModal`. |
+| `DocumentViewPage.tsx` | `/documents/:number` | Detail: preview + Download PDF + Use-as-Template + Sync + Delete (`DeleteDocumentModal`); soft-deleted banner with reason. |
+| `CalculatorsListPage.tsx` | `/calculators` | Saved-calculator drafts. Filters: Company + Title search + **Deal** (`dealScope`) + Status. Columns incl. `HubspotSyncBadge`, `DeletionStatusCell`, inline Open → / Delete (`DeleteCalculatorModal`). "Document draft" rows route to the wizard. |
+| `AdminUsersPage.tsx` | `/users` | super_admin user mgmt + `admin/InvitesPanel` (invite create / re-issue-&-copy-link / revoke). |
+| `AuditLogPage.tsx` | `/audit-log` | super_admin admin-actions log with target/actor/company filters. |
 
 ### `src/components/`
 
@@ -180,7 +185,11 @@ Constants in `src/shared/constants.ts`:
 | `AppShell.tsx` | Main layout: IdentityStrip (signed-in name + Sign out) → CalculatorHeader → WorkspaceTabs (Companies, Calculator, Wizard) → `<Outlet />`. |
 | `PrivateRoute.tsx` | Auth gate: boot splash → redirect-to-/login → render outlet. State machine over `useAuth().isBooting` + `user`. |
 | `LoadMoreButton.tsx` | Cursor-pagination tail. Renders nothing when `!hasNextPage`. |
-| `calculator/*` | Pre-2.8 calculator UI (Zones 0-6) — untouched. |
+| `HubspotSyncBadge.tsx` | Shared 5-state HubSpot-sync pill (Not synced / Synced / Deleting… / Delete failed / Failed). Used by both list pages. |
+| `DeletionStatusCell.tsx` | Shared Active/Deleted status cell (badge + `humanReason` + optional inline Restore). Takes primitives; used by both list pages. |
+| `DeleteDocumentModal.tsx` / `DeleteCalculatorModal.tsx` | Soft-delete modals (reason dropdown via shared `REASON_OPTIONS` + note; `other` requires a note). ~90% identical — full unification deliberately deferred (per-entity error map is the only real divergence). |
+| `ConfirmDialog.tsx` | Reusable confirm modal (used for the "Sync again creates a NEW Note" re-sync guard). |
+| `calculator/*` | Pre-2.8 calculator UI (Zones 0-6) — FROZEN domain, untouched. |
 | `document-wizard/*` | Pre-2.8 wizard + PDF rendering — untouched. |
 
 ### `src/shared/`
@@ -190,6 +199,7 @@ Constants in `src/shared/constants.ts`:
 | `format.ts` | `formatDate(iso)` |
 | `constants.ts` | `QUERY_*_MS`, `SEARCH_DEBOUNCE_MS` |
 | `html.ts` | Pre-2.8 HTML helper |
+| `deletionReason.ts` | Single source of truth for the soft-delete reason vocabulary: `DELETION_REASONS` tuple, `DeletionReason` type, `humanReason()`, `REASON_OPTIONS`. The two API enums alias `DeletionReason`. |
 
 ---
 

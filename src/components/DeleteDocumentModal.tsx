@@ -22,6 +22,7 @@
 import { useState } from "react";
 import { ApiError } from "../api/client.js";
 import { deleteDocument } from "../api/documents.js";
+import { REASON_OPTIONS } from "../shared/deletionReason.js";
 import type { DocumentDeletionReason } from "../api/types.js";
 
 interface DeleteDocumentModalProps {
@@ -31,14 +32,6 @@ interface DeleteDocumentModalProps {
   onClose: () => void;
   onDeleted: () => void;
 }
-
-const REASON_OPTIONS: { value: DocumentDeletionReason; label: string }[] = [
-  { value: "client_request", label: "Client request" },
-  { value: "created_in_error", label: "Created in error" },
-  { value: "replaced_by_new_version", label: "Replaced by new version" },
-  { value: "duplicate", label: "Duplicate" },
-  { value: "other", label: "Other (note required)" }
-];
 
 export function DeleteDocumentModal({
   open,
@@ -81,6 +74,10 @@ export function DeleteDocumentModal({
       if (err instanceof ApiError) {
         if (err.code === "DOCUMENT_ALREADY_DELETED") {
           setError("This document has already been deleted (refresh the page).");
+        } else if (err.code === "DOCUMENT_DELETE_IN_PROGRESS") {
+          setError(
+            "Another delete for this document is already in progress. Try again in a moment."
+          );
         } else if (err.code === "HUBSPOT_UNREACHABLE") {
           setError(
             "HubSpot is unreachable. The document was NOT deleted. " +
