@@ -262,11 +262,7 @@ function CreateUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
   }
 
   return (
-    <ModalShell
-      title="Create user"
-      subtitle="Set an initial password and forward it to the new operator out-of-band."
-      onClose={onClose}
-    >
+    <ModalShell title="Create user" onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <LabelledField label="Email" required>
           <input

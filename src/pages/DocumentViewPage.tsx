@@ -539,9 +539,6 @@ function DocumentPreviewSection({
     <div className="rounded-2xl border border-slate-200 bg-white p-4">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-900">Document preview</h2>
-        <span className="text-xs text-slate-500">
-          Same render the wizard uses · click Download PDF for the print version
-        </span>
       </div>
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
         <iframe

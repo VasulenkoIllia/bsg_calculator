@@ -80,12 +80,85 @@ function renderPage() {
   );
 }
 
+/**
+ * UI-parity — render with a logged-in user of the given role so the
+ * role-gated inline Delete affordance becomes visible. Mocks the
+ * cold-boot refresh + me() the AuthProvider runs on mount.
+ */
+function renderPageAs(role: "admin" | "super_admin") {
+  vi.spyOn(authApi, "refresh").mockResolvedValue({
+    accessToken: "test-token"
+  } as Awaited<ReturnType<typeof authApi.refresh>>);
+  vi.spyOn(authApi, "me").mockResolvedValue({
+    id: "u-1",
+    email: "op@bsg.test",
+    login: "op",
+    displayName: "Operator",
+    role,
+    isActive: true
+  });
+
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } }
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <ToastProvider>
+        <AuthProvider>
+          <MemoryRouter>
+            <DocumentsListPage />
+          </MemoryRouter>
+        </AuthProvider>
+      </ToastProvider>
+    </QueryClientProvider>
+  );
+}
+
 beforeEach(() => {
   vi.restoreAllMocks();
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe("DocumentsListPage — Open/Delete actions (UI-parity)", () => {
+  it("renders an Open → link per row + keeps the BSG number link", async () => {
+    vi.spyOn(documentsApi, "listDocuments").mockResolvedValue({
+      items: [fixtureDocument({ number: "BSG-7100001-512587" })],
+      nextCursor: null,
+      limit: 25
+    });
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("BSG-7100001-512587")).toBeInTheDocument();
+    });
+    const openLink = screen.getByRole("link", { name: /open →$/i });
+    expect(openLink).toHaveAttribute("href", "/documents/BSG-7100001-512587");
+    // The number itself is still a link (per decision).
+    const numberLink = screen.getByRole("link", { name: "BSG-7100001-512587" });
+    expect(numberLink).toHaveAttribute("href", "/documents/BSG-7100001-512587");
+  });
+
+  it("shows a Delete button for an admin on an alive row and opens the modal", async () => {
+    vi.spyOn(documentsApi, "listDocuments").mockResolvedValue({
+      items: [fixtureDocument({ number: "BSG-7100001-512587" })],
+      nextCursor: null,
+      limit: 25
+    });
+    renderPageAs("admin");
+    await waitFor(() => {
+      expect(screen.getByText("BSG-7100001-512587")).toBeInTheDocument();
+    });
+    const deleteBtn = screen.getByRole("button", { name: /^Delete$/i });
+    expect(deleteBtn).toBeInTheDocument();
+    fireEvent.click(deleteBtn);
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: /Delete document BSG-7100001-512587/i })
+      ).toBeInTheDocument();
+    });
+  });
 });
 
 describe("DocumentsListPage — base rendering", () => {

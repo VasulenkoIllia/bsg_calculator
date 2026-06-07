@@ -284,6 +284,16 @@ export interface ListCalculatorConfigsArgs {
    * "include_deleted" so deleted rows show with a badge.
    */
   deletedScope?: "alive" | "deleted_only" | "include_deleted";
+  /**
+   * UI-parity — deal-pin scope (symmetric to documents' `scope` filter).
+   * The FE Deal filter (All / Company-level / Deal-pinned) maps to this:
+   *   all          → no filter
+   *   company_level→ hubspotDealId IS NULL
+   *   deal_pinned  → hubspotDealId IS NOT NULL
+   * Independent of `hubspotDealId`/`showAll` (those drive the wizard
+   * picker scope); this is the top-level list's product filter.
+   */
+  dealScope?: "all" | "company_level" | "deal_pinned";
   /** Sprint 6.8: clickable-header per-column sort. */
   sort: SortSpec<CalculatorConfigSortField>;
   cursor: SortedCursor | null;
@@ -400,6 +410,13 @@ export async function listCalculatorConfigs(
     filters.push(sql`${calculatorConfigs.deletedAt} IS NULL`);
   } else if (scope === "deleted_only") {
     filters.push(sql`${calculatorConfigs.deletedAt} IS NOT NULL`);
+  }
+
+  // UI-parity — deal-pin scope (symmetric to documents' scope filter).
+  if (args.dealScope === "company_level") {
+    filters.push(sql`${calculatorConfigs.hubspotDealId} IS NULL`);
+  } else if (args.dealScope === "deal_pinned") {
+    filters.push(sql`${calculatorConfigs.hubspotDealId} IS NOT NULL`);
   }
 
   // Sprint 6.8: per-column sort. ORDER BY (chosen, id) keeps

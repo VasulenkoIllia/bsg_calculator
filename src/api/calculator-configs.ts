@@ -75,6 +75,13 @@ export interface ListCalculatorConfigsParams {
    *   deleted → deleted only
    */
   status?: "all" | "active" | "deleted";
+  /**
+   * UI-parity — deal-pin scope filter (symmetric to documents' scope):
+   *   all          → no filter (default)
+   *   company_level→ only company-level drafts (no deal pin)
+   *   deal_pinned  → only drafts pinned to a deal
+   */
+  dealScope?: "all" | "company_level" | "deal_pinned";
 }
 
 /**

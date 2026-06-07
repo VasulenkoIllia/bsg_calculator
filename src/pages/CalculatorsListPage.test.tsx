@@ -319,6 +319,42 @@ describe("CalculatorsListPage — soft-delete (Cycle 2)", () => {
     });
   });
 
+  it("renders a HubSpot sync badge per row (parity with Documents)", async () => {
+    vi.spyOn(configsApi, "listCalculatorConfigs").mockResolvedValueOnce({
+      items: [
+        fixtureConfig({ id: "cfg-synced", title: "Synced draft", hubspotSyncState: "synced" })
+      ],
+      nextCursor: null,
+      limit: 25
+    });
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("Synced draft")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Synced")).toBeInTheDocument();
+  });
+
+  it("changing the Deal filter refetches with the dealScope param", async () => {
+    const spy = vi
+      .spyOn(configsApi, "listCalculatorConfigs")
+      .mockResolvedValue({ items: [], nextCursor: null, limit: 25 });
+
+    renderPage();
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    // Initial mount → dealScope "all".
+    expect(spy.mock.calls[0][0]).toMatchObject({ dealScope: "all" });
+
+    fireEvent.change(
+      screen.getByLabelText(/filter saved calculators by deal pin/i),
+      { target: { value: "deal_pinned" } }
+    );
+
+    await waitFor(() => {
+      const last = spy.mock.calls[spy.mock.calls.length - 1][0];
+      expect(last).toMatchObject({ dealScope: "deal_pinned" });
+    });
+  });
+
   it("shows a Delete action for an admin on an alive row", async () => {
     vi.spyOn(configsApi, "listCalculatorConfigs").mockResolvedValue({
       items: [fixtureConfig({ id: "cfg-alive", title: "Alive draft" })],

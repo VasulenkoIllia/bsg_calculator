@@ -550,6 +550,51 @@ describe("GET /api/v1/calculator-configs — soft-delete status filter (Cycle 2)
   });
 });
 
+describe("GET /api/v1/calculator-configs — deal-pin scope filter (dealScope)", () => {
+  it("company_level shows only unpinned; deal_pinned shows only pinned; all shows both", async () => {
+    const token = await setupAuth();
+    const [company] = await db.insert(companies).values(companyFixture()).returning();
+    const [deal] = await db
+      .insert(deals)
+      .values(dealFixture(company.hubspotCompanyId))
+      .returning();
+
+    const companyLevel = await request(app)
+      .post("/api/v1/calculator-configs")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, title: "company-level-cfg", payload: samplePayload });
+    const dealPinned = await request(app)
+      .post("/api/v1/calculator-configs")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        companyId: company.id,
+        hubspotDealId: deal.hubspotDealId,
+        title: "deal-pinned-cfg",
+        payload: samplePayload
+      });
+
+    const ids = (dealScope: string) =>
+      request(app)
+        .get(
+          `/api/v1/calculator-configs?companyId=${company.id}&showAll=true&dealScope=${dealScope}`
+        )
+        .set("Authorization", `Bearer ${token}`)
+        .then(r => (r.body.items as { id: string }[]).map(i => i.id));
+
+    const companyLevelIds = await ids("company_level");
+    expect(companyLevelIds).toContain(companyLevel.body.id);
+    expect(companyLevelIds).not.toContain(dealPinned.body.id);
+
+    const dealPinnedIds = await ids("deal_pinned");
+    expect(dealPinnedIds).toContain(dealPinned.body.id);
+    expect(dealPinnedIds).not.toContain(companyLevel.body.id);
+
+    const allIds = await ids("all");
+    expect(allIds).toContain(companyLevel.body.id);
+    expect(allIds).toContain(dealPinned.body.id);
+  });
+});
+
 describe("GET /api/v1/calculator-configs — picker scope", () => {
   it("filters to (deal-pinned OR company-level) by default", async () => {
     const token = await setupAuth();

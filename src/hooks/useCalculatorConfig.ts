@@ -122,6 +122,11 @@ export interface UseCalculatorConfigsOptions {
    */
   status?: "all" | "active" | "deleted";
   /**
+   * UI-parity — deal-pin scope filter (symmetric to documents' scope).
+   * "all" (default) / "company_level" (no deal pin) / "deal_pinned".
+   */
+  dealScope?: "all" | "company_level" | "deal_pinned";
+  /**
    * Sprint 6.6: gate the underlying TanStack query. Defaults to true.
    * Cross-company mode (companyId omitted) is a legitimate listing
    * shape, so the old "enabled iff companyId present" gating moved
@@ -172,6 +177,7 @@ export function useCalculatorConfigs(
         showAll: options.showAll ?? true,
         q: options.q?.trim() || undefined,
         status: options.status ?? "all",
+        dealScope: options.dealScope ?? "all",
         sort,
         limit: options.limit
       }
@@ -185,6 +191,7 @@ export function useCalculatorConfigs(
         showAll: options.showAll ?? true,
         q: options.q?.trim() || undefined,
         status: options.status ?? "all",
+        dealScope: options.dealScope ?? "all",
         sort,
         cursor: pageParam,
         limit: options.limit

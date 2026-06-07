@@ -31,6 +31,7 @@ import { ApiError } from "../api/client.js";
 import * as configsApi from "../api/calculator-configs.js";
 import { CompanyTypeahead } from "../components/CompanyTypeahead.js";
 import { DeleteCalculatorModal } from "../components/DeleteCalculatorModal.js";
+import { HubspotSyncBadge } from "../components/HubspotSyncBadge.js";
 import { LastActionCell } from "../components/LastActionCell.js";
 import { LoadMoreButton } from "../components/LoadMoreButton.js";
 import { SortableTh } from "../components/SortableTh.js";
@@ -120,6 +121,7 @@ function StatusCell({
 }
 
 type StatusFilter = "all" | "active" | "deleted";
+type DealScopeFilter = "all" | "company_level" | "deal_pinned";
 
 export function CalculatorsListPage() {
   // Sprint 9.R — `user` is the read-only tier (no calc creation /
@@ -136,6 +138,9 @@ export function CalculatorsListPage() {
   );
   // Cycle 2 — soft-delete scope filter (All / Active / Deleted).
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  // UI-parity — deal-pin scope filter (All / Company-level / Deal-pinned),
+  // symmetric to the Documents Scope filter.
+  const [dealScopeFilter, setDealScopeFilter] = useState<DealScopeFilter>("all");
   // Cycle 2 — the calc whose delete modal is open (null = closed).
   const [deleteTarget, setDeleteTarget] =
     useState<PublicCalculatorConfigListItem | null>(null);
@@ -171,6 +176,7 @@ export function CalculatorsListPage() {
     // company-level only.
     showAll: selectedCompany ? true : undefined,
     status: statusFilter,
+    dealScope: dealScopeFilter,
     sort: sortSpec
   });
   // Sprint 6.7 audit fix (S9): mirror the DocumentsListPage UX —
@@ -194,11 +200,6 @@ export function CalculatorsListPage() {
               </span>
             ) : null}
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Every calculator draft you&apos;ve saved. Each is owned by a
-            company; click <strong>Open →</strong> to keep editing it
-            (auto-save) or to launch the wizard from it.
-          </p>
         </div>
         {/* Sprint 9.R — hide "+ New calculator" for read-only `user`s.
             The /calculator route itself is still reachable (they
@@ -235,6 +236,23 @@ export function CalculatorsListPage() {
             aria-label="Search saved calculators by title"
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:w-64"
           />
+        </label>
+        {/* UI-parity — deal-pin scope filter (mirrors the Documents
+            Scope filter slot: company-level drafts vs deal-pinned). */}
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Deal
+          </span>
+          <select
+            value={dealScopeFilter}
+            onChange={e => setDealScopeFilter(e.target.value as DealScopeFilter)}
+            aria-label="Filter saved calculators by deal pin"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:w-44"
+          >
+            <option value="all">All</option>
+            <option value="company_level">Company-level</option>
+            <option value="deal_pinned">Deal-pinned</option>
+          </select>
         </label>
         {/* Cycle 2 — soft-delete scope filter. Default "All" shows
             deleted rows with a badge (matches /documents). */}
@@ -298,6 +316,11 @@ export function CalculatorsListPage() {
               <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
                 Status
               </th>
+              {/* UI-parity — HubSpot sync state column (mirrors the
+                  Documents list). Not sortable (no backend sort key). */}
+              <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                HubSpot sync
+              </th>
               {/* Sprint 9.N — Last action column populated from
                   calculator_config_events via LATERAL subquery on
                   the listing endpoint. */}
@@ -312,7 +335,7 @@ export function CalculatorsListPage() {
           <tbody className="divide-y divide-slate-100">
             {configs.isLoading ? (
               <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-sm text-slate-500">
+                <td colSpan={8} className="px-4 py-6 text-center text-sm text-slate-500">
                   Loading saved calculators…
                 </td>
               </tr>
@@ -320,7 +343,7 @@ export function CalculatorsListPage() {
 
             {configs.isError ? (
               <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-sm text-red-600">
+                <td colSpan={8} className="px-4 py-6 text-center text-sm text-red-600">
                   Failed to load calculators
                   {configs.error instanceof ApiError ? `: ${configs.error.message}` : "."}
                 </td>
@@ -329,7 +352,7 @@ export function CalculatorsListPage() {
 
             {!configs.isLoading && !configs.isError && configs.items.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-sm text-slate-500">
+                <td colSpan={8} className="px-4 py-6 text-center text-sm text-slate-500">
                   {q.trim() || selectedCompany
                     ? "No saved calculators match the current filters."
                     : "No saved calculators yet. Open the calculator and click Save calculator to persist one."}
@@ -433,6 +456,10 @@ export function CalculatorsListPage() {
                       restoreMutation.variables === cfg.id
                     }
                   />
+                </td>
+                {/* UI-parity — HubSpot sync state (shared badge). */}
+                <td className="px-4 py-3 text-slate-500">
+                  <HubspotSyncBadge state={cfg.hubspotSyncState} />
                 </td>
                 <td className="px-4 py-3">
                   <LastActionCell event={cfg.lastEvent} />

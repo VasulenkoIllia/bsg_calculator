@@ -180,9 +180,6 @@ export function PendingInvitesPanel() {
     <section className="space-y-2">
       <header>
         <h2 className="text-base font-semibold text-slate-900">Invites</h2>
-        <p className="text-xs text-slate-500">
-          Pending links that haven't been accepted yet, plus the 10 most-recent finished ones for audit.
-        </p>
       </header>
 
       {reissueError ? <FormError>{reissueError}</FormError> : null}

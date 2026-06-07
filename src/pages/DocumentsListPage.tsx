@@ -31,6 +31,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../api/client.js";
 import * as documentsApi from "../api/documents.js";
 import { CompanyTypeahead } from "../components/CompanyTypeahead.js";
+import { DeleteDocumentModal } from "../components/DeleteDocumentModal.js";
+import { HubspotSyncBadge } from "../components/HubspotSyncBadge.js";
 import { LastActionCell } from "../components/LastActionCell.js";
 import { LoadMoreButton } from "../components/LoadMoreButton.js";
 import { SortableTh } from "../components/SortableTh.js";
@@ -161,6 +163,10 @@ export function DocumentsListPage() {
   // Sprint 9.N — new product filters.
   const [scopeFilter, setScopeFilter] = useState<DocumentScope | "all">("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  // UI-parity — the document whose delete modal is open (null = closed).
+  // Mirrors the inline Delete affordance on the Saved-calculators list.
+  const [deleteTarget, setDeleteTarget] =
+    useState<PublicDocumentListItem | null>(null);
   // Sprint 9.R — inline restore for super_admin. The mutation's
   // `variables` carries the document number being restored, so we
   // can disable just that row's button rather than blocking every
@@ -222,12 +228,6 @@ export function DocumentsListPage() {
       <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Documents</h1>
-          <p className="text-sm text-slate-500">
-            Frozen offers + agreements. Click a row to view, download PDF, or
-            use as a template. Deleted rows stay in the list with a Deleted
-            badge — the HubSpot Note is removed but the local audit trail
-            survives.
-          </p>
         </div>
       </header>
 
@@ -348,12 +348,16 @@ export function DocumentsListPage() {
               >
                 Created
               </SortableTh>
+              {/* UI-parity — right-most actions column (Open → / Delete),
+                  no header label, not sortable. Mirrors the
+                  Saved-calculators list. */}
+              <th className="px-4 py-3" aria-label="Actions" />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {isLoading ? (
               <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-sm text-slate-500">
+                <td colSpan={8} className="px-4 py-6 text-center text-sm text-slate-500">
                   Loading documents…
                 </td>
               </tr>
@@ -361,7 +365,7 @@ export function DocumentsListPage() {
 
             {isError ? (
               <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-sm text-red-600">
+                <td colSpan={8} className="px-4 py-6 text-center text-sm text-red-600">
                   Failed to load documents
                   {error instanceof ApiError ? `: ${error.message}` : "."}
                 </td>
@@ -370,7 +374,7 @@ export function DocumentsListPage() {
 
             {!isLoading && !isError && items.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-sm text-slate-500">
+                <td colSpan={8} className="px-4 py-6 text-center text-sm text-slate-500">
                   {trimmed.length > 0 ||
                   selectedCompany ||
                   scopeFilter !== "all" ||
@@ -433,27 +437,7 @@ export function DocumentsListPage() {
                   />
                 </td>
                 <td className="px-4 py-3 text-slate-500">
-                  {doc.hubspotSyncState === "not_synced" ? (
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                      Not synced
-                    </span>
-                  ) : doc.hubspotSyncState === "synced" ? (
-                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
-                      Synced
-                    </span>
-                  ) : doc.hubspotSyncState === "delete_pending" ? (
-                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-                      Deleting…
-                    </span>
-                  ) : doc.hubspotSyncState === "delete_failed" ? (
-                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
-                      Delete failed
-                    </span>
-                  ) : (
-                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
-                      Failed
-                    </span>
-                  )}
+                  <HubspotSyncBadge state={doc.hubspotSyncState} />
                 </td>
                 <td className="px-4 py-3">
                   <LastActionCell event={doc.lastEvent} />
@@ -478,6 +462,29 @@ export function DocumentsListPage() {
                     </div>
                   ) : null}
                 </td>
+                {/* UI-parity — Open → / Delete actions (mirrors the
+                    Saved-calculators list). The BSG number is still a
+                    link (above); this adds an explicit Open + an inline
+                    Delete for admins on alive rows. */}
+                <td className="px-4 py-3 text-right">
+                  <div className="flex items-center justify-end gap-3">
+                    <Link
+                      to={`/documents/${doc.number}`}
+                      className="font-semibold text-blue-700 hover:text-blue-900 hover:underline"
+                    >
+                      Open →
+                    </Link>
+                    {hasRole("admin") && !doc.deletedAt ? (
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTarget(doc)}
+                        className="font-semibold text-red-600 hover:text-red-700 hover:underline"
+                      >
+                        Delete
+                      </button>
+                    ) : null}
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -489,6 +496,24 @@ export function DocumentsListPage() {
         isFetchingNextPage={isFetchingNextPage}
         fetchNextPage={fetchNextPage}
       />
+
+      {/* UI-parity — soft-delete modal (reason + optional note), mounted
+          once at page level and driven by `deleteTarget`. On success we
+          close + refetch so the row re-renders with its Deleted badge —
+          same flow as the Saved-calculators list. */}
+      {deleteTarget ? (
+        <DeleteDocumentModal
+          open
+          documentNumber={deleteTarget.number}
+          hasHubspotNote={Boolean(deleteTarget.hubspotNoteId)}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={() => {
+            setDeleteTarget(null);
+            toast.success(`Deleted ${deleteTarget.number}`);
+            void queryClient.invalidateQueries({ queryKey: ["documents"] });
+          }}
+        />
+      ) : null}
     </section>
   );
 }

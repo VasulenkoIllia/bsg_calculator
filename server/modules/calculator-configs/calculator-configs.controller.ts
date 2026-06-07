@@ -56,6 +56,8 @@ export async function listController(req: Request, res: Response): Promise<void>
     showAll: query.showAll,
     q: query.q,
     deletedScope,
+    // UI-parity — deal-pin scope filter (All / Company-level / Deal-pinned).
+    dealScope: query.dealScope,
     sort,
     cursor,
     limit: query.limit

@@ -153,6 +153,15 @@ export const listCalculatorConfigsQuerySchema = z.object({
   //   active  → alive
   //   deleted → deleted_only
   status: z.enum(["all", "active", "deleted"]).optional().default("all"),
+  // UI-parity — deal-pin scope filter (symmetric to documents' scope).
+  // Maps to the repo `dealScope`:
+  //   all          → no filter
+  //   company_level→ hubspotDealId IS NULL
+  //   deal_pinned  → hubspotDealId IS NOT NULL
+  dealScope: z
+    .enum(["all", "company_level", "deal_pinned"])
+    .optional()
+    .default("all"),
   // Sprint 6.8: per-column sort. Format: "field:dir" where field is
   // one of {title, companyName, hubspotDealId, updatedAt, createdAt}
   // and dir is "asc" or "desc". Default: "createdAt:desc" (matches
