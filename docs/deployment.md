@@ -397,9 +397,10 @@ On HubSpot failure → `hubspot_sync_state='failed'` is persisted BEFORE the err
 
 **Auto-sync (Phase 9.G / 9.I)**: with `AUTO_SYNC_TO_HUBSPOT=true` in `.env` (renamed from `AUTO_SYNC_DOCUMENTS_TO_HUBSPOT` in Sprint 9.L; the old name is still accepted as a fallback), every successful `POST /documents` AND every first save of a calc-config schedules a fire-and-forget sync via `setImmediate` AFTER the DB transaction commits. The operator gets a clean 201/200 immediately; the badge flips `not_synced → synced` (or `failed`) in the background.
 
-**Calculator sync (Phase 9.I + 9.K)**: TWO operator-confirmed differences from documents:
+**Calculator sync (Phase 9.I; updated Cycle 2 — 2026-06-07)**: ONE operator-confirmed difference from documents:
 1. Auto-saves (`PUT /calculator-configs/:id`) DO NOT touch HubSpot. The Note's `Link` always opens our SPA which renders the freshest state.
-2. **One Note per calc**: manual Sync button on `/calc/:id` PATCHes the EXISTING Note in HubSpot (refreshes body in place). Documents stay on the create-new-each-time policy because each document is a frozen point-in-time artefact; calculators are living drafts. If the operator deletes the Note manually in HubSpot UI, our next Sync click sees the 404 and self-heals by creating a fresh one (the sync service has a 404→CREATE fallback).
+
+Otherwise calculators now follow the SAME create-new-each-time policy as documents: each manual Sync click on `/calc/:id` creates a **NEW** Note in HubSpot (older ones stay as an audit trail; `hubspot_note_id` points to the most recent). Re-syncing an already-synced calc shows a confirm dialog first ("creates a NEW HubSpot Note"). The earlier Phase 9.K "one Note per calc / PATCH-in-place (with a 404→CREATE self-heal)" policy was **removed** so the dialog wording is accurate. A per-row `calc-sync:` advisory lock still prevents double-click duplicates.
 
 **Note body format (Phase 9.H)**: compact one-liner + clickable link:
 ```

@@ -139,6 +139,13 @@ in Phase 8) will:
 4. `documents.hubspot_sync_state` moves
    `not_synced → pending → synced` (or `failed` with `last_sync_error`).
 
+> **Superseded (Phase 9):** the shipped schema stores a single
+> `documents.hubspot_note_id` (and `calculator_configs.hubspot_note_id`),
+> not a `hubspot_links` object, and the sync state machine is
+> `not_synced → synced | failed` (+ the Phase-8-Stage-5 delete states
+> `delete_pending | delete_failed`). The `{ companyNoteId, dealNoteId? }`
+> shape above is the original Phase-8 plan, kept for historical context.
+
 Phase 8 reserves all these columns and exposes
 `POST /api/v1/documents/:number/sync` returning 501 — frontend wiring
 is complete, real HubSpot calls land in Phase 9.
@@ -149,10 +156,15 @@ is complete, real HubSpot calls land in Phase 9.
   `hubspot_webhook_events` with UNIQUE constraint on
   `hubspot_event_id`. Duplicate deliveries silently dedupe via
   `ON CONFLICT DO NOTHING`.
-- Note write-back: on re-sync (operator manually re-triggers), if
-  `hubspot_links.companyNoteId` is set, backend PATCHes the existing
-  note instead of creating a new one. Re-confirm of the same
-  document never creates a duplicate HubSpot note.
+- Note write-back: each manual re-sync creates a **NEW** HubSpot Note
+  (both documents and calculators, since Cycle 2 — 2026-06-07). The
+  row's `hubspot_note_id` / calc's `hubspot_note_id` points to the most
+  recent Note; older Notes stay in HubSpot as an audit trail. Accidental
+  double-click duplicates are prevented by a per-row Postgres advisory
+  lock plus a confirm dialog when the item is already synced — NOT by
+  reusing/PATCHing the old Note. (The earlier PATCH-in-place model and
+  the `hubspot_links.companyNoteId` column are obsolete; the live schema
+  stores a single `hubspot_note_id` per row.)
 
 ---
 
