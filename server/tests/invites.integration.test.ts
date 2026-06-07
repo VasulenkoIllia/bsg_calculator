@@ -282,6 +282,70 @@ describe("DELETE /api/v1/users/invites/:id (super_admin revokes)", () => {
   });
 });
 
+describe("POST /api/v1/users/invites/:id/reissue (super_admin re-issues)", () => {
+  it("revokes the old token and returns a fresh working link (same role)", async () => {
+    await createTestUser({ email: "sa@bsg.test", password: "sa12345678", role: "super_admin" });
+    const token = await loginAs("sa@bsg.test", "sa12345678");
+
+    const create = await request(app)
+      .post("/api/v1/users/invites")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ role: "user" });
+    const oldToken = extractTokenFromLink(create.body.link);
+
+    const reissue = await request(app)
+      .post(`/api/v1/users/invites/${create.body.id}/reissue`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(reissue.status).toBe(201);
+    expect(reissue.body.id).not.toBe(create.body.id); // a NEW invite row
+    expect(reissue.body.role).toBe("user");
+    const newToken = extractTokenFromLink(reissue.body.link);
+    expect(newToken).not.toBe(oldToken);
+
+    // Old token is dead; the fresh one previews OK.
+    expect((await request(app).get(`/api/v1/auth/invite/${oldToken}`)).status).toBe(404);
+    const preview = await request(app).get(`/api/v1/auth/invite/${newToken}`);
+    expect(preview.status).toBe(200);
+    expect(preview.body.role).toBe("user");
+  });
+
+  it("admin gets 403 (only super_admin can re-issue)", async () => {
+    await createTestUser({ email: "sa@bsg.test", password: "sa12345678", role: "super_admin" });
+    const saToken = await loginAs("sa@bsg.test", "sa12345678");
+    const create = await request(app)
+      .post("/api/v1/users/invites")
+      .set("Authorization", `Bearer ${saToken}`)
+      .send({ role: "user" });
+
+    await createTestUser({ email: "ad@bsg.test", password: "ad12345678", role: "admin" });
+    const adToken = await loginAs("ad@bsg.test", "ad12345678");
+    const res = await request(app)
+      .post(`/api/v1/users/invites/${create.body.id}/reissue`)
+      .set("Authorization", `Bearer ${adToken}`);
+    expect(res.status).toBe(403);
+  });
+
+  it("409 when re-issuing an already-accepted invite", async () => {
+    await createTestUser({ email: "sa@bsg.test", password: "sa12345678", role: "super_admin" });
+    const token = await loginAs("sa@bsg.test", "sa12345678");
+    const create = await request(app)
+      .post("/api/v1/users/invites")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ role: "user" });
+    const rawToken = extractTokenFromLink(create.body.link);
+
+    const accept = await request(app)
+      .post(`/api/v1/auth/invite/${rawToken}/accept`)
+      .send({ email: "accepted@bsg.test", displayName: "Accepted User", password: "newPassword123" });
+    expect(accept.status).toBe(201);
+
+    const reissue = await request(app)
+      .post(`/api/v1/users/invites/${create.body.id}/reissue`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(reissue.status).toBe(409);
+  });
+});
+
 describe("GET /api/v1/users/invites (admin list)", () => {
   it("returns the JOINed row shape without timestamp-parsing errors", async () => {
     // This is the regression test for the smoke-test bug where the

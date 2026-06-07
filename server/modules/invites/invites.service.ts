@@ -225,3 +225,31 @@ export async function revokeInviteById(id: string): Promise<void> {
     );
   }
 }
+
+/**
+ * Re-issue an invite: revoke the old token and mint a FRESH link with the
+ * SAME role. Used by the "Re-issue & copy link" action when the operator
+ * forgot to copy the link at creation — the raw token is never stored (only
+ * hashed), so a brand-new token is the only way to produce a copyable link
+ * later. Rejected only if the invite was already ACCEPTED (the user exists);
+ * a pending/revoked/expired invite can always be re-issued.
+ */
+export async function reissueInviteAndLink(
+  id: string,
+  createdByUserId: string
+): Promise<CreateInviteResponse> {
+  const existing = await findInviteById(id);
+  if (!existing) throw new NotFoundError("Invite");
+  if (existing.acceptedAt) {
+    throw new ConflictError(
+      "INVITE_ALREADY_USED",
+      "This invite was already accepted — the user exists. Nothing to re-issue."
+    );
+  }
+  // Revoke the old token (skip if already revoked) so only the NEW link is
+  // valid, then mint a fresh invite + link with the same role.
+  if (!existing.revokedAt) {
+    await revokeInvite(id);
+  }
+  return createInviteAndLink({ role: existing.role }, createdByUserId);
+}

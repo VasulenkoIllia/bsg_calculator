@@ -26,6 +26,7 @@ import { ApiError } from "../../api/client.js";
 import {
   createInvite,
   listInvites,
+  reissueInvite,
   revokeInvite,
   type CreateInviteResponse,
   type InviteAdminRow
@@ -150,6 +151,24 @@ export function PendingInvitesPanel() {
     }
   });
 
+  // Re-issue: when the operator forgot to copy a link at creation, revoke
+  // the old token + mint a fresh one. The new copyable link is shown in the
+  // banner below (the raw token can't be recovered — only re-issued).
+  const [reissuedLink, setReissuedLink] = useState<CreateInviteResponse | null>(null);
+  const [reissueError, setReissueError] = useState<string | null>(null);
+  const reissueMutation = useMutation({
+    mutationFn: (id: string) => reissueInvite(id),
+    onSuccess: async data => {
+      setReissueError(null);
+      setReissuedLink(data);
+      await queryClient.invalidateQueries({ queryKey: ["admin", "invites"] });
+    },
+    onError: err => {
+      setReissuedLink(null);
+      setReissueError(err instanceof ApiError ? err.message : "Re-issue failed.");
+    }
+  });
+
   // Filter to pending vs finished. The "recent" cap (10) keeps the
   // table from drifting into a long history scroll; for older audit
   // needs the events table is the source of truth.
@@ -165,6 +184,26 @@ export function PendingInvitesPanel() {
           Pending links that haven't been accepted yet, plus the 10 most-recent finished ones for audit.
         </p>
       </header>
+
+      {reissueError ? <FormError>{reissueError}</FormError> : null}
+      {reissuedLink ? (
+        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm">
+          <p className="font-semibold text-green-800">
+            New invite link generated — copy it and forward it. Expires{" "}
+            {new Date(reissuedLink.expiresAt).toLocaleString()}.
+          </p>
+          <div className="mt-2">
+            <CopyableField value={reissuedLink.link} />
+          </div>
+          <button
+            type="button"
+            onClick={() => setReissuedLink(null)}
+            className="mt-2 text-xs font-semibold text-green-700 hover:underline"
+          >
+            Done
+          </button>
+        </div>
+      ) : null}
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -210,10 +249,21 @@ export function PendingInvitesPanel() {
                     revoking={
                       revokeMutation.isPending && revokeMutation.variables === invite.id
                     }
+                    onReissue={() => reissueMutation.mutate(invite.id)}
+                    reissuing={
+                      reissueMutation.isPending && reissueMutation.variables === invite.id
+                    }
                   />
                 ))}
                 {recent.map(invite => (
-                  <InviteRow key={invite.id} invite={invite} onRevoke={null} revoking={false} />
+                  <InviteRow
+                    key={invite.id}
+                    invite={invite}
+                    onRevoke={null}
+                    revoking={false}
+                    onReissue={null}
+                    reissuing={false}
+                  />
                 ))}
               </>
             )}
@@ -227,11 +277,15 @@ export function PendingInvitesPanel() {
 function InviteRow({
   invite,
   onRevoke,
-  revoking
+  revoking,
+  onReissue,
+  reissuing
 }: {
   invite: InviteAdminRow;
   onRevoke: (() => void) | null;
   revoking: boolean;
+  onReissue: (() => void) | null;
+  reissuing: boolean;
 }) {
   return (
     <tr className="hover:bg-slate-50">
@@ -261,15 +315,30 @@ function InviteRow({
         )}
       </td>
       <td className="px-4 py-2 text-right">
-        {onRevoke ? (
-          <button
-            type="button"
-            onClick={onRevoke}
-            disabled={revoking}
-            className="rounded border border-red-300 bg-white px-2 py-0.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"
-          >
-            {revoking ? "Revoking…" : "Revoke"}
-          </button>
+        {onReissue || onRevoke ? (
+          <div className="flex items-center justify-end gap-2">
+            {onReissue ? (
+              <button
+                type="button"
+                onClick={onReissue}
+                disabled={reissuing}
+                title="Revoke the old token and generate a fresh copyable link (same role)"
+                className="rounded border border-blue-300 bg-white px-2 py-0.5 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-60"
+              >
+                {reissuing ? "Re-issuing…" : "Re-issue & copy link"}
+              </button>
+            ) : null}
+            {onRevoke ? (
+              <button
+                type="button"
+                onClick={onRevoke}
+                disabled={revoking}
+                className="rounded border border-red-300 bg-white px-2 py-0.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"
+              >
+                {revoking ? "Revoking…" : "Revoke"}
+              </button>
+            ) : null}
+          </div>
         ) : (
           <span className="text-xs text-slate-300">—</span>
         )}

@@ -6304,4 +6304,39 @@ Use this file to record meaningful technical decisions for the project.
   by the CalculatorsListPage unit. Server-only logic change + FE list
   presentation; no migration.
 
+### Decision: Re-sync confirmation + invite re-issue (Cycle 1 of the delete/sync/restore polish)
+- Date: 2026-06-07
+- Context:
+  - Operator-requested polish ahead of the bigger "calculator delete/
+    restore parity with documents" work (Cycle 2). Two small, migration-
+    free items.
+  - (1) Re-syncing an already-synced document OR calculator fired
+    immediately and the sync service ALWAYS creates a fresh HubSpot Note —
+    so an accidental double-click silently produced a duplicate Note.
+  - (2) The invite link is only shown/copyable AT creation; the raw token
+    is never stored (only hashed), so if the operator forgot to copy it
+    there was no way to recover the link.
+- Decision:
+  - Re-sync confirm: a small reusable `ConfirmDialog` component. When
+    `hubspotSyncState === "synced"`, the "Sync again" action opens a
+    confirm ("creates a NEW HubSpot Note") instead of syncing immediately;
+    a fresh/failed item still syncs in one click. Wired in BOTH
+    DocumentViewPage and CalculatorPage at the PAGE handler level — the
+    frozen CalculatorStickyToolbar is untouched (it just calls the handler).
+  - Invite re-issue: `POST /api/v1/users/invites/:id/reissue` (super_admin)
+    revokes the old token and mints a FRESH link with the same role
+    (`reissueInviteAndLink`); rejected only if already ACCEPTED (409). The
+    pending-invites list gets a "Re-issue & copy link" button that shows
+    the new copyable link in a banner. Re-issuing is the secure way to get
+    a link later (the old token stays unrecoverable).
+- Boundary / consequences:
+  - No schema/migration. No change to the always-fresh-Note sync policy —
+    the confirm just guards the accidental re-sync.
+  - Calculator soft-delete + restore parity remains Cycle 2.
+- Verification: FE + BE `tsc` clean; lint 0 errors; FE 374/374 (+ a
+  ConfirmDialog unit; the page sync-button change broke no existing tests);
+  invites integration suite green incl. new cases (re-issue revokes the old
+  token + returns a fresh working link of the same role; admin → 403;
+  already-accepted → 409). Build green.
+
 

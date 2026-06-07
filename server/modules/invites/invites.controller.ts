@@ -24,6 +24,7 @@ import {
   createInviteAndLink,
   listInvites,
   previewInvite,
+  reissueInviteAndLink,
   revokeInviteById
 } from "./invites.service";
 
@@ -72,6 +73,20 @@ export async function revokeInviteController(req: Request, res: Response): Promi
     targetId: id
   });
   res.status(204).end();
+}
+
+export async function reissueInviteController(req: Request, res: Response): Promise<void> {
+  const actor = actorId(req);
+  const id = parseUuidParam(req, "id");
+  const result = await reissueInviteAndLink(id, actor);
+  await recordAdminAction({
+    ...auditActor(req),
+    actionType: "user.invite_created",
+    targetType: "invite",
+    targetId: result.id,
+    meta: { role: result.role, expiresAt: result.expiresAt, reissuedFromInviteId: id }
+  });
+  res.status(201).json(result);
 }
 
 // ─── Public endpoints (no auth) ─────────────────────────────────────

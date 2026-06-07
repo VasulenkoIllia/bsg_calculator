@@ -62,6 +62,18 @@ export async function revokeInvite(id: string): Promise<void> {
   await apiClient.delete(`/users/invites/${encodeURIComponent(id)}`);
 }
 
+/**
+ * Re-issue an invite — revokes the old token and returns a FRESH copyable
+ * link (same role). Use when the link wasn't copied at creation: the raw
+ * token is never stored, so a new token is the only way to get a link later.
+ */
+export async function reissueInvite(id: string): Promise<CreateInviteResponse> {
+  const { data } = await apiClient.post<CreateInviteResponse>(
+    `/users/invites/${encodeURIComponent(id)}/reissue`
+  );
+  return data;
+}
+
 // ─── Public endpoints (used by AcceptInvitePage) ────────────────────
 
 export interface InvitePreview {

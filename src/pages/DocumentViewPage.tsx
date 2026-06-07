@@ -23,6 +23,7 @@ import type { DocumentDeletionReason } from "../api/types.js";
 import { buildOfferPdfHtml } from "../components/document-wizard/index.js";
 import type { DocumentTemplatePayload } from "../components/document-wizard/index.js";
 import { DeleteDocumentModal } from "../components/DeleteDocumentModal.js";
+import { ConfirmDialog } from "../components/ConfirmDialog.js";
 import { DocumentOfferStatus } from "../components/OfferStatusBadge.js";
 import { EventHistoryPanel } from "../components/EventHistoryPanel.js";
 import { useAuth } from "../contexts/AuthContext.js";
@@ -116,6 +117,7 @@ export function DocumentViewPage() {
   const [restorePending, setRestorePending] = useState(false);
   const [showRawPayload, setShowRawPayload] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [resyncConfirmOpen, setResyncConfirmOpen] = useState(false);
 
   // Phase 8 Stage 5 — super_admin restore action.
   async function handleRestore(): Promise<void> {
@@ -367,7 +369,12 @@ export function DocumentViewPage() {
           {hasRole("admin") && !doc.deletedAt ? (
             <button
               type="button"
-              onClick={handleSyncToHubspot}
+              onClick={() => {
+                // Re-syncing an already-synced doc creates a NEW HubSpot
+                // Note — confirm first so it's not an accidental duplicate.
+                if (doc.hubspotSyncState === "synced") setResyncConfirmOpen(true);
+                else void handleSyncToHubspot();
+              }}
               disabled={syncPending}
               className="rounded-lg border border-blue-500 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -419,6 +426,18 @@ export function DocumentViewPage() {
             }}
           />
         ) : null}
+        <ConfirmDialog
+          open={resyncConfirmOpen}
+          title="Sync again to HubSpot?"
+          message="This document is already synced. Syncing again creates a NEW HubSpot Note (the previous one stays as history)."
+          confirmLabel="Sync again"
+          pending={syncPending}
+          onCancel={() => setResyncConfirmOpen(false)}
+          onConfirm={() => {
+            setResyncConfirmOpen(false);
+            void handleSyncToHubspot();
+          }}
+        />
         {/*
           Sprint 6.3: PDF + template errors now flow through the
           global toast viewport (top-right) instead of inline beside

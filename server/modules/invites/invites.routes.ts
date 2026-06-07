@@ -26,6 +26,7 @@ import {
   createInviteController,
   listInvitesController,
   previewInviteController,
+  reissueInviteController,
   revokeInviteController
 } from "./invites.controller";
 
@@ -35,6 +36,8 @@ export const invitesAdminRouter = Router();
 invitesAdminRouter.post("/", asyncHandler(createInviteController));
 invitesAdminRouter.get("/", asyncHandler(listInvitesController));
 invitesAdminRouter.delete("/:id", asyncHandler(revokeInviteController));
+// Re-issue: revoke the old token + mint a fresh copyable link (same role).
+invitesAdminRouter.post("/:id/reissue", asyncHandler(reissueInviteController));
 
 // Mounted by app.ts under /api/v1/auth/invite — PUBLIC.
 export const invitesPublicRouter = Router();

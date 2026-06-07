@@ -23,6 +23,7 @@ import {
 } from "../components/calculator/snapshotShape.js";
 import { isDocumentTemplatePayload } from "../components/document-wizard/isDocumentTemplatePayload.js";
 import { CalculatorStickyToolbar } from "../components/calculator/CalculatorStickyToolbar.js";
+import { ConfirmDialog } from "../components/ConfirmDialog.js";
 import { EventHistoryPanel } from "../components/EventHistoryPanel.js";
 import { SaveCalculatorModal } from "../components/SaveCalculatorModal.js";
 import {
@@ -241,6 +242,7 @@ export function CalculatorPage() {
   const { hasRole } = useAuth();
   const queryClient = useQueryClient();
   const [calcSyncPending, setCalcSyncPending] = useState(false);
+  const [resyncConfirmOpen, setResyncConfirmOpen] = useState(false);
 
   async function handleSyncCalcToHubspot(): Promise<void> {
     if (!configId) return;
@@ -443,10 +445,31 @@ export function CalculatorPage() {
         }
         onSyncToHubspot={
           isEditMode && hasRole("admin") && configId
-            ? handleSyncCalcToHubspot
+            ? () => {
+                // Re-syncing an already-synced calc creates a NEW HubSpot
+                // Note — confirm first so it's not an accidental duplicate.
+                if (configQuery.data?.hubspotSyncState === "synced") {
+                  setResyncConfirmOpen(true);
+                } else {
+                  void handleSyncCalcToHubspot();
+                }
+              }
             : undefined
         }
         syncPending={calcSyncPending}
+      />
+
+      <ConfirmDialog
+        open={resyncConfirmOpen}
+        title="Sync again to HubSpot?"
+        message="This calculator is already synced. Syncing again creates a NEW HubSpot Note (the previous one stays as history)."
+        confirmLabel="Sync again"
+        pending={calcSyncPending}
+        onCancel={() => setResyncConfirmOpen(false)}
+        onConfirm={() => {
+          setResyncConfirmOpen(false);
+          void handleSyncCalcToHubspot();
+        }}
       />
 
       {editModeBanner}
