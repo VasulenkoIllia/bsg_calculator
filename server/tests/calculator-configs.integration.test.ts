@@ -336,8 +336,8 @@ describe("PUT /api/v1/calculator-configs/:id", () => {
   });
 });
 
-describe("DELETE /api/v1/calculator-configs/:id", () => {
-  it("hard deletes + returns 204", async () => {
+describe("DELETE /api/v1/calculator-configs/:id (Cycle 2 — soft-delete)", () => {
+  it("soft-deletes: returns 200 DTO with deletedAt + reason, row STAYS in DB", async () => {
     const token = await setupAuth();
     const [company] = await db.insert(companies).values(companyFixture()).returning();
     const created = await request(app)
@@ -347,22 +347,206 @@ describe("DELETE /api/v1/calculator-configs/:id", () => {
 
     const del = await request(app)
       .delete(`/api/v1/calculator-configs/${created.body.id}`)
-      .set("Authorization", `Bearer ${token}`);
-    expect(del.status).toBe(204);
+      .set("Authorization", `Bearer ${token}`)
+      .send({ reason: "duplicate" });
+    expect(del.status).toBe(200);
+    expect(del.body.deletedAt).toBeTruthy();
+    expect(del.body.deletionReason).toBe("duplicate");
 
+    // Soft delete — the row is still present, just marked.
     const rows = await db
       .select()
       .from(calculatorConfigs)
       .where(eq(calculatorConfigs.id, created.body.id));
-    expect(rows).toHaveLength(0);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].deletedAt).not.toBeNull();
+    expect(rows[0].deletionReason).toBe("duplicate");
+    expect(rows[0].deletedByUserId).not.toBeNull();
   });
 
-  it("returns 404 on already-deleted / missing id", async () => {
+  it("requires a reason (400 when body is empty)", async () => {
+    const token = await setupAuth();
+    const [company] = await db.insert(companies).values(companyFixture()).returning();
+    const created = await request(app)
+      .post("/api/v1/calculator-configs")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, payload: samplePayload });
+
+    const del = await request(app)
+      .delete(`/api/v1/calculator-configs/${created.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({});
+    expect(del.status).toBe(400);
+  });
+
+  it("requires a note when reason is 'other' (400)", async () => {
+    const token = await setupAuth();
+    const [company] = await db.insert(companies).values(companyFixture()).returning();
+    const created = await request(app)
+      .post("/api/v1/calculator-configs")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, payload: samplePayload });
+
+    const del = await request(app)
+      .delete(`/api/v1/calculator-configs/${created.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ reason: "other" });
+    expect(del.status).toBe(400);
+  });
+
+  it("returns 409 CALC_ALREADY_DELETED on a second delete", async () => {
+    const token = await setupAuth();
+    const [company] = await db.insert(companies).values(companyFixture()).returning();
+    const created = await request(app)
+      .post("/api/v1/calculator-configs")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, payload: samplePayload });
+
+    await request(app)
+      .delete(`/api/v1/calculator-configs/${created.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ reason: "client_request" });
+    const second = await request(app)
+      .delete(`/api/v1/calculator-configs/${created.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ reason: "client_request" });
+    expect(second.status).toBe(409);
+    expect(second.body.error?.code ?? second.body.code).toBe("CALC_ALREADY_DELETED");
+  });
+
+  it("returns 404 on a missing id", async () => {
     const token = await setupAuth();
     const res = await request(app)
       .delete("/api/v1/calculator-configs/00000000-0000-0000-0000-000000000000")
-      .set("Authorization", `Bearer ${token}`);
+      .set("Authorization", `Bearer ${token}`)
+      .send({ reason: "duplicate" });
     expect(res.status).toBe(404);
+  });
+
+  it("returns 403 for the read-only `user` role", async () => {
+    await setupAuth();
+    const [company] = await db.insert(companies).values(companyFixture()).returning();
+    const adminToken = await loginAs("op@bsg.test", "password12345");
+    const created = await request(app)
+      .post("/api/v1/calculator-configs")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ companyId: company.id, payload: samplePayload });
+
+    await createTestUser({
+      email: "viewer2@bsg.test",
+      password: "viewer12345",
+      role: "user"
+    });
+    const viewerToken = await loginAs("viewer2@bsg.test", "viewer12345");
+    const del = await request(app)
+      .delete(`/api/v1/calculator-configs/${created.body.id}`)
+      .set("Authorization", `Bearer ${viewerToken}`)
+      .send({ reason: "duplicate" });
+    expect(del.status).toBe(403);
+  });
+});
+
+describe("POST /api/v1/calculator-configs/:id/restore (Cycle 2)", () => {
+  async function createAndDelete(token: string): Promise<string> {
+    const [company] = await db.insert(companies).values(companyFixture()).returning();
+    const created = await request(app)
+      .post("/api/v1/calculator-configs")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, payload: samplePayload });
+    await request(app)
+      .delete(`/api/v1/calculator-configs/${created.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ reason: "duplicate" });
+    return created.body.id;
+  }
+
+  it("super_admin restores a soft-deleted calc: 200, deletedAt cleared", async () => {
+    await createTestUser({
+      email: "super@bsg.test",
+      password: "superadmin12345",
+      role: "super_admin"
+    });
+    const token = await loginAs("super@bsg.test", "superadmin12345");
+    const id = await createAndDelete(token);
+
+    const restore = await request(app)
+      .post(`/api/v1/calculator-configs/${id}/restore`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(restore.status).toBe(200);
+    expect(restore.body.deletedAt).toBeNull();
+    expect(restore.body.deletionReason).toBeNull();
+
+    const rows = await db
+      .select()
+      .from(calculatorConfigs)
+      .where(eq(calculatorConfigs.id, id));
+    expect(rows[0].deletedAt).toBeNull();
+    expect(rows[0].deletedByUserId).toBeNull();
+  });
+
+  it("returns 403 for a plain admin (super_admin required)", async () => {
+    const adminToken = await setupAuth();
+    const id = await createAndDelete(adminToken);
+    const restore = await request(app)
+      .post(`/api/v1/calculator-configs/${id}/restore`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(restore.status).toBe(403);
+  });
+
+  it("returns 404 when restoring an alive (non-deleted) calc", async () => {
+    await createTestUser({
+      email: "super2@bsg.test",
+      password: "superadmin12345",
+      role: "super_admin"
+    });
+    const token = await loginAs("super2@bsg.test", "superadmin12345");
+    const [company] = await db.insert(companies).values(companyFixture()).returning();
+    const created = await request(app)
+      .post("/api/v1/calculator-configs")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, payload: samplePayload });
+
+    const restore = await request(app)
+      .post(`/api/v1/calculator-configs/${created.body.id}/restore`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(restore.status).toBe(404);
+  });
+});
+
+describe("GET /api/v1/calculator-configs — soft-delete status filter (Cycle 2)", () => {
+  it("status=active hides deleted; status=deleted shows only deleted; default shows both", async () => {
+    const token = await setupAuth();
+    const [company] = await db.insert(companies).values(companyFixture()).returning();
+    const alive = await request(app)
+      .post("/api/v1/calculator-configs")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, title: "alive-cfg", payload: samplePayload });
+    const doomed = await request(app)
+      .post("/api/v1/calculator-configs")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ companyId: company.id, title: "doomed-cfg", payload: samplePayload });
+    await request(app)
+      .delete(`/api/v1/calculator-configs/${doomed.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ reason: "duplicate" });
+
+    const ids = (status: string) =>
+      request(app)
+        .get(`/api/v1/calculator-configs?companyId=${company.id}&showAll=true&status=${status}`)
+        .set("Authorization", `Bearer ${token}`)
+        .then(r => (r.body.items as { id: string }[]).map(i => i.id));
+
+    const activeIds = await ids("active");
+    expect(activeIds).toContain(alive.body.id);
+    expect(activeIds).not.toContain(doomed.body.id);
+
+    const deletedIds = await ids("deleted");
+    expect(deletedIds).toContain(doomed.body.id);
+    expect(deletedIds).not.toContain(alive.body.id);
+
+    const allIds = await ids("all");
+    expect(allIds).toContain(alive.body.id);
+    expect(allIds).toContain(doomed.body.id);
   });
 });
 

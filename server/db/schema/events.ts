@@ -104,7 +104,10 @@ export type NewDocumentEvent = typeof documentEvents.$inferInsert;
 export const CALC_CONFIG_EVENT_TYPES = [
   "created",
   "synced_to_hubspot",
-  "sync_failed"
+  "sync_failed",
+  // Cycle 2 — soft-delete / restore parity with document_events.
+  "deleted",
+  "restored"
 ] as const;
 export type CalcConfigEventType = (typeof CALC_CONFIG_EVENT_TYPES)[number];
 
@@ -135,7 +138,7 @@ export const calculatorConfigEvents = pgTable(
     ),
     eventTypeCheck: check(
       "calc_config_events_event_type_check",
-      sql`${table.eventType} IN ('created', 'synced_to_hubspot', 'sync_failed')`
+      sql`${table.eventType} IN ('created', 'synced_to_hubspot', 'sync_failed', 'deleted', 'restored')`
     )
   })
 );

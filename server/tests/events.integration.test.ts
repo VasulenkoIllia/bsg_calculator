@@ -199,8 +199,8 @@ describe("GET /api/v1/calculator-configs/:id/events", () => {
  * for soft-delete and a NEW test will cover hard-delete only when
  * a super-admin force-purges.
  */
-describe("ON DELETE CASCADE — calc-config delete wipes its events", () => {
-  it("DELETE /calculator-configs/:id removes the events too", async () => {
+describe("Cycle 2 — soft-delete keeps the calc-config + appends a 'deleted' event", () => {
+  it("DELETE /calculator-configs/:id soft-deletes: events survive + a 'deleted' event is added", async () => {
     // Explicit `role: "admin"` — Sprint 9.S audit closure made the
     // actor tier visible at the call site instead of relying on the
     // helper's default.
@@ -226,27 +226,36 @@ describe("ON DELETE CASCADE — calc-config delete wipes its events", () => {
       .expect(200);
     expect(before.body.items.length).toBeGreaterThanOrEqual(1);
 
-    // Hard delete the calc. With ON DELETE CASCADE this also wipes
-    // the events row; without it the DELETE would 500 on FK violation.
+    // Cycle 2 — soft-delete (reason required, returns 200 DTO).
     await request(app)
       .delete(`/api/v1/calculator-configs/${calcId}`)
       .set("Authorization", `Bearer ${token}`)
-      .expect(204);
+      .send({ reason: "duplicate" })
+      .expect(200);
 
-    // Events endpoint now 404s because the calc-config is gone.
+    // The calc row survives a soft-delete, so the events endpoint still
+    // 200s AND now carries a 'deleted' event on top of 'created'.
     const after = await request(app)
       .get(`/api/v1/calculator-configs/${calcId}/events`)
-      .set("Authorization", `Bearer ${token}`);
-    expect(after.status).toBe(404);
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    const afterTypes = (after.body.items as { eventType: string }[]).map(
+      e => e.eventType
+    );
+    expect(afterTypes).toContain("created");
+    expect(afterTypes).toContain("deleted");
 
-    // Defence in depth: also verify NO orphan events row remains in
-    // the DB. The CASCADE should have removed it.
+    // Defence in depth: the events rows are still in the DB (no CASCADE
+    // fired — the calc row is only marked, not removed).
     const stillThere = await db
       .select()
-      .from(
-        (await import("../db/schema")).calculatorConfigEvents
-      )
-      .where(eq((await import("../db/schema")).calculatorConfigEvents.calculatorConfigId, calcId));
-    expect(stillThere).toHaveLength(0);
+      .from((await import("../db/schema")).calculatorConfigEvents)
+      .where(
+        eq(
+          (await import("../db/schema")).calculatorConfigEvents.calculatorConfigId,
+          calcId
+        )
+      );
+    expect(stillThere.length).toBeGreaterThanOrEqual(2);
   });
 });

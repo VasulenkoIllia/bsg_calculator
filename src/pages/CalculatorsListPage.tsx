@@ -25,24 +25,108 @@
 
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { isDocumentTemplatePayload } from "../components/document-wizard/isDocumentTemplatePayload.js";
 import { ApiError } from "../api/client.js";
+import * as configsApi from "../api/calculator-configs.js";
 import { CompanyTypeahead } from "../components/CompanyTypeahead.js";
+import { DeleteCalculatorModal } from "../components/DeleteCalculatorModal.js";
 import { LastActionCell } from "../components/LastActionCell.js";
 import { LoadMoreButton } from "../components/LoadMoreButton.js";
 import { SortableTh } from "../components/SortableTh.js";
 import { useAuth } from "../contexts/AuthContext.js";
+import { useToast } from "../contexts/ToastContext.js";
 import { useCalculatorConfigs } from "../hooks/useCalculatorConfig.js";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
 import { useSortState } from "../hooks/useSortState.js";
 import { formatDateTime } from "../shared/format.js";
-import type { CalculatorConfigSortField } from "../api/calculator-configs.js";
-import type { PublicCompany } from "../api/types.js";
+import type {
+  CalculatorConfigDeletionReason,
+  CalculatorConfigSortField
+} from "../api/calculator-configs.js";
+import type {
+  PublicCalculatorConfigListItem,
+  PublicCompany
+} from "../api/types.js";
+
+/**
+ * Cycle 2 — humanise the deletion reason enum for the Status badge.
+ * Mirrors DocumentsListPage.humanReason; kept inline (7 lines) so the
+ * page stays self-contained.
+ */
+function humanReason(reason: CalculatorConfigDeletionReason): string {
+  switch (reason) {
+    case "client_request":
+      return "Client request";
+    case "created_in_error":
+      return "Created in error";
+    case "replaced_by_new_version":
+      return "Replaced by new";
+    case "duplicate":
+      return "Duplicate";
+    case "other":
+      return "Other";
+    default: {
+      const _exhaustive: never = reason;
+      return String(_exhaustive);
+    }
+  }
+}
+
+/**
+ * Cycle 2 — Status column renderer (parity with DocumentsListPage).
+ * Active (alive) vs Deleted (with reason inline + an optional inline
+ * Restore button for super_admin). The calculator DOMAIN is frozen —
+ * this lives only in the list, never the sticky toolbar.
+ */
+function StatusCell({
+  cfg,
+  onRestore,
+  restoring
+}: {
+  cfg: PublicCalculatorConfigListItem;
+  onRestore: (() => void) | null;
+  restoring: boolean;
+}) {
+  if (cfg.deletedAt) {
+    return (
+      <div className="flex flex-col gap-1">
+        <span className="inline-flex w-fit items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700">
+          Deleted
+        </span>
+        {cfg.deletionReason ? (
+          <span className="text-xs text-slate-500">
+            {humanReason(cfg.deletionReason)}
+          </span>
+        ) : null}
+        {onRestore ? (
+          <button
+            type="button"
+            onClick={onRestore}
+            disabled={restoring}
+            className="mt-0.5 w-fit rounded border border-green-500 bg-white px-2 py-0.5 text-[10px] font-semibold text-green-700 hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {restoring ? "Restoring…" : "Restore"}
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+  return (
+    <span className="inline-flex w-fit items-center rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-700">
+      Active
+    </span>
+  );
+}
+
+type StatusFilter = "all" | "active" | "deleted";
 
 export function CalculatorsListPage() {
   // Sprint 9.R — `user` is the read-only tier (no calc creation /
   // edit / delete). Use this gate to hide write affordances.
   const { hasRole } = useAuth();
+  const toast = useToast();
+  const queryClient = useQueryClient();
   const [searchInput, setSearchInput] = useState("");
   // Sprint 9.W — optional company filter (parallel with the same
   // affordance on /documents). Backend + hook already accept
@@ -50,6 +134,26 @@ export function CalculatorsListPage() {
   const [selectedCompany, setSelectedCompany] = useState<PublicCompany | null>(
     null
   );
+  // Cycle 2 — soft-delete scope filter (All / Active / Deleted).
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  // Cycle 2 — the calc whose delete modal is open (null = closed).
+  const [deleteTarget, setDeleteTarget] =
+    useState<PublicCalculatorConfigListItem | null>(null);
+  // Cycle 2 — inline restore for super_admin. The mutation `variables`
+  // carries the calc id so we can disable just that row's button.
+  const restoreMutation = useMutation({
+    mutationFn: (id: string) => configsApi.restoreCalculatorConfig(id),
+    onSuccess: async (_data, id) => {
+      toast.success("Calculator restored");
+      await queryClient.invalidateQueries({ queryKey: ["calculator-configs"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["calculator-configs", "get", id]
+      });
+    },
+    onError: err => {
+      toast.error(err instanceof ApiError ? err.message : "Restore failed.");
+    }
+  });
   // 300ms debounce on the title-substring query so a fast typist
   // doesn't fire a request per keystroke. Mirrors the pattern used
   // on /documents (DocumentsListPage) and the company-typeahead.
@@ -66,6 +170,7 @@ export function CalculatorsListPage() {
     // that company. Without showAll the list would default to
     // company-level only.
     showAll: selectedCompany ? true : undefined,
+    status: statusFilter,
     sort: sortSpec
   });
   // Sprint 6.7 audit fix (S9): mirror the DocumentsListPage UX —
@@ -131,6 +236,23 @@ export function CalculatorsListPage() {
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:w-64"
           />
         </label>
+        {/* Cycle 2 — soft-delete scope filter. Default "All" shows
+            deleted rows with a badge (matches /documents). */}
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Status
+          </span>
+          <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value as StatusFilter)}
+            aria-label="Filter saved calculators by status"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:w-40"
+          >
+            <option value="all">All</option>
+            <option value="active">Active only</option>
+            <option value="deleted">Deleted only</option>
+          </select>
+        </label>
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -170,6 +292,12 @@ export function CalculatorsListPage() {
               >
                 Updated
               </SortableTh>
+              {/* Cycle 2 — soft-delete status (Active / Deleted + reason
+                  + inline Restore). Not sortable (the backend doesn't
+                  expose deleted_at as a sort key). */}
+              <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Status
+              </th>
               {/* Sprint 9.N — Last action column populated from
                   calculator_config_events via LATERAL subquery on
                   the listing endpoint. */}
@@ -184,7 +312,7 @@ export function CalculatorsListPage() {
           <tbody className="divide-y divide-slate-100">
             {configs.isLoading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-sm text-slate-500">
+                <td colSpan={7} className="px-4 py-6 text-center text-sm text-slate-500">
                   Loading saved calculators…
                 </td>
               </tr>
@@ -192,7 +320,7 @@ export function CalculatorsListPage() {
 
             {configs.isError ? (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-sm text-red-600">
+                <td colSpan={7} className="px-4 py-6 text-center text-sm text-red-600">
                   Failed to load calculators
                   {configs.error instanceof ApiError ? `: ${configs.error.message}` : "."}
                 </td>
@@ -201,7 +329,7 @@ export function CalculatorsListPage() {
 
             {!configs.isLoading && !configs.isError && configs.items.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-sm text-slate-500">
+                <td colSpan={7} className="px-4 py-6 text-center text-sm text-slate-500">
                   {q.trim() || selectedCompany
                     ? "No saved calculators match the current filters."
                     : "No saved calculators yet. Open the calculator and click Save calculator to persist one."}
@@ -217,8 +345,15 @@ export function CalculatorsListPage() {
               // and its Open link goes STRAIGHT to the wizard (no surprise
               // redirect). See CalculatorPage's hydration guard.
               const isDocDraft = isDocumentTemplatePayload(cfg.payload);
+              // Cycle 2 — tint soft-deleted rows red (matches /documents).
+              const isDeleted = Boolean(cfg.deletedAt);
               return (
-              <tr key={cfg.id} className="hover:bg-slate-50">
+              <tr
+                key={cfg.id}
+                className={
+                  isDeleted ? "bg-red-50/40 hover:bg-red-50" : "hover:bg-slate-50"
+                }
+              >
                 <td className="px-4 py-3 font-medium text-slate-800">
                   <div className="flex flex-wrap items-center gap-2">
                     <span>
@@ -283,16 +418,46 @@ export function CalculatorsListPage() {
                     </div>
                   ) : null}
                 </td>
+                {/* Cycle 2 — Status (Active / Deleted + reason +
+                    super_admin inline Restore). */}
+                <td className="px-4 py-3">
+                  <StatusCell
+                    cfg={cfg}
+                    onRestore={
+                      hasRole("super_admin") && isDeleted
+                        ? () => restoreMutation.mutate(cfg.id)
+                        : null
+                    }
+                    restoring={
+                      restoreMutation.isPending &&
+                      restoreMutation.variables === cfg.id
+                    }
+                  />
+                </td>
                 <td className="px-4 py-3">
                   <LastActionCell event={cfg.lastEvent} />
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <Link
-                    to={isDocDraft ? `/wizard?calc=${cfg.id}` : `/calc/${cfg.id}`}
-                    className="font-semibold text-blue-700 hover:text-blue-900 hover:underline"
-                  >
-                    {isDocDraft ? "Open in wizard →" : "Open →"}
-                  </Link>
+                  <div className="flex items-center justify-end gap-3">
+                    <Link
+                      to={isDocDraft ? `/wizard?calc=${cfg.id}` : `/calc/${cfg.id}`}
+                      className="font-semibold text-blue-700 hover:text-blue-900 hover:underline"
+                    >
+                      {isDocDraft ? "Open in wizard →" : "Open →"}
+                    </Link>
+                    {/* Cycle 2 — Delete (admin+, alive rows only). Opens
+                        the reason/note modal; the calculator DOMAIN is
+                        untouched — this is a list-level affordance. */}
+                    {hasRole("admin") && !isDeleted ? (
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTarget(cfg)}
+                        className="font-semibold text-red-600 hover:text-red-700 hover:underline"
+                      >
+                        Delete
+                      </button>
+                    ) : null}
+                  </div>
                 </td>
               </tr>
               );
@@ -307,6 +472,27 @@ export function CalculatorsListPage() {
         fetchNextPage={configs.fetchNextPage}
         label="Load more calculators"
       />
+
+      {/* Cycle 2 — soft-delete modal (reason + optional note). Mounted
+          once at page level; `deleteTarget` drives which calc it acts
+          on. On success we close + refetch so the row re-renders with
+          its "Deleted" badge. */}
+      {deleteTarget ? (
+        <DeleteCalculatorModal
+          open
+          calculatorId={deleteTarget.id}
+          calculatorTitle={deleteTarget.title}
+          hasHubspotNote={Boolean(deleteTarget.hubspotNoteId)}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={() => {
+            setDeleteTarget(null);
+            toast.success("Calculator deleted");
+            void queryClient.invalidateQueries({
+              queryKey: ["calculator-configs"]
+            });
+          }}
+        />
+      ) : null}
     </section>
   );
 }

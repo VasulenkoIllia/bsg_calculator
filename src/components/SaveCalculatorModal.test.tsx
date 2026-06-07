@@ -164,7 +164,9 @@ describe("SaveCalculatorModal — submit", () => {
       createdAt: "2026-05-17T00:00:00.000Z",
       updatedAt: "2026-05-17T00:00:00.000Z",
       hubspotNoteId: null,
-      hubspotSyncState: "not_synced" as const
+      hubspotSyncState: "not_synced" as const,
+      deletedAt: null,
+      deletionReason: null
     });
 
     const onClose = vi.fn();
@@ -213,7 +215,9 @@ describe("SaveCalculatorModal — submit", () => {
       createdAt: "2026-05-17T00:00:00.000Z",
       updatedAt: "2026-05-17T00:00:00.000Z",
       hubspotNoteId: null,
-      hubspotSyncState: "not_synced" as const
+      hubspotSyncState: "not_synced" as const,
+      deletedAt: null,
+      deletionReason: null
     });
 
     renderModal();

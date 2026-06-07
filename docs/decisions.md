@@ -6339,4 +6339,56 @@ Use this file to record meaningful technical decisions for the project.
   token + returns a fresh working link of the same role; admin → 403;
   already-accepted → 409). Build green.
 
+### Decision: Calculator soft-delete + restore parity with documents (Cycle 2)
+- Date: 2026-06-07
+- Context:
+  - Saved calculators (`calculator_configs`) used a HARD delete (row gone,
+    204, no reason, no HubSpot Note teardown, no restore). Documents have had
+    a full soft-delete/restore model since Phase 8 Stage 5. The operator
+    asked for FULL parity, with the delete/restore UI living ONLY in the
+    Saved-calculators LIST — never the frozen CalculatorStickyToolbar.
+- Decision (mirror the documents model exactly):
+  - **Schema (migration 0017, hand-written + journaled):** add
+    `deleted_at` / `deleted_by_user_id` (FK ON DELETE SET NULL) /
+    `deletion_reason` / `deletion_note` to `calculator_configs`; a
+    reason CHECK + a soft-delete-consistency CHECK (deletedAt & deletedBy
+    move together); widen `hubspot_sync_state` CHECK to the 5-value set
+    (adds `delete_pending`, `delete_failed`); widen
+    `calc_config_events_event_type_check` to add `deleted` / `restored`;
+    add `calc.restored` to the admin_actions action-type CHECK; partial
+    `calculator_configs_alive_created_idx` WHERE deleted_at IS NULL.
+  - **DELETE /api/v1/calculator-configs/:id** (admin) is now a SOFT delete:
+    requires a `reason` (+ note REQUIRED when reason=`other`), tears down the
+    HubSpot Note under an advisory xact lock
+    (`pg_try_advisory_xact_lock(hashtext('calc-delete:'||id))` → 409
+    `CALC_DELETE_IN_PROGRESS` on contention), state machine
+    synced/delete_failed → delete_pending → (success) soft-delete + clear
+    noteId + reset state; (failure) `delete_failed`, row stays ALIVE for
+    Retry. Returns **200 + the updated DTO** (was 204). 409
+    `CALC_ALREADY_DELETED` on a second delete. Appends a `deleted` event.
+  - **POST /api/v1/calculator-configs/:id/restore** (super_admin) clears the
+    soft-delete fields, does NOT re-create the Note (operator re-syncs),
+    appends a `restored` event. 404 on alive/missing.
+  - **List** gains a `status` filter (all | active | deleted) → repo
+    `deletedScope` (default `include_deleted` so deleted rows show with a
+    badge). **Sync** skips a soft-deleted calc (404) so a queued auto-sync
+    can't resurrect a torn-down Note.
+  - **Frontend (LIST ONLY):** new `DeleteCalculatorModal` (reason dropdown +
+    note, parity with `DeleteDocumentModal`); CalculatorsListPage gains a
+    Status column (Active / Deleted + reason), a Status filter, an admin
+    Delete action on alive rows, a super_admin inline Restore on deleted
+    rows, and red row tinting. The DTO/widened sync enum is narrowed back to
+    the 3 original values at the CalculatorPage→CalculatorStickyToolbar
+    boundary so the frozen calculator domain is untouched.
+- Boundary / consequences:
+  - The frozen calculator domain (`src/components/calculator/**`,
+    `src/domain/calculator/**`) is NOT modified — all UI is list-level.
+  - Soft-delete keeps the row + its events (no CASCADE fires); the events
+    test that asserted CASCADE-wipe was rewritten to assert survive+append.
+- Verification: FE + BE `tsc` clean; lint 0 errors; FE 388/388 (+11
+  DeleteCalculatorModal units, +4 list badge/filter/delete/restore);
+  server 386/387 with the only failure being the known local-`.env`
+  `JWT_REFRESH_EXPIRES=30d` vs 12h `auth.tokens` flake (unrelated). Migration
+  0017 applied + verified (columns + FK + CHECKs + alive index). Build green.
+
 

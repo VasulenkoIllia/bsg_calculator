@@ -25,7 +25,7 @@
  */
 
 import { sql } from "drizzle-orm";
-import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { check, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { companies } from "./companies";
 import { deals } from "./deals";
 import { users } from "./users";
@@ -75,7 +75,25 @@ export const calculatorConfigs = pgTable(
     hubspotSyncState: text("hubspot_sync_state")
       .notNull()
       .default("not_synced")
-      .$type<"not_synced" | "synced" | "failed">()
+      .$type<
+        "not_synced" | "synced" | "failed" | "delete_pending" | "delete_failed"
+      >(),
+    // Cycle 2 — soft-delete parity with documents (Phase 8 Stage 5).
+    // NULL = alive; set = soft-deleted. deletedAt + deletedByUserId move
+    // together (CHECK below). HubSpot Note is torn down on delete; restore
+    // (super_admin) clears these. Migration 0017.
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deletedByUserId: uuid("deleted_by_user_id").references(() => users.id, {
+      onDelete: "set null"
+    }),
+    deletionReason: text("deletion_reason").$type<
+      | "client_request"
+      | "created_in_error"
+      | "replaced_by_new_version"
+      | "duplicate"
+      | "other"
+    >(),
+    deletionNote: text("deletion_note")
   },
   table => ({
     // Drives the wizard Step 1 picker: configs filtered by company,
@@ -92,6 +110,20 @@ export const calculatorConfigs = pgTable(
     createdByIdx: index("calculator_configs_created_by_idx").on(
       table.createdByUserId,
       table.createdAt
+    ),
+    // Cycle 2 — soft-delete CHECKs (mirror documents). Drizzle's check()
+    // is runtime-doc only; migration 0017 applies them.
+    deletionReasonCheck: check(
+      "calculator_configs_deletion_reason_check",
+      sql`${table.deletionReason} IS NULL OR ${table.deletionReason} IN ('client_request', 'created_in_error', 'replaced_by_new_version', 'duplicate', 'other')`
+    ),
+    softDeleteConsistencyCheck: check(
+      "calculator_configs_soft_delete_consistency_check",
+      sql`(${table.deletedAt} IS NULL AND ${table.deletedByUserId} IS NULL) OR (${table.deletedAt} IS NOT NULL AND ${table.deletedByUserId} IS NOT NULL)`
+    ),
+    syncStateCheck: check(
+      "calculator_configs_hubspot_sync_state_check",
+      sql`${table.hubspotSyncState} IN ('not_synced', 'synced', 'failed', 'delete_pending', 'delete_failed')`
     )
   })
 );

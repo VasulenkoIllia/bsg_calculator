@@ -68,7 +68,32 @@ export interface ListCalculatorConfigsParams {
   sort?: CalculatorConfigSortSpec;
   cursor?: string;
   limit?: number;
+  /**
+   * Cycle 2 — soft-delete scope filter for the Saved-calculators list.
+   *   all     → alive + deleted (default; deleted rows show a badge)
+   *   active  → alive only
+   *   deleted → deleted only
+   */
+  status?: "all" | "active" | "deleted";
 }
+
+/**
+ * Cycle 2 — DELETE body. Mirrors documents' delete: a controlled-
+ * vocabulary reason + an optional free-text note that the backend
+ * REQUIRES when reason is "other".
+ */
+export interface DeleteCalculatorConfigRequest {
+  reason: CalculatorConfigDeletionReason;
+  note?: string | null;
+}
+
+/** Cycle 2 — same enum as documents; the delete modal renders a dropdown. */
+export type CalculatorConfigDeletionReason =
+  | "client_request"
+  | "created_in_error"
+  | "replaced_by_new_version"
+  | "duplicate"
+  | "other";
 
 export async function createCalculatorConfig(
   body: CreateCalculatorConfigRequest
@@ -98,8 +123,35 @@ export async function updateCalculatorConfig(
   return data;
 }
 
-export async function deleteCalculatorConfig(id: string): Promise<void> {
-  await apiClient.delete(`/calculator-configs/${id}`);
+/**
+ * Cycle 2 — SOFT-delete a saved calculator. Tears down the upstream
+ * HubSpot Note and marks the row deleted; the backend returns the
+ * updated config (with `deletedAt` set) so the list can re-render the
+ * row's "Deleted" badge from the response. Admin-only.
+ */
+export async function deleteCalculatorConfig(
+  id: string,
+  body: DeleteCalculatorConfigRequest
+): Promise<PublicCalculatorConfig> {
+  const { data } = await apiClient.delete<PublicCalculatorConfig>(
+    `/calculator-configs/${id}`,
+    { data: body }
+  );
+  return data;
+}
+
+/**
+ * Cycle 2 — restore a soft-deleted calculator (super_admin only).
+ * Clears the soft-delete fields; does NOT re-create the HubSpot Note
+ * (operator re-syncs manually). Returns the now-alive config.
+ */
+export async function restoreCalculatorConfig(
+  id: string
+): Promise<PublicCalculatorConfig> {
+  const { data } = await apiClient.post<PublicCalculatorConfig>(
+    `/calculator-configs/${id}/restore`
+  );
+  return data;
 }
 
 /**

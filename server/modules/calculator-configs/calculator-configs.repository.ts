@@ -175,12 +175,61 @@ export async function updateCalculatorConfig(
   return rows[0];
 }
 
-export async function deleteCalculatorConfig(id: string): Promise<boolean> {
+/**
+ * Cycle 2 — SOFT-delete a calc-config (parity with documents). Sets the
+ * deletion metadata, clears the HubSpot note pointer (the upstream Note is
+ * torn down by the service first), and resets sync state to 'not_synced'.
+ * Returns the updated row (undefined if no row matched).
+ */
+export async function softDeleteCalculatorConfig(
+  id: string,
+  actorUserId: string,
+  reason:
+    | "client_request"
+    | "created_in_error"
+    | "replaced_by_new_version"
+    | "duplicate"
+    | "other",
+  note: string | null
+): Promise<CalculatorConfig | undefined> {
   const rows = await db
-    .delete(calculatorConfigs)
+    .update(calculatorConfigs)
+    .set({
+      deletedAt: new Date(),
+      deletedByUserId: actorUserId,
+      deletionReason: reason,
+      deletionNote: note,
+      hubspotSyncState: "not_synced",
+      hubspotNoteId: null,
+      updatedAt: new Date()
+    })
     .where(eq(calculatorConfigs.id, id))
-    .returning({ id: calculatorConfigs.id });
-  return rows.length > 0;
+    .returning();
+  return rows[0];
+}
+
+/**
+ * Cycle 2 — clear the soft-delete fields (super_admin restore). Does NOT
+ * re-create the HubSpot Note (operator clicks Sync). Resets sync state to
+ * 'not_synced' so a row restored from delete_failed reads coherently.
+ */
+export async function restoreCalculatorConfig(
+  id: string
+): Promise<CalculatorConfig | undefined> {
+  const rows = await db
+    .update(calculatorConfigs)
+    .set({
+      deletedAt: null,
+      deletedByUserId: null,
+      deletionReason: null,
+      deletionNote: null,
+      hubspotSyncState: "not_synced",
+      hubspotNoteId: null,
+      updatedAt: new Date()
+    })
+    .where(eq(calculatorConfigs.id, id))
+    .returning();
+  return rows[0];
 }
 
 /**
@@ -197,7 +246,12 @@ export async function deleteCalculatorConfig(id: string): Promise<boolean> {
 export async function updateCalculatorConfigHubspotSync(
   id: string,
   patch: {
-    hubspotSyncState: "not_synced" | "synced" | "failed";
+    hubspotSyncState:
+      | "not_synced"
+      | "synced"
+      | "failed"
+      | "delete_pending"
+      | "delete_failed";
     hubspotNoteId: string | null;
   }
 ): Promise<CalculatorConfig | undefined> {
@@ -224,6 +278,12 @@ export interface ListCalculatorConfigsArgs {
   showAll: boolean;
   /** Sprint 6.6: optional substring search on `title`. */
   q?: string;
+  /**
+   * Cycle 2 — soft-delete scope (mirrors documents `deletedScope`). The FE
+   * Status filter (All / Active / Deleted) maps to this. Default
+   * "include_deleted" so deleted rows show with a badge.
+   */
+  deletedScope?: "alive" | "deleted_only" | "include_deleted";
   /** Sprint 6.8: clickable-header per-column sort. */
   sort: SortSpec<CalculatorConfigSortField>;
   cursor: SortedCursor | null;
@@ -331,6 +391,15 @@ export async function listCalculatorConfigs(
     filters.push(
       sql`${calculatorConfigs.title} ILIKE ${pattern} ESCAPE '\\'`
     );
+  }
+
+  // Cycle 2 — soft-delete scope. Default "include_deleted" so the list
+  // shows deleted rows with a badge (matches the documents policy).
+  const scope = args.deletedScope ?? "include_deleted";
+  if (scope === "alive") {
+    filters.push(sql`${calculatorConfigs.deletedAt} IS NULL`);
+  } else if (scope === "deleted_only") {
+    filters.push(sql`${calculatorConfigs.deletedAt} IS NOT NULL`);
   }
 
   // Sprint 6.8: per-column sort. ORDER BY (chosen, id) keeps

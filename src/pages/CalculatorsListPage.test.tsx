@@ -22,6 +22,7 @@ import * as configsApi from "../api/calculator-configs.js";
 import * as authApi from "../api/auth.js";
 import { ApiError } from "../api/client.js";
 import { AuthProvider } from "../contexts/AuthContext.js";
+import { ToastProvider } from "../contexts/ToastContext.js";
 import type { PublicCalculatorConfig } from "../api/types.js";
 import { CalculatorsListPage } from "./CalculatorsListPage.js";
 
@@ -38,6 +39,8 @@ const fixtureConfig = (
   updatedAt: "2026-05-17T00:00:00.000Z",
   hubspotNoteId: null,
   hubspotSyncState: "not_synced",
+  deletedAt: null,
+  deletionReason: null,
   ...overrides
 });
 
@@ -56,11 +59,47 @@ function renderPage() {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <MemoryRouter>
-          <CalculatorsListPage />
-        </MemoryRouter>
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <MemoryRouter>
+            <CalculatorsListPage />
+          </MemoryRouter>
+        </AuthProvider>
+      </ToastProvider>
+    </QueryClientProvider>
+  );
+}
+
+/**
+ * Cycle 2 — render the page with a logged-in user of the given role so
+ * the role-gated delete / restore affordances become visible. Mocks the
+ * cold-boot refresh + me() the AuthProvider runs on mount.
+ */
+function renderPageAs(role: "admin" | "super_admin") {
+  vi.spyOn(authApi, "refresh").mockResolvedValue({
+    accessToken: "test-token"
+  } as Awaited<ReturnType<typeof authApi.refresh>>);
+  vi.spyOn(authApi, "me").mockResolvedValue({
+    id: "u-1",
+    email: "op@bsg.test",
+    login: "op",
+    displayName: "Operator",
+    role,
+    isActive: true
+  });
+
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } }
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <ToastProvider>
+        <AuthProvider>
+          <MemoryRouter>
+            <CalculatorsListPage />
+          </MemoryRouter>
+        </AuthProvider>
+      </ToastProvider>
     </QueryClientProvider>
   );
 }
@@ -234,5 +273,101 @@ describe("CalculatorsListPage — search", () => {
       },
       { timeout: 1_000 }
     );
+  });
+});
+
+describe("CalculatorsListPage — soft-delete (Cycle 2)", () => {
+  it("renders a 'Deleted' badge + reason for a soft-deleted row", async () => {
+    vi.spyOn(configsApi, "listCalculatorConfigs").mockResolvedValueOnce({
+      items: [
+        fixtureConfig({
+          id: "cfg-del",
+          title: "Old draft",
+          deletedAt: "2026-06-01T00:00:00.000Z",
+          deletionReason: "duplicate"
+        })
+      ],
+      nextCursor: null,
+      limit: 25
+    });
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("Old draft")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Deleted")).toBeInTheDocument();
+    expect(screen.getByText("Duplicate")).toBeInTheDocument();
+  });
+
+  it("changing the Status filter refetches with the mapped status param", async () => {
+    const spy = vi
+      .spyOn(configsApi, "listCalculatorConfigs")
+      .mockResolvedValue({ items: [], nextCursor: null, limit: 25 });
+
+    renderPage();
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    // Initial mount → status "all".
+    expect(spy.mock.calls[0][0]).toMatchObject({ status: "all" });
+
+    fireEvent.change(
+      screen.getByLabelText(/filter saved calculators by status/i),
+      { target: { value: "deleted" } }
+    );
+
+    await waitFor(() => {
+      const last = spy.mock.calls[spy.mock.calls.length - 1][0];
+      expect(last).toMatchObject({ status: "deleted" });
+    });
+  });
+
+  it("shows a Delete action for an admin on an alive row", async () => {
+    vi.spyOn(configsApi, "listCalculatorConfigs").mockResolvedValue({
+      items: [fixtureConfig({ id: "cfg-alive", title: "Alive draft" })],
+      nextCursor: null,
+      limit: 25
+    });
+    renderPageAs("admin");
+    await waitFor(() => {
+      expect(screen.getByText("Alive draft")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("button", { name: /^Delete$/i })
+    ).toBeInTheDocument();
+  });
+
+  it("offers Restore to super_admin (and NOT to admin) on a deleted row", async () => {
+    const deletedFixture = fixtureConfig({
+      id: "cfg-del2",
+      title: "Deleted draft",
+      deletedAt: "2026-06-01T00:00:00.000Z",
+      deletionReason: "client_request"
+    });
+
+    // super_admin → Restore button present.
+    vi.spyOn(configsApi, "listCalculatorConfigs").mockResolvedValue({
+      items: [deletedFixture],
+      nextCursor: null,
+      limit: 25
+    });
+    const superView = renderPageAs("super_admin");
+    await waitFor(() => {
+      expect(screen.getByText("Deleted draft")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("button", { name: /^Restore$/i })
+    ).toBeInTheDocument();
+    superView.unmount();
+    vi.restoreAllMocks();
+
+    // plain admin → no Restore button.
+    vi.spyOn(configsApi, "listCalculatorConfigs").mockResolvedValue({
+      items: [deletedFixture],
+      nextCursor: null,
+      limit: 25
+    });
+    renderPageAs("admin");
+    await waitFor(() => {
+      expect(screen.getByText("Deleted draft")).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("button", { name: /^Restore$/i })).toBeNull();
   });
 });

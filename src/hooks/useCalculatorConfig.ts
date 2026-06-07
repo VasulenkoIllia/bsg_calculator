@@ -116,6 +116,12 @@ export interface UseCalculatorConfigsOptions {
   sort?: configsApi.CalculatorConfigSortSpec;
   limit?: number;
   /**
+   * Cycle 2 — soft-delete scope filter for the Saved-calculators list.
+   * "all" (default) shows alive + deleted (deleted rows badged);
+   * "active" hides deleted; "deleted" shows only deleted.
+   */
+  status?: "all" | "active" | "deleted";
+  /**
    * Sprint 6.6: gate the underlying TanStack query. Defaults to true.
    * Cross-company mode (companyId omitted) is a legitimate listing
    * shape, so the old "enabled iff companyId present" gating moved
@@ -165,6 +171,7 @@ export function useCalculatorConfigs(
         hubspotDealId: options.hubspotDealId,
         showAll: options.showAll ?? true,
         q: options.q?.trim() || undefined,
+        status: options.status ?? "all",
         sort,
         limit: options.limit
       }
@@ -177,6 +184,7 @@ export function useCalculatorConfigs(
         hubspotDealId: options.hubspotDealId,
         showAll: options.showAll ?? true,
         q: options.q?.trim() || undefined,
+        status: options.status ?? "all",
         sort,
         cursor: pageParam,
         limit: options.limit

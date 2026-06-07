@@ -101,6 +101,12 @@ async function syncCalculatorConfigToHubspotLocked(
   const calc = await findById(id);
   if (!calc) throw new NotFoundError("Calculator config");
 
+  // Cycle 2 — never push a soft-deleted calc to HubSpot. The delete flow
+  // already tore the Note down; re-creating it here (e.g. a queued
+  // auto-sync that lost the race with a delete) would resurrect an orphan
+  // on the customer timeline. Surface as 404 so the row reads "gone".
+  if (calc.deletedAt) throw new NotFoundError("Calculator config");
+
   if (!hubspot.isConfigured()) {
     throw new ValidationError(
       [{ path: ["hubspot"], message: "HubSpot integration is not configured." }],

@@ -154,7 +154,23 @@ export interface PublicCalculatorConfig {
    * UI).
    */
   hubspotNoteId: string | null;
-  hubspotSyncState: "not_synced" | "synced" | "failed";
+  // Cycle 2 — widened with the delete-flow transition states (parity
+  // with PublicDocument). The list badge renders 'delete_failed' red so
+  // the operator can Retry; 'delete_pending' shows a neutral spinner.
+  hubspotSyncState:
+    | "not_synced"
+    | "synced"
+    | "failed"
+    | "delete_pending"
+    | "delete_failed";
+  /**
+   * Cycle 2 — soft-delete metadata (parity with PublicDocument). Both
+   * null = alive; `deletedAt` set = soft-deleted. The Saved-calculators
+   * list renders a "Deleted" badge + the reason and (super_admin) a
+   * Restore button when `deletedAt` is non-null.
+   */
+  deletedAt: string | null;
+  deletionReason: DocumentDeletionReason | null;
   /**
    * Sprint 9.N — last action surfaced from the events log by the
    * listing endpoint's LATERAL JOIN. Drives the "Last action"

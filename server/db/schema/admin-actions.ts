@@ -47,6 +47,7 @@ export const ADMIN_ACTION_TYPES = [
   "calc.updated",
   "calc.deleted",
   "calc.synced",
+  "calc.restored",
   // Companies — full LOCAL purge of a HubSpot-deleted company (admin).
   "company.purged"
 ] as const;
@@ -130,6 +131,7 @@ export const adminActions = pgTable(
         'document.created', 'document.synced',
         'document.deleted', 'document.restored',
         'calc.created', 'calc.updated', 'calc.deleted', 'calc.synced',
+        'calc.restored',
         'company.purged'
       )`
     )

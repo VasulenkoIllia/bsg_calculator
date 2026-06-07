@@ -167,10 +167,12 @@ describe("audit log captures admin actions across surfaces", () => {
       })
       .expect(200);
 
+    // Cycle 2 — soft-delete now requires a reason and returns 200.
     await request(app)
       .delete(`/api/v1/calculator-configs/${calcId}`)
       .set("Authorization", `Bearer ${token}`)
-      .expect(204);
+      .send({ reason: "duplicate" })
+      .expect(200);
 
     const log = await request(app)
       .get("/api/v1/admin/audit-log")

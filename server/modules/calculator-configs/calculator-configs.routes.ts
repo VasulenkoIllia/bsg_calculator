@@ -19,6 +19,7 @@ import {
   deleteController,
   getController,
   listController,
+  restoreController,
   syncController,
   updateController
 } from "./calculator-configs.controller";
@@ -50,6 +51,14 @@ calculatorConfigsRouter.delete(
   "/:id",
   requireRole("admin"),
   asyncHandler(deleteController)
+);
+// Cycle 2 — super_admin-only restore of a soft-deleted calc. Mirrors
+// the documents restore policy: restore decisions are a single
+// chokepoint for audit-trail integrity.
+calculatorConfigsRouter.post(
+  "/:id/restore",
+  requireRole("super_admin"),
+  asyncHandler(restoreController)
 );
 // Phase 9.I — manual HubSpot Note write-back. Admin role + tight
 // rate-limit (10/min/IP via hubspotProxyLimiter) so a spammy retry

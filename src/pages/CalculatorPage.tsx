@@ -441,7 +441,17 @@ export function CalculatorPage() {
         // route is admin-gated; hiding here matches the
         // hasRole('admin') gate on /documents/:number).
         hubspotSyncState={
-          isEditMode ? configQuery.data?.hubspotSyncState : undefined
+          // Cycle 2 — the DTO enum widened with delete-flow states
+          // (delete_pending / delete_failed), but the frozen sticky
+          // toolbar only knows the original 3. Narrow at this boundary
+          // (delete is a list-level action, never surfaced here) so the
+          // frozen calculator domain stays untouched.
+          isEditMode &&
+          (configQuery.data?.hubspotSyncState === "not_synced" ||
+            configQuery.data?.hubspotSyncState === "synced" ||
+            configQuery.data?.hubspotSyncState === "failed")
+            ? configQuery.data.hubspotSyncState
+            : undefined
         }
         onSyncToHubspot={
           isEditMode && hasRole("admin") && configId

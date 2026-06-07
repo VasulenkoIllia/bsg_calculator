@@ -120,6 +120,13 @@
       "when": 1780095600000,
       "tag": "0016_admin_action_company_purged",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1780182000000,
+      "tag": "0017_calculator_configs_soft_delete",
+      "breakpoints": true
     }
   ]
 }

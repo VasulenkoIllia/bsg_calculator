@@ -19,6 +19,7 @@ import { recordAdminAction } from "../admin-actions/admin-actions.service";
 import { calculatorConfigSortFields } from "./calculator-configs.repository";
 import {
   createCalculatorConfigSchema,
+  deleteCalculatorConfigSchema,
   listCalculatorConfigsQuerySchema,
   updateCalculatorConfigSchema
 } from "./calculator-configs.schemas";
@@ -27,6 +28,7 @@ import {
   deleteCalculatorConfigById,
   getCalculatorConfig,
   listCalculatorConfigsPage,
+  restoreCalculatorConfigById,
   updateCalculatorConfigById
 } from "./calculator-configs.service";
 import { syncCalculatorConfigToHubspot } from "./sync.service";
@@ -41,11 +43,19 @@ export async function listController(req: Request, res: Response): Promise<void>
     dir: "desc"
   });
   const cursor = decodeSortedCursor(query.cursor, encodeSortKey(sort));
+  // Cycle 2 — map the FE Status filter onto the repo's soft-delete scope.
+  const deletedScope =
+    query.status === "active"
+      ? "alive"
+      : query.status === "deleted"
+        ? "deleted_only"
+        : "include_deleted";
   const page = await listCalculatorConfigsPage({
     companyId: query.companyId,
     hubspotDealId: query.hubspotDealId,
     showAll: query.showAll,
     q: query.q,
+    deletedScope,
     sort,
     cursor,
     limit: query.limit
@@ -121,26 +131,71 @@ export async function updateController(req: Request, res: Response): Promise<voi
   res.status(200).json(updated);
 }
 
+/**
+ * Cycle 2 — DELETE /api/v1/calculator-configs/:id (SOFT-delete).
+ *
+ * Full parity with documents: validates a reason + optional note, tears
+ * down the upstream HubSpot Note, soft-deletes the row, and returns the
+ * updated public DTO (200, NOT 204 — the FE list re-renders the row with
+ * its "Deleted" badge from the response). Auth: requireRole('admin').
+ *
+ * Errors:
+ *   - 404 if the calc doesn't exist
+ *   - 409 CALC_ALREADY_DELETED if already soft-deleted
+ *   - 409 CALC_DELETE_IN_PROGRESS on a concurrent delete
+ *   - 502 HUBSPOT_UNREACHABLE on HubSpot DELETE failure — local row
+ *     stays alive with state='delete_failed' so operator can Retry.
+ */
 export async function deleteController(req: Request, res: Response): Promise<void> {
   if (!req.user) throw new TokenInvalidError();
   const id = parseUuidParam(req, "id");
-  // Sprint 9.X.B — audit log. Fetch the calc BEFORE delete so we can
-  // carry companyId + title into meta (the delete itself returns no
-  // payload). If the calc is missing, `getCalculatorConfig` throws
-  // 404 and we never reach the recordAdminAction call.
-  const existing = await getCalculatorConfig(id);
-  await deleteCalculatorConfigById(id);
+  const body = deleteCalculatorConfigSchema.parse(req.body);
+  const updated = await deleteCalculatorConfigById(
+    id,
+    req.user.id,
+    body.reason,
+    body.note ?? null
+  );
   await recordAdminAction({
     ...auditActor(req),
     actionType: "calc.deleted",
     targetType: "calc_config",
     targetId: id,
+    // hasNote breadcrumb only — keep the operator's free-text note OUT
+    // of the audit listing (it can be sensitive). companyId enables the
+    // /audit-log company filter.
     meta: {
-      companyId: existing.companyId,
-      title: existing.title
+      companyId: updated.companyId,
+      reason: body.reason,
+      hasNote: Boolean(body.note)
     }
   });
-  res.status(204).end();
+  res.status(200).json(updated);
+}
+
+/**
+ * Cycle 2 — POST /api/v1/calculator-configs/:id/restore.
+ *
+ * Clears the soft-delete fields on a previously-deleted calc.
+ * super_admin role required (audit-trail integrity — restore decisions
+ * are a single chokepoint, same policy as documents). Does NOT re-create
+ * the HubSpot Note — operator re-syncs via the existing Sync button.
+ *
+ * Errors:
+ *   - 404 if the calc doesn't exist OR isn't currently deleted
+ */
+export async function restoreController(req: Request, res: Response): Promise<void> {
+  if (!req.user) throw new TokenInvalidError();
+  const id = parseUuidParam(req, "id");
+  const updated = await restoreCalculatorConfigById(id, req.user.id);
+  await recordAdminAction({
+    ...auditActor(req),
+    actionType: "calc.restored",
+    targetType: "calc_config",
+    targetId: id,
+    meta: { companyId: updated.companyId }
+  });
+  res.status(200).json(updated);
 }
 
 /**

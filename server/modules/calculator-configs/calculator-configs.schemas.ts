@@ -82,6 +82,28 @@ export const updateCalculatorConfigSchema = z.object({
 });
 export type UpdateCalculatorConfigRequest = z.infer<typeof updateCalculatorConfigSchema>;
 
+/**
+ * Cycle 2 — DELETE /api/v1/calculator-configs/:id body (soft-delete).
+ * Mirrors documents `deleteDocumentSchema`: a reason enum + an optional
+ * free-text note that becomes REQUIRED when reason is 'other'.
+ */
+export const deleteCalculatorConfigSchema = z
+  .object({
+    reason: z.enum([
+      "client_request",
+      "created_in_error",
+      "replaced_by_new_version",
+      "duplicate",
+      "other"
+    ]),
+    note: z.string().trim().max(8_000).nullable().optional()
+  })
+  .refine(data => data.reason !== "other" || (data.note && data.note.length > 0), {
+    path: ["note"],
+    message: "Note is required when reason is 'other'"
+  });
+export type DeleteCalculatorConfigRequest = z.infer<typeof deleteCalculatorConfigSchema>;
+
 // ─── List query ─────────────────────────────────────────────────────
 /**
  * GET /api/v1/calculator-configs?…filters…
@@ -126,6 +148,11 @@ export const listCalculatorConfigsQuerySchema = z.object({
   // q is treated as absent. LIKE metacharacters are escaped by the
   // repository so `q=%` doesn't match every config.
   q: z.string().trim().min(1).max(100).optional(),
+  // Cycle 2 — soft-delete scope filter. Maps to the repo `deletedScope`:
+  //   all     → include_deleted (default — list shows deleted with a badge)
+  //   active  → alive
+  //   deleted → deleted_only
+  status: z.enum(["all", "active", "deleted"]).optional().default("all"),
   // Sprint 6.8: per-column sort. Format: "field:dir" where field is
   // one of {title, companyName, hubspotDealId, updatedAt, createdAt}
   // and dir is "asc" or "desc". Default: "createdAt:desc" (matches
@@ -175,7 +202,26 @@ export const calculatorConfigPublicSchema = z.object({
   // CalculatorPage uses these to render the Sync-status badge + the
   // "Sync to HubSpot" CTA.
   hubspotNoteId: z.string().nullable(),
-  hubspotSyncState: z.enum(["not_synced", "synced", "failed"]),
+  hubspotSyncState: z.enum([
+    "not_synced",
+    "synced",
+    "failed",
+    "delete_pending",
+    "delete_failed"
+  ]),
+  // Cycle 2 — soft-delete mirror. `deletedAt` null = alive; set = deleted.
+  // `deletionReason` is the controlled vocabulary the FE renders next to
+  // the "Deleted" badge in the Saved-calculators list.
+  deletedAt: z.string().nullable(),
+  deletionReason: z
+    .enum([
+      "client_request",
+      "created_in_error",
+      "replaced_by_new_version",
+      "duplicate",
+      "other"
+    ])
+    .nullable(),
   // Sprint 9.N — last action from the events log. Null on
   // single-row endpoints; populated on the listing's LATERAL JOIN.
   lastEvent: z
