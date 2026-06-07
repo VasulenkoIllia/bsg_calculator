@@ -6391,4 +6391,37 @@ Use this file to record meaningful technical decisions for the project.
   `JWT_REFRESH_EXPIRES=30d` vs 12h `auth.tokens` flake (unrelated). Migration
   0017 applied + verified (columns + FK + CHECKs + alive index). Build green.
 
+### Decision: Calculator re-sync now creates a FRESH HubSpot Note (true parity with documents) + DELETE rate-limiter
+- Date: 2026-06-07
+- Context:
+  - An adversarial verification of the Cycle 1 + Cycle 2 work surfaced a real
+    discrepancy: the "Sync again" confirm dialog (Cycle 1) warns on BOTH the
+    document and calculator pages that re-syncing "creates a NEW HubSpot Note"
+    — but the two backends diverged. Documents `createNote` on every sync
+    (fresh Note each time, accurate). Calculators (Phase 9.K "one-Note-per-
+    calc") `updateNote` PATCHed the existing Note in place — so for an
+    already-synced calculator NO new record was created and the dialog text
+    was INACCURATE. The calc `sync.service` header comment was also stale
+    (claimed "fresh Note each call" while the code patched).
+  - Separately, the calc DELETE route lacked the `hubspotProxyLimiter` that
+    the documents DELETE route applies (both tear down a HubSpot Note).
+- Decision (operator-approved 2026-06-07):
+  - Make calculator manual sync ALWAYS create a fresh Note + associate,
+    exactly like documents — removed the `shouldPatch`/`updateNote`/404-self-
+    heal branch from `calculator-configs/sync.service.ts`. The previous Note
+    stays in HubSpot as history; `hubspot_note_id` points to the newest. This
+    makes the "Sync again" dialog wording accurate for calculators and aligns
+    the stale header comment with the code.
+  - Add `hubspotProxyLimiter` to `DELETE /api/v1/calculator-configs/:id`
+    (parity with the documents DELETE route).
+- Boundary / consequences:
+  - Re-syncing a calc now leaves a trail of Notes in HubSpot (same trade-off
+    documents already had) rather than one updated-in-place Note. The
+    advisory `calc-sync:` lock still prevents double-click duplicates.
+  - No schema/migration. Frozen calculator domain untouched (sync is HubSpot
+    integration, not calculator math). No existing test asserted the old
+    PATCH path (calc `/sync` has no HubSpot-mocking integration test).
+- Verification: FE + BE `tsc` clean; lint 0 errors; full FE + server suites
+  green (only the known `auth.tokens` env flake). Build green.
+
 

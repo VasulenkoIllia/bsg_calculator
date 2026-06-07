@@ -47,9 +47,13 @@ calculatorConfigsRouter.put(
   requireRole("admin"),
   asyncHandler(updateController)
 );
+// Cycle 2 — soft-delete tears down the upstream HubSpot Note, so gate it
+// with the same hubspotProxyLimiter as /:id/sync (parity with the
+// documents DELETE route) — a spammy retry can't exhaust the HubSpot budget.
 calculatorConfigsRouter.delete(
   "/:id",
   requireRole("admin"),
+  hubspotProxyLimiter,
   asyncHandler(deleteController)
 );
 // Cycle 2 — super_admin-only restore of a soft-deleted calc. Mirrors
