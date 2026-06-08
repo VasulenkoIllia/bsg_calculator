@@ -6479,4 +6479,49 @@ Use this file to record meaningful technical decisions for the project.
   known `auth.tokens` env flake) incl. a new `dealScope` integration test;
   build green.
 
+### Decision: TOTP 2FA — Phase 8 Stage 2 (backend; Phase A of 2)
+- Date: 2026-06-08
+- Context:
+  - 2FA was specced in `phase_8_security_admin_audit.md` Stage 2 but
+    deferred. Operator asked to implement it in full — **with** backup codes
+    AND trusted devices — built backend-first so the security core can be
+    reviewed before the UI lands.
+- Decision (backend, this commit):
+  - **Library:** `otplib` v12 `authenticator` (battle-tested, authenticator-
+    app-compatible SHA1/6/30 defaults) + `qrcode` for the enrolment QR. The
+    TOTP secret is AES-256-GCM-encrypted at rest (`shared/totp-crypto.ts`,
+    key `TOTP_ENCRYPTION_KEY` — 64 hex; prod refuses to boot on the all-zero
+    dev default).
+  - **Schema (migrations 0018 + 0019):** `users.totp_secret_encrypted` +
+    `totp_enabled_at` (pending = secret set, enabled_at NULL); tables
+    `totp_backup_codes` (sha256, one-time via `used_at`), `trusted_devices`
+    (token_hash + fingerprint_hash + 30-day expiry), `mfa_temp_tokens`
+    (5-min single-use login token). 0019 widens the admin_actions CHECK with
+    `auth.2fa_enabled` / `auth.2fa_disabled` / `user.force_disabled_2fa`.
+  - **Login two-step:** `login()` returns a union — after a correct password,
+    a 2FA-enabled user who is NOT on a live trusted device gets
+    `{ twoFactorRequired, tempToken }` (no session, still HTTP 200). The
+    client posts the temp token + a code to `POST /auth/2fa/verify`, which
+    accepts a TOTP **or** consumes a backup code, then issues the real
+    session; `trustDevice` registers a `trusted_devices` row + sets the
+    signed-by-DB `bsg_td` cookie (fingerprint = sha256(UA + first-2-IP-octets)).
+  - **Self-service** (`/auth/me/2fa/*`, Bearer): `setup` (QR + manual key,
+    pending), `confirm` (activate + return 10 backup codes once), `disable`
+    (re-auth password + code → clears secret/codes/devices + revokes all
+    sessions), `backup-codes/regenerate`, `GET` status. **Recovery:**
+    super_admin `POST /users/:id/2fa/disable` (audit `user.force_disabled_2fa`).
+    Rate limits: verify 10/min, setup/confirm 3/min.
+  - Token/hash pattern reuses `generateRawToken`/`hashToken` (sha256, only
+    hashes stored). `UserPublic` gains `twoFactorEnabled`.
+- Boundary: backend only; the frozen calculator domain is untouched.
+  Existing users default to 2FA-disabled (nullable columns) — zero breakage.
+  **Phase B (frontend: two-step login UI + `/me` enable/disable + admin
+  force-disable) is the next commit.**
+- Verification: server `tsc` clean; new `auth-2fa.integration.test.ts`
+  (11 cases: setup/confirm, two-step login, TOTP + backup-code consume,
+  trusted-device skip, disable re-auth, super-admin force-disable, error
+  paths) + a `totp-crypto` round-trip/tamper unit — all green; full server
+  suite 398/399 (only the known `auth.tokens` env flake); FE `tsc` + build
+  green; migrations 0018 + 0019 applied + verified.
+
 

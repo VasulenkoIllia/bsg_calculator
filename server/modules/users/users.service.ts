@@ -43,7 +43,9 @@ function toPublic(user: User): UserPublic {
     displayName: user.displayName,
     // Phase 8 Stage 1: `role` enum replaces the boolean `isAdmin`.
     role: user.role,
-    isActive: user.isActive
+    isActive: user.isActive,
+    // Phase 8 Stage 2 — TOTP 2FA active flag.
+    twoFactorEnabled: user.totpEnabledAt !== null
   };
 }
 

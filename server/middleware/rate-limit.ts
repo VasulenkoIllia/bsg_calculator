@@ -74,6 +74,25 @@ export const selfServiceLimiter = buildLimiter({
   message: "Too many requests. Please wait a minute and try again."
 });
 
+/**
+ * Phase 8 Stage 2 — 2FA limiters.
+ *
+ * `twoFactorVerifyLimiter` (10/min/IP) caps the login second-step: a
+ * 6-digit TOTP has 1M combinations, so 10/min keeps brute force
+ * infeasible within a code's 30s validity window. `twoFactorSetupLimiter`
+ * (3/min/IP) throttles the QR-generation / confirm endpoints (a user
+ * enrols once).
+ */
+export const twoFactorVerifyLimiter = buildLimiter({
+  max: 10,
+  message: "Too many 2FA attempts. Please wait a minute and try again."
+});
+
+export const twoFactorSetupLimiter = buildLimiter({
+  max: 3,
+  message: "Too many 2FA setup requests. Please wait a minute and try again."
+});
+
 /** Refresh limiter — generous because legit multi-tab clients burst. */
 export const refreshLimiter = buildLimiter({
   max: 20,

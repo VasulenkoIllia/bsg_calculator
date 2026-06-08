@@ -20,6 +20,7 @@ import { invitesAdminRouter } from "../invites/invites.routes";
 import { createPasswordResetLinkController } from "../password-resets/resets.controller";
 import {
   createController,
+  forceDisable2faController,
   getController,
   listController,
   patchController,
@@ -56,3 +57,5 @@ usersRouter.post(
   "/:id/password-reset-link",
   asyncHandler(createPasswordResetLinkController)
 );
+// Phase 8 Stage 2 — super_admin force-disable a user's 2FA (recovery).
+usersRouter.post("/:id/2fa/disable", asyncHandler(forceDisable2faController));

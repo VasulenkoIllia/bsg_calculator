@@ -50,4 +50,29 @@ export function readRefreshCookie(req: Request): string | null {
   return value && value.length > 0 ? value : null;
 }
 
+// ─── Phase 8 Stage 2 — trusted-device cookie ─────────────────────────
+
+/**
+ * "Trust this browser for 30 days" cookie. Holds an opaque random token
+ * (the sha256 hash is stored in `trusted_devices`); same path scope as
+ * the refresh cookie so it's sent on /auth/login. 30-day max-age MUST
+ * match the DB `expires_at` (see two-factor.service TRUSTED_DEVICE_TTL).
+ */
+export const TRUSTED_DEVICE_COOKIE_NAME = "bsg_td";
+const TRUSTED_DEVICE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+export const trustedDeviceCookieOptions: CookieOptions = {
+  httpOnly: true,
+  sameSite: "strict",
+  secure: isProd,
+  path: REFRESH_COOKIE_PATH,
+  maxAge: TRUSTED_DEVICE_MAX_AGE_MS
+};
+
+export function readTrustedDeviceCookie(req: Request): string | null {
+  const cookies = req.cookies as Record<string, string | undefined> | undefined;
+  const value = cookies?.[TRUSTED_DEVICE_COOKIE_NAME];
+  return value && value.length > 0 ? value : null;
+}
+
 export { REFRESH_COOKIE_NAME, REFRESH_COOKIE_PATH };

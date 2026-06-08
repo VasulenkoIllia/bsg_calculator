@@ -111,6 +111,17 @@ const EnvSchema = z.object({
     .default("12h"),
   BCRYPT_COST: z.coerce.number().int().min(4).max(15).default(12),
 
+  // TOTP 2FA — AES-256-GCM key for encrypting the per-user TOTP secret
+  // at rest (Phase 8 Stage 2). 64 hex chars = 32 bytes. Defaults to an
+  // all-zero DEV key; prod MUST override (the superRefine below blocks
+  // the dev default in production). Generate: `openssl rand -hex 32`.
+  TOTP_ENCRYPTION_KEY: z
+    .string()
+    .regex(/^[0-9a-fA-F]{64}$/, {
+      message: "TOTP_ENCRYPTION_KEY must be 64 hex chars (32 bytes). Generate with `openssl rand -hex 32`."
+    })
+    .default("0".repeat(64)),
+
   // CORS / frontend
   FRONTEND_ORIGIN: z.string().url().default("http://localhost:5173"),
 
@@ -284,6 +295,18 @@ const EnvSchema = z.object({
       path: ["HUBSPOT_API_TOKEN"],
       message:
         "must be set in production (Private App pat- token; without it the webhook processor silently 401's every event)."
+    });
+  }
+
+  // Phase 8 Stage 2 — refuse to boot in prod with the all-zero DEV TOTP
+  // key. A predictable key means an attacker who reads the DB can decrypt
+  // every user's TOTP secret and mint valid codes, defeating 2FA entirely.
+  if (data.TOTP_ENCRYPTION_KEY === "0".repeat(64)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["TOTP_ENCRYPTION_KEY"],
+      message:
+        "is the all-zero DEV default — refuse to boot in production. Generate a real key with `openssl rand -hex 32`."
     });
   }
 });

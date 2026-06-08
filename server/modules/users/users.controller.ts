@@ -14,6 +14,7 @@ import {
   patchUser,
   resetUserPassword
 } from "./users.service";
+import { forceDisableTotp } from "../auth/two-factor.service";
 import {
   createUserRequestSchema,
   resetPasswordRequestSchema,
@@ -92,6 +93,27 @@ export async function resetPasswordController(req: Request, res: Response): Prom
     targetId: id
     // NEVER log the new password value — even in meta. The audit
     // entry just records "reset happened for user X by Y at time T".
+  });
+  res.status(200).json(user);
+}
+
+/**
+ * POST /api/v1/users/:id/2fa/disable (super_admin) — Phase 8 Stage 2.
+ * Account-recovery path: force-disable a user's TOTP 2FA (e.g. lost phone
+ * + lost backup codes). Clears the secret, backup codes, and trusted
+ * devices; the user must re-enrol from /me. Audit-logged.
+ */
+export async function forceDisable2faController(
+  req: Request,
+  res: Response
+): Promise<void> {
+  const id = parseUuidParam(req, "id");
+  const user = await forceDisableTotp(id);
+  await recordAdminAction({
+    ...auditActor(req),
+    actionType: "user.force_disabled_2fa",
+    targetType: "user",
+    targetId: id
   });
   res.status(200).json(user);
 }

@@ -33,6 +33,10 @@ export const ADMIN_ACTION_TYPES = [
   "auth.reset_consumed",
   "auth.password_changed",
   "auth.signed_out_everywhere",
+  // Phase 8 Stage 2 — TOTP 2FA lifecycle (self-service + admin recovery).
+  "auth.2fa_enabled",
+  "auth.2fa_disabled",
+  "user.force_disabled_2fa",
   // Document management (any operator role)
   // Sprint 9.X.B — extended to include the create + manual-sync events.
   // Auto-sync from the background setImmediate is NOT logged here
@@ -128,6 +132,7 @@ export const adminActions = pgTable(
         'user.reset_link_created',
         'auth.invite_accepted', 'auth.reset_consumed',
         'auth.password_changed', 'auth.signed_out_everywhere',
+        'auth.2fa_enabled', 'auth.2fa_disabled', 'user.force_disabled_2fa',
         'document.created', 'document.synced',
         'document.deleted', 'document.restored',
         'calc.created', 'calc.updated', 'calc.deleted', 'calc.synced',

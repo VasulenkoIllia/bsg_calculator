@@ -174,7 +174,9 @@ export async function consumeReset(
       login: updated.login,
       displayName: updated.displayName,
       role: updated.role,
-      isActive: updated.isActive
+      isActive: updated.isActive,
+      // Phase 8 Stage 2 — TOTP 2FA active flag.
+      twoFactorEnabled: updated.totpEnabledAt !== null
     }
   };
 }

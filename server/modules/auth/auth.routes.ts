@@ -17,7 +17,9 @@ import { asyncHandler } from "../../shared/async-handler";
 import {
   loginLimiter,
   refreshLimiter,
-  selfServiceLimiter
+  selfServiceLimiter,
+  twoFactorSetupLimiter,
+  twoFactorVerifyLimiter
 } from "../../middleware/rate-limit";
 import { requireAuth } from "../../middleware/require-auth";
 import {
@@ -28,6 +30,14 @@ import {
   refreshController,
   signOutEverywhereController
 } from "./auth.controller";
+import {
+  confirmController,
+  disableController,
+  regenerateController,
+  setupController,
+  statusController,
+  verifyController
+} from "./two-factor.controller";
 
 export const authRouter = Router();
 
@@ -60,4 +70,39 @@ authRouter.post(
   requireAuth(),
   selfServiceLimiter,
   asyncHandler(signOutEverywhereController)
+);
+
+// ─── Phase 8 Stage 2 — TOTP 2FA ──────────────────────────────────────
+// Login second step: no Bearer (the temp token is the credential).
+// 10/min/IP brute-force guard on the code.
+authRouter.post(
+  "/2fa/verify",
+  twoFactorVerifyLimiter,
+  asyncHandler(verifyController)
+);
+// Self-service enrolment + management (Bearer + tight limiters).
+authRouter.get("/me/2fa", requireAuth(), asyncHandler(statusController));
+authRouter.post(
+  "/me/2fa/setup",
+  requireAuth(),
+  twoFactorSetupLimiter,
+  asyncHandler(setupController)
+);
+authRouter.post(
+  "/me/2fa/confirm",
+  requireAuth(),
+  twoFactorSetupLimiter,
+  asyncHandler(confirmController)
+);
+authRouter.post(
+  "/me/2fa/disable",
+  requireAuth(),
+  selfServiceLimiter,
+  asyncHandler(disableController)
+);
+authRouter.post(
+  "/me/2fa/backup-codes/regenerate",
+  requireAuth(),
+  selfServiceLimiter,
+  asyncHandler(regenerateController)
 );

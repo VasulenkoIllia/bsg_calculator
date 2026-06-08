@@ -13,12 +13,15 @@ import {
   REFRESH_COOKIE_NAME,
   REFRESH_COOKIE_PATH,
   readRefreshCookie,
+  readTrustedDeviceCookie,
   refreshCookieOptions
 } from "./auth.cookies";
+import { computeFingerprint } from "./two-factor.service";
 import {
   changeOwnPasswordRequestSchema,
   loginRequestSchema,
-  type LoginResponse
+  type LoginResponse,
+  type TwoFactorChallengeResponse
 } from "./auth.schemas";
 import {
   changeOwnPassword,
@@ -41,10 +44,29 @@ import { recordAdminAction } from "../admin-actions/admin-actions.service";
 export async function loginController(req: Request, res: Response): Promise<void> {
   const body = loginRequestSchema.parse(req.body);
 
-  const { accessToken, refreshTokenRaw, user } = await login(body);
+  const outcome = await login({
+    identifier: body.identifier,
+    password: body.password,
+    // Phase 8 Stage 2 — let a previously "trusted" device skip the 2FA
+    // prompt. The fingerprint binds the cookie to this UA + IP-prefix.
+    trustedDeviceTokenRaw: readTrustedDeviceCookie(req),
+    fingerprintHash: computeFingerprint(req.get("user-agent") ?? "", req.ip ?? "")
+  });
 
-  res.cookie(REFRESH_COOKIE_NAME, refreshTokenRaw, refreshCookieOptions);
-  const payload: LoginResponse = { accessToken, user };
+  if (outcome.kind === "mfa_required") {
+    const challenge: TwoFactorChallengeResponse = {
+      twoFactorRequired: true,
+      tempToken: outcome.tempToken
+    };
+    res.status(200).json(challenge);
+    return;
+  }
+
+  res.cookie(REFRESH_COOKIE_NAME, outcome.refreshTokenRaw, refreshCookieOptions);
+  const payload: LoginResponse = {
+    accessToken: outcome.accessToken,
+    user: outcome.user
+  };
   res.status(200).json(payload);
 }
 

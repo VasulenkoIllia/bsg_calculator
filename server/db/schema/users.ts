@@ -57,6 +57,13 @@ export const users = pgTable("users", {
     .notNull()
     .default("user")
     .$type<UserRole>(),
+  // Phase 8 Stage 2 — TOTP 2FA. `totpSecretEncrypted` holds the AES-256-GCM
+  // ciphertext of the base32 secret (see shared/totp-crypto.ts); NULL = no
+  // secret set. A secret with `totpEnabledAt` NULL is a *pending* enrolment
+  // (setup started, not yet confirmed); `totpEnabledAt` non-null = 2FA is
+  // active and required at login.
+  totpSecretEncrypted: text("totp_secret_encrypted"),
+  totpEnabledAt: timestamp("totp_enabled_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
 });

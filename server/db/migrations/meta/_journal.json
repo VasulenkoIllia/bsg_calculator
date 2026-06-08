@@ -127,6 +127,20 @@
       "when": 1780182000000,
       "tag": "0017_calculator_configs_soft_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1780268400000,
+      "tag": "0018_totp_2fa",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1780354800000,
+      "tag": "0019_admin_actions_2fa_types",
+      "breakpoints": true
     }
   ]
 }

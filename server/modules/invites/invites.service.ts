@@ -168,7 +168,9 @@ export async function acceptInvite(
       login: userRow.login,
       displayName: userRow.displayName,
       role: userRow.role,
-      isActive: userRow.isActive
+      isActive: userRow.isActive,
+      // Phase 8 Stage 2 — a freshly-accepted invite never has 2FA yet.
+      twoFactorEnabled: userRow.totpEnabledAt !== null
     }
   };
 }

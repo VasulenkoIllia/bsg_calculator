@@ -33,7 +33,10 @@ export const userPublicSchema = z.object({
   login: z.string().nullable(),
   displayName: z.string(),
   role: z.enum(USER_ROLES),
-  isActive: z.boolean()
+  isActive: z.boolean(),
+  // Phase 8 Stage 2 — whether TOTP 2FA is active for this user. Drives the
+  // /me cabinet status + the admin "Disable 2FA" affordance.
+  twoFactorEnabled: z.boolean()
 });
 
 export type UserPublic = z.infer<typeof userPublicSchema>;
@@ -44,6 +47,21 @@ export const loginResponseSchema = z.object({
 });
 
 export type LoginResponse = z.infer<typeof loginResponseSchema>;
+
+/**
+ * Phase 8 Stage 2 — alternative /auth/login response when the account
+ * has 2FA enabled (and the request isn't from a trusted device). No
+ * session is issued; the client posts `tempToken` + a code to
+ * /auth/2fa/verify. Status is still 200 — the FE branches on the body.
+ */
+export const twoFactorChallengeResponseSchema = z.object({
+  twoFactorRequired: z.literal(true),
+  tempToken: z.string()
+});
+
+export type TwoFactorChallengeResponse = z.infer<
+  typeof twoFactorChallengeResponseSchema
+>;
 
 export const refreshResponseSchema = z.object({
   accessToken: z.string()

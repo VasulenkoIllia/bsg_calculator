@@ -43,6 +43,11 @@ import {
   InvalidCredentialsError,
   TokenInvalidError
 } from "../../shared/errors";
+// Phase 8 Stage 2 — the 2FA login fast-path helpers. Both are
+// `async function` declarations (hoisted), so this cyclic import
+// (two-factor.service → auth.service for issueTokenPairForUser) resolves
+// safely — every reference is at call time inside a function body.
+import { isDeviceTrusted, mintMfaTempToken } from "./two-factor.service";
 import type { User } from "../../db/schema";
 import type { UserPublic } from "./auth.schemas";
 
@@ -57,7 +62,9 @@ function toUserPublic(user: User): UserPublic {
     displayName: user.displayName,
     // Phase 8 Stage 1: `role` enum replaces the old `isAdmin: boolean`.
     role: user.role,
-    isActive: user.isActive
+    isActive: user.isActive,
+    // Phase 8 Stage 2 — TOTP 2FA active flag.
+    twoFactorEnabled: user.totpEnabledAt !== null
   };
 }
 
@@ -115,10 +122,27 @@ export async function issueTokenPairForUser(
   };
 }
 
+/**
+ * Login outcome. When the account has 2FA enabled and the request is NOT
+ * from a trusted device, we return `mfa_required` (a short-lived temp
+ * token) instead of a session — the client then calls /auth/2fa/verify.
+ */
+export type LoginOutcome =
+  | {
+      kind: "session";
+      accessToken: string;
+      refreshTokenRaw: string;
+      user: UserPublic;
+    }
+  | { kind: "mfa_required"; tempToken: string };
+
 export async function login(input: {
   identifier: string;
   password: string;
-}): Promise<{ accessToken: string; refreshTokenRaw: string; user: UserPublic }> {
+  /** Phase 8 Stage 2 — trusted-device cookie + fingerprint for the 2FA skip. */
+  trustedDeviceTokenRaw?: string | null;
+  fingerprintHash?: string;
+}): Promise<LoginOutcome> {
   const user = await findUserByIdentifier(input.identifier);
   if (!user) {
     // Don't reveal whether the user exists — same error for missing
@@ -138,8 +162,26 @@ export async function login(input: {
     throw new InvalidCredentialsError();
   }
 
+  // Phase 8 Stage 2 — 2FA challenge. If enabled AND this isn't a live
+  // trusted device, withhold the session and return a temp token.
+  if (user.totpEnabledAt) {
+    const trusted =
+      input.trustedDeviceTokenRaw && input.fingerprintHash
+        ? await isDeviceTrusted({
+            userId: user.id,
+            deviceTokenRaw: input.trustedDeviceTokenRaw,
+            fingerprintHash: input.fingerprintHash
+          })
+        : false;
+    if (!trusted) {
+      const tempToken = await mintMfaTempToken(user.id);
+      return { kind: "mfa_required", tempToken };
+    }
+  }
+
   const pair = await issueTokenPairForUser(user);
   return {
+    kind: "session",
     accessToken: pair.accessToken,
     refreshTokenRaw: pair.refreshToken,
     user: toUserPublic(user)
