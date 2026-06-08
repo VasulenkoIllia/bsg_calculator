@@ -41,11 +41,18 @@ const BACKUP_CODE_COUNT = 10;
 
 // ─── helpers ─────────────────────────────────────────────────────────
 
-/** sha256(UA + first-2-octets of the IP). Survives mobile-IP churn. */
+/**
+ * sha256(UA + IP prefix). The prefix tolerates mobile-IP churn while
+ * narrowing the shared-network surface for a stolen trusted-device cookie:
+ * a /24 for IPv4 (was /16) and a /48 for IPv6. NOTE: this is defence-in-
+ * depth only — the real trust anchor is the 256-bit cookie token (httpOnly,
+ * Secure, SameSite=strict) whose hash is checked against `trusted_devices`;
+ * the fingerprint cannot grant access on its own.
+ */
 export function computeFingerprint(userAgent: string, ip: string): string {
   const prefix = ip.includes(".")
-    ? ip.split(".").slice(0, 2).join(".") // IPv4 — first 2 octets
-    : ip.split(":").slice(0, 3).join(":"); // IPv6 — first 3 hextets
+    ? ip.split(".").slice(0, 3).join(".") // IPv4 — /24
+    : ip.split(":").slice(0, 3).join(":"); // IPv6 — /48
   return createHash("sha256").update(`${userAgent}|${prefix}`).digest("hex");
 }
 
@@ -67,9 +74,15 @@ function isTotpCodeShape(code: string): boolean {
   return /^\d{6}$/.test(code.trim());
 }
 
+// Accept the code from the previous, current, and next 30s step so a small
+// clock drift between the server and the authenticator app doesn't cause
+// spurious failures. (Replay within this ~90s window is bounded by the
+// 10/min verify limiter; per-step replay tracking is a possible future
+// hardening — see the security-review notes in decisions.md.)
+authenticator.options = { window: 1 };
+
 function verifyTotp(secretEncrypted: string, code: string): boolean {
   const secret = decryptTotpSecret(secretEncrypted);
-  // window:1 tolerates ±30s clock drift between the server and the app.
   return authenticator.check(code.trim(), secret);
 }
 
@@ -231,6 +244,10 @@ export async function forceDisableTotp(targetUserId: string): Promise<UserPublic
   await repo.clearTotpSecret(user.id);
   await repo.deleteBackupCodes(user.id);
   await repo.deleteTrustedDevices(user.id);
+  // Security review — also kill the target's active sessions, matching the
+  // self-service disable. Without this, a force-disable (recovery for a lost
+  // device) would leave any existing session minting access tokens.
+  await revokeAllRefreshTokensForUser(user.id);
   // Reflect the now-cleared state (the loaded row still has the old flag).
   return toUserPublic2fa({ ...user, totpSecretEncrypted: null, totpEnabledAt: null });
 }
@@ -283,7 +300,8 @@ export async function verifyTotpLogin(input: {
   trustDevice: boolean;
   fingerprintHash: string;
 }): Promise<VerifyTotpResult> {
-  const temp = await repo.consumeMfaTempToken(hashToken(input.tempTokenRaw));
+  const tokenHash = hashToken(input.tempTokenRaw);
+  const temp = await repo.findAliveMfaTempToken(tokenHash);
   if (!temp) {
     throw new TokenInvalidError("2FA session expired. Please log in again.");
   }
@@ -297,12 +315,16 @@ export async function verifyTotpLogin(input: {
 
   const ok = await verifyTotpOrBackup(user, input.code, true);
   if (!ok) {
+    // Wrong code — DON'T burn the temp token; let the user retry the same
+    // session (the 5-min TTL + 10/min /verify limiter bound brute force).
     throw new ValidationError(
       [{ path: ["code"], message: "Invalid or already-used code." }],
       "Invalid 2FA code"
     );
   }
 
+  // Code accepted — consume the temp token (single-use per successful login).
+  await repo.deleteMfaTempToken(tokenHash);
   const pair = await issueTokenPairForUser(user);
   const result: VerifyTotpResult = {
     user: toUserPublic2fa(user),

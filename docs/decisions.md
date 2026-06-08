@@ -6553,4 +6553,36 @@ Use this file to record meaningful technical decisions for the project.
   two-step-login + 2 `/me` enable/enabled-state); build green. Existing
   PublicUser fixtures across the test suite got `twoFactorEnabled: false`.
 
+### Decision: TOTP 2FA — post-implementation security-review fixes
+- Date: 2026-06-08
+- Context: An adversarial security review (2 lenses — crypto/tokens +
+  auth-flow/abuse — each finding verified) found NO critical/high vulns and
+  confirmed the AES-256-GCM crypto + single-use/race handling are correct. It
+  surfaced a focused set of real fixes (applied) and theoretical/low items
+  (documented, deferred).
+- Fixed:
+  - **Force-disable now revokes the target's sessions.** Super-admin
+    `forceDisableTotp` cleared the secret/codes/devices but left existing
+    refresh tokens valid — added `revokeAllRefreshTokensForUser` (matches the
+    self-service disable). Recovery now fully kicks the lost device.
+  - **A wrong 2FA code no longer burns the login temp token.** `verifyTotpLogin`
+    now `findAliveMfaTempToken` (DB-clock expiry check) + deletes the token
+    only on a SUCCESSFUL verify, so the user can retry the code without
+    re-entering their password. Brute force stays bounded by the 5-min TTL +
+    the 10/min `/verify` limiter.
+  - **TOTP `window: 1`** (±1 step / ~90s) set explicitly for clock-drift
+    tolerance — the prior comment claimed it but otplib's default is 0, so
+    users with mild device-clock skew got spurious failures.
+  - **Trusted-device fingerprint narrowed** from a /16 to a /24 (IPv4) — still
+    defence-in-depth (the 256-bit httpOnly cookie token is the real anchor).
+- Deferred (low-risk for a 3–5-operator internal tool, noted for the future):
+  per-step TOTP replay tracking (needs a `totp_last_used_step` column; the
+  10/min limiter already bounds it); backup-code entropy 51.7 bits (adequate);
+  per-user/temp-token rate limiting on `/verify` (IP-keyed is fine given the
+  single-use temp token); a react-router 7.14.2 CVE that only affects the
+  framework/SSR mode (this is a pure Vite SPA — not exploitable).
+- Verification: server `tsc` clean; the 2FA suite grew to 13 cases (+ temp-
+  token-retry-after-wrong-code, + force-disable-revokes-sessions); full server
+  suite 400/401 (only the known `auth.tokens` env flake); build green.
+
 

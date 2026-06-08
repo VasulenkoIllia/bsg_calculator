@@ -146,14 +146,27 @@ export async function insertMfaTempToken(input: {
   await db.insert(mfaTempTokens).values(input);
 }
 
-/** Consume (delete) a temp token by hash, returning its row if still alive. */
-export async function consumeMfaTempToken(tokenHash: string) {
+/**
+ * Look up a temp token by hash, only if still alive (expiry checked at the
+ * DB clock — no Node/Postgres skew window). Does NOT delete: a wrong code
+ * should let the user retry the SAME token (bounded by the 5-min TTL + the
+ * /verify rate limit). The caller deletes it on a SUCCESSFUL verify.
+ */
+export async function findAliveMfaTempToken(tokenHash: string) {
   const rows = await db
-    .delete(mfaTempTokens)
-    .where(eq(mfaTempTokens.tokenHash, tokenHash))
-    .returning();
-  const row = rows[0];
-  if (!row) return undefined;
-  // Deleted regardless (single-use); only honour it if not yet expired.
-  return row.expiresAt > new Date() ? row : undefined;
+    .select()
+    .from(mfaTempTokens)
+    .where(
+      and(
+        eq(mfaTempTokens.tokenHash, tokenHash),
+        gt(mfaTempTokens.expiresAt, sql`now()`)
+      )
+    )
+    .limit(1);
+  return rows[0];
+}
+
+/** Delete a temp token by hash (single-use on a successful verify). */
+export async function deleteMfaTempToken(tokenHash: string): Promise<void> {
+  await db.delete(mfaTempTokens).where(eq(mfaTempTokens.tokenHash, tokenHash));
 }

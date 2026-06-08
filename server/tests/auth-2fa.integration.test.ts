@@ -162,6 +162,27 @@ describe("two-step login + verify", () => {
     expect(wrong.status).toBe(400);
   });
 
+  it("lets the user retry the SAME temp token after a wrong code", async () => {
+    await createTestUser({ email: "retry@bsg.test", password: "correct123" });
+    const { secret } = await enable2fa("retry@bsg.test", "correct123");
+    const login = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ identifier: "retry@bsg.test", password: "correct123" });
+    const tempToken = login.body.tempToken;
+
+    const wrong = await request(app)
+      .post("/api/v1/auth/2fa/verify")
+      .send({ tempToken, code: "000000" });
+    expect(wrong.status).toBe(400);
+
+    // Wrong code did NOT burn the temp token — a correct code still works.
+    const ok = await request(app)
+      .post("/api/v1/auth/2fa/verify")
+      .send({ tempToken, code: authenticator.generate(secret) });
+    expect(ok.status).toBe(200);
+    expect(ok.body.accessToken).toEqual(expect.any(String));
+  });
+
   it("trust-device skips the 2FA prompt on the next login", async () => {
     await createTestUser({ email: "t@bsg.test", password: "correct123" });
     const { secret } = await enable2fa("t@bsg.test", "correct123");
@@ -217,6 +238,38 @@ describe("disable + force-disable", () => {
       .set("Authorization", `Bearer ${token}`)
       .send({ password: "WRONG", code: authenticator.generate(secret) });
     expect(res.status).toBe(401);
+  });
+
+  it("force-disable revokes the target's active sessions", async () => {
+    const target = await createTestUser({ email: "fdr@bsg.test", password: "correct123" });
+    const { secret } = await enable2fa("fdr@bsg.test", "correct123");
+    await createTestUser({
+      email: "super3@bsg.test",
+      password: "superpass123",
+      role: "super_admin"
+    });
+    const superToken = await loginAsToken("super3@bsg.test", "superpass123");
+
+    // Full 2FA login → capture the target's refresh cookie.
+    const login = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ identifier: "fdr@bsg.test", password: "correct123" });
+    const verify = await request(app)
+      .post("/api/v1/auth/2fa/verify")
+      .send({ tempToken: login.body.tempToken, code: authenticator.generate(secret) });
+    const refreshCookie = getCookie(verify.headers["set-cookie"], "bsg_refresh");
+    expect(refreshCookie).not.toBe("");
+
+    await request(app)
+      .post(`/api/v1/users/${target.id}/2fa/disable`)
+      .set("Authorization", `Bearer ${superToken}`)
+      .expect(200);
+
+    // The target's refresh token (from the 2FA login above) is now revoked.
+    const after = await request(app)
+      .post("/api/v1/auth/refresh")
+      .set("Cookie", `bsg_refresh=${refreshCookie}`);
+    expect(after.status).toBe(401);
   });
 
   it("super-admin force-disables another user's 2FA; plain user is forbidden", async () => {
