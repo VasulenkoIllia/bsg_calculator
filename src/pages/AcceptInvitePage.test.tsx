@@ -60,7 +60,7 @@ describe("AcceptInvitePage — already-logged-in guard", () => {
       login: "sa",
       displayName: "Super Admin",
       role: "super_admin",
-      isActive: true
+      isActive: true, twoFactorEnabled: false
     });
 
     renderAt("good-token");
@@ -124,7 +124,7 @@ describe("AcceptInvitePage — submit", () => {
         login: null,
         displayName: "Newbie",
         role: "user",
-        isActive: true
+        isActive: true, twoFactorEnabled: false
       }
     });
 

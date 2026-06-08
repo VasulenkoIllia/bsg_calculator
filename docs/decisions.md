@@ -6524,4 +6524,33 @@ Use this file to record meaningful technical decisions for the project.
   suite 398/399 (only the known `auth.tokens` env flake); FE `tsc` + build
   green; migrations 0018 + 0019 applied + verified.
 
+### Decision: TOTP 2FA — Phase 8 Stage 2 (frontend; Phase B of 2)
+- Date: 2026-06-08
+- Context: Phase A shipped the backend; this adds the operator-facing UI.
+- Decision:
+  - `src/api/types.ts`: `PublicUser.twoFactorEnabled`; `LoginResult` union
+    (`LoginResponse | TwoFactorChallenge`) + an `isTwoFactorChallenge` guard.
+    `src/api/auth.ts`: `login` returns the union; new `verify2fa`, `setup2fa`,
+    `confirm2fa`, `disable2fa`, `regenerateBackupCodes`, `get2faStatus`,
+    `adminForceDisable2fa`.
+  - **AuthContext** two-step login: `login()` now resolves
+    `{ twoFactorRequired }`; on a challenge the temp token is held in a ref
+    (never rendered/persisted) and `pendingTwoFactor` drives the UI. New
+    `verifyTwoFactor(code, { trustDevice })` + `cancelTwoFactor`; a session is
+    created only after a successful verify.
+  - **LoginPage** second-factor step: 6-digit code input + "Use a backup
+    code" toggle + "Trust this browser for 30 days" + Back; status-mapped
+    errors (expired temp token → bounce to password).
+  - **`/me` (PersonalCabinetPage)**: real 2FA section replacing the
+    placeholder — status badge; Enable flow (QR `<img>` + manual key +
+    confirm code → one-time backup-codes panel with copy); Disable + Regenerate
+    backup codes (password + code re-auth).
+  - **AdminUsersPage**: per-row "Disable 2FA" (super_admin, shown only when
+    `twoFactorEnabled`) → confirm modal → `adminForceDisable2fa`.
+- Boundary: frozen calculator domain untouched; no schema change (backend
+  shipped in Phase A).
+- Verification: FE + server `tsc` clean; lint 0 errors; FE 397/397 (+5: 3
+  two-step-login + 2 `/me` enable/enabled-state); build green. Existing
+  PublicUser fixtures across the test suite got `twoFactorEnabled: false`.
+
 

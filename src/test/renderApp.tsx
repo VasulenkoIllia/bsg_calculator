@@ -44,7 +44,7 @@ export async function renderApp(initialPath: string = "/calculator") {
     login: "tester",
     displayName: "Tester",
     role: "user" as const,
-    isActive: true
+    isActive: true, twoFactorEnabled: false
   });
   setAccessToken("test-token");
   // Drop any session-lost handler left over from a previous test's

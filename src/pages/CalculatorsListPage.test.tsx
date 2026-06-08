@@ -85,7 +85,7 @@ function renderPageAs(role: "admin" | "super_admin") {
     login: "op",
     displayName: "Operator",
     role,
-    isActive: true
+    isActive: true, twoFactorEnabled: false
   });
 
   const queryClient = new QueryClient({

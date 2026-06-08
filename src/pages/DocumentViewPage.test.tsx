@@ -115,7 +115,7 @@ describe("DocumentViewPage — Use as Template", () => {
       login: "admin",
       displayName: "Admin",
       role: "admin",
-      isActive: true
+      isActive: true, twoFactorEnabled: false
     });
     vi.spyOn(documentsApi, "getDocumentByNumber").mockResolvedValueOnce(
       fixtureDocument()

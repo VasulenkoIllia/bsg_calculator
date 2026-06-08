@@ -52,6 +52,9 @@ export interface PublicUser {
   displayName: string;
   role: UserRole;
   isActive: boolean;
+  // Phase 8 Stage 2 — whether TOTP 2FA is active. Drives the /me cabinet
+  // status + the admin "Disable 2FA" affordance.
+  twoFactorEnabled: boolean;
 }
 
 export interface LoginRequest {
@@ -62,6 +65,35 @@ export interface LoginRequest {
 export interface LoginResponse {
   accessToken: string;
   user: PublicUser;
+}
+
+/**
+ * Phase 8 Stage 2 — alternative /auth/login result when the account has
+ * 2FA enabled (and the request isn't from a trusted device). No session
+ * yet — the client posts `tempToken` + a code to /auth/2fa/verify.
+ */
+export interface TwoFactorChallenge {
+  twoFactorRequired: true;
+  tempToken: string;
+}
+
+export type LoginResult = LoginResponse | TwoFactorChallenge;
+
+export function isTwoFactorChallenge(r: LoginResult): r is TwoFactorChallenge {
+  return "twoFactorRequired" in r && r.twoFactorRequired === true;
+}
+
+// ─── 2FA endpoint payloads ────────────────────────────────────────────
+export interface TwoFactorSetupResponse {
+  qrCode: string; // data:image/png;base64,...
+  manualKey: string; // base32 secret for manual entry
+}
+export interface BackupCodesResponse {
+  backupCodes: string[];
+}
+export interface TwoFactorStatusResponse {
+  enabled: boolean;
+  backupCodesRemaining: number;
 }
 
 export interface RefreshResponse {

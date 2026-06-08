@@ -13,7 +13,7 @@ doesn't drift across sprints.
 | Stage | Topic | Status |
 |---|---|---|
 | 1 | Roles foundation (`users.role` enum + `requireRole` middleware + bootstrap) | ✅ **DONE 2026-05-21** (Phase 8 Stage 1.A–D) |
-| 2 | TOTP 2FA + `/me` personal cabinet | 🟢 **BACKEND DONE 2026-06-08** (Sprint 9.T shipped the /me page + password change + sign-out-everywhere; 2026-06-08 added the full TOTP 2FA **backend** — otplib + AES-256-GCM secret, backup codes, trusted devices, two-step login, super-admin force-disable, migrations 0018/0019. **Frontend UI is Phase B / next commit.**) |
+| 2 | TOTP 2FA + `/me` personal cabinet | ✅ **DONE 2026-06-08** (full TOTP 2FA: backend — otplib + AES-256-GCM secret, backup codes, trusted devices, two-step login, super-admin force-disable, migrations 0018/0019; frontend — two-step login UI, `/me` enable/disable + QR + backup codes, admin force-disable. Compatible with Google Authenticator / 1Password / Authy.) |
 | 3 | Super-admin user management (`/admin/users`, block, password reset) | ✅ **DONE 2026-05-21** (Phase 8 Stage 3.A–D; invite copy-link deferred — super_admin sets initial password directly and forwards it manually) |
 | 4 | Per-document event log | ✅ **DONE 2026-05-21** (Phase 8 Stage 4.A–E; ALSO covers calculator_config_events since the operator brief asked for both surfaces) |
 | 5 | Document soft-delete with HubSpot Note tear-down | ✅ **DONE 2026-05-21** (Phase 8 Stage 5.A–E; reason presets, super_admin restore, /admin/documents/deleted) |

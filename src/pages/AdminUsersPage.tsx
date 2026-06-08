@@ -44,6 +44,7 @@ import {
   createPasswordResetLink,
   type CreateResetLinkResponse
 } from "../api/password-resets.js";
+import { adminForceDisable2fa } from "../api/auth.js";
 import type { PublicUser, UserRole } from "../api/types.js";
 import { useAuth } from "../contexts/AuthContext.js";
 import {
@@ -79,6 +80,7 @@ export function AdminUsersPage() {
     | { kind: "invite" }
     | { kind: "edit"; user: PublicUser }
     | { kind: "reset"; user: PublicUser }
+    | { kind: "disable2fa"; user: PublicUser }
     | null;
   const [modal, setModal] = useState<ModalState>(null);
 
@@ -178,6 +180,18 @@ export function AdminUsersPage() {
                       >
                         Reset password
                       </button>
+                      {/* Phase 8 Stage 2 — recovery: force-disable a user's
+                          2FA (e.g. lost phone + lost backup codes). Only
+                          shown when the user actually has 2FA on. */}
+                      {user.twoFactorEnabled ? (
+                        <button
+                          type="button"
+                          onClick={() => setModal({ kind: "disable2fa", user })}
+                          className="rounded border border-amber-300 bg-white px-2 py-0.5 text-xs font-semibold text-amber-700 hover:bg-amber-50"
+                        >
+                          Disable 2FA
+                        </button>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
@@ -215,6 +229,16 @@ export function AdminUsersPage() {
         <ResetPasswordModal
           user={modal.user}
           onClose={() => setModal(null)}
+        />
+      ) : null}
+      {modal?.kind === "disable2fa" ? (
+        <ForceDisable2faModal
+          user={modal.user}
+          onClose={() => setModal(null)}
+          onSaved={async () => {
+            await invalidate();
+            setModal(null);
+          }}
         />
       ) : null}
     </section>
@@ -401,6 +425,55 @@ function EditUserModal({
           onCancel={onClose}
           submitting={mutation.isPending}
           submitLabel="Save changes"
+        />
+      </form>
+    </ModalShell>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Force-disable 2FA modal (Phase 8 Stage 2 — recovery)
+// ────────────────────────────────────────────────────────────────────
+
+function ForceDisable2faModal({
+  user,
+  onClose,
+  onSaved
+}: {
+  user: PublicUser;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent): Promise<void> {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      await adminForceDisable2fa(user.id);
+      await onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Something went wrong.");
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <ModalShell title={`Disable 2FA for ${user.email}`} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <p className="text-sm text-slate-600">
+          This removes the user's two-factor authentication, backup codes, and
+          trusted devices. They'll be able to sign in with just their password
+          and can re-enable 2FA from their own account page. Use this only for
+          account recovery (e.g. a lost device).
+        </p>
+        {error ? <FormError>{error}</FormError> : null}
+        <ModalFooter
+          onCancel={onClose}
+          submitting={submitting}
+          submitLabel="Disable 2FA"
         />
       </form>
     </ModalShell>

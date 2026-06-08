@@ -20,7 +20,7 @@ const fixtureUser = {
   login: "alice",
   displayName: "Alice Doe",
   role: "user" as const,
-  isActive: true
+  isActive: true, twoFactorEnabled: false
 };
 
 function renderShell() {

@@ -30,7 +30,7 @@ import {
 } from "react";
 import { ApiError, setAccessToken, setSessionLostHandler } from "../api/client.js";
 import * as authApi from "../api/auth.js";
-import type { PublicUser, UserRole } from "../api/types.js";
+import { isTwoFactorChallenge, type PublicUser, type UserRole } from "../api/types.js";
 // Sprint 9.L D6 — hierarchical tier table extracted to src/shared/roles.ts
 // so the frontend and backend stop independently maintaining the same
 // `{ user: 0, admin: 1, super_admin: 2 }` literal. The helper guarantees
@@ -50,8 +50,25 @@ interface AuthState {
 }
 
 interface AuthContextValue extends AuthState {
-  /** Submit credentials. Throws an `ApiError` on failure. */
-  login: (identifier: string, password: string) => Promise<void>;
+  /**
+   * Submit credentials. Throws an `ApiError` on failure. Resolves to
+   * `{ twoFactorRequired: true }` when the account has 2FA enabled — the
+   * caller then renders the second-factor step and calls
+   * `verifyTwoFactor`. No session exists until that completes.
+   */
+  login: (identifier: string, password: string) => Promise<{ twoFactorRequired: boolean }>;
+  /**
+   * Phase 8 Stage 2 — true between a `login()` that returned a 2FA
+   * challenge and a successful `verifyTwoFactor` (or `cancelTwoFactor`).
+   */
+  pendingTwoFactor: boolean;
+  /** Complete the 2FA login step with a TOTP or backup code. */
+  verifyTwoFactor: (
+    code: string,
+    opts?: { trustDevice?: boolean }
+  ) => Promise<void>;
+  /** Abandon the 2FA step (back to the password form). */
+  cancelTwoFactor: () => void;
   /**
    * Sprint 9.O — hydrate state from an already-issued token pair.
    * Used by flows that authenticate the user via a side channel (the
@@ -79,6 +96,11 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }): ReactElement {
   const [state, setState] = useState<AuthState>({ user: null, isBooting: true });
+  // Phase 8 Stage 2 — the in-flight 2FA challenge. The temp token lives in
+  // a ref (never rendered, never persisted); `pendingTwoFactor` drives the
+  // LoginPage second-factor step.
+  const tempTokenRef = useRef<string | null>(null);
+  const [pendingTwoFactor, setPendingTwoFactor] = useState(false);
 
   // ─── Cold-boot refresh ──────────────────────────────────────────
   // Runs ONCE per "fresh" page load. If the user has a valid refresh
@@ -141,10 +163,52 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
     };
   }, []);
 
-  const login = useCallback(async (identifier: string, password: string): Promise<void> => {
-    const { accessToken, user } = await authApi.login({ identifier, password });
-    setAccessToken(accessToken);
-    setState({ user, isBooting: false });
+  const login = useCallback(
+    async (
+      identifier: string,
+      password: string
+    ): Promise<{ twoFactorRequired: boolean }> => {
+      const result = await authApi.login({ identifier, password });
+      if (isTwoFactorChallenge(result)) {
+        // 2FA enabled + untrusted device — hold the temp token; the UI
+        // shows the second-factor step. No session yet.
+        tempTokenRef.current = result.tempToken;
+        setPendingTwoFactor(true);
+        return { twoFactorRequired: true };
+      }
+      setAccessToken(result.accessToken);
+      setState({ user: result.user, isBooting: false });
+      return { twoFactorRequired: false };
+    },
+    []
+  );
+
+  const verifyTwoFactor = useCallback(
+    async (code: string, opts?: { trustDevice?: boolean }): Promise<void> => {
+      const tempToken = tempTokenRef.current;
+      if (!tempToken) {
+        throw new ApiError("AUTH_NO_PENDING_2FA", "No pending 2FA challenge.", 400);
+      }
+      const result = await authApi.verify2fa({
+        tempToken,
+        code,
+        trustDevice: opts?.trustDevice ?? false
+      });
+      if (isTwoFactorChallenge(result)) {
+        // Defensive — /verify always returns a real session on success.
+        throw new ApiError("AUTH_2FA_UNEXPECTED", "Unexpected 2FA challenge.", 500);
+      }
+      setAccessToken(result.accessToken);
+      setState({ user: result.user, isBooting: false });
+      tempTokenRef.current = null;
+      setPendingTwoFactor(false);
+    },
+    []
+  );
+
+  const cancelTwoFactor = useCallback((): void => {
+    tempTokenRef.current = null;
+    setPendingTwoFactor(false);
   }, []);
 
   const hydrate = useCallback(
@@ -167,6 +231,8 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
       console.warn("[auth] logout server call failed; clearing local state", err);
     } finally {
       setAccessToken(null);
+      tempTokenRef.current = null;
+      setPendingTwoFactor(false);
       setState({ user: null, isBooting: false });
     }
   }, []);
@@ -184,11 +250,24 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
       user: state.user,
       isBooting: state.isBooting,
       login,
+      pendingTwoFactor,
+      verifyTwoFactor,
+      cancelTwoFactor,
       hydrate,
       logout,
       hasRole
     }),
-    [state.user, state.isBooting, login, hydrate, logout, hasRole]
+    [
+      state.user,
+      state.isBooting,
+      login,
+      pendingTwoFactor,
+      verifyTwoFactor,
+      cancelTwoFactor,
+      hydrate,
+      logout,
+      hasRole
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

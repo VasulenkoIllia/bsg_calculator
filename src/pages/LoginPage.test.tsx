@@ -36,7 +36,7 @@ const fixtureUser = {
   login: "alice",
   displayName: "Alice",
   role: "user" as const,
-  isActive: true
+  isActive: true, twoFactorEnabled: false
 };
 
 beforeEach(() => {
@@ -161,6 +161,84 @@ describe("LoginPage — error mapping", () => {
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(/too many login attempts/i);
     });
+  });
+});
+
+describe("LoginPage — two-step 2FA", () => {
+  async function submitPassword() {
+    renderLogin();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
+    });
+    fireEvent.input(screen.getByLabelText(/login or email/i), { target: { value: "alice" } });
+    fireEvent.input(screen.getByLabelText(/password/i), { target: { value: "pw" } });
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+  }
+
+  it("shows the second-factor step when login returns a 2FA challenge", async () => {
+    vi.spyOn(authApi, "login").mockResolvedValue({
+      twoFactorRequired: true,
+      tempToken: "tmp-token"
+    });
+    await submitPassword();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: /two-step verification/i })
+      ).toBeInTheDocument();
+    });
+    // Did NOT navigate (still on the login surface, no session).
+    expect(screen.queryByText(/companies landing/i)).toBeNull();
+  });
+
+  it("verifies the code and lands the session", async () => {
+    vi.spyOn(authApi, "login").mockResolvedValue({
+      twoFactorRequired: true,
+      tempToken: "tmp-token"
+    });
+    const verifySpy = vi
+      .spyOn(authApi, "verify2fa")
+      .mockResolvedValue({ accessToken: "tok", user: fixtureUser });
+    await submitPassword();
+    await waitFor(() =>
+      expect(screen.getByLabelText(/authentication code/i)).toBeInTheDocument()
+    );
+
+    fireEvent.input(screen.getByLabelText(/authentication code/i), {
+      target: { value: "123456" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^verify$/i }));
+
+    await waitFor(() =>
+      expect(verifySpy).toHaveBeenCalledWith({
+        tempToken: "tmp-token",
+        code: "123456",
+        trustDevice: false
+      })
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/companies landing/i)).toBeInTheDocument()
+    );
+  });
+
+  it("surfaces an invalid code (400) inline", async () => {
+    vi.spyOn(authApi, "login").mockResolvedValue({
+      twoFactorRequired: true,
+      tempToken: "tmp-token"
+    });
+    vi.spyOn(authApi, "verify2fa").mockRejectedValue(
+      new ApiError("VALIDATION_FAILED", "bad code", 400)
+    );
+    await submitPassword();
+    await waitFor(() =>
+      expect(screen.getByLabelText(/authentication code/i)).toBeInTheDocument()
+    );
+    fireEvent.input(screen.getByLabelText(/authentication code/i), {
+      target: { value: "000000" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^verify$/i }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(/invalid 6-digit code/i)
+    );
   });
 });
 

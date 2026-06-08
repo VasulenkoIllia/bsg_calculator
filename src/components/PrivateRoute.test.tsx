@@ -37,7 +37,7 @@ const fixtureUser = {
   login: "alice",
   displayName: "Alice",
   role: "user" as const,
-  isActive: true
+  isActive: true, twoFactorEnabled: false
 };
 
 beforeEach(() => {

@@ -34,7 +34,7 @@ const SA_USER: PublicUser = {
   login: "sa",
   displayName: "Super Admin",
   role: "super_admin",
-  isActive: true
+  isActive: true, twoFactorEnabled: false
 };
 const ADMIN_USER: PublicUser = {
   id: "u-admin",
@@ -42,7 +42,7 @@ const ADMIN_USER: PublicUser = {
   login: "admin",
   displayName: "Admin",
   role: "admin",
-  isActive: true
+  isActive: true, twoFactorEnabled: false
 };
 const REGULAR_USER: PublicUser = {
   id: "u-reg",
@@ -50,7 +50,7 @@ const REGULAR_USER: PublicUser = {
   login: "user",
   displayName: "Regular",
   role: "user",
-  isActive: true
+  isActive: true, twoFactorEnabled: false
 };
 const BLOCKED_USER: PublicUser = {
   ...REGULAR_USER,

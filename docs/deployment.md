@@ -364,12 +364,12 @@ Default 64MB is fine for offer + agreement renders. If you bump it, set `shm_siz
 - No SMTP / email service (invites + password resets via copy-link only; see Phase 8 spec).
 - No automated backups — operator must set up the `pg_dump` cron above.
 - **HubSpot Note write-back is NOT YET IMPLEMENTED.** `POST /api/v1/documents/:number/sync` returns `501 NOT_IMPLEMENTED`. The frontend does not surface a "Sync to HubSpot" button — only a read-only status badge on the documents list. Manual curl to the sync endpoint returns a clean 501. Phase 9 will implement `hubspot.client.createNote()` + wire the controller.
-- **TOTP 2FA (Phase 8 Stage 2):** backend SHIPPED (opt-in TOTP + backup
-  codes + trusted devices + super-admin force-disable). **Set
-  `TOTP_ENCRYPTION_KEY` (`openssl rand -hex 32`) in prod before deploy — the
-  app refuses to boot with the all-zero dev default.** Migrations 0018 + 0019
-  auto-apply (idempotent, forward-only). The login/`/me` 2FA UI ships in the
-  Phase B frontend commit.
+- **TOTP 2FA (Phase 8 Stage 2):** SHIPPED end-to-end (opt-in TOTP + backup
+  codes + trusted devices + super-admin force-disable; two-step login UI +
+  `/me` enrolment with QR; Google Authenticator / 1Password / Authy
+  compatible). **Set `TOTP_ENCRYPTION_KEY` (`openssl rand -hex 32`) in prod
+  before deploy — the app refuses to boot with the all-zero dev default.**
+  Migrations 0018 + 0019 auto-apply (idempotent, forward-only).
 - No alerting on sustained outage — failures show only in container logs.
 
 ## 9. HubSpot synchronization — current state (Phase 9 / 2026-05-21)

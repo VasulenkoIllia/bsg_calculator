@@ -53,7 +53,7 @@ describe("ResetPasswordPage — already-logged-in guard", () => {
       login: "sa",
       displayName: "Super Admin",
       role: "super_admin",
-      isActive: true
+      isActive: true, twoFactorEnabled: false
     });
 
     renderAt("good-token");
@@ -142,7 +142,7 @@ describe("ResetPasswordPage — submit", () => {
         login: null,
         displayName: "Target",
         role: "user",
-        isActive: true
+        isActive: true, twoFactorEnabled: false
       }
     });
 

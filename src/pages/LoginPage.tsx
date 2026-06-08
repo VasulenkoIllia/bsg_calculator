@@ -14,7 +14,7 @@
  */
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useLocation, useNavigate } from "react-router-dom";
 import { z } from "zod";
@@ -58,7 +58,7 @@ function resolveSafeFromPath(state: unknown): string {
 }
 
 export function LoginPage() {
-  const { user, isBooting, login } = useAuth();
+  const { user, isBooting, login, pendingTwoFactor } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const fromPath = resolveSafeFromPath(location.state);
@@ -79,8 +79,13 @@ export function LoginPage() {
 
   const onSubmit = async (values: LoginFormValues): Promise<void> => {
     try {
-      await login(values.identifier, values.password);
-      navigate(fromPath, { replace: true });
+      const result = await login(values.identifier, values.password);
+      // Phase 8 Stage 2 — if 2FA is required, DON'T navigate; the form
+      // re-renders into the second-factor step (pendingTwoFactor). On a
+      // full session we navigate (the AuthProvider effect also would).
+      if (!result.twoFactorRequired) {
+        navigate(fromPath, { replace: true });
+      }
     } catch (err) {
       // ApiError surfaces the backend's `code`. Map the known auth
       // failure shapes to human messages; anything unexpected falls
@@ -115,6 +120,17 @@ export function LoginPage() {
     return (
       <div className="flex min-h-screen items-center justify-center text-sm text-slate-500">
         Loading session…
+      </div>
+    );
+  }
+
+  // Phase 8 Stage 2 — password OK but the account has 2FA: show the
+  // second-factor step instead of the password form. A successful verify
+  // sets `user`, and the useEffect above redirects.
+  if (pendingTwoFactor) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
+        <TwoFactorStep />
       </div>
     );
   }
@@ -182,5 +198,134 @@ export function LoginPage() {
         </button>
       </form>
     </div>
+  );
+}
+
+/**
+ * Phase 8 Stage 2 — the login second step. Shown after a correct password
+ * when the account has 2FA enabled. Accepts a 6-digit authenticator code
+ * OR a backup code; optionally registers the browser as trusted.
+ */
+function TwoFactorStep() {
+  const { verifyTwoFactor, cancelTwoFactor } = useAuth();
+  const [code, setCode] = useState("");
+  const [useBackupCode, setUseBackupCode] = useState(false);
+  const [trustDevice, setTrustDevice] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent): Promise<void> {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      // Success sets `user`; the LoginPage effect handles the redirect.
+      await verifyTwoFactor(code.trim(), { trustDevice });
+    } catch (err) {
+      const status = err instanceof ApiError ? err.status : 0;
+      if (status === 401) {
+        // The temp token expired — bounce back to the password form.
+        setError("Your sign-in attempt expired. Please enter your password again.");
+        setTimeout(cancelTwoFactor, 1500);
+      } else if (status === 400) {
+        setError(
+          useBackupCode
+            ? "Invalid or already-used backup code."
+            : "Invalid 6-digit code. Check your authenticator app."
+        );
+        setSubmitting(false);
+      } else if (status === 429) {
+        setError("Too many attempts. Please wait a minute and try again.");
+        setSubmitting(false);
+      } else {
+        setError(err instanceof ApiError ? err.message : "Something went wrong.");
+        setSubmitting(false);
+      }
+    }
+  }
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="w-full max-w-sm space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+      noValidate
+    >
+      <header className="space-y-1">
+        <h1 className="text-xl font-semibold text-slate-900">Two-step verification</h1>
+        <p className="text-sm text-slate-500">
+          {useBackupCode
+            ? "Enter one of your saved backup codes."
+            : "Enter the 6-digit code from your authenticator app."}
+        </p>
+      </header>
+
+      <div className="space-y-1">
+        <label
+          htmlFor="totp-code"
+          className="text-xs font-semibold uppercase tracking-wide text-slate-600"
+        >
+          {useBackupCode ? "Backup code" : "Authentication code"}
+        </label>
+        <input
+          id="totp-code"
+          type="text"
+          inputMode={useBackupCode ? "text" : "numeric"}
+          autoComplete="one-time-code"
+          autoFocus
+          placeholder={useBackupCode ? "xxxxx-xxxxx" : "123456"}
+          value={code}
+          onChange={e => setCode(e.target.value)}
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm tracking-widest focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+        />
+      </div>
+
+      <label className="flex items-center gap-2 text-sm text-slate-600">
+        <input
+          type="checkbox"
+          checked={trustDevice}
+          onChange={e => setTrustDevice(e.target.checked)}
+          className="h-4 w-4 rounded border-slate-300"
+        />
+        Trust this browser for 30 days
+      </label>
+
+      {error ? (
+        <p
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+        >
+          {error}
+        </p>
+      ) : null}
+
+      <button
+        type="submit"
+        disabled={submitting || code.trim().length === 0}
+        className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {submitting ? "Verifying…" : "Verify"}
+      </button>
+
+      <div className="flex items-center justify-between text-xs">
+        <button
+          type="button"
+          onClick={() => {
+            setUseBackupCode(v => !v);
+            setCode("");
+            setError(null);
+          }}
+          className="font-semibold text-blue-700 hover:text-blue-900 hover:underline"
+        >
+          {useBackupCode ? "Use authenticator app" : "Use a backup code"}
+        </button>
+        <button
+          type="button"
+          onClick={cancelTwoFactor}
+          className="font-semibold text-slate-500 hover:text-slate-700 hover:underline"
+        >
+          ← Back
+        </button>
+      </div>
+    </form>
   );
 }
