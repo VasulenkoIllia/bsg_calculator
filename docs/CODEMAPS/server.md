@@ -1,6 +1,6 @@
 # Server (Backend API) Codemap
 
-**Last Updated:** 2026-06-07 (partial refresh — added documents / calculator-configs / events / invites modules + list filters; full regen pending)  
+**Last Updated:** 2026-06-08 (partial refresh — added documents / calculator-configs / events / invites modules + list filters + the TOTP 2FA surface; full regen pending)  
 **Framework:** Express.js (Node.js + TypeScript)  
 **Database:** PostgreSQL + Drizzle ORM  
 **Entry Point:** `server/index.ts` → `server/app.ts` (app factory)
@@ -86,12 +86,14 @@ All modules follow the **routes → controller → service → repository → sc
 
 ### Auth (`server/modules/auth/`)
 - **Routes (auth.routes.ts):**  
-  `POST /login` (5/min limiter) → `POST /refresh` (20/min) → `POST /logout` → `GET /me` (Bearer)
+  `POST /login` (5/min limiter) → `POST /refresh` (20/min) → `POST /logout` → `GET /me` (Bearer) → `POST /me/password` + `/me/sign-out-everywhere` (Bearer, self-service limiter).
 - **Tokens (auth.tokens.ts):**  
   JWT access tokens (HS256). Refresh tokens are opaque random strings, hashed with SHA-256 in DB, sent as `HttpOnly` cookies.
-- **Controller:** Parses login creds, calls service, sets refresh cookie.
-- **Service:** Delegates to repository for password verify; generates tokens on success.
-- **Repository:** Email lookup, password hash check, refresh token upsert.
+- **Controller:** Parses login creds, calls service, sets refresh cookie. `login()` returns a **union**: a full session OR a 2FA challenge (`{ twoFactorRequired, tempToken }`).
+- **Service:** password verify + token issuance; the login 2FA branch + refresh rotation/grace.
+- **Repository:** Email lookup, password hash check, refresh token upsert/rotate/revoke-all.
+- **TOTP 2FA (Phase 8 Stage 2) — `two-factor.{service,repository,controller,schemas}.ts`:**  
+  `POST /auth/2fa/verify` (10/min, TOTP **or** backup code → real session; `trustDevice` sets the `bsg_td` cookie) · `GET /auth/me/2fa` (status) · `POST /auth/me/2fa/{setup,confirm,disable,backup-codes/regenerate}` (3/min setup limiter; disable/regenerate re-auth = password + code) · `POST /users/:id/2fa/disable` (super_admin force-disable, audited). otplib (SHA1/6/30, window:1); the TOTP secret is AES-256-GCM-encrypted (`shared/totp-crypto.ts`, key `TOTP_ENCRYPTION_KEY`); backup codes + the trusted-device cookie token + the 5-min login temp token are all sha256-hashed (only hashes stored). New tables: `totp_backup_codes`, `trusted_devices`, `mfa_temp_tokens` (migrations 0018/0019).
 
 ### Companies & Deals (`server/modules/companies/`, `server/modules/deals/`)
 - **TTL-driven HubSpot refresh:**  
@@ -236,8 +238,11 @@ All errors are caught by `middleware/error-handler.ts` and serialized as:
 
 | Table | Columns | Key Relations |
 |-------|---------|----------------|
-| **users** | id (UUID), email, password_hash, createdAt, updatedAt | FK: refresh_tokens.userId |
+| **users** | id (UUID), email, password_hash, role, isActive, **totp_secret_encrypted**, **totp_enabled_at**, createdAt, updatedAt | FK: refresh_tokens.userId |
 | **refresh_tokens** | id (UUID), userId (FK), token_hash (SHA-256), expiresAt, createdAt | FK users(id) |
+| **totp_backup_codes** | id, user_id (FK CASCADE), code_hash (sha256, UNIQUE), used_at, created_at | one-time 2FA recovery codes |
+| **trusted_devices** | id, user_id (FK CASCADE), token_hash (sha256, UNIQUE), fingerprint_hash, expires_at (30d), created_at | "trust this browser" |
+| **mfa_temp_tokens** | id, user_id (FK CASCADE), token_hash (UNIQUE), expires_at (5min), created_at | single-use 2FA login token |
 | **companies** | id (UUID), hubspotCompanyId (int), name, companyType, segmentType, lifecycleStage, hsTaskLabel, hubspotRaw (JSONB), hubspotCreatedAt, hubspotModifiedAt, lastSyncedAt, createdAt, updatedAt | N/A |
 | **deals** | id (UUID), hubspotDealId (int), hubspotCompanyId (int), dealName, dealStatus, dealStage, dealAmount, hubspotRaw (JSONB), hubspotCreatedAt, hubspotModifiedAt, lastSyncedAt, createdAt, updatedAt | N/A |
 
@@ -249,6 +254,7 @@ All errors are caught by `middleware/error-handler.ts` and serialized as:
 - `NODE_ENV`, `PORT`, `APP_DOMAIN`, `TZ`
 - `DATABASE_URL` (required), `DB_*` fallbacks
 - `JWT_ACCESS_SECRET` (32+ chars)
+- `TOTP_ENCRYPTION_KEY` (64 hex = 32 bytes; AES-256-GCM key for 2FA secrets — prod refuses to boot on the all-zero dev default)
 - `HUBSPOT_PRIVATE_APP_TOKEN` (empty/skip in dev)
 - `HUBSPOT_SYNC_TTL_SECONDS` (e.g., 300 = 5 min)
 - `HUBSPOT_AUTO_BACKFILL` (bool, defaults to false)

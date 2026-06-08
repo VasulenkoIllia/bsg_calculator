@@ -8,11 +8,15 @@ The calculator's math and business logic are stabilized and **must not be change
 
 ## Current project status
 
-- Active runtime: React + Vite SPA (`src/`)
+- Full-stack app: React + Vite SPA (`src/`) + an Express/Drizzle/Postgres
+  API (`server/`) that serves the built SPA and the `/api/v1/*` backend.
 - Calculation engine: `src/domain/calculator/*` (unit-tested per zone)
-- Document Wizard + OFFER PDF renderer: `src/components/document-wizard/*`
-- Backend skeleton (kept for Phase 8): `server/` — not wired to serve frontend
-- Deployment target (test): `bsg.workflo.space`
+- Document Wizard + OFFER PDF renderer: `src/components/document-wizard/*`;
+  PDFs rendered server-side via Puppeteer.
+- Backend (`server/`): JWT auth + RBAC, **opt-in TOTP 2FA** (Google
+  Authenticator-compatible), HubSpot company/deal sync + webhooks, saved
+  calculators + documents with soft-delete, an admin/audit surface.
+- Deployment target (test): `bsg.workflo.space` (Docker Compose + Traefik).
 
 ## Project structure
 

@@ -1,6 +1,6 @@
 # Frontend (SPA) Codemap
 
-**Last Updated:** 2026-06-07 (partial refresh — list pages + soft-delete surface; older tables below predate Phase 4+ and a full `/update-codemaps` regen is pending)
+**Last Updated:** 2026-06-08 (partial refresh — list pages, soft-delete, TOTP 2FA two-step login + `/me` cabinet; older tables below predate Phase 4+ and a full `/update-codemaps` regen is pending)
 **Framework:** React 19 + Vite 6 + TypeScript (NodeNext modules)
 **Entry Point:** `src/main.tsx` → `src/App.tsx`
 **Router:** react-router-dom v7 (BrowserRouter)
@@ -79,9 +79,19 @@ Cold boot (every page load):
 Login (POST /auth/login):
   LoginPage submits → AuthContext.login()
    ├─ apiClient.post(/auth/login, { identifier, password })
-   ├─ 200 OK   → setAccessToken + setState({ user, isBooting: false })
-   │            → navigate(fromPath ?? "/companies")
+   ├─ 200 { accessToken, user }       → setAccessToken + setState → navigate
+   ├─ 200 { twoFactorRequired, tempToken }  ← Phase 8 Stage 2: 2FA enabled
+   │      → tempToken held in a useRef (NEVER state/localStorage),
+   │        pendingTwoFactor=true → LoginPage renders TwoFactorStep
+   │      → verifyTwoFactor(code, { trustDevice }) → POST /auth/2fa/verify
+   │           ├─ 200 → setAccessToken + setState({ user }) → navigate
+   │           └─ 400 wrong code (retry) / 401 expired (back to password)
    └─ 401/4xx  → form.setError("root", { message })
+
+2FA management (/me PersonalCabinetPage):
+  GET /auth/me/2fa (status) · POST /auth/me/2fa/{setup,confirm,disable,
+  backup-codes/regenerate}. AdminUsersPage (super_admin) → POST
+  /users/:id/2fa/disable (force-disable recovery). See src/api/auth.ts.
 
 Per-request:
   axios request interceptor injects "Authorization: Bearer <token>"
@@ -175,7 +185,9 @@ Constants in `src/shared/constants.ts`:
 | `DocumentsListPage.tsx` | `/documents` | Offers/agreements list. Filters: Company + Number search + Scope + Status. Columns incl. `HubspotSyncBadge`, `DeletionStatusCell` (Active/Deleted + inline super_admin Restore), and an inline **Open → / Delete** (admin) actions column → `DeleteDocumentModal`. |
 | `DocumentViewPage.tsx` | `/documents/:number` | Detail: preview + Download PDF + Use-as-Template + Sync + Delete (`DeleteDocumentModal`); soft-deleted banner with reason. |
 | `CalculatorsListPage.tsx` | `/calculators` | Saved-calculator drafts. Filters: Company + Title search + **Deal** (`dealScope`) + Status. Columns incl. `HubspotSyncBadge`, `DeletionStatusCell`, inline Open → / Delete (`DeleteCalculatorModal`). "Document draft" rows route to the wizard. |
-| `AdminUsersPage.tsx` | `/users` | super_admin user mgmt + `admin/InvitesPanel` (invite create / re-issue-&-copy-link / revoke). |
+| `PersonalCabinetPage.tsx` | `/me` | Personal cabinet: change password, sign-out-everywhere, and the **TOTP 2FA section** (status badge; Enable via QR + manual key + confirm code → one-time backup codes; Disable + Regenerate via password+code re-auth). |
+| `LoginPage.tsx` | `/login` | Password form + the **two-step 2FA** second factor (`TwoFactorStep`: code / "use a backup code" / "trust this browser 30 days") when the account has 2FA enabled. |
+| `AdminUsersPage.tsx` | `/users` | super_admin user mgmt + `admin/InvitesPanel` (invite create / re-issue-&-copy-link / revoke) + per-row **Disable 2FA** (force-disable recovery, shown when the user has 2FA on). |
 | `AuditLogPage.tsx` | `/audit-log` | super_admin admin-actions log with target/actor/company filters. |
 
 ### `src/components/`

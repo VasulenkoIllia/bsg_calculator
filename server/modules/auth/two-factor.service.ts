@@ -346,6 +346,8 @@ export async function verifyTotpLogin(input: {
 }
 
 /** Public-shape projection incl. the 2FA flag. */
+// (The trusted-device cookie max-age is defined in auth.cookies.ts; both it
+// and TRUSTED_DEVICE_TTL_MS above are 30 days and must stay in sync.)
 export function toUserPublic2fa(user: User): UserPublic {
   return {
     id: user.id,
@@ -357,5 +359,3 @@ export function toUserPublic2fa(user: User): UserPublic {
     twoFactorEnabled: user.totpEnabledAt !== null
   };
 }
-
-export const TRUSTED_DEVICE_MAX_AGE_MS = TRUSTED_DEVICE_TTL_MS;

@@ -226,6 +226,7 @@ function TwoFactorStep() {
       if (status === 401) {
         // The temp token expired — bounce back to the password form.
         setError("Your sign-in attempt expired. Please enter your password again.");
+        setSubmitting(false);
         setTimeout(cancelTwoFactor, 1500);
       } else if (status === 400) {
         setError(

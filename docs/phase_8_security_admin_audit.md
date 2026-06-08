@@ -1,6 +1,6 @@
 # Phase 8 — Security, Admin Management, Document Audit & Deletion
 
-**Status**: Stages 1 + 3 + 4 + 5 + 6 complete (Stage 6 shipped 2026-05-22 in Sprint 9.U). Stage 2 partial (Sprint 9.T — /me cabinet shipped, 2FA deferred to a future security pass).
+**Status**: Stages 1–6 complete. Stage 2 (TOTP 2FA + `/me` cabinet) shipped 2026-06-08 — full opt-in TOTP with backup codes, trusted devices, two-step login, and super-admin force-disable (Sprint 9.T had shipped the /me cabinet + password change earlier; 2026-06-08 added the 2FA itself). Stage 6 shipped 2026-05-22 in Sprint 9.U.
 **Date created**: 2026-05-20
 **Confirmed by**: operator brief 2026-05-20 (this conversation)
 

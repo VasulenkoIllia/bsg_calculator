@@ -102,6 +102,7 @@ openssl rand -base64 32 | tr -d '+=/'
 | Var | Source |
 |---|---|
 | `JWT_ACCESS_SECRET` | `openssl rand -base64 48` (NEW per env) |
+| `TOTP_ENCRYPTION_KEY` | `openssl rand -hex 32` (64 hex; encrypts 2FA secrets at rest — the app **refuses to boot in prod** with the all-zero dev default) |
 | `DB_PASSWORD` | `openssl rand -base64 32 \| tr -d '+=/'` |
 | `HUBSPOT_API_TOKEN` | HubSpot → Settings → Integrations → Private Apps → your app → Auth → "Access token" (starts with `pat-na1-…`) |
 | `HUBSPOT_WEBHOOK_SECRET` | HubSpot → Private App → Webhooks → "Signing secret" (32-char hex) |

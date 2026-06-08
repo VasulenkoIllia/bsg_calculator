@@ -187,7 +187,9 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
     async (code: string, opts?: { trustDevice?: boolean }): Promise<void> => {
       const tempToken = tempTokenRef.current;
       if (!tempToken) {
-        throw new ApiError("AUTH_NO_PENDING_2FA", "No pending 2FA challenge.", 400);
+        // 401 so LoginPage maps it to the "session expired → re-enter
+        // password" branch (semantically there's no live 2FA challenge).
+        throw new ApiError("AUTH_NO_PENDING_2FA", "No pending 2FA challenge.", 401);
       }
       const result = await authApi.verify2fa({
         tempToken,

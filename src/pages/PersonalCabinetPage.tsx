@@ -1,7 +1,7 @@
 /**
- * Sprint 9.T — Personal cabinet (`/me`).
+ * Sprint 9.T / Phase 8 Stage 2 — Personal cabinet (`/me`).
  *
- * Phase 8 Stage 2 partial — 2FA explicitly DEFERRED. Today's surface:
+ * Surface:
  *   - Profile section: email + displayName + role badge (all read-only).
  *   - Change password: currentPassword + newPassword + confirm. On
  *     success the server bulk-revokes every refresh token; we then
@@ -12,8 +12,10 @@
  *     can't remember their password). The trade-off is that an XSS
  *     could trigger an unwanted "log me out everywhere" — annoying
  *     but not exploitable for impersonation.
- *   - 2FA section: placeholder "Coming soon" so the operator brief
- *     ("/me має бути сторінка для 2FA") has the right slot waiting.
+ *   - Two-factor authentication (TOTP) — shipped 2026-06-08: status
+ *     badge; Enable (QR + manual key → confirm code → one-time backup
+ *     codes); Disable + Regenerate backup codes (password + code
+ *     re-auth). Compatible with Google Authenticator / 1Password / Authy.
  *
  * Auth gating: lives behind PrivateRoute, so `useAuth().user` is
  * always non-null here. The cold-boot guard is handled at the
@@ -414,6 +416,11 @@ function TwoFactorSection() {
       }
     } catch (err) {
       setError(errMsg(err, "Invalid code."));
+      // 409 = 2FA was already disabled elsewhere (another tab / admin
+      // force-disable). Re-sync the badge + buttons to the true state.
+      if (err instanceof ApiError && err.status === 409) {
+        await reload();
+      }
     } finally {
       setBusy(false);
     }

@@ -199,6 +199,9 @@ const Env = z.object({
   // session-hygiene pass (idle-timeout on FE + hard cap server-side).
   JWT_REFRESH_EXPIRES: z.string().default("12h"),  // refresh tokens are opaque, no secret needed
   BCRYPT_COST: z.coerce.number().int().min(4).max(15).default(12),
+  // Phase 8 Stage 2 — AES-256-GCM key for TOTP 2FA secrets (prod refuses to
+  // boot on the all-zero dev default; see env.ts superRefine).
+  TOTP_ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/).default("0".repeat(64)),
 
   FRONTEND_ORIGIN: z.string().url().default("http://localhost:5173"),
 
