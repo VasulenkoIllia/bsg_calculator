@@ -55,7 +55,6 @@
     // wizard/** are React, intentionally left out so the server tree
     // doesn't accidentally drag in any UI deps.
     "src/components/document-wizard/buildOfferPdfHtml.ts",
-    "src/components/document-wizard/buildPdfUiKitHtml.ts",
     "src/components/document-wizard/legalDefaults.ts",
     "src/components/document-wizard/types.ts",
     "src/components/document-wizard/wizard/layoutHelpers.ts",

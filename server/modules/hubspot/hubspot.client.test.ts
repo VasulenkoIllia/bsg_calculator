@@ -98,9 +98,17 @@ describe("HubspotClient retry behaviour", () => {
       pushResponse({ status: 429, headers: { "retry-after": "1" }, body: {} });
     }
     const promise = hubspot.listCompanies();
+    // Attach the rejection assertion BEFORE draining timers. Otherwise
+    // the promise rejects mid-`runAllTimersAsync()` with no handler yet
+    // attached, which surfaces as an "unhandled rejection" that vitest
+    // attributes to whatever test happens to run next in the parallel
+    // pool — producing flaky cross-file failures in the full suite.
+    const assertion = expect(promise).rejects.toBeInstanceOf(
+      HubspotUnreachableError
+    );
     await vi.runAllTimersAsync();
 
-    await expect(promise).rejects.toBeInstanceOf(HubspotUnreachableError);
+    await assertion;
     expect(fetchCallCount).toBe(4);
   });
 

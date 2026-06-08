@@ -2,7 +2,6 @@ export { DocumentWizardPanel } from "./DocumentWizardPanel.js";
 export type { DocumentWizardPanelProps } from "./DocumentWizardPanel.js";
 
 export { buildOfferPdfHtml } from "./buildOfferPdfHtml.js";
-export { buildPdfUiKitHtml } from "./buildPdfUiKitHtml.js";
 export { isDocumentTemplatePayload } from "./isDocumentTemplatePayload.js";
 
 export {

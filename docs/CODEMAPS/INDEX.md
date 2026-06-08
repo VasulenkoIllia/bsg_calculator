@@ -1,6 +1,11 @@
 # Architecture Codemaps Index
 
-**Last Updated:** 2026-05-17 (post-Sprint 4.F)
+**Last Updated:** 2026-06-08
+
+> **New to the project? Read [`docs/ONBOARDING.md`](../ONBOARDING.md) first** —
+> it is the single, current handoff guide. These codemaps are deeper per-tree
+> references; `server.md` and `frontend.md` are accurate at a high level but
+> their detailed tables predate some later modules (a full regen is pending).
 
 This directory contains architectural maps of the BSG Calculator codebase to help new developers onboard quickly.
 
@@ -89,10 +94,10 @@ This directory contains architectural maps of the BSG Calculator codebase to hel
 | **Sprint 5.F** Audit closure (30 findings, F.1→F.3) | ✅ DONE | HMAC URI hardened, TX-wrapped deletion, exp. backoff, re-entrancy guard, repo boundaries, SSRF defence |
 | **Sprint 6** Frontend polish (6.0 → 6.4) | ✅ DONE | Unified PDF render via POST /pdf/preview, /calc/:id hydration + auto-save, wizard ?calc= linking, global toasts, CompanyDetailPage tabs + docs-from-calc history |
 | **Sprint 6.F** Audit closure (15 findings, F.1→F.4) | ✅ DONE | Rate limit on /pdf/preview, autoSave reset on configId change, decomposition (CalcPage 679→561 LOC), runtime payload guard, calculatorConfigId filter test coverage |
-| **Sprint 6** Frontend continuation | ⏳ Partial | `/calc/:id` hydration + wizard URL-driven seeding still needed |
-| **Sprint 7** Docker + Coolify Deploy | ⏳ Pending | docker-compose + Dockerfile + Coolify config |
-| **Sprint 8** Hardening (optional) | ⏳ Pending | E2E Playwright, CSP, observability |
-| **Phase 9** HubSpot Note write-back | ⏳ Post-deploy | `POST /crm/v3/objects/notes` with APP_PUBLIC_URL link |
+| **Sprint 7** Single-container deploy | ✅ DONE | Dockerfile + docker-compose, Express serves SPA, Traefik/Coolify, helmet+CSP |
+| **Phase 9** HubSpot Note write-back | ✅ DONE | `POST /crm/v3/objects/notes` with APP_PUBLIC_URL link, auto + manual sync |
+| **Phase 8** Auth hardening + admin | ✅ DONE | RBAC roles, opt-in TOTP 2FA, invites + password reset, admin audit log, soft-delete |
+| **Future** Hardening (optional) | ⏳ Pending | E2E Playwright, observability/metrics, bundle code-splitting |
 
 ---
 

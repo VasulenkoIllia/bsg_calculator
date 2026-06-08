@@ -24,6 +24,12 @@ process.env.NODE_ENV = "test";
 process.env.LOG_LEVEL = "warn";
 process.env.LOG_HTTP_REQUESTS = "false";
 process.env.BCRYPT_COST = "4"; // ~4ms per hash vs ~250ms at cost 12
+// Pin the refresh-token lifetime so auth.tokens.test.ts asserts the
+// intended Sprint 9.P default (12h) deterministically. Without this a
+// developer's local `.env` carrying an operational override (e.g. 30d)
+// leaks in and breaks the unit assertion even though prod config is
+// fine. Matches the committed `.env.example` / `.env.production.example`.
+process.env.JWT_REFRESH_EXPIRES = "12h";
 
 const ADMIN_DB_URL =
   process.env.DATABASE_URL_ADMIN ??

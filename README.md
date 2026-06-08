@@ -92,23 +92,29 @@ Detailed steps are in `docs/deployment.md`.
 
 ## Documentation map
 
-Active references:
-- [docs/architecture.md](docs/architecture.md) — module map and data flows (start here).
-- [docs/spec_v2_alignment.md](docs/spec_v2_alignment.md) — what is implemented vs planned vs out-of-scope from `technical_specification_bsg.docx v2.0`.
+**New here? Start with [docs/ONBOARDING.md](docs/ONBOARDING.md)** — the single
+developer handoff guide (architecture, how each part works, how to run, deploy,
+and operate).
+
+Current references (how the system works today):
+- [docs/architecture.md](docs/architecture.md) — module map and data flows.
+- [docs/CODEMAPS/](docs/CODEMAPS/) — per-tree code maps (frontend + server).
 - [docs/calculator_logic_and_formulas.md](docs/calculator_logic_and_formulas.md) — calculator formulas (source of truth for the frozen calculator).
-- [docs/phase_07_unified_document_pipeline_plan.md](docs/phase_07_unified_document_pipeline_plan.md) — active phase plan for unified PDF generation.
-- [docs/pdf_template_fidelity_requirements.md](docs/pdf_template_fidelity_requirements.md) — mandatory visual/structural baseline for OFFER PDF.
-- [docs/pdf_rendering_logic_matrix.md](docs/pdf_rendering_logic_matrix.md) — Payin/Payout layout-mode matrix + per-sample variation table.
-- [docs/pdf_renderer_audit_2026-05-02.md](docs/pdf_renderer_audit_2026-05-02.md) — gap analysis: current OFFER renderer vs 8 reference samples.
-- [docs/agreement_structure.md](docs/agreement_structure.md) — AGREEMENT (long-form Service Agreement) structure derived from MSA template.
-- [docs/pdf_ui_kit.md](docs/pdf_ui_kit.md) — PDF UI Kit notes.
-- [docs/integrations.md](docs/integrations.md) — current and planned integrations (HubSpot is documented as a future plan only).
-- [docs/decisions.md](docs/decisions.md) — chronological technical/product decision log.
-- [docs/deployment.md](docs/deployment.md) — deployment guide.
-- [docs/audit_2026-05-02.md](docs/audit_2026-05-02.md) — latest audit and prioritized risks.
+- [docs/backend_conventions.md](docs/backend_conventions.md) — server folder layout, vertical-slice pattern, error envelope.
+- [docs/backend_state_schemas.md](docs/backend_state_schemas.md) — typed payload contracts (`calculator_snapshots`, `documents`).
+- [docs/backend_computation_boundary.md](docs/backend_computation_boundary.md) — what the backend recomputes vs trusts from snapshots.
+- [docs/deployment.md](docs/deployment.md) — production deployment + operations guide.
+- [docs/integrations.md](docs/integrations.md) — current and planned integrations.
+- [docs/client_and_hubspot_workflow.md](docs/client_and_hubspot_workflow.md) — client picker + HubSpot sync workflow.
+- [docs/bsg_hubspot_field_mapping.md](docs/bsg_hubspot_field_mapping.md) + [docs/hubspot_api_reference.md](docs/hubspot_api_reference.md) — HubSpot field selection + API reference.
+- [docs/spec_v2_alignment.md](docs/spec_v2_alignment.md) — implemented vs planned vs out-of-scope from `technical_specification_bsg.docx v2.0`.
+- PDF/contract docs: [pdf_template_fidelity_requirements.md](docs/pdf_template_fidelity_requirements.md), [pdf_rendering_logic_matrix.md](docs/pdf_rendering_logic_matrix.md), [pdf_ui_kit.md](docs/pdf_ui_kit.md), [agreement_structure.md](docs/agreement_structure.md).
+- [docs/url_contract.md](docs/url_contract.md) — frozen calculator + wizard URL contract.
+- [docs/calculator_deferred_changes.md](docs/calculator_deferred_changes.md) — punch list for the next time the calculator is unfrozen.
+- [docs/decisions.md](docs/decisions.md) — chronological technical/product decision log (full rationale history).
 
 Historical (read-only):
-- [docs/archive/](docs/archive/) — closed-phase handoffs, prior audits, the calculator delivery contract, and resolved spec questions.
+- [docs/archive/](docs/archive/) — closed-phase plans + handoffs, dated audits (PDF renderer, pixel-diff, pre-backend), the calculator delivery contract, and resolved spec questions.
 
 Specification documents (external, not stored in repo):
 - `Calculator_Описание.docx` — calculator-only spec; governs `src/domain/calculator/**`.

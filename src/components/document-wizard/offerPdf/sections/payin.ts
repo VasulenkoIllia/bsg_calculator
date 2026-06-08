@@ -431,8 +431,7 @@ export function buildPayinAdditionalSection(
 }
 
 // Single source of truth for "is the payin section custom note
-// active?". Used by the auto-compact heuristic in buildPayinSection
-// and by the renderer below.
+// active?". Used by the standalone-note renderer below.
 export function hasPayinCustomNote(data: DocumentTemplatePayload): boolean {
   return (
     data.contractSummary.payinCustomNoteEnabled &&

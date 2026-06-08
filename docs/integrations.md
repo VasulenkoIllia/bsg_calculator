@@ -1,103 +1,83 @@
 # Integrations
 
-Date: 2026-05-02
-Status: Active. Section "HubSpot (planned)" is forward-looking and not implemented.
+Last updated: 2026-06-08. Describes the integrations as they work **today**.
 
-## Currently implemented
+## HubSpot CRM (live)
 
-### Traefik Reverse Proxy
+HubSpot is fully integrated on the backend. The SPA never talks to HubSpot
+directly — all reads and writes go through `/api/v1/*` endpoints.
 
-- Purpose: public routing and TLS termination for frontend container.
-- Type: infrastructure integration (Docker network + labels).
-- Auth: handled by Traefik / environment setup (outside this repository).
-- Routing rule: `Host(${APP_DOMAIN})`.
-- Container target port: `80`.
-- Health dependency: `GET /health` endpoint served by nginx in container.
-- Failure handling:
-  - If router/network is misconfigured, domain will not resolve to app.
-  - Validate labels, network attachment, and cert resolver config.
-- Env vars used:
-  - `APP_DOMAIN`
-  - `TRAEFIK_NETWORK`
-  - `TRAEFIK_ENTRYPOINT`
-  - `TRAEFIK_TLS`
-  - `TRAEFIK_CERTRESOLVER`
+- **Code:** `server/modules/hubspot/**` (client, mapper, service, routes,
+  webhooks), plus `server/modules/documents/sync.service.ts` for Note
+  write-back.
+- **Auth:** Private App token via `HUBSPOT_API_TOKEN` (`pat-...`), stored
+  server-side only. Required in production (`env.ts` enforces it).
+- **Field selection:** `docs/bsg_hubspot_field_mapping.md`.
+- **API surface notes:** `docs/hubspot_api_reference.md`.
 
-### Browser Clipboard API
+### Reads (companies + deals)
 
-- Purpose: Zone 6 "Copy to Clipboard" action.
-- API: `navigator.clipboard.writeText`.
-- Failure handling: UI falls back to "copy manually from preview" message.
-- Security notes: depends on browser permission model and secure-context policy.
+- TTL-driven refresh: stale data is served immediately while a background
+  fetch refreshes it (`server/shared/ttl-refresh.ts`,
+  `HUBSPOT_SYNC_TTL_SECONDS`).
+- Optional startup backfill (`HUBSPOT_AUTO_BACKFILL`,
+  `HUBSPOT_COMPANY_TYPE_FILTER`, `HUBSPOT_BACKFILL_PAGE_SIZE`); manual
+  backfill via `npm run hubspot:backfill`.
+- Resilience: exponential backoff on 5xx, honours `Retry-After` on 429,
+  throws `HubspotUnreachableError` (→ HTTP 502) once the retry budget is
+  exhausted. Response shapes are soft-validated against Zod and fall
+  through to a safe cast on drift.
 
-### Browser Print Dialog (PDF save path)
+### Writes (document Note write-back)
 
-- Purpose: Zone 6 "Export to PDF" / "Print" and Wizard "Generate PDF".
-- Mechanism: popup window with generated HTML + `window.print()`.
-- Failure handling: UI shows popup-blocked message and asks user to allow popups.
+- On document create (when `AUTO_SYNC_TO_HUBSPOT=true`) and on manual
+  Sync, the backend writes a Note to the parent company/deal and records
+  a `synced_to_hubspot` / `sync_failed` event in the document History.
+- Fire-and-forget on create (`setImmediate` after the TX commits) so the
+  operator gets an instant `201`; failures persist `state='failed'` and
+  surface a manual Retry button. Soft-deleted documents are not syncable.
 
-## Planned integrations
+### Inbound webhooks
 
-### Backend API (Phase 8 — planned, not implemented)
+- `POST /api/v1/hubspot/webhooks` — HMAC v3 signature verification over the
+  **raw** request body (`HUBSPOT_WEBHOOK_SECRET`). The raw-body parser is
+  scoped to this exact path only (see `server/app.ts`). Unrecognised
+  payload shapes are ACKed but skipped. Manual refresh:
+  `POST /api/v1/hubspot/refresh`.
 
-- Purpose: persist immutable document versions, allocate document numbers, store calculator snapshots, render PDF server-side.
-- Module boundaries are listed in `phase_07_unified_document_pipeline_plan.md`.
-- The current `server/` directory is a minimal skeleton kept as a starting point; do not treat it as a working backend.
+See `docs/client_and_hubspot_workflow.md` for the end-to-end operator flow.
 
-### HubSpot CRM (Phase 9 — planned, not implemented)
+## Puppeteer (server-side PDF rendering)
 
-⚠ This section documents **the planned interaction model** so future implementation has a stable contract to build against. **No HubSpot API calls exist in the current codebase.** Implementation will start in a dedicated phase after backend foundation is stable. Logic details will be discussed before any code is written.
+- **Code:** `server/modules/pdf/**` (browser pool + render service).
+- OFFER (and AGREEMENT) PDFs are rendered server-side from the shared HTML
+  builder (`src/components/document-wizard/buildOfferPdfHtml.ts`, included
+  into the server build via `tsconfig.server.json`). Puppeteer loads the
+  HTML with `setContent` (no HTTP round-trip), so the app CSP does not
+  apply to PDF output.
+- A pooled browser is reused across renders and recycled by count/TTL
+  (`PUPPETEER_RENDERS_PER_BROWSER`, `PUPPETEER_BROWSER_TTL_MS`); render
+  timeout via `PDF_RENDER_TIMEOUT_MS`. `PUPPETEER_EXECUTABLE_PATH` /
+  `PUPPETEER_HEADLESS` configure the Chromium binary in the container.
+- Endpoints: `POST /api/v1/pdf/preview` (live wizard preview, rate-limited)
+  and `GET /api/v1/documents/:number/pdf` (persisted document).
 
-#### Touchpoints
+## Traefik / Coolify (reverse proxy + TLS)
 
-The CGS will read three HubSpot entities:
+- Public routing and TLS termination for the single application container.
+- The container runs Express, which serves both the `/api/v1/*` API **and**
+  the built SPA (`server/app.ts`). There is no separate nginx.
+- Health probe: `GET /health` (mounted at the root, no rate limit, no auth).
+- Env: `APP_DOMAIN`, `TRAEFIK_NETWORK`, `TRAEFIK_ENTRYPOINT`, `TRAEFIK_TLS`,
+  `TRAEFIK_CERTRESOLVER`, `TRUST_PROXY_HOPS`.
 
-| Entity | Why we read it | Used for |
-|---|---|---|
-| Deal | Identify the commercial opportunity | Pre-fill client context, source `XXXXX` of document number from last 5 digits of Deal ID |
-| Company (Client) | Identify the customer | Pre-fill company name on document, alternative `XXXXX` source |
-| Calculator (custom object) | Pull pre-configured pricing | Auto-fill wizard from saved calculator snapshot |
+## Browser Clipboard API
 
-The CGS will also write to HubSpot:
+- Purpose: Zone 6 "Copy to Clipboard" action (`navigator.clipboard.writeText`).
+- Failure handling: UI falls back to a "copy manually from preview" message.
+- Depends on the browser permission model and a secure context.
 
-| Entity | What we write | Why |
-|---|---|---|
-| Deal / Company | Document reference (number, link, status) | Make the contract visible inside HubSpot context |
-| Custom object (TBD) | Document version metadata | Track lineage and history |
+## DOCX export (out of scope)
 
-#### Data model assumptions (for backend design)
-
-Each persisted document carries a `hubspot_links` record with:
-
-- `objectType`: `deal` | `company` | `lead` (lead support optional, depending on product decision)
-- `objectId`: numeric HubSpot ID
-- `calculatorSnapshotId`: optional — only when wizard was seeded from a HubSpot calculator object
-
-These references are stored even before HubSpot integration ships; the integration phase only populates and consumes them.
-
-#### Auth (planned)
-
-- OAuth 2.0 against HubSpot, scoped to the workspace.
-- Tokens stored server-side, never exposed to the SPA.
-- Per-user RBAC layered on top of HubSpot scopes.
-
-#### Reliability rules (to be enforced when implemented)
-
-- Treat HubSpot API as an unreliable boundary; idempotent writes.
-- Retry with exponential backoff on 5xx; respect 429 rate limits.
-- Webhook signature verification for any inbound HubSpot events.
-- Normalize HubSpot payloads into internal DTOs before they touch domain logic.
-
-#### Open product questions for the dedicated HubSpot phase
-
-These will be answered during the HubSpot kickoff discussion:
-
-1. Which HubSpot object holds the calculator snapshot — Deal property bag, Company property bag, or a dedicated custom object? (Spec mentions "Calculator (Custom Object)".)
-2. Does the document number's `XXXXX` always come from the originating object (Deal vs Company), and what is the priority when both exist?
-3. What happens to a generated document when the source Deal is deleted in HubSpot? (Likely: keep document immutable, mark link as orphan.)
-4. Does HubSpot store the rendered PDF, a link, or both?
-5. Two-way sync vs read-only seed?
-
-### DOCX export (out of current scope)
-
-Spec section 9.1 mentions DOCX. Not planned for the current phase.
+`technical_specification_bsg.docx` §9.1 mentions DOCX export. It is **not**
+implemented and not currently planned — PDF is the only generated format.

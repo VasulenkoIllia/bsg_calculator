@@ -56,6 +56,10 @@ describe("PersonalCabinetPage — 2FA section", () => {
     renderCabinet();
 
     const enableBtn = await screen.findByRole("button", { name: /enable 2fa/i });
+    // The button is disabled until get2faStatus resolves (the component
+    // gates enrollment on a loaded status). Wait for it to enable before
+    // clicking, otherwise the click is a no-op and setup2fa never fires.
+    await waitFor(() => expect(enableBtn).toBeEnabled());
     fireEvent.click(enableBtn);
 
     await waitFor(() => expect(setupSpy).toHaveBeenCalled());
