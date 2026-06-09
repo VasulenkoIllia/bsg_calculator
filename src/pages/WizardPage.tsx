@@ -405,6 +405,20 @@ export function WizardPage() {
     seededBarTargetForRef.current = linkedConfigId;
   }, [linkedConfigId, linkedConfigQuery.data, linkedCompanyQuery.data]);
 
+  // Cross-company guard (UX). The wizard lets the operator change the
+  // company independently of the linked calculator, but a document may
+  // only reference a calculator of the SAME company — the backend rejects
+  // a mismatch with "Cross-company calc reference". So when the chosen
+  // company differs from the linked calc's company (e.g. "Use as Template"
+  // then switch to a different client), DETACH the calc link and save a
+  // standalone document snapshot for the new company instead of erroring.
+  const effectiveCalcConfigId =
+    linkedConfigId &&
+    selectedCompany &&
+    linkedConfigQuery.data?.companyId === selectedCompany.id
+      ? linkedConfigId
+      : null;
+
   const backendScope = toBackendScope(wizardDraft.documentScope);
 
   // Live BSG-<seq>-<suffix> preview from the backend. When no company
@@ -509,8 +523,10 @@ export function WizardPage() {
           // id all the way to POST /documents so the saved Document
           // row's FK `calculator_config_id` is populated — this
           // links the document back to its source for future history
-          // views ("documents from this calculator").
-          calculatorConfigId={linkedConfigId}
+          // views ("documents from this calculator"). Detached
+          // (`null`) when the operator switched to a different company
+          // than the calc's — see `effectiveCalcConfigId` above.
+          calculatorConfigId={effectiveCalcConfigId}
         />
       ) : null}
     </>
