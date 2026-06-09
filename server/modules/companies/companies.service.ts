@@ -145,6 +145,7 @@ export async function purgeDeletedCompany(companyId: string): Promise<PurgedComp
   if (!company) throw new NotFoundError("Company");
   if (!company.hubspotDeletedAt) {
     throw new ValidationError(
+      [{ path: ["company"], message: "company is still live in HubSpot" }],
       "Only a company that was deleted from HubSpot can be removed from the system."
     );
   }

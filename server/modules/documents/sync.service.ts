@@ -174,6 +174,7 @@ async function syncDocumentToHubspotLocked(
       "[documents:sync] skipped — parent company was deleted in HubSpot"
     );
     throw new ValidationError(
+      [{ path: ["hubspot"], message: "parent company was deleted in HubSpot" }],
       "Cannot sync: the parent company was deleted in HubSpot."
     );
   }
