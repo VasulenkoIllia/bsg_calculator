@@ -180,6 +180,23 @@ Other invariants:
   cookie; only its hash is stored (`refresh_tokens.token_hash`). Lifetime is
   `JWT_REFRESH_EXPIRES` (**intended default `12h`** — see the §11 warning).
   The axios client does single-flight refresh-on-401.
+- **Session resilience (important):** the access token expires every
+  `JWT_ACCESS_EXPIRES` (15m); the client silently refreshes on the next 401.
+  A refresh failure ends the session **only on a definitive 401/403**
+  (revoked/expired token or disabled account → redirect to `/login`). A
+  **transient** failure (5xx / 429 / network — laptop sleep, Wi-Fi blip, a
+  redeploy) keeps the session alive and retries on the next request; cold-boot
+  retries once. This is deliberate — see `src/api/client.ts` + `AuthContext`.
+  (Before 2026-06-10 any transient refresh failure forced a re-login every
+  ~15 min — that was the bug fixed here.)
+- **Idle logout:** 30 min of no `mousemove`/`keydown`/`click`/`scroll` activity
+  → forced logout, with a warning modal ~2 min before. The hook re-evaluates on
+  tab re-focus so background-tab timer throttling can't skip the warning
+  (`useIdleTimeout` + `IdleTimeoutWarning`).
+- **Multi-device:** logging in from two devices creates two independent
+  refresh-token rows + cookies; they rotate independently and don't interfere.
+  Only password-change / "sign out everywhere" / admin 2FA-force-disable /
+  deactivation revoke **all** of a user's sessions at once.
 - **RBAC:** roles `user` / `admin` / `super_admin`, enforced by
   `require-auth` + `require-role` middleware.
 - **Opt-in TOTP 2FA:** Google-Authenticator-compatible. Enroll → confirm →

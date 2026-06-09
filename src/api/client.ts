@@ -240,15 +240,39 @@ export function createApiClient(): AxiosInstance {
           originalConfig.headers = headers;
           return instance.request(originalConfig);
         } catch (refreshErr) {
-          // Refresh itself failed — session is gone. Notify the
-          // AuthContext so it can clear UI state + send the user
-          // to /login.
+          // CRITICAL: distinguish a genuine session loss from a transient
+          // failure. ONLY a real 401 from /auth/refresh means the refresh
+          // token is revoked/expired/the user disabled — i.e. the session
+          // is truly gone. A 5xx, 429, or network error (status 0 — laptop
+          // sleep/wake, Wi-Fi blip, CDN hiccup) is TRANSIENT: the cookie is
+          // almost certainly still valid. Tearing the session down on those
+          // forced a re-login on every transient that happened to land on
+          // the 15-minute access-token refresh moment — with no warning and
+          // no /auth/logout. We now keep the session alive on transients.
+          // 401 = refresh token revoked/expired/missing; 403 = the
+          // account was disabled mid-session (auth.service.refresh throws
+          // ForbiddenError → 403). BOTH are definitive — refreshing again
+          // won't help, so end the session. Everything else (5xx/429/
+          // network status 0) is transient and must NOT end the session.
+          const sessionRevoked =
+            refreshErr instanceof ApiError &&
+            (refreshErr.status === 401 || refreshErr.status === 403);
+
+          // Drop the stale in-memory access token either way so the NEXT
+          // request re-runs the 401 → refresh → replay cycle (this is the
+          // self-healing retry for transient failures).
           setAccessToken(null);
-          onSessionLost?.();
+
+          if (sessionRevoked) {
+            // Real revocation — notify AuthContext to clear UI state +
+            // route the user to /login.
+            onSessionLost?.();
+          }
+
           // Fall through to the typed-error rethrow below using the
-          // ORIGINAL 401 (not the refresh error) — UI shouldn't see
-          // a misleading "refresh failed" when the real story is
-          // "your session expired".
+          // ORIGINAL 401 (not the refresh error) — the failing request
+          // surfaces its own error; on a transient the user stays put and
+          // the next interaction retries.
           //
           // Log only structured fields (code + status) rather than the
           // raw error object — protects against future cases where
@@ -256,7 +280,8 @@ export function createApiClient(): AxiosInstance {
           // eslint-disable-next-line no-console
           console.warn("[api/client] refresh-on-401 failed", {
             code: refreshErr instanceof ApiError ? refreshErr.code : "UNKNOWN",
-            status: refreshErr instanceof ApiError ? refreshErr.status : 0
+            status: refreshErr instanceof ApiError ? refreshErr.status : 0,
+            sessionRevoked
           });
         }
       }

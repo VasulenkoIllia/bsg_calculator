@@ -21,8 +21,17 @@
 /** Total minutes of inactivity before forced logout. */
 export const IDLE_TIMEOUT_MIN = 30;
 
-/** Seconds before the deadline when the warning modal opens. */
-export const IDLE_WARNING_SEC = 60;
+/**
+ * Seconds before the deadline when the warning modal opens.
+ *
+ * Widened from 60 → 120 (2026-06-10): background tabs throttle the 1s
+ * heartbeat to ~1 tick/minute, so a 60s window was a single throttled
+ * tick — easy to skip entirely, which is why operators were logged out
+ * "without ever seeing the warning". A 120s window plus the
+ * `visibilitychange` re-evaluation in useIdleTimeout means the warning
+ * is reliably shown when the operator returns to the tab.
+ */
+export const IDLE_WARNING_SEC = 120;
 
 /**
  * Throttle for activity callbacks. Without this, every mouse

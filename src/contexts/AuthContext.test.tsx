@@ -68,17 +68,26 @@ describe("AuthContext — cold-boot refresh", () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it("warns when refresh fails for a non-401 reason", async () => {
+  it("retries once, then warns + logs out when refresh keeps failing (non-401)", async () => {
+    // A non-401 cold-boot failure is TRANSIENT (5xx / network). The
+    // provider must NOT immediately drop the session — it retries the
+    // whole boot once before giving up, so a redeploy / Wi-Fi blip during
+    // a page reload doesn't bounce a still-valid session to /login.
     const networkError = new clientModule.ApiError("NETWORK_ERROR", "boom", 0);
-    vi.spyOn(authApi, "refresh").mockRejectedValue(networkError);
+    const refreshSpy = vi
+      .spyOn(authApi, "refresh")
+      .mockRejectedValue(networkError);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const { result } = renderHook(() => useAuth(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.isBooting).toBe(false);
+    // Wait past the single retry window before asserting final state.
+    await waitFor(() => expect(result.current.isBooting).toBe(false), {
+      timeout: 4000
     });
-    expect(warn).toHaveBeenCalledTimes(1);
+    expect(result.current.user).toBeNull();
+    expect(refreshSpy).toHaveBeenCalledTimes(2); // initial attempt + one retry
+    expect(warn).toHaveBeenCalledTimes(1); // warns once, only after the retry
   });
 });
 

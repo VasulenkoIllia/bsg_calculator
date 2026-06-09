@@ -99,6 +99,30 @@ export function useIdleTimeout(enabled: boolean): UseIdleTimeoutResult {
     // the ref fresh means the next `extend()` plus subsequent ticks
     // see a recent timestamp, so the warning won't immediately re-
     // fire on the next heartbeat.
+    const timeoutMs = IDLE_TIMEOUT_MIN * 60 * 1000;
+    const warningMs = IDLE_WARNING_SEC * 1000;
+
+    // Single source of truth for "given how long we've been idle, what
+    // stage are we in?". Called by the 1s heartbeat AND immediately on
+    // tab re-focus so a throttled background tab can't silently skip the
+    // warning window and jump straight from active → expired.
+    const evaluate = () => {
+      const idleFor = Date.now() - lastActivityRef.current;
+      const remaining = timeoutMs - idleFor;
+      if (remaining <= 0) {
+        setStatus({ stage: "expired" });
+      } else if (remaining <= warningMs) {
+        setStatus({
+          stage: "warning",
+          secondsRemaining: Math.ceil(remaining / 1000)
+        });
+      } else {
+        // active — only update state if we were previously showing the
+        // warning (cheap no-op for steady-state).
+        setStatus(prev => (prev.stage === "active" ? prev : { stage: "active" }));
+      }
+    };
+
     let lastThrottle = 0;
     const handleActivity = () => {
       const now = Date.now();
@@ -116,39 +140,50 @@ export function useIdleTimeout(enabled: boolean): UseIdleTimeoutResult {
       });
     };
 
+    // Activity events on `window`. NOTE: events inside the PDF-preview
+    // iframe (DocumentViewPage / wizard PreviewStep) do NOT bubble out to
+    // `window` — handled separately by `handleWindowBlur` below.
     for (const event of ACTIVITY_EVENTS) {
       window.addEventListener(event, handleActivity, { passive: true });
     }
 
-    // ─── Heartbeat ────────────────────────────────────────────────
-    // Once per second, check time-since-last-activity and transition
-    // the stage if a threshold has been crossed. The interval handle
-    // is a local because nothing outside this effect needs to read
-    // or cancel it — the cleanup closure owns it.
-    const timeoutMs = IDLE_TIMEOUT_MIN * 60 * 1000;
-    const warningMs = IDLE_WARNING_SEC * 1000;
+    // PDF-preview iframe engagement. When the operator clicks into the
+    // sandboxed preview iframe, the parent window blurs and
+    // `document.activeElement` becomes that <iframe>. We can't observe
+    // scroll/clicks inside a sandboxed iframe, but treating "focus moved
+    // into the preview" as activity stops the timer from advancing the
+    // moment they start reading. Checked on a macrotask because
+    // activeElement updates after the blur fires.
+    const handleWindowBlur = () => {
+      window.setTimeout(() => {
+        const el = document.activeElement;
+        if (el && el.tagName === "IFRAME") {
+          lastActivityRef.current = Date.now();
+        }
+      }, 0);
+    };
+    window.addEventListener("blur", handleWindowBlur);
 
-    const heartbeatId = setInterval(() => {
-      const idleFor = Date.now() - lastActivityRef.current;
-      const remaining = timeoutMs - idleFor;
-      if (remaining <= 0) {
-        setStatus({ stage: "expired" });
-      } else if (remaining <= warningMs) {
-        setStatus({
-          stage: "warning",
-          secondsRemaining: Math.ceil(remaining / 1000)
-        });
-      } else {
-        // active — only update state if we were previously
-        // showing the warning (cheap no-op for steady-state).
-        setStatus(prev => (prev.stage === "active" ? prev : { stage: "active" }));
-      }
-    }, 1000);
+    // When the tab becomes visible again, the browser may have throttled
+    // the 1s heartbeat to ~1 tick/minute while hidden — so the warning
+    // window could have been skipped entirely. Re-evaluate immediately on
+    // re-focus so the operator reliably SEES the warning (or is cleanly
+    // logged out) instead of silently jumping active → expired. This is
+    // the fix for "logged out without ever seeing the warning".
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") evaluate();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    // ─── Heartbeat ────────────────────────────────────────────────
+    const heartbeatId = setInterval(evaluate, 1000);
 
     return () => {
       for (const event of ACTIVITY_EVENTS) {
         window.removeEventListener(event, handleActivity);
       }
+      window.removeEventListener("blur", handleWindowBlur);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       clearInterval(heartbeatId);
     };
   }, [enabled]);

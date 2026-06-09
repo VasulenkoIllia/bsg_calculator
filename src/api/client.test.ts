@@ -165,19 +165,56 @@ describe("apiClient — refresh-on-401", () => {
     expect(refreshCalls).toHaveLength(1);
   });
 
-  it("calls session-lost handler when refresh itself fails", async () => {
+  it("calls session-lost handler when the refresh itself returns 401 (revoked)", async () => {
     setAccessToken("old");
     const lost = vi.fn();
     setSessionLostHandler(lost);
 
     installMockAdapter([
       { status: 401 }, // original
-      { status: 401 } // refresh fails too
+      { status: 401 } // refresh fails too (genuine revocation)
     ]);
 
     await expect(apiClient.get("/me")).rejects.toBeInstanceOf(ApiError);
     expect(lost).toHaveBeenCalledOnce();
     // Access token cleared as a side effect.
+    expect(getAccessToken()).toBeNull();
+  });
+
+  it("calls session-lost handler when the refresh returns 403 (account disabled)", async () => {
+    // A disabled account makes /auth/refresh return 403 (not 401). That is
+    // still a DEFINITIVE session end — must redirect to /login, not be
+    // treated as a transient.
+    setAccessToken("old");
+    const lost = vi.fn();
+    setSessionLostHandler(lost);
+
+    installMockAdapter([
+      { status: 401 }, // original
+      { status: 403 } // refresh → account disabled
+    ]);
+
+    await expect(apiClient.get("/me")).rejects.toBeInstanceOf(ApiError);
+    expect(lost).toHaveBeenCalledOnce();
+    expect(getAccessToken()).toBeNull();
+  });
+
+  it("does NOT call session-lost when the refresh fails transiently (5xx)", async () => {
+    // Regression guard for the periodic-logout bug: a transient refresh
+    // failure (server hiccup / laptop sleep / CDN blip) must NOT tear the
+    // session down — only a real 401 means the refresh token is gone.
+    setAccessToken("old");
+    const lost = vi.fn();
+    setSessionLostHandler(lost);
+
+    installMockAdapter([
+      { status: 401 }, // original /me → triggers a refresh
+      { status: 503 } // refresh fails with a transient 5xx (NOT a 401)
+    ]);
+
+    await expect(apiClient.get("/me")).rejects.toBeInstanceOf(ApiError);
+    expect(lost).not.toHaveBeenCalled();
+    // In-memory token is still dropped so the next request retries refresh.
     expect(getAccessToken()).toBeNull();
   });
 

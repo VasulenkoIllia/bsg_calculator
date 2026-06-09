@@ -125,25 +125,47 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
   useEffect(() => {
     if (bootedRef.current) return;
     bootedRef.current = true;
+    // One cold-boot attempt: rotate the refresh cookie into an access
+    // token, then hydrate the user. Throws ApiError(401) for the normal
+    // "not logged in" path; throws a NON-401 ApiError on a transient
+    // backend/network failure (which we must NOT treat as logged-out).
+    const bootSession = async (): Promise<PublicUser> => {
+      const { accessToken } = await authApi.refresh();
+      setAccessToken(accessToken);
+      return authApi.me();
+    };
+
     (async () => {
       try {
-        const { accessToken } = await authApi.refresh();
-        setAccessToken(accessToken);
-        const user = await authApi.me();
+        const user = await bootSession();
         setState({ user, isBooting: false });
+        return;
       } catch (err) {
-        // 401 from refresh is the normal "not logged in" path —
-        // don't log it as an error. Anything else is unexpected
-        // and worth surfacing in dev (logged with code+status only,
-        // not the full error object, to avoid potential field leakage).
-        if (!(err instanceof ApiError && err.isUnauthenticated)) {
-          // eslint-disable-next-line no-console
-          console.warn("[auth] cold-boot refresh failed unexpectedly", {
-            code: err instanceof ApiError ? err.code : "UNKNOWN",
-            status: err instanceof ApiError ? err.status : 0
-          });
+        // Definitive: 401 = not logged in, 403 = account disabled. Land
+        // on /login immediately — these are NOT transient, so don't retry.
+        if (
+          err instanceof ApiError &&
+          (err.status === 401 || err.status === 403)
+        ) {
+          setState({ user: null, isBooting: false });
+          return;
         }
-        setState({ user: null, isBooting: false });
+        // Transient (5xx / network — a backend redeploy or a Wi-Fi blip
+        // during a page reload). Don't drop a session that may well be
+        // valid: retry the whole boot ONCE after a short delay before
+        // giving up to /login.
+        try {
+          await new Promise(resolve => setTimeout(resolve, 1200));
+          const user = await bootSession();
+          setState({ user, isBooting: false });
+        } catch (retryErr) {
+          // eslint-disable-next-line no-console
+          console.warn("[auth] cold-boot failed (after one retry)", {
+            code: retryErr instanceof ApiError ? retryErr.code : "UNKNOWN",
+            status: retryErr instanceof ApiError ? retryErr.status : 0
+          });
+          setState({ user: null, isBooting: false });
+        }
       }
     })();
   }, []);
