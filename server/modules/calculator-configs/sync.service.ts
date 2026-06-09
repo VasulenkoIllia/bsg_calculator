@@ -88,11 +88,14 @@ export async function syncCalculatorConfigToHubspot(
 }
 
 /**
- * Sprint 9.L B4 — internal worker invoked under the advisory lock.
- * Split out so the lock-acquire/release scope is small and obvious
- * at the entrypoint, while the existing flow continues to read +
- * write via the global `db` (the lock guards CONCURRENT entries,
- * not the per-statement transactionality of the writes).
+ * Sprint 9.L B4 — internal worker invoked under the advisory lock. The
+ * outer `db.transaction()` awaits this entire function before
+ * committing, so the advisory xact lock is held for the FULL duration
+ * of the work (createNote → associate → state write) — concurrent
+ * syncs are genuinely serialised, not merely gated at entry. The worker
+ * uses the global `db`/repositories for its writes (so repositories
+ * stay tx-agnostic); that does NOT shorten the lock's coverage, because
+ * the transaction stays open until this function resolves.
  */
 async function syncCalculatorConfigToHubspotLocked(
   id: string,

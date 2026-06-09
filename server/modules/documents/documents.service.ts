@@ -288,10 +288,13 @@ export async function createDocument(
 
   // Phase 9.G / Sprint 9.L B2 — auto-sync to HubSpot AFTER the TX
   // commits. We schedule the fire-and-forget sync via setImmediate so
-  // it runs on a later event-loop tick (never blocking the response
-  // — the operator gets 201 instantly, the badge flips from "Not
-  // synced" → "Syncing…" → "Synced" via a follow-up GET on the
-  // listings the FE invalidates).
+  // it runs on a later event-loop tick (never blocking the response —
+  // the operator gets 201 instantly). There is no "syncing" badge
+  // state: the badge stays "Not synced" until the background sync
+  // flips it to "Synced" (or "Failed"). The detail page briefly polls
+  // (useDocument `pollWhileSyncing`) so it catches that flip instead
+  // of sitting on a stale "Not synced" — the window that otherwise
+  // let an operator click Sync and mint a duplicate Note.
   //
   // Failure path: syncDocumentToHubspot persists state='failed'
   // BEFORE re-throwing — operator clicks the manual Sync button

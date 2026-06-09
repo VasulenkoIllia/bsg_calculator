@@ -22,6 +22,7 @@ import {
 } from "@tanstack/react-query";
 import { ApiError } from "../api/client.js";
 import * as configsApi from "../api/calculator-configs.js";
+import { shouldPollSyncBadge } from "../shared/hubspotSyncPoll.js";
 import type {
   CursorPage,
   PublicCalculatorConfig,
@@ -37,11 +38,28 @@ import type {
  * default; the auto-save mutation invalidates this key on success so
  * the cached payload stays consistent with the server-of-truth.
  */
-export function useCalculatorConfig(id: string | undefined) {
+export interface UseCalculatorConfigOptions {
+  /**
+   * Mirror of `UseDocumentOptions.pollWhileSyncing`. Briefly polls a
+   * freshly-created, not-yet-synced calc-config so the HubSpot badge
+   * catches the create-time auto-sync flip and the operator can't mint
+   * a duplicate Note off a stale `not_synced` badge. Policy + rationale
+   * live in `shared/hubspotSyncPoll.ts` (shared with `useDocument`).
+   */
+  pollWhileSyncing?: boolean;
+}
+
+export function useCalculatorConfig(
+  id: string | undefined,
+  options: UseCalculatorConfigOptions = {}
+) {
   return useQuery<PublicCalculatorConfig, ApiError>({
     queryKey: ["calculator-configs", "get", id],
     enabled: typeof id === "string" && id.length > 0,
-    queryFn: () => configsApi.getCalculatorConfig(id!)
+    queryFn: () => configsApi.getCalculatorConfig(id!),
+    refetchInterval: options.pollWhileSyncing
+      ? query => shouldPollSyncBadge(query.state.data)
+      : false
   });
 }
 

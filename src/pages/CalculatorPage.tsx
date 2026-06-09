@@ -55,7 +55,7 @@ export function CalculatorPage() {
   // (POST /calculator-configs) governs.
   const { id: configId } = useParams<{ id: string }>();
   const isEditMode = typeof configId === "string" && configId.length > 0;
-  const configQuery = useCalculatorConfig(configId);
+  const configQuery = useCalculatorConfig(configId, { pollWhileSyncing: true });
   // Phase 8 Stage 4 — calc-config events for the History panel
   // (only meaningful in edit mode — no row exists yet otherwise).
   const eventsQuery = useQuery({
@@ -243,27 +243,42 @@ export function CalculatorPage() {
   const queryClient = useQueryClient();
   const [calcSyncPending, setCalcSyncPending] = useState(false);
   const [resyncConfirmOpen, setResyncConfirmOpen] = useState(false);
+  // Guards against a same-tick double-click firing two sync requests
+  // before `calcSyncPending` (async state) re-renders the disabled
+  // button — each call mints a separate HubSpot Note. Mirror of
+  // DocumentViewPage's syncInFlightRef; the backend advisory lock is
+  // the real safety net, this stops the duplicate at the source.
+  const calcSyncInFlightRef = useRef(false);
 
   async function handleSyncCalcToHubspot(): Promise<void> {
     if (!configId) return;
+    if (calcSyncInFlightRef.current) return;
+    calcSyncInFlightRef.current = true;
     setCalcSyncPending(true);
     try {
       const updated = await configsApi.syncCalculatorConfigToHubspot(configId);
-      // Optimistic single-config cache update + invalidate listings
-      // so the "Saved calculators" pages re-render with the new
-      // sync state.
+      // Optimistic single-config cache update; `finally` reconciles.
       queryClient.setQueryData(["calculator-configs", "get", configId], updated);
-      queryClient.invalidateQueries({ queryKey: ["calculator-configs"] });
       toast.success("Calculator synced to HubSpot.");
     } catch (err) {
-      queryClient.invalidateQueries({ queryKey: ["calculator-configs"] });
-      toast.error(
-        err instanceof ApiError
-          ? `Sync failed: ${err.message}`
-          : "Sync failed — try again."
-      );
+      // 409 = a concurrent sync is already running (backend advisory
+      // lock). Not a failure — soft info instead of a scary "Sync
+      // failed". Any other error means the backend persisted state='failed'.
+      if (err instanceof ApiError && err.code === "HUBSPOT_SYNC_IN_PROGRESS") {
+        toast.info("Sync already in progress — the badge will update shortly.");
+      } else {
+        toast.error(
+          err instanceof ApiError
+            ? `Sync failed: ${err.message}`
+            : "Sync failed — try again."
+        );
+      }
     } finally {
+      // Unconditional refresh so the "Saved calculators" badge reflects
+      // the real server state on success, 409, AND failure.
+      queryClient.invalidateQueries({ queryKey: ["calculator-configs"] });
       setCalcSyncPending(false);
+      calcSyncInFlightRef.current = false;
     }
   }
 

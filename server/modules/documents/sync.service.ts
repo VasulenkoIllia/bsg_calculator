@@ -22,8 +22,11 @@
  * delete the older ones manually in HubSpot.
  */
 
+import { sql } from "drizzle-orm";
+import { db } from "../../db/client";
 import { findCompanyById } from "../companies/companies.repository";
 import {
+  ConflictError,
   HubspotUnreachableError,
   NotFoundError,
   ValidationError
@@ -69,6 +72,47 @@ export async function syncDocumentToHubspot(
    *   event reads as "system".
    */
   actorUserId: string | null = null
+): Promise<DocumentPublic> {
+  // Serialize concurrent syncs for the SAME document via a Postgres
+  // advisory xact lock — parity with calculator-configs/sync.service.ts
+  // (Sprint 9.L B4). Without it, two near-simultaneous sync calls — a
+  // double-click that beats the disabled-button guard, or the create
+  // auto-sync (setImmediate) racing a manual click — could BOTH pass the
+  // findByNumber check before either wrote state back, each calling
+  // `createNote` and leaking a DUPLICATE Note into the customer timeline.
+  //
+  // `pg_try_advisory_xact_lock` returns false (instead of blocking) when
+  // the lock is already held; we surface that as a 409 so the second
+  // caller renders a polite "sync already in progress" rather than
+  // starting a parallel run. The lock auto-releases when the wrapping
+  // transaction ends (commit OR rollback).
+  return db.transaction(async tx => {
+    const claim = await tx.execute<{ acquired: boolean }>(sql`
+      SELECT pg_try_advisory_xact_lock(hashtext('doc-sync:' || ${number}::text)) AS acquired
+    `);
+    if (!claim.rows[0]?.acquired) {
+      throw new ConflictError(
+        "HUBSPOT_SYNC_IN_PROGRESS",
+        "Another sync for this document is already in progress. Try again in a moment."
+      );
+    }
+    return syncDocumentToHubspotLocked(number, actorUserId);
+  });
+}
+
+/**
+ * Internal worker invoked under the advisory lock. The outer
+ * `db.transaction()` awaits this entire function before committing, so
+ * the advisory xact lock is held for the FULL duration of the work
+ * (createNote → associate → state write) — concurrent syncs are
+ * genuinely serialised, not merely gated at entry. The worker uses the
+ * global `db`/repositories for its writes (so repositories stay
+ * tx-agnostic); that does NOT shorten the lock's coverage, because the
+ * transaction stays open until this function resolves.
+ */
+async function syncDocumentToHubspotLocked(
+  number: string,
+  actorUserId: string | null
 ): Promise<DocumentPublic> {
   const document = await findByNumber(number);
   if (!document) {

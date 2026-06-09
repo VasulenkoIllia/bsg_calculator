@@ -13,7 +13,7 @@
  *   - Raw payload preview (collapsed by default) for debugging.
  */
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../api/client.js";
@@ -75,7 +75,7 @@ export function DocumentViewPage() {
   const toast = useToast();
   const { hasRole } = useAuth();
   const queryClient = useQueryClient();
-  const docQuery = useDocument(number);
+  const docQuery = useDocument(number, { pollWhileSyncing: true });
   // Phase 8 Stage 4 — events list, used by the History panel below
   // the document body. `enabled: !!number` guards against a hook
   // call before the route param hydrates.
@@ -87,6 +87,11 @@ export function DocumentViewPage() {
   });
   const [templatePending, setTemplatePending] = useState(false);
   const [syncPending, setSyncPending] = useState(false);
+  // Guards against a same-tick double-click firing two sync requests
+  // before `syncPending` (async state) re-renders the disabled button.
+  // The backend advisory lock is the real safety net; this stops the
+  // duplicate at the source so the second click never leaves the page.
+  const syncInFlightRef = useRef(false);
   const [restorePending, setRestorePending] = useState(false);
   const [showRawPayload, setShowRawPayload] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -169,29 +174,39 @@ export function DocumentViewPage() {
    */
   async function handleSyncToHubspot(): Promise<void> {
     if (!number) return;
+    // Re-entry guard: a same-tick double-click can fire this twice
+    // before `setSyncPending(true)` re-renders the disabled button —
+    // and each call mints a separate HubSpot Note.
+    if (syncInFlightRef.current) return;
+    syncInFlightRef.current = true;
     setSyncPending(true);
     try {
       const updated = await documentsApi.syncDocumentToHubspot(number);
-      // Optimistically replace the cached single-doc query with the
-      // new state so the badge flips without a round-trip. Query key
-      // shape: ["documents", "get", number] — see useDocument().
-      // Then invalidate the listings so the badge in /documents +
-      // any nested company tab catches up.
+      // Optimistically replace the cached single-doc query so the badge
+      // flips immediately; the `finally` invalidate then reconciles.
+      // Query key shape: ["documents", "get", number] — see useDocument().
       queryClient.setQueryData(["documents", "get", number], updated);
-      queryClient.invalidateQueries({ queryKey: ["documents"] });
       toast.success("Document synced to HubSpot.");
     } catch (err) {
-      // The backend has ALREADY persisted hubspot_sync_state='failed'
-      // before throwing — invalidate so the badge flips to "failed"
-      // on the next render.
-      queryClient.invalidateQueries({ queryKey: ["documents"] });
-      toast.error(
-        err instanceof ApiError
-          ? `Sync failed: ${err.message}`
-          : "Sync failed — try again."
-      );
+      // 409 = a concurrent sync is already running (backend advisory
+      // lock). NOT a failure — the other run finishes and updates the
+      // badge; show a soft info toast, not a scary "Sync failed". Any
+      // other error means the backend already persisted state='failed'.
+      if (err instanceof ApiError && err.code === "HUBSPOT_SYNC_IN_PROGRESS") {
+        toast.info("Sync already in progress — the badge will update shortly.");
+      } else {
+        toast.error(
+          err instanceof ApiError
+            ? `Sync failed: ${err.message}`
+            : "Sync failed — try again."
+        );
+      }
     } finally {
+      // Unconditional: refresh the single-doc + listings so the badge
+      // reflects the real server state on success, 409, AND failure.
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
       setSyncPending(false);
+      syncInFlightRef.current = false;
     }
   }
 

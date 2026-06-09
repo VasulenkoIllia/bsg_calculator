@@ -15,6 +15,7 @@ import {
 } from "@tanstack/react-query";
 import { ApiError } from "../api/client.js";
 import * as documentsApi from "../api/documents.js";
+import { shouldPollSyncBadge } from "../shared/hubspotSyncPoll.js";
 import type {
   CursorPage,
   PublicDocument,
@@ -163,10 +164,27 @@ export function useDocuments(options: UseDocumentsOptions = {}): UseDocumentsRes
   };
 }
 
-export function useDocument(number: string | undefined) {
+export interface UseDocumentOptions {
+  /**
+   * When true, briefly poll a freshly-created, not-yet-synced document
+   * so the HubSpot badge catches the create-time auto-sync flip and the
+   * operator can't mint a duplicate Note off a stale `not_synced` badge.
+   * Policy + rationale live in `shared/hubspotSyncPoll.ts` (shared with
+   * `useCalculatorConfig` so the two can't diverge).
+   */
+  pollWhileSyncing?: boolean;
+}
+
+export function useDocument(
+  number: string | undefined,
+  options: UseDocumentOptions = {}
+) {
   return useQuery<PublicDocument, ApiError>({
     queryKey: ["documents", "get", number],
     enabled: typeof number === "string" && number.length > 0,
-    queryFn: () => documentsApi.getDocumentByNumber(number!)
+    queryFn: () => documentsApi.getDocumentByNumber(number!),
+    refetchInterval: options.pollWhileSyncing
+      ? query => shouldPollSyncBadge(query.state.data)
+      : false
   });
 }
