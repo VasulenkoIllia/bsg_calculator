@@ -232,8 +232,20 @@ Other invariants:
 
 Live and entirely server-side. Reads companies/deals (TTL-cached), processes
 inbound webhooks (HMAC v3), and writes a document Note back to the parent
-company/deal on create (auto) and on manual Sync. Full detail:
-[`integrations.md`](integrations.md), field mapping:
+company/deal on create (auto) and on manual Sync.
+
+Lifecycle handling worth knowing:
+- **Note sync** never mints duplicate Notes (advisory lock → `409
+  HUBSPOT_SYNC_IN_PROGRESS`); each deliberate re-sync makes a fresh Note.
+- **Company merge** re-points the merged-away company's documents/calcs/deals
+  onto the survivor and removes the duplicate; a self-heal + the
+  `reconcile-companies.ts --fix-merged` script cover missed merges (a
+  merged-away id resolves to its survivor in HubSpot — it never 404s).
+- **Company deletion** hard-deletes a company that owns no documents, or
+  keeps + badges "Deleted in HubSpot" one that owns documents (legal records
+  are never auto-deleted).
+
+Full detail: [`integrations.md`](integrations.md), field mapping:
 [`bsg_hubspot_field_mapping.md`](bsg_hubspot_field_mapping.md), operator flow:
 [`client_and_hubspot_workflow.md`](client_and_hubspot_workflow.md).
 
