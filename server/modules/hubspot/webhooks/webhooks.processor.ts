@@ -162,6 +162,17 @@ async function processOne(
   try {
     if (isCompany) {
       const obj = await hubspot.getCompany(event.hubspotObjectId);
+      // Merged-away alias self-heal. HubSpot resolves a merged-away id to
+      // its SURVIVOR — so a 200 whose `id` differs from the one we asked
+      // for means `event.hubspotObjectId` was merged into `obj.id`. This
+      // does NOT 404, so the delete-on-404 path never catches it and a
+      // duplicate row lingers (HubSpot shows 1 company, we show 2). Fold
+      // the stale alias into the survivor (re-point its documents/configs/
+      // deals + remove the alias row) — same path as a live company.merge.
+      if (obj.id && obj.id !== event.hubspotObjectId) {
+        await handleCompanyMerge(obj.id, [event.hubspotObjectId]);
+        return "deleted";
+      }
       if (!passesCompanyTypeFilter(obj.properties.company_type)) {
         return "filtered_out";
       }

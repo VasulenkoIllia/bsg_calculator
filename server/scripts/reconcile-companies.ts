@@ -18,7 +18,14 @@
  *
  * Modes:
  *   (default)        dry-run — list drifted companies + doc/deal counts
- *                    + the recommended action per row.
+ *                    + the recommended action per row. Flags MERGED-AWAY
+ *                    aliases separately (HubSpot resolves them to a
+ *                    survivor, so they never 404).
+ *   --fix-merged [--yes]
+ *                    auto-fold every MERGED-AWAY alias into its survivor
+ *                    (the survivor id comes from HubSpot's redirect, so no
+ *                    manual lookup). Previews unless --yes. This is the fix
+ *                    for "HubSpot shows 1 company, our list shows 2".
  *   --prune-empty    delete drifted companies that own ZERO documents
  *                    (deals first, then company, in one TX). Never
  *                    touches a company that owns documents.
@@ -74,34 +81,98 @@ interface DriftedCompany {
   company: Company;
   documents: number;
   deals: number;
+  /**
+   * Set when this local row is a MERGED-AWAY ALIAS (HubSpot returned a
+   * survivor with a different id) rather than a deleted/404 company.
+   * Holds the survivor's HubSpot id — repoint straight into it.
+   */
+  mergedInto?: string;
 }
 
 /**
- * Probe every local company against HubSpot. A 404 (NotFoundError) =
- * drifted. Any other error (token/transient) ABORTS the scan so we
- * never misclassify a reachability blip as drift. O(N) GETs — fine for
- * BSG's tenant size; this is a one-off ops tool.
+ * Probe every local company against HubSpot. Two kinds of drift:
+ *
+ *   - DELETED: `getCompany` 404s → the company is gone upstream.
+ *   - MERGED-AWAY ALIAS: `getCompany` returns 200 BUT with a different
+ *     `id` than we asked for. HubSpot resolves a merged-away id to its
+ *     surviving record, so a merged company NEVER 404s — the plain
+ *     404 check misses it, which is exactly how merge duplicates linger
+ *     in our cache (HubSpot shows 1 company, we show 2). The survivor is
+ *     the returned `obj.id`, so we can auto-repoint without an operator
+ *     having to hunt the survivor id by hand.
+ *
+ * Any other error (token/transient) ABORTS the scan so we never
+ * misclassify a reachability blip as drift. O(N) GETs — fine for BSG's
+ * tenant size; this is a one-off ops tool.
  */
 async function findDriftedCompanies(): Promise<DriftedCompany[]> {
   const localCompanies = await db.select().from(companiesTable);
   const drifted: DriftedCompany[] = [];
   for (const company of localCompanies) {
     let present = true;
+    let mergedInto: string | undefined;
     try {
-      await hubspot.getCompany(company.hubspotCompanyId);
+      const obj = await hubspot.getCompany(company.hubspotCompanyId);
+      // 200 but a different id → merged-away alias of obj.id (survivor).
+      if (obj.id && obj.id !== company.hubspotCompanyId) {
+        mergedInto = obj.id;
+      }
     } catch (err) {
-      // A 404 (any shape) means the company is gone upstream → drift.
-      // Transient/auth errors (401/403/429/5xx) re-throw to abort the
-      // scan so we never misclassify a blip as drift.
       if (isHubspotNotFound(err)) present = false;
       else throw err;
     }
-    if (present) continue;
+    if (present && !mergedInto) continue; // genuinely live
     const documents = await countDocumentsByCompanyId(company.id);
     const deals = await countDealsByCompanyHubspotId(company.hubspotCompanyId);
-    drifted.push({ company, documents, deals });
+    drifted.push({ company, documents, deals, mergedInto });
   }
   return drifted;
+}
+
+/**
+ * Auto-fold every detected MERGED-AWAY alias into its survivor (we know
+ * the survivor id from HubSpot's redirect, so no manual `--repoint`
+ * lookup is needed). Companies that are DELETED (404, no survivor) are
+ * left for --prune-empty / --mark / --purge. Idempotent.
+ */
+async function fixMerged(confirmed: boolean): Promise<void> {
+  // eslint-disable-next-line no-console
+  console.log("[reconcile] scanning for merged-away company aliases…");
+  let drifted: DriftedCompany[];
+  try {
+    drifted = await findDriftedCompanies();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `[reconcile] scan aborted on a non-404 HubSpot error: ${msg}. No changes were made.`
+    );
+  }
+  const merged = drifted.filter(d => d.mergedInto);
+  if (merged.length === 0) {
+    // eslint-disable-next-line no-console
+    console.log("[reconcile] no merged-away aliases found.");
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.log(`\n[reconcile] ${merged.length} merged-away alias(es):\n`);
+  for (const d of merged) {
+    // eslint-disable-next-line no-console
+    console.log(
+      `  • ${d.company.name}  [hs ${d.company.hubspotCompanyId}]  docs=${d.documents} deals=${d.deals}  → fold into survivor ${d.mergedInto}`
+    );
+  }
+  if (!confirmed) {
+    // eslint-disable-next-line no-console
+    console.log("\n[reconcile] DRY-RUN — re-run with --yes to fold them into their survivors.");
+    return;
+  }
+  for (const d of merged) {
+    await handleCompanyMerge(d.mergedInto!, [d.company.hubspotCompanyId]);
+    // eslint-disable-next-line no-console
+    console.log(`  ✓ folded ${d.company.name} [${d.company.hubspotCompanyId}] → ${d.mergedInto}`);
+  }
+  // eslint-disable-next-line no-console
+  console.log(`\n[reconcile] fix-merged complete: ${merged.length} alias(es) folded into their survivors.`);
 }
 
 async function repoint(fromHubspotId: string, toHubspotId: string): Promise<void> {
@@ -233,9 +304,10 @@ async function scan(prune: boolean): Promise<void> {
     `\n[reconcile] ${drifted.length} drifted compan${drifted.length === 1 ? "y" : "ies"} (gone from HubSpot):\n`
   );
   for (const d of drifted) {
-    const action =
-      d.documents > 0
-        ? `REPOINT — owns ${d.documents} document(s); run: --repoint ${d.company.hubspotCompanyId} <survivorHubspotId>`
+    const action = d.mergedInto
+      ? `MERGED-AWAY ALIAS of survivor ${d.mergedInto} — run: --fix-merged --yes (auto-folds, no survivor lookup needed)`
+      : d.documents > 0
+        ? `DELETED upstream, owns ${d.documents} document(s); run: --repoint ${d.company.hubspotCompanyId} <survivorHubspotId>  (or --mark / --purge)`
         : prune
           ? "PRUNING (no documents)"
           : "prune-safe (no documents); run: --prune-empty";
@@ -245,10 +317,11 @@ async function scan(prune: boolean): Promise<void> {
     );
   }
 
+  const mergedCount = drifted.filter(d => d.mergedInto).length;
   if (!prune) {
     // eslint-disable-next-line no-console
     console.log(
-      "\n[reconcile] dry-run only. Re-run with --prune-empty to delete the no-document drift, or --repoint <from> <to> to fold a with-document company into its survivor."
+      `\n[reconcile] dry-run only.${mergedCount > 0 ? ` ${mergedCount} merged-away alias(es) — run --fix-merged --yes to auto-fold them.` : ""} Re-run with --prune-empty to delete no-document drift, or --repoint <from> <to> for deleted companies that own documents.`
     );
     return;
   }
@@ -366,6 +439,11 @@ async function main(): Promise<void> {
       return;
     }
 
+    if (args.includes("--fix-merged")) {
+      await fixMerged(args.includes("--yes"));
+      return;
+    }
+
     await scan(args.includes("--prune-empty"));
   } finally {
     // Await the pool close so connections drain before the process exits
@@ -377,7 +455,7 @@ async function main(): Promise<void> {
 // Exported for integration testing. The drift scan + --prune-empty path
 // delete prod data, so they are covered directly (see
 // server/tests/reconcile-companies.integration.test.ts).
-export const __internals = { findDriftedCompanies, scan, repoint, purge, markDrifted };
+export const __internals = { findDriftedCompanies, scan, repoint, purge, markDrifted, fixMerged };
 
 const isMain =
   process.argv[1]?.endsWith("reconcile-companies.ts") ||
