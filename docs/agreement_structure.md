@@ -80,6 +80,8 @@ The MSA template is mostly static, but the following fields vary per contract:
 
 BSG details (`Black Stripe Group LTD`, UK address) are the same across all contracts and can stay as constants in the renderer.
 
+**Enter the value only (2026-06-11).** The parties template already supplies the connective phrases ("a company incorporated under the laws of …", "having its registered office at …"), so the Merchant **Jurisdiction** field takes only the country (e.g. `Cyprus`) and **Registered Office** takes only the address. Pasting the full clause into a field duplicates the phrase in the rendered block. `PartiesStep` now shows a one-line hint under each Merchant field to make this explicit.
+
 ### Counterparty data availability (current phase)
 
 These party fields are **not yet available** from any system source — neither calculator, nor backend, nor HubSpot. Until the data layer is built (Phase 8 + HubSpot phase), the wizard collects them manually in Step 7 (Parties & Signatures). When the user leaves a field blank, the renderer falls back to the bracketed placeholder used in the source MSA template (`[Merchant legal name]`, `[*]`), so the rendered AGREEMENT remains usable as a draft.
@@ -142,7 +144,7 @@ Wizard payload extension:
 documentScope: "offer" | "offerAndAgreement";
 agreementParties?: {
   merchantLegalName: string;
-  merchantJurisdiction: string;       // e.g. "England and Wales"
+  merchantJurisdiction: string;       // country ONLY, e.g. "Cyprus" (template wraps it with "a company incorporated under the laws of …")
   merchantRegisteredAddress: string;
   serviceProviderCoEntityName: string;       // default "KASEF PAY INC"
   serviceProviderCoEntityJurisdiction: string; // default "British Columbia, Canada"

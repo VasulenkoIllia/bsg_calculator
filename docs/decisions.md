@@ -6585,4 +6585,22 @@ Use this file to record meaningful technical decisions for the project.
   token-retry-after-wrong-code, + force-disable-revokes-sessions); full server
   suite 400/401 (only the known `auth.tokens` env flake); build green.
 
+### Decision: PDF cover/table polish + Payout Minimum Fee default ON
+- Date: 2026-06-11
+- Context:
+  - Operator-requested cosmetic fixes to the generated Service Agreement PDF, plus a default-behaviour change for the Payout Minimum Fee.
+- Decision:
+  - **Card Acquiring tables (sections 1 + 1.1, all tiered/non-tiered variants):** region values (`● EEA + UK` / `● Global`) render in the muted-grey `--label-color` at normal weight (matching the REGION header) instead of bold black; the MDR / RATE percentage is now black + bold via a dedicated `.cell-rate` span (the tier-coloured model label is unchanged).
+  - **Cover:** `Service / Agreement` title enlarged 32pt → 50pt to fill the spare vertical room; the cover sub-headline is justified (`text-align: justify`).
+  - **Agreement Merchant party fields:** added a per-field hint in `PartiesStep` so operators enter only the value (legal name / country / address). The parties template already adds the connective phrases; pasting the full clause duplicated them. Jurisdiction placeholder → `e.g. Cyprus`.
+  - **Payout Minimum Fee (Per Transaction) ships ENABLED by default** (€2.50). Flipped the single source of truth `DEFAULT_PAYOUT_MINIMUM_FEE_CONFIG.enabled` (`src/domain/calculator/zone4/otherFeesAndLimits.ts`) `false → true`, so the calculator default state and the document wizard (manual seed + from-calculator) start with it on, uniformly. The ZERO/blank presets keep it off intentionally.
+- Alternatives considered:
+  - Per-layer defaults (separate calculator vs wizard flags) — rejected; the shared constant keeps the two layers from drifting.
+  - Changing the parties template to strip a pasted phrase — rejected as fragile; clearer field guidance is the correct fix.
+- Consequences:
+  - This is a **sanctioned, scoped unfreeze** of ONE calculator default (the calculator is otherwise frozen — see the frozen-calculator rule). The calculator's default scenario now includes the payout minimum-fee impact, and manual-defaults documents show the MINIMUM FEE column by default. Saved snapshots/documents are unaffected (they carry their own stored values).
+  - `visual-diff` gold images are now stale (intentional template change) — regenerate with `npm run visual-diff:gold` when convenient (not in CI; CI is `npm test` / frontend vitest only).
+- Verification: frontend vitest 399/399 green (updated 3 tests for the new default + the `cell-rate` markup); server PDF integration 8/8; build green; page-1 budget re-verified — the heaviest config (tiered both-regions + payin custom note) still fits on page 1 with the 50pt title. Independent code-review pass: no critical/high findings.
+- Commits: `7a80bf3`, `df10bfb`, `f613977`, `29eef11`, `008f483` (+ this review pass).
+
 

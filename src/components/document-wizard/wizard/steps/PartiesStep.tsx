@@ -147,7 +147,7 @@ export function PartiesStep({
             <label>
               <span className="field-label">Legal Name</span>
               <span className="mt-1 block text-xs text-slate-500">
-                {"Enter the full legal name of client company"}
+                Enter the full legal name of client company
               </span>
               <input
                 className="field-input"

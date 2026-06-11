@@ -34,8 +34,8 @@ The OFFER and AGREEMENT share the same Sections 1–4 layout. AGREEMENT adds the
 
 1. A4 page format.
 2. Header begins with `CONFIDENTIAL · PAYMENT INFRASTRUCTURE`.
-3. Title block: `Service / Agreement` (two lines, accent color on "Agreement").
-4. Subtitle: `Card Acquiring, Payout Infrastructure & Settlement Terms — structured for scale-up and enterprise merchants operating globally.`
+3. Title block: `Service / Agreement` (two lines, accent color on "Agreement"). Enlarged to **50pt** (from 32pt) on 2026-06-11 to fill the spare cover space; the top-right meta aside is far narrower than the free width so there is no collision and page counts are unchanged (verified incl. the heaviest config: tiered both-regions + payin custom note still fits on page 1).
+4. Subtitle: `Card Acquiring, Payout Infrastructure & Settlement Terms — structured for scale-up and enterprise merchants operating globally.` Rendered **justified** (`text-align: justify`, 2026-06-11).
 5. Cover meta laid out in two parts (redesigned 2026-05-30): `DOCUMENT NUMBER` + `DOCUMENT DATE` sit **top-right, opposite the Service / Agreement title** (`.offer-title-aside` — right-aligned label/value pairs in a flex `.offer-title-row`); the bordered meta-grid below holds the remaining **3 cells on a single row** — `DOCUMENT TYPE`, `COLLECTION MODEL`/`SETTLEMENT MODEL`, `COLLECTION FREQUENCY`. Container border is top + left only; item borders form the rest. Removing the old second meta row freed ~64px, redistributed into proportionally larger cover + section gaps (`--space-header-gap` 8→11px, `--space-section-gap` 6→8mm) with **no change to page counts**.
 6. Followed by amber/blue note: `All fees are collected on a daily basis unless otherwise instructed in writing. Rates are subject to applicable interchange and scheme fees under the IC++ model unless otherwise instructed in writing.`
 7. Sections 1–4 with numeric badges and right-aligned variant tag.
@@ -49,10 +49,11 @@ The OFFER and AGREEMENT share the same Sections 1–4 layout. AGREEMENT adds the
 | Element | Class | Colour |
 |---|---|---|
 | Small uppercase labels (REGION, METHODS, REFUND, DOCUMENT NUMBER, …) | `--label-color` | `#9aa3b5` (grey — changed from blue `#2358EA` on 2026-05-30) |
+| Card Acquiring region value (`● EEA + UK` / `● Global`, incl. section 1.1) | `cell-region` | `var(--label-color)` `#9aa3b5`, **normal weight** (2026-06-11 — was bold black, now matches the REGION header) |
 | Tier 1 row (model, label, trx fee) — also single-mode default | `tier-color-1` | `#2358EA` |
 | Tier 2 row | `tier-color-2` | `#3F38E3` |
 | Tier 3 row | `tier-color-3` | `#7D2AEB` |
-| MDR percent (every tier, single mode) | (default body colour) | `var(--text-primary)` `#0F172A` |
+| MDR / RATE percent (every tier, single mode) | `cell-rate` | `var(--text-primary)` `#0F172A`, **bold** (2026-06-11 — was plain body weight; the model label stays tier-coloured) |
 | `N/A` in payin / fee tables (e.g. MIN. TRX FEE) | `value-na` | `var(--text-muted)` `#6B7280` |
 | Terms grid values (built-in + custom) | `terms-value-{blue,black,orange}` | pricing → purple `var(--accent)` `#4f46e5` (key still named "blue"; changed from `#2358EA` 2026-05-30), risk/attention → orange `#DB7712`, sentinel `N/A`/`TBD` → black `var(--text-primary)` |
 | Fee card value | `fee-value` | `var(--text-primary)`, 18 pt |
@@ -76,7 +77,7 @@ Fee and limit values resolve through a shared **`ValueMode`** (`value` | `waived
 
 The mode wins over the raw amount. In Section 3 the six fee cards (Account Setup, Refund, Dispute / Chargeback, 3DS, Settlement, Min. Monthly Account Fee) each expose a **Value / Waived / N/A** toggle plus an optional **custom subtitle note** stored in `payload.feeNotes` (`DocumentWizardFeeNotes`) and rendered as a second `fee-subtitle` line.
 
-**Defaults + provider-cost floors (2026-05-31):** the wizard seeds provider-cost defaults and enforces hard input minimums — a manager can only mark UP from cost (`document-wizard/wizardDefaults.ts` is the single source for both the UI `min` and the seed default). The six fee cards are **shown by default** (3DS / Settlement / Monthly Min default ON but stay toggleable). **ACCOUNT SETUP always renders**, showing `Waived` when its value resolves empty (value-mode + 0). Floors: Refund ≥ 10, Dispute ≥ 50, 3DS ≥ 0.03, and payin TRX C/D ≥ 0.22 / APM ≥ 0.27 on every construction (single / tiered / both regions / section 1.1). Terms defaults: Restricted Jurisdictions "OFAC, US, Israel", Rolling Reserve 180 days, Max Payout → N/A, Reserve Cap → TBD. Wizard-layer only — the calculator stays frozen; calculator-sourced documents carry the calculator's pricing values. See `docs/decisions.md`.
+**Defaults + provider-cost floors (2026-05-31):** the wizard seeds provider-cost defaults and enforces hard input minimums — a manager can only mark UP from cost (`document-wizard/wizardDefaults.ts` is the single source for both the UI `min` and the seed default). The six fee cards are **shown by default** (3DS / Settlement / Monthly Min default ON but stay toggleable). **ACCOUNT SETUP always renders**, showing `Waived` when its value resolves empty (value-mode + 0). **Payout Minimum Fee (Per Transaction) now also defaults ON** (€2.50, 2026-06-11): flipped at the single source of truth `DEFAULT_PAYOUT_MINIMUM_FEE_CONFIG.enabled` so the calculator default state and the wizard (manual seed + from-calculator) match uniformly; the ZERO/blank presets keep it off intentionally. Floors: Refund ≥ 10, Dispute ≥ 50, 3DS ≥ 0.03, and payin TRX C/D ≥ 0.22 / APM ≥ 0.27 on every construction (single / tiered / both regions / section 1.1). Terms defaults: Restricted Jurisdictions "OFAC, US, Israel", Rolling Reserve 180 days, Max Payout → N/A, Reserve Cap → TBD. Wizard-layer only — the calculator stays frozen; calculator-sourced documents carry the calculator's pricing values. (The one sanctioned exception is the Payout Minimum Fee default above — an operator-approved change to a single calculator default, applied at the shared constant so both layers stay in sync.) See `docs/decisions.md`.
 
 **FAILED TRANSACTION CHARGING** is the exception — instead of Value/Waived/N/A it has its own on/off toggle + a **3-mode selector** and an operator memo:
 

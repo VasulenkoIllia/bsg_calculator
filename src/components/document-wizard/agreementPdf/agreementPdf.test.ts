@@ -200,7 +200,9 @@ describe("hide-if-empty column rule", () => {
     expect(draft.toggles.payoutMinimumFeeEnabled).toBe(false);
 
     const html = buildOfferPdfHtml(draft);
-    expect(html).not.toContain("MINIMUM FEE");
+    // Target the exact payout column header so a rename of the payin
+    // "MIN. TRANSACTION FEE" column can never make this pass for the wrong reason.
+    expect(html).not.toContain("<th>MINIMUM FEE</th>");
   });
 
   it("payout MINIMUM FEE column is shown when toggle is on with positive value", () => {

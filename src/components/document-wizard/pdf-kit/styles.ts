@@ -421,8 +421,8 @@ tbody tr:nth-child(even) {
 
 /* Per-tier colours used in tiered pricing tables. Each tier row gets
  * its own shade for the tier label, model name and trx-fee values so
- * scanning across rows is easier. MDR percent stays in default body
- * colour on every tier (so percentages read as plain dark text).
+ * scanning across rows is easier. The MDR percent itself is rendered
+ * black + bold via .cell-rate (independent of the tier colour).
  *
  * tier-color-1 #2358EA (blue) → tier 0 (e.g. "Up to €0.1M")
  * tier-color-2 #3F38E3 (blue-purple) → tier 1
