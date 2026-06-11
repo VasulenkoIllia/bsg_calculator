@@ -138,8 +138,13 @@ export interface FailedTrxImpact {
 export const DEFAULT_3DS_REVENUE_PER_SUCCESSFUL = 0.03;
 export const PROVIDER_3DS_COST_PER_ATTEMPT = 0.03;
 
+// Payout Minimum Fee (per transaction) ships ENABLED by default (2026-06-11,
+// operator-approved unfreeze of this one default) so the calculator's default
+// scenario and the document wizard (manual seed + from-calculator) both start
+// with it on — uniform across both layers. The single constant is the source
+// of truth; the ZERO/blank presets keep it off intentionally.
 export const DEFAULT_PAYOUT_MINIMUM_FEE_CONFIG: PayoutMinimumFeeConfig = {
-  enabled: false,
+  enabled: true,
   minimumFeePerTransaction: 2.5
 };
 

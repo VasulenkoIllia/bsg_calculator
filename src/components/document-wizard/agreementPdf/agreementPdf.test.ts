@@ -194,7 +194,9 @@ describe("buildOfferPdfHtml — scope-aware composition", () => {
 describe("hide-if-empty column rule", () => {
   it("payout MINIMUM FEE column is hidden when payoutMinimumFeeEnabled toggle is off", () => {
     const draft = withScope(buildDocumentTemplatePayloadManualDefaults(), "offer");
-    // manualDefaults seed: payoutMinimumFeeEnabled = false → column must hide.
+    // The manualDefaults seed now ships this toggle ON, so disable it
+    // explicitly to exercise the hide-if-empty rule.
+    draft.toggles.payoutMinimumFeeEnabled = false;
     expect(draft.toggles.payoutMinimumFeeEnabled).toBe(false);
 
     const html = buildOfferPdfHtml(draft);

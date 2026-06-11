@@ -89,7 +89,9 @@ describe("Zone 3 and Zone 4", () => {
     expect(screen.getByLabelText("Minimum Transaction Fee (€)")).toHaveValue("1");
     expect(screen.getByText(/Contract preview: ≤€2.5M: €1 \/ >€2.5M: N\/A/)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("checkbox", { name: "Payout Minimum Fee (Per Transaction)" }));
+    // Payout Minimum Fee (Per Transaction) ships ENABLED by default now, so
+    // its panel (rounding-rule note + per-transaction input) is already shown
+    // — no toggle click needed to reveal it.
     expect(screen.getByText("Rounding rule: always round up to the next €0.10.")).toHaveClass(
       "bg-amber-50"
     );
