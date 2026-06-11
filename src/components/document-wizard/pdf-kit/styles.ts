@@ -399,7 +399,12 @@ tbody tr:nth-child(even) {
 }
 
 .cell-line { display: block; }
-.cell-region { font-weight: 700; }
+/* Region values render at normal weight in the same muted grey as the
+ * column headers (--label-color) so they read as plain labels rather than
+ * competing with the numeric pricing. */
+.cell-region { font-weight: 400; color: var(--label-color); }
+/* The MDR / RATE percentage is the emphasis of the pricing cell: black + bold. */
+.cell-rate { font-weight: 700; color: var(--text-primary); }
 .accent-text { color: var(--accent); font-weight: 700; }
 
 /* Inactive / "N/A" values rendered in muted gray to visually

@@ -228,8 +228,8 @@ function buildPayinRows(
         );
         const minFee = formatPayinMinTransactionFee(data, region.code);
         // Per-tier colour class shared by tier label, model name and
-        // trx-fee values in this row. MDR percent stays plain so it
-        // reads as black on every tier.
+        // trx-fee values in this row. The MDR percent itself is rendered
+        // black + bold (.cell-rate), independent of the tier colour.
         const tierColor = tierColorClass(index);
 
         rows.push(`<tr>
@@ -241,7 +241,7 @@ function buildPayinRows(
           ${PAYIN_METHODS_CELL}
           <td>EUR</td>
           ${showTierColumn ? `<td class="${tierColor}">${escapeHtml(tierLabel)}</td>` : ""}
-          <td><span class="cell-line ${tierColor}">${escapeHtml(formatPayinModel(region.pricing.model))}</span><span class="cell-line">${escapeHtml(
+          <td><span class="cell-line ${tierColor}">${escapeHtml(formatPayinModel(region.pricing.model))}</span><span class="cell-line cell-rate">${escapeHtml(
             formatPercent(tier.mdrPercent)
           )}</span></td>
           <td>${renderTrxFeeCell(tier, region.pricing.trxFeeEnabled, tierColor)}</td>
@@ -262,7 +262,7 @@ function buildPayinRows(
       ${PAYIN_METHODS_CELL}
       <td>EUR</td>
       ${showTierColumn ? "<td>Non-tiered, fixed</td>" : ""}
-      <td><span class="cell-line tier-color-1">${escapeHtml(formatPayinModel(region.pricing.model))}</span><span class="cell-line">${escapeHtml(
+      <td><span class="cell-line tier-color-1">${escapeHtml(formatPayinModel(region.pricing.model))}</span><span class="cell-line cell-rate">${escapeHtml(
         formatPercent(region.pricing.single.mdrPercent)
       )}</span></td>
       <td>${renderTrxFeeCell(region.pricing.single, region.pricing.trxFeeEnabled)}</td>
@@ -359,7 +359,7 @@ function buildPayinAdditionalRows(
           ${methodsCell}
           ${currencyCell}
           <td class="${tierColor}">${escapeHtml(tierLabel)}</td>
-          <td><span class="cell-line ${tierColor}">${escapeHtml(formatPayinModel(customRow.model))}</span><span class="cell-line">${escapeHtml(
+          <td><span class="cell-line ${tierColor}">${escapeHtml(formatPayinModel(customRow.model))}</span><span class="cell-line cell-rate">${escapeHtml(
             formatPercent(tier.mdrPercent)
           )}</span></td>
           <td>${renderTrxFeeCell(tier, customRow.trxFeeEnabled, tierColor)}</td>
@@ -374,7 +374,7 @@ function buildPayinAdditionalRows(
       ${methodsCell}
       ${currencyCell}
       ${showTierColumn ? "<td>Non-tiered, fixed</td>" : ""}
-      <td><span class="cell-line tier-color-1">${escapeHtml(formatPayinModel(customRow.model))}</span><span class="cell-line">${escapeHtml(
+      <td><span class="cell-line tier-color-1">${escapeHtml(formatPayinModel(customRow.model))}</span><span class="cell-line cell-rate">${escapeHtml(
         formatPercent(customRow.single.mdrPercent)
       )}</span></td>
       <td>${renderTrxFeeCell(customRow.single, customRow.trxFeeEnabled)}</td>
