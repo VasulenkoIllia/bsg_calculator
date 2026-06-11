@@ -487,7 +487,7 @@ describe("buildOfferPdfHtml", () => {
       expect(html).toContain("tier-color-3");
     });
 
-    it("payin tiered rows keep MDR percent in the default body colour", () => {
+    it("payin tiered rows render the MDR percent bold via cell-rate", () => {
       const data = buildBaseTemplateData();
       data.layout.payin.regionMode = "both";
       data.layout.payin.tableMode = "byRegionTiered";
@@ -495,8 +495,9 @@ describe("buildOfferPdfHtml", () => {
       data.payinPricing.ww.rateMode = "tiered";
 
       const html = buildOfferPdfHtml(data);
-      // The percent value lives in a plain cell-line span, not coloured.
-      expect(html).toMatch(/<span class="cell-line">4\.50%/);
+      // The percent value lives in a dedicated cell-rate span (black + bold),
+      // separate from the colour-coded model label.
+      expect(html).toMatch(/<span class="cell-line cell-rate">4\.50%/);
     });
 
     it("payout tiered rows colour each tier with tier-color-1/2/3", () => {
