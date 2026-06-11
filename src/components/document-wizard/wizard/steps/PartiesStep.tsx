@@ -146,6 +146,9 @@ export function PartiesStep({
           <div className="mt-3 grid gap-3">
             <label>
               <span className="field-label">Legal Name</span>
+              <span className="mt-1 block text-xs text-slate-500">
+                {"Enter the full legal name of client company"}
+              </span>
               <input
                 className="field-input"
                 value={parties.merchantLegalName}
@@ -156,16 +159,22 @@ export function PartiesStep({
             </label>
             <label>
               <span className="field-label">Jurisdiction</span>
+              <span className="mt-1 block text-xs text-slate-500">
+                {'Enter the country of incorporation to complete the statement: "…a company incorporated under the laws of ______"'}
+              </span>
               <input
                 className="field-input"
                 value={parties.merchantJurisdiction}
                 onChange={event => update("merchantJurisdiction", event)}
-                placeholder="e.g. England and Wales"
+                placeholder="e.g. Cyprus"
                 aria-label="Merchant jurisdiction"
               />
             </label>
             <label>
               <span className="field-label">Registered Office</span>
+              <span className="mt-1 block text-xs text-slate-500">
+                {'Enter the full registered address to complete the statement: "…having its registered office at ______"'}
+              </span>
               <textarea
                 className="field-input"
                 rows={2}
