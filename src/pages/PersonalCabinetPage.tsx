@@ -463,47 +463,108 @@ function TwoFactorSection() {
       {shownCodes ? (
         <BackupCodesPanel codes={shownCodes} onDone={resetForms} />
       ) : enroll ? (
-        /* Enrolment: scan QR + confirm a code. */
-        <form onSubmit={confirmEnroll} className="mt-4 space-y-3">
-          <p className="text-sm text-slate-700">
-            Scan this QR code with your authenticator app, then enter the 6-digit
-            code it shows.
+        /* Enrolment shown as 3 explicit numbered steps so the operator
+         * never stops after scanning — the old single-paragraph layout
+         * made the "type the code + confirm" step easy to miss. */
+        <form onSubmit={confirmEnroll} className="mt-4 space-y-4">
+          <p className="text-sm font-medium text-slate-700">
+            Almost there — finish these 3 steps to turn on 2FA:
           </p>
-          <img
-            src={enroll.qrCode}
-            alt="2FA QR code"
-            className="h-44 w-44 rounded-lg border border-slate-200"
-          />
-          <p className="text-xs text-slate-500">
-            Can't scan? Enter this key manually:{" "}
-            <code className="rounded bg-slate-100 px-1 font-mono">
-              {enroll.manualKey}
-            </code>
-          </p>
-          <input
-            type="text"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            placeholder="123456"
-            value={confirmCode}
-            onChange={e => setConfirmCode(e.target.value)}
-            className="w-40 rounded-lg border border-slate-300 px-3 py-2 text-sm tracking-widest focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-          />
-          <div className="flex items-center gap-2">
-            <button
-              type="submit"
-              disabled={busy || confirmCode.trim().length === 0}
-              className="rounded-lg border border-blue-500 bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {busy ? "Verifying…" : "Confirm & enable"}
-            </button>
-            <button
-              type="button"
-              onClick={resetForms}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              Cancel
-            </button>
+
+          {/* Step 1 — scan */}
+          <div className="flex gap-3">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+              1
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-800">
+                Scan this QR code with your authenticator app
+              </p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Google Authenticator, 1Password or Authy. A new entry with a
+                rotating 6-digit code will appear in the app.
+              </p>
+              <img
+                src={enroll.qrCode}
+                alt="2FA QR code"
+                className="mt-2 h-44 w-44 rounded-lg border border-slate-200"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Can't scan? Enter this key manually:{" "}
+                <code className="rounded bg-slate-100 px-1 font-mono">
+                  {enroll.manualKey}
+                </code>
+              </p>
+            </div>
+          </div>
+
+          {/* Step 2 — type the code */}
+          <div className="flex gap-3">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+              2
+            </span>
+            <div className="min-w-0">
+              <label
+                htmlFor="totp-confirm-code"
+                className="block text-sm font-semibold text-slate-800"
+              >
+                Type the 6-digit code from the app here
+              </label>
+              <p className="mt-0.5 text-xs text-slate-500">
+                The code changes every 30 seconds — just enter the one shown
+                right now.
+              </p>
+              <input
+                id="totp-confirm-code"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                placeholder="123456"
+                value={confirmCode}
+                onChange={e =>
+                  setConfirmCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+                }
+                className="mt-2 w-44 rounded-lg border border-slate-300 px-3 py-2 text-lg tracking-[0.4em] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              />
+            </div>
+          </div>
+
+          {/* Step 3 — turn it on */}
+          <div className="flex gap-3">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+              3
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-800">
+                Turn on two-factor authentication
+              </p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                We'll then show 10 one-time backup codes — save them somewhere
+                safe before you close this.
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={busy || confirmCode.trim().length < 6}
+                  className="rounded-lg border border-blue-500 bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {busy ? "Verifying…" : "Confirm & enable"}
+                </button>
+                <button
+                  type="button"
+                  onClick={resetForms}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+              </div>
+              {confirmCode.trim().length < 6 ? (
+                <p className="mt-1.5 text-xs text-slate-400">
+                  Enter the 6-digit code in step 2 to enable.
+                </p>
+              ) : null}
+            </div>
           </div>
         </form>
       ) : reauthMode ? (

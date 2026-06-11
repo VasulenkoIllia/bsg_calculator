@@ -6603,4 +6603,16 @@ Use this file to record meaningful technical decisions for the project.
 - Verification: frontend vitest 399/399 green (updated 3 tests for the new default + the `cell-rate` markup); server PDF integration 8/8; build green; page-1 budget re-verified — the heaviest config (tiered both-regions + payin custom note) still fits on page 1 with the 50pt title. Independent code-review pass: no critical/high findings.
 - Commits: `7a80bf3`, `df10bfb`, `f613977`, `29eef11`, `008f483` (+ this review pass).
 
+### Decision: 2FA enrolment screen reworked into explicit numbered steps
+- Date: 2026-06-11
+- Context:
+  - Operators were scanning the enrolment QR and then stopping — the single-paragraph layout made the "type the 6-digit code + Confirm & enable" step easy to miss, so 2FA was never actually activated (it stays pending until the code is confirmed).
+- Decision:
+  - `PersonalCabinetPage` enrolment block (`enroll` state) is now a 3-step flow: (1) scan QR, (2) labelled code input ("Type the 6-digit code from the app here"), (3) Confirm & enable, with a hint under the disabled button ("Enter the 6-digit code in step 2 to enable").
+  - The code input filters to digits and caps at 6 (`maxLength`), and the submit button enables only at a full 6-digit code (was: any non-empty input). Got a proper `<label htmlFor>`.
+- Consequences:
+  - **Presentation only** — no backend/API/security change. The setup → confirm endpoints, secret generation, and `window:1` verification are untouched. Button text ("Confirm & enable") and the `123456` placeholder are unchanged, so the enable-flow test still matches.
+- Verification: frontend vitest 399/399; eslint clean; build green; `totp-confirm-code` id is unique.
+- Commit: (this change).
+
 
