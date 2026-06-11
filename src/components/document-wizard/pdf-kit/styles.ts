@@ -155,7 +155,12 @@ table.page-layout > tbody > tr.force-page-break-before {
 .offer-title {
   /* Standardised cover gap (eyebrow → title). */
   margin: var(--space-header-gap) 0 0;
-  font-size: 32pt;
+  /* Cover headline enlarged 32pt → 50pt (~+56%) to fill the spare
+   * vertical room under the cover. line-height:1 keeps the two-line
+   * "Service / Agreement" stack tight; the DOCUMENT NUMBER/DATE aside
+   * is top-aligned and far narrower than the free horizontal room, so
+   * the larger word never collides with it. */
+  font-size: 50pt;
   line-height: 1;
   font-weight: 700;
   color: var(--text-primary);
@@ -210,6 +215,9 @@ table.page-layout > tbody > tr.force-page-break-before {
   font-size: 10pt;
   line-height: 1.4;
   color: var(--text-muted);
+  /* Justified so the cover sub-headline fills the full content width
+   * (the trailing short line stays naturally left-aligned). */
+  text-align: justify;
 }
 
 .meta-grid {
