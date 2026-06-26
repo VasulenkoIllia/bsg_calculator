@@ -302,6 +302,8 @@ Card values across samples:
 | SETTLEMENT | 0.5% | 0.3% | 0.3% | Waived | 0.3% | 0.3% | 0.3% | 0.3% |
 | MIN. MONTHLY | NA | €5,000 | Waived | Waived | Waived | Waived | €5,000 | Waived |
 
+**Primary subtitle units (2026-06-26):** each card carries a fixed primary `fee-subtitle` line pairing cadence with denomination — `One-time · EUR` (Account Setup), `Per action · EUR` (Refund / Dispute / 3DS), `Per month` (Min. Monthly), `Per transaction` (Failed Trx). **SETTLEMENT reads `Per action · FIAT / CRYPTO`** (previously `· USDT`): the settlement percentage applies uniformly across both fiat and crypto rails, so the unit names the rail class rather than a single currency. Single source: `offerPdf/sections/fees.ts`. Verified to render on one line at the 170 mm content width (subtitle ≈189 px in a ~214 px card — no wrap/overflow).
+
 ### 4.9 Section 3 per-card secondary subtitles
 
 Observed extra annotation lines under values (rendered as small note below the primary subtitle):

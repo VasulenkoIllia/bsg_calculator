@@ -80,7 +80,7 @@ function buildOtherServicesCards(data: DocumentTemplatePayload, layout: Document
       : "";
   const settlementLabel = resolveModeValue(modes.settlementFee, settlementValue);
   if (hasText(settlementLabel)) {
-    cards.push({ title: "SETTLEMENT", value: settlementLabel, subtitle: "Per action · USDT", subtitleNote: noteFor("settlementFee") });
+    cards.push({ title: "SETTLEMENT", value: settlementLabel, subtitle: "Per action · FIAT / CRYPTO", subtitleNote: noteFor("settlementFee") });
   }
 
   const monthlyMinimumLabel = resolveModeValue(
