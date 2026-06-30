@@ -795,24 +795,34 @@ tbody tr:nth-child(even) {
 }
 
 .signature-line {
-  margin: 3px 0;
+  /* Generous vertical gap between the rows (Date / Name / Title /
+   * Signature) so there's physical room to write a value or drop an
+   * electronic signature on each line without colliding with the row
+   * above. Was 3px — bumped per the signature-block redesign. */
+  margin: 18px 0 0;
   font-size: 8pt;
   color: var(--text-muted);
   display: flex;
-  align-items: center;
-  gap: 4px;
+  /* Bottom-align so the label baseline sits on the fill line. */
+  align-items: flex-end;
+  gap: 6px;
 }
 
 .signature-label {
+  /* Fixed width = the widest label ("Signature:") so every fill line
+   * STARTS at the same x across all three panels. */
   flex-shrink: 0;
+  width: 58px;
   font-weight: 600;
 }
 
 .signature-blank {
+  /* The writing line itself — a border that fills to the panel's right
+   * edge so all four lines END on the same x (replaces the old
+   * fixed-length underscore string, which ended raggedly because the
+   * labels differ in width). */
   flex: 1;
-  font-family: monospace;
-  letter-spacing: 0;
-  color: var(--text-light);
+  border-bottom: 1px solid var(--text-light);
 }
 
 /* Variable highlighting in agreement preview.

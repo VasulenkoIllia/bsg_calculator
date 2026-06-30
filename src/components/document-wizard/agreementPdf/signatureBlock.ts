@@ -7,12 +7,16 @@ import type { DocumentTemplatePayload } from "../types.js";
 import { renderDefaultField, renderFieldWithDefault, renderPartyField } from "./highlightVar.js";
 
 function renderSignaturePanel(headingHtml: string): string {
+  // The fill line is a CSS border-bottom (`.signature-blank`, flex:1) that
+  // stretches to the panel's right edge — NOT literal underscores — so every
+  // line starts (fixed-width label) and ends (right edge) on the same x in
+  // all three panels. The blank span is intentionally empty.
   return `<div class="signature-panel">
     <p class="signature-name">${headingHtml}</p>
-    <p class="signature-line"><span class="signature-label">Date:</span> <span class="signature-blank">_________________</span></p>
-    <p class="signature-line"><span class="signature-label">Name:</span> <span class="signature-blank">_________________</span></p>
-    <p class="signature-line"><span class="signature-label">Title:</span> <span class="signature-blank">_________________</span></p>
-    <p class="signature-line"><span class="signature-label">Signature:</span> <span class="signature-blank">_________________</span></p>
+    <p class="signature-line"><span class="signature-label">Date:</span><span class="signature-blank"></span></p>
+    <p class="signature-line"><span class="signature-label">Name:</span><span class="signature-blank"></span></p>
+    <p class="signature-line"><span class="signature-label">Title:</span><span class="signature-blank"></span></p>
+    <p class="signature-line"><span class="signature-label">Signature:</span><span class="signature-blank"></span></p>
   </div>`;
 }
 
