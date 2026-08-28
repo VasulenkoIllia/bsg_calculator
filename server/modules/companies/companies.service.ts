@@ -47,7 +47,10 @@ function toPublic(row: Company): CompanyPublic {
       hubspotCreatedAt: row.hubspotCreatedAt.toISOString(),
       hubspotModifiedAt: row.hubspotModifiedAt.toISOString(),
       lastSyncedAt: row.lastSyncedAt.toISOString(),
-      hubspotDeletedAt: row.hubspotDeletedAt ? row.hubspotDeletedAt.toISOString() : null
+      hubspotDeletedAt: row.hubspotDeletedAt ? row.hubspotDeletedAt.toISOString() : null,
+      crmDeletedAt: row.crmDeletedAt ? row.crmDeletedAt.toISOString() : null,
+      crmDeletedReason: row.crmDeletedReason ?? null,
+      crmMissingSince: row.crmMissingSince ? row.crmMissingSince.toISOString() : null
     },
     "companies.toPublic"
   );
@@ -86,7 +89,10 @@ export async function scheduleTtlRefresh(row: Company): Promise<void> {
   return runTtlRefresh({
     lastSyncedAt: row.lastSyncedAt,
     ttlMs: env.HUBSPOT_SYNC_TTL_SECONDS * 1000,
-    enabled: hubspot.isConfigured(),
+    // Only refresh from HubSpot while HubSpot is the active CRM. After
+    // the flip this silently stops instead of firing a background fetch
+    // at a dead API on every stale GET (and logging a warn each time).
+    enabled: hubspot.isConfigured() && env.CRM_PROVIDER === "hubspot",
     logLabel: "[companies] TTL refresh",
     logContext: { hubspotCompanyId: row.hubspotCompanyId },
     refresh: async () => {
@@ -143,10 +149,33 @@ export interface PurgedCompanySummary {
 export async function purgeDeletedCompany(companyId: string): Promise<PurgedCompanySummary> {
   const company = await findCompanyById(companyId);
   if (!company) throw new NotFoundError("Company");
-  if (!company.hubspotDeletedAt) {
+  // `hubspotDeletedAt` is written ONLY by the HubSpot deletion webhook, so
+  // it freezes at its current value the moment HubSpot is switched off. A
+  // guard reading it alone would make this action permanently unreachable
+  // for every company deleted in monday from then on.
+  //
+  // `crmMissingSince` is deliberately NOT accepted here: absence from a
+  // backfill is an observation, not a confirmed deletion, and a paging
+  // glitch must never unlock a destructive action.
+  if (!company.hubspotDeletedAt && !company.crmDeletedAt) {
     throw new ValidationError(
-      [{ path: ["company"], message: "company is still live in HubSpot" }],
-      "Only a company that was deleted from HubSpot can be removed from the system."
+      [{ path: ["company"], message: "company is still live in the CRM" }],
+      "Only a company that was deleted from the CRM can be removed from the system."
+    );
+  }
+  // An ARCHIVED monday item is not a deletion. monday sets the same
+  // `item_deleted`-shaped signal for both, and the processor records which
+  // one it was — because archiving is a routine, one-click, REVERSIBLE
+  // tidy-up, while this function hard-deletes the company's documents and
+  // is not reversible at all. Letting the two share a code path would mean
+  // an operator clearing their board could unlock the destruction of
+  // signed records. Restoring the item in monday clears the flag (the
+  // backfill and the webhook both do this) and the purge becomes available
+  // again if it is ever genuinely deleted.
+  if (!company.hubspotDeletedAt && company.crmDeletedReason === "archived") {
+    throw new ValidationError(
+      [{ path: ["company"], message: "company is archived in the CRM, not deleted" }],
+      "This company is archived in monday, not deleted. Archiving is reversible — delete it in monday if you really mean to remove it here."
     );
   }
   return db.transaction(async tx => {

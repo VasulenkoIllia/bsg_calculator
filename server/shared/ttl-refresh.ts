@@ -20,6 +20,7 @@
  *   the work — caller need not await.
  */
 
+import { track } from "./background-work";
 import { logger } from "../middleware/logger";
 
 export interface TtlRefreshConfig {
@@ -49,7 +50,11 @@ export function scheduleTtlRefresh(config: TtlRefreshConfig): Promise<void> {
   if (ageMs < config.ttlMs) return Promise.resolve();
 
   setImmediate(() => {
-    void (async () => {
+    // `track` keeps the detached promise in a registry until it settles so
+    // the test suite can await it. Production behaviour is unchanged: the
+    // work is still fire-and-forget and its result is still ignored.
+    track(
+      (async () => {
       try {
         await config.refresh();
         logger.info(
@@ -62,7 +67,8 @@ export function scheduleTtlRefresh(config: TtlRefreshConfig): Promise<void> {
           `${config.logLabel}: HubSpot fetch failed`
         );
       }
-    })();
+      })()
+    );
   });
 
   return Promise.resolve();

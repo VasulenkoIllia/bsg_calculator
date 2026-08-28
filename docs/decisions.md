@@ -6616,3 +6616,63 @@ Use this file to record meaningful technical decisions for the project.
 - Commit: (this change).
 
 
+
+### Decision: CRM migration HubSpot → monday.com (provider switch, not a rewrite)
+
+**Context.** HubSpot is switched off after 2026-08-31. The clients had
+already been copied into monday.com by hand. Existing production rows —
+62 documents, which are legal records — had to be re-bound to monday
+without loss, and document numbers could never change.
+
+**Decision.** One env var, `CRM_PROVIDER` (`hubspot` | `monday`), selects
+which CRM receives note writes, owns display fields, and has its webhook
+processor running. Not a rewrite and not a dual-write: exactly one system
+is authoritative at any moment, while both may be *connected* during the
+transition.
+
+**Why this shape, and not the obvious alternatives:**
+
+- **Parallel binding columns, not an in-place re-key.** `crm_item_id` /
+  `crm_deal_item_id` sit alongside the frozen `hubspot_*` columns. Re-keying
+  in place was rejected because the foreign keys are `ON UPDATE NO ACTION`
+  and not deferrable, so it could not be done atomically — and because
+  keeping the HubSpot ids is what makes the whole change reversible.
+- **A per-row era marker (`crm_note_provider`), not a global flag.** Each
+  note records which system holds it, so after the flip the 34 HubSpot-era
+  notes become unreachable and a document delete *skips* them instead of
+  failing. A global flag could not express "this row's note is in the other
+  system".
+- **A note ledger (`crm_notes`), not a single pointer.** A re-sync mints a
+  new note every time, so the row pointer only ever names the most recent
+  one. Teardown enumerates the ledger and removes every note a document
+  ever created; the old behaviour left the older ones on live client cards
+  forever.
+- **primary/alias binding for the 8 duplicate company pairs**, enforced by a
+  partial unique index on `crm_binding_role='primary'`. Folding the
+  duplicates was rejected as day-one work: it is the only irreversible
+  operation in the plan, and the binding handles them natively.
+- **Dual reads, single-provider writes (D12).** The monday backfill runs
+  while HubSpot is still authoritative but writes only binding columns;
+  display fields are guarded by `mondayIsAuthoritative()`. This is what
+  allows the data to be prepared and verified before anything is switched.
+- **Writes refuse rather than fall back.** If monday is active and a row is
+  not bound yet, `publishCrmNote` throws. A note written silently into the
+  wrong CRM is worse than a visible, retryable failure.
+- **Migration 0023 (rollback guard).** Rolling back by retagging the
+  previous image while migrations stay applied would break every note write,
+  because pre-0020 code cannot satisfy the new CHECK. A trigger fills the
+  marker in for such a write, which makes an image-only rollback safe.
+  Verified against a copy of production.
+
+**Consequences accepted.** Deal amount, currency and business vertical stop
+updating — those columns do not exist on the monday board. Lifecycle
+vocabulary changes from HubSpot's seven inconsistent values to monday's
+three. TTL-refresh-on-read is HubSpot-only, so freshness after the flip
+rests on webhooks, which must be registered manually; a nightly backfill is
+the recommended safety net.
+
+**Full detail:** `docs/monday_migration_plan.md` (authoritative — decisions
+D1–D16, retractions, era design), `docs/monday_audit_round4.md` (final
+review with evidence), `docs/monday_migration_analysis.md` (original code
+inventory). The cutover runbook is intentionally not in git: it names
+production hosts and paths, and this repo is public.

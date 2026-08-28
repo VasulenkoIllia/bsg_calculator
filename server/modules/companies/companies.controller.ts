@@ -30,6 +30,9 @@ export async function listController(req: Request, res: Response): Promise<void>
     q: query.q,
     sort,
     cursor,
+    // Optional — omitted by the admin companies list (which shows every
+    // type), passed as `direct_client` by the client pickers.
+    companyType: query.companyType,
     limit: query.limit
   });
   res.status(200).json(page);

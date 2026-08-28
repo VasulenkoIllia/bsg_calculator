@@ -27,6 +27,9 @@ const fixtureCompany = (overrides: Partial<PublicCompany> = {}): PublicCompany =
   hubspotModifiedAt: "2026-05-01T00:00:00.000Z",
   lastSyncedAt: "2026-05-15T00:00:00.000Z",
   hubspotDeletedAt: null,
+  crmDeletedAt: null,
+  crmDeletedReason: null,
+  crmMissingSince: null,
   ...overrides
 });
 
@@ -113,10 +116,15 @@ describe("CompaniesPage", () => {
     // backend default ("createdAt:desc") so the FE explicit-default
     // matches the implicit-default backend behaviour.
     await waitFor(() => {
+      // The admin list now defaults to name:asc. Under the previous
+      // createdAt:desc the ~42 agents inserted by the first monday
+      // backfill (created_at = now) would have owned the entire first
+      // page, pushing real clients out of view.
       expect(spy).toHaveBeenCalledWith({
         q: undefined,
-        sort: "createdAt:desc",
+        sort: "name:asc",
         cursor: undefined,
+        companyType: undefined,
         limit: undefined
       });
     });
@@ -164,11 +172,12 @@ describe("CompaniesPage", () => {
     // Second call carried the cursor returned by the first. Sprint
     // 7.2: sort param is part of every request now.
     expect(spy).toHaveBeenNthCalledWith(2, {
-      q: undefined,
-      sort: "createdAt:desc",
-      cursor: "cursor-2",
-      limit: undefined
-    });
+        q: undefined,
+        sort: "name:asc",
+        cursor: "cursor-2",
+        companyType: undefined,
+        limit: undefined
+      });
     // No further Load more button — we exhausted the chain.
     expect(screen.queryByRole("button", { name: /load more/i })).not.toBeInTheDocument();
   });

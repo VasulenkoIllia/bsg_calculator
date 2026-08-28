@@ -14,6 +14,8 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { env } from "../../config/env";
+import { findDealByHubspotId } from "../deals/deals.repository";
+import { track } from "../../shared/background-work";
 import { logger } from "../../middleware/logger";
 import { parseDtoOrInternalError } from "../../shared/dto-parse";
 import { buildSortedPage, type PageResult } from "../../shared/sorted-pagination";
@@ -26,9 +28,14 @@ import {
 } from "../../shared/errors";
 import { ensureDealBelongsToCompany } from "../../shared/deal-guard";
 import { companies, type Document } from "../../db/schema";
+import {
+  activeCrmName,
+  crmIsConfigured,
+  hasReachableNotes,
+  tearDownDocumentNotes
+} from "../crm-notes/crm-notes.service";
 import { insertDocumentEvent } from "../events/events.repository";
 import { tryRecordEvent } from "../events/events.helpers";
-import { hubspot } from "../hubspot/hubspot.client";
 import {
   findUnchangedTemplateConfig,
   insertCalculatorConfig
@@ -253,11 +260,22 @@ export async function createDocument(
       );
     }
 
+    // Mirror the deal pin onto the monday chain at CREATION time, not only
+    // during the remap. Without this, every document created after the flip
+    // would carry hubspot_deal_id with crm_deal_item_id NULL — which is
+    // exactly the condition the remap asserts is impossible, so the remap
+    // would refuse to run a second time, and the monday-side pin would be
+    // missing on precisely the newest documents.
+    const pinnedDeal = body.hubspotDealId
+      ? await findDealByHubspotId(body.hubspotDealId)
+      : undefined;
+
     const number = await allocateNextNumber(tx, hubspotCompanyId);
     const row = await insertDocumentWithNumber(tx, {
       number,
       companyId: body.companyId,
       hubspotDealId: body.hubspotDealId ?? null,
+      crmDealItemId: pinnedDeal?.crmItemId ?? null,
       calculatorConfigId: body.calculatorConfigId ?? null,
       scope: body.scope,
       // Stamp the allocated number + the authoritative scope into the payload
@@ -299,6 +317,14 @@ export async function createDocument(
   // Failure path: syncDocumentToHubspot persists state='failed'
   // BEFORE re-throwing — operator clicks the manual Sync button
   // (kept for exactly this reason) for a Retry.
+  // Auto-sync posts to whichever CRM is ACTIVE — it is not a HubSpot
+  // feature. Gating it on `CRM_PROVIDER === 'hubspot'` would have silently
+  // switched auto-posting off for good at the flip, leaving every new
+  // document at `not_synced` with no note on the client's card and no
+  // error anywhere to explain why.
+  //
+  // The flag keeps its historical name because it is set in the live
+  // production .env; renaming it is a September cleanup.
   if (env.AUTO_SYNC_TO_HUBSPOT) {
     const documentNumber = inserted.number;
     setImmediate(() => {
@@ -309,7 +335,11 @@ export async function createDocument(
       // Sprint 9.M B4 — added `.catch(importErr)` so a dynamic-import
       // failure (e.g. broken build, missing file) gets logged at
       // ERROR rather than silently swallowed by the outer `void`.
-      void import("./sync.service")
+      // Tracked so the test suite can await this detached work instead of
+      // draining a guessed number of event-loop ticks. Still
+      // fire-and-forget: nothing here is awaited by the request.
+      track(
+        import("./sync.service")
         .then(async ({ syncDocumentToHubspot }) => {
           try {
             await syncDocumentToHubspot(documentNumber);
@@ -334,7 +364,8 @@ export async function createDocument(
             { documentNumber, err: (importErr as Error).message },
             "[documents:auto-sync] dynamic import of sync.service failed — auto-sync NOT attempted"
           );
-        });
+        })
+      );
     });
   }
 
@@ -532,23 +563,45 @@ async function deleteDocumentLocked(
     );
   }
 
-  // Decide whether HubSpot tear-down is needed. We hit HubSpot when:
+  // Decide whether CRM tear-down is needed. We call the CRM when:
   //   - the row has a noteId AND
+  //   - the note lives in the CRM we are CURRENTLY talking to AND
   //   - last sync state was 'synced' OR 'delete_failed' (retry).
   // Other states ('not_synced', 'failed', 'delete_pending')
-  // shouldn't have a live HubSpot Note to clean up.
-  const needsHubspot =
-    doc.hubspotNoteId !== null &&
-    (doc.hubspotSyncState === "synced" || doc.hubspotSyncState === "delete_failed");
+  // shouldn't have a live Note to clean up.
+  //
+  // The middle clause is the monday migration's era marker
+  // (docs/monday_migration_plan.md §3). Before it existed, this branch
+  // fired for any row with a note id — so once HubSpot is switched off
+  // (2026-08-31) deleting any of the 34 note-bearing documents would
+  // either throw `ValidationError` (token unconfigured) or wedge on
+  // `delete_failed` with the row still alive and a Retry button that can
+  // never succeed. With the marker, a HubSpot-era note is simply skipped
+  // once CRM_PROVIDER moves to 'monday': the artifact is unreachable, so
+  // there is nothing to tear down, and the delete proceeds normally.
+  //
+  // While CRM_PROVIDER is still 'hubspot' every existing row matches, so
+  // this is byte-identical to the previous behaviour.
+  // Entry condition comes from the LEDGER, not from a whitelist of sync
+  // states. The old whitelist ('synced' | 'delete_failed') stranded rows
+  // sitting in `failed` while still holding a live note — the state a
+  // HubSpot association failure produces, and one such row exists in
+  // production — and rows stuck in `delete_pending`. Both kept a note
+  // upstream that the delete path then refused to remove.
+  const needsCrmTeardown = await hasReachableNotes({
+    documentId: doc.id,
+    pointerNoteId: doc.hubspotNoteId,
+    pointerProvider: doc.crmNoteProvider
+  });
 
-  if (needsHubspot && doc.hubspotNoteId) {
-    if (!hubspot.isConfigured()) {
+  if (needsCrmTeardown) {
+    if (!crmIsConfigured()) {
       // HubSpot intentionally not wired in this env — proceeding
       // would leave the upstream Note orphaned. Refuse the delete
       // and surface a clear error so the operator can ask ops.
       throw new ValidationError(
-        [{ path: ["hubspot"], message: "HubSpot integration is not configured." }],
-        "HubSpot not configured — cannot tear down upstream Note"
+        [{ path: ["crm"], message: `${activeCrmName()} integration is not configured.` }],
+        `${activeCrmName()} not configured — cannot tear down the upstream note`
       );
     }
 
@@ -562,18 +615,29 @@ async function deleteDocumentLocked(
       hubspotNoteId: doc.hubspotNoteId
     });
 
-    try {
-      await hubspot.deleteNote(doc.hubspotNoteId);
-    } catch (err) {
+    // Decision D16 — tear down EVERY note recorded for this document,
+    // not just the id the row happens to point at. A re-sync mints a new
+    // note each time (D14), so the pointer is only the most recent one;
+    // without the ledger the older notes stay on the client's card
+    // forever. Each note is attempted independently, so one failure does
+    // not abandon the rest.
+    const outcome = await tearDownDocumentNotes(
+      doc.id,
+      {
+        noteId: doc.hubspotNoteId,
+        provider: doc.crmNoteProvider,
+        target: doc.crmNoteTarget
+      },
+      { documentNumber: doc.number }
+    );
+
+    if (outcome.error) {
+      const err = outcome.error;
       // Roll the state forward to 'delete_failed' and emit an event
       // so the History panel shows what happened. The row stays
       // ALIVE — operator clicks the retry CTA which re-runs this
-      // path. Sprint 9.M B3 — the state UPDATE here is the recovery
-      // path; if it ALSO fails we'd be in a wedged state, so we
-      // let that exception propagate to the global error handler
-      // (5xx) rather than wrapping it. The HubSpot error is the
-      // operator-visible one; a DB recovery failure is a separate
-      // ops incident.
+      // path, and the ledger means the retry only re-attempts the
+      // notes that are still standing.
       await updateDocumentHubspotSync(doc.id, {
         hubspotSyncState: "delete_failed",
         hubspotNoteId: doc.hubspotNoteId
@@ -587,7 +651,9 @@ async function deleteDocumentLocked(
             meta: {
               stage: "delete",
               noteId: doc.hubspotNoteId,
-              error: (err as Error).message
+              attempted: outcome.attempted,
+              tornDown: outcome.tornDown,
+              error: err.message
             }
           }),
         {
@@ -603,16 +669,17 @@ async function deleteDocumentLocked(
         {
           documentId: doc.id,
           documentNumber: doc.number,
-          noteId: doc.hubspotNoteId,
-          err: (err as Error).message
+          attempted: outcome.attempted,
+          tornDown: outcome.tornDown,
+          err: err.message
         },
-        "[documents:delete] HubSpot deleteNote failed — document still alive, operator can Retry"
+        "[documents:delete] CRM note tear-down failed — document still alive, operator can Retry"
       );
       throw err instanceof HubspotUnreachableError
         ? err
         : new HubspotUnreachableError(
-            `Failed to delete HubSpot Note (${doc.hubspotNoteId}): ${(err as Error).message}`,
-            { noteId: doc.hubspotNoteId }
+            `Failed to delete CRM note (${doc.hubspotNoteId}): ${err.message}`,
+            { noteId: doc.hubspotNoteId, attempted: outcome.attempted, tornDown: outcome.tornDown }
           );
     }
   }

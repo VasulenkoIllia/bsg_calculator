@@ -11,7 +11,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { adminActions, companies, deals, documents } from "../db/schema";
 import { companyFixture } from "./fixtures/company";
-import { app, createTestUser } from "./test-helpers";
+import { app, createTestUser, describeResponse } from "./test-helpers";
 
 const PW = "password12345";
 
@@ -19,7 +19,7 @@ async function loginAs(email: string, password: string): Promise<string> {
   const res = await request(app)
     .post("/api/v1/auth/login")
     .send({ identifier: email, password });
-  if (res.status !== 200) throw new Error(`loginAs failed: ${res.status}`);
+  if (res.status !== 200) throw new Error(`loginAs failed: ${describeResponse(res)}`);
   return res.body.accessToken;
 }
 
@@ -72,6 +72,76 @@ describe("DELETE /api/v1/companies/:id — admin purge", () => {
 
     expect(res.status).toBe(400);
     expect(await db.select().from(companies).where(eq(companies.id, c.id))).toHaveLength(1);
+  });
+
+  it("refuses a company that monday merely ARCHIVED (400) — deletes nothing", async () => {
+    // Archiving in monday is a one-click, reversible tidy-up; this purge
+    // hard-deletes signed documents and is not reversible at all. monday
+    // reports both through the same signal, so without the reason check an
+    // operator clearing their board would unlock destruction of records.
+    await createTestUser({ email: "admin-arch@bsg.test", password: PW });
+    const token = await loginAs("admin-arch@bsg.test", PW);
+    const [c] = await db
+      .insert(companies)
+      .values(
+        companyFixture({
+          hubspotDeletedAt: null,
+          crmDeletedAt: new Date(),
+          crmDeletedReason: "archived"
+        })
+      )
+      .returning();
+
+    const res = await request(app)
+      .delete(`/api/v1/companies/${c.id}`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toMatch(/archived/i);
+    expect(await db.select().from(companies).where(eq(companies.id, c.id))).toHaveLength(1);
+  });
+
+  it("allows a company monday actually DELETED", async () => {
+    await createTestUser({ email: "admin-del@bsg.test", password: PW });
+    const token = await loginAs("admin-del@bsg.test", PW);
+    const [c] = await db
+      .insert(companies)
+      .values(
+        companyFixture({
+          hubspotDeletedAt: null,
+          crmDeletedAt: new Date(),
+          crmDeletedReason: "deleted"
+        })
+      )
+      .returning();
+
+    const res = await request(app)
+      .delete(`/api/v1/companies/${c.id}`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(await db.select().from(companies).where(eq(companies.id, c.id))).toHaveLength(0);
+  });
+
+  it("a HubSpot-era deletion is still purgeable even if the monday reason says archived", async () => {
+    await createTestUser({ email: "admin-both@bsg.test", password: PW });
+    const token = await loginAs("admin-both@bsg.test", PW);
+    const [c] = await db
+      .insert(companies)
+      .values(
+        companyFixture({
+          hubspotDeletedAt: new Date(),
+          crmDeletedAt: new Date(),
+          crmDeletedReason: "archived"
+        })
+      )
+      .returning();
+
+    const res = await request(app)
+      .delete(`/api/v1/companies/${c.id}`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
   });
 
   it("admin purges a HubSpot-deleted company + its documents/deals; returns counts; writes an audit row", async () => {

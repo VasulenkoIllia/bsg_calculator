@@ -70,8 +70,26 @@ export const documents = pgTable(
       .$type<
         "not_synced" | "synced" | "failed" | "delete_pending" | "delete_failed"
       >(),
-    // Set by Phase 9 once a HubSpot Note exists for this document.
+    // The id of the CRM artifact for this document, in whichever system
+    // `crmNoteProvider` names: a HubSpot Note id, or a monday update id.
+    // Deliberately NOT renamed during the monday migration — five FE sort
+    // unions mirror these column names as bare strings (runtime 400, no
+    // compile error).
     hubspotNoteId: text("hubspot_note_id"),
+    // Which CRM holds the note above — the era marker. NULL iff
+    // hubspotNoteId is NULL (DB CHECK). Mutable: a HubSpot-era document
+    // re-synced to monday flips to 'monday'. The delete path only tears a
+    // note down when this equals env.CRM_PROVIDER, which is what makes the
+    // HubSpot switch-off a flag flip rather than a deploy.
+    crmNoteProvider: text("crm_note_provider").$type<"hubspot" | "monday" | null>(),
+    // Which card the note sits on. 'agent' exists because one
+    // document-owning company lives on the monday Agents board.
+    crmNoteTarget: text("crm_note_target").$type<"company" | "agent" | "deal" | null>(),
+    // Preserved HubSpot Note id after a row is re-bound to a monday update.
+    legacyHubspotNoteId: text("legacy_hubspot_note_id"),
+    // The monday-side deal pin, alongside hubspotDealId. Born ON UPDATE
+    // CASCADE (migration 0021) so a future re-bind is a single UPDATE.
+    crmDealItemId: text("crm_deal_item_id"),
     createdByUserId: uuid("created_by_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),

@@ -43,6 +43,8 @@ export interface UseCompaniesOptions {
   sort?: companiesApi.CompanySortSpec;
   /** Page size; defaults to backend default (25), capped server-side at 50. */
   limit?: number;
+  /** Restrict to one company type (client pickers pass 'direct_client'). */
+  companyType?: "direct_client" | "referring_partner";
 }
 
 export interface UseCompaniesResult {
@@ -82,7 +84,7 @@ function buildKey(
   return ["companies", "list", { q: normaliseSearch(q), sort, limit }];
 }
 
-export function useCompanies({ q, sort, limit }: UseCompaniesOptions = {}): UseCompaniesResult {
+export function useCompanies({ q, sort, limit, companyType }: UseCompaniesOptions = {}): UseCompaniesResult {
   const normalisedQ = normaliseSearch(q);
   const effectiveSort = sort ?? DEFAULT_COMPANIES_SORT;
 
@@ -93,13 +95,17 @@ export function useCompanies({ q, sort, limit }: UseCompaniesOptions = {}): UseC
     unknown[],
     string | undefined
   >({
-    queryKey: buildKey(normalisedQ, effectiveSort, limit),
+    // companyType is part of the key: without it a filtered picker and
+    // an unfiltered list would share a cache entry and show each other's
+    // results.
+    queryKey: [...buildKey(normalisedQ, effectiveSort, limit), companyType ?? "all"],
     initialPageParam: undefined,
     queryFn: async ({ pageParam }) =>
       companiesApi.listCompanies({
         q: normalisedQ,
         sort: effectiveSort,
         cursor: pageParam,
+        companyType,
         limit
       }),
     getNextPageParam: lastPage => lastPage.nextCursor ?? undefined,

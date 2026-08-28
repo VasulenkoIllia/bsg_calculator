@@ -23,13 +23,13 @@
 
 import { describe, expect, it } from "vitest";
 import request from "supertest";
-import { app, createTestUser, extractRefreshCookie } from "./test-helpers";
+import { app, createTestUser, extractRefreshCookie, describeResponse } from "./test-helpers";
 
 async function loginAs(email: string, password: string): Promise<string> {
   const res = await request(app)
     .post("/api/v1/auth/login")
     .send({ identifier: email, password });
-  if (res.status !== 200) throw new Error(`loginAs ${email} failed: ${res.status}`);
+  if (res.status !== 200) throw new Error(`loginAs ${email} failed: ${describeResponse(res)}`);
   return res.body.accessToken;
 }
 

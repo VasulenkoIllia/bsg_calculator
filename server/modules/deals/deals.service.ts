@@ -135,7 +135,10 @@ export async function scheduleTtlRefresh(row: Deal): Promise<void> {
   return runTtlRefresh({
     lastSyncedAt: row.lastSyncedAt,
     ttlMs: env.HUBSPOT_SYNC_TTL_SECONDS * 1000,
-    enabled: hubspot.isConfigured(),
+    // Only refresh from HubSpot while HubSpot is the active CRM. After
+    // the flip this silently stops instead of firing a background fetch
+    // at a dead API on every stale GET (and logging a warn each time).
+    enabled: hubspot.isConfigured() && env.CRM_PROVIDER === "hubspot",
     logLabel: "[deals] TTL refresh",
     logContext: { hubspotDealId: row.hubspotDealId },
     refresh: async () => {

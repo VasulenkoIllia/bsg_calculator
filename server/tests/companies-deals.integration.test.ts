@@ -13,13 +13,13 @@ import request from "supertest";
 import { db } from "../db/client";
 import { companies, deals, type NewDeal } from "../db/schema";
 import { companyFixture } from "./fixtures/company";
-import { app, createTestUser } from "./test-helpers";
+import { app, createTestUser, describeResponse } from "./test-helpers";
 
 async function loginAs(email: string, password: string): Promise<string> {
   const res = await request(app)
     .post("/api/v1/auth/login")
     .send({ identifier: email, password });
-  if (res.status !== 200) throw new Error(`loginAs failed: ${res.status}`);
+  if (res.status !== 200) throw new Error(`loginAs failed: ${describeResponse(res)}`);
   return res.body.accessToken;
 }
 
@@ -88,32 +88,82 @@ describe("GET /api/v1/companies — listing + search + filter", () => {
     expect(names).toEqual(["Acme Holdings", "Glacme Capital"]);
   });
 
-  it("ignores unknown query params (no companyType filter anymore)", async () => {
-    // companyType used to be a filter; it was removed once
-    // HUBSPOT_COMPANY_TYPE_FILTER restricted storage to a single
-    // type. Unknown params shouldn't 400 — Zod uses .parse() which
-    // accepts extra keys silently.
+  it("filters by companyType — agents must not reach the client picker", async () => {
+    // The filter used to exist, was REMOVED when HUBSPOT_COMPANY_TYPE_FILTER
+    // restricted storage to a single type, and is now back because the
+    // monday migration caches agents too (~42 of them, on their own board).
+    //
+    // Without it an operator can pick an agent as the merchant of a real
+    // Offer: createDocument validates that the company EXISTS, never its
+    // type. Until now the only thing preventing that was the "(A) " prefix
+    // in the name — and monday names carry no prefix.
     const token = await setupAuth();
     await db.insert(companies).values([
       companyFixture({ name: "Merchant One", companyType: "direct_client" }),
-      companyFixture({ name: "Merchant Two", companyType: "direct_client" })
+      companyFixture({ name: "Merchant Two", companyType: "direct_client" }),
+      companyFixture({ name: "Agent One", companyType: "referring_partner" })
     ]);
 
-    const res = await request(app)
-      .get("/api/v1/companies?companyType=anything")
+    const clients = await request(app)
+      .get("/api/v1/companies?companyType=direct_client")
       .set("Authorization", `Bearer ${token}`);
+    expect(clients.status).toBe(200);
+    expect(clients.body.items.map((c: { name: string }) => c.name).sort()).toEqual([
+      "Merchant One",
+      "Merchant Two"
+    ]);
 
-    expect(res.status).toBe(200);
-    expect(res.body.items).toHaveLength(2);
+    const agents = await request(app)
+      .get("/api/v1/companies?companyType=referring_partner")
+      .set("Authorization", `Bearer ${token}`);
+    expect(agents.body.items.map((c: { name: string }) => c.name)).toEqual(["Agent One"]);
+
+    // Unfiltered still returns everything — the admin list shows all types.
+    const all = await request(app)
+      .get("/api/v1/companies")
+      .set("Authorization", `Bearer ${token}`);
+    expect(all.body.items).toHaveLength(3);
+  });
+
+  it("treats an empty companyType as no filter, and rejects an unknown value", async () => {
+    const token = await setupAuth();
+    await db.insert(companies).values([
+      companyFixture({ name: "Merchant One", companyType: "direct_client" }),
+      companyFixture({ name: "Agent One", companyType: "referring_partner" })
+    ]);
+
+    // A cached frontend sending an empty value must not get a 400.
+    const empty = await request(app)
+      .get("/api/v1/companies?companyType=")
+      .set("Authorization", `Bearer ${token}`);
+    expect(empty.status).toBe(200);
+    expect(empty.body.items).toHaveLength(2);
+
+    // A value outside the enum is a client error, not a silent full list —
+    // silently ignoring it is how an agent would end up in a picker that
+    // believed it was filtered.
+    const bogus = await request(app)
+      .get("/api/v1/companies?companyType=whatever")
+      .set("Authorization", `Bearer ${token}`);
+    expect(bogus.status).toBe(400);
   });
 
   it("paginates: requests limit=2, gets nextCursor, fetches next page", async () => {
     const token = await setupAuth();
     // Spaced timestamps so cursor ordering is deterministic.
+    //
+    // It must be `createdAt` that is spaced, NOT `hubspotCreatedAt`: the
+    // listing's default sort is `createdAt:desc` (companies.schemas.ts),
+    // and `createdAt` otherwise defaults to now() for all five rows. Five
+    // inserts in a tight loop can then land on equal timestamps, and the
+    // sorted cursor — which pages on (sortValue, id) — returns overlapping
+    // or short pages. That made this test pass in isolation but fail
+    // intermittently under a full parallel run.
     for (let i = 0; i < 5; i++) {
       await db.insert(companies).values(
         companyFixture({
           name: `Company ${i}`,
+          createdAt: new Date(2026, 0, i + 1),
           hubspotCreatedAt: new Date(2026, 0, i + 1)
         })
       );

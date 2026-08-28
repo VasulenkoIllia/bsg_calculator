@@ -39,6 +39,7 @@ import { dealsRouter } from "./modules/deals/deals.routes";
 import { documentsRouter, numberingRouter } from "./modules/documents/documents.routes";
 import { healthRouter } from "./modules/health/health.routes";
 import { hubspotRouter } from "./modules/hubspot/hubspot.routes";
+import { mondayWebhooksRouter } from "./modules/monday/webhooks/webhooks.routes";
 import { pdfPreviewRouter, pdfRouter } from "./modules/pdf/pdf.routes";
 import { usersRouter } from "./modules/users/users.routes";
 
@@ -187,6 +188,11 @@ export function createApp(): express.Express {
   app.use("/api/v1/companies", companiesRouter);
   app.use("/api/v1/deals", dealsRouter);
   app.use("/api/v1/hubspot", hubspotRouter);
+  // monday inbound webhooks. Unlike the HubSpot receiver this needs NO
+  // raw-body parser: the signature is not computed over the body (monday
+  // does not sign personal-token webhooks), so the standard JSON parser
+  // above is enough.
+  app.use("/api/v1/monday", mondayWebhooksRouter);
   app.use("/api/v1/calculator-configs", calculatorConfigsRouter);
   app.use("/api/v1/documents", documentsRouter);
   app.use("/api/v1/documents", pdfRouter); // mounts /:number/pdf

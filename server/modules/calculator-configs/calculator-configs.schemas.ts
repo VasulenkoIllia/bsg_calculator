@@ -143,7 +143,13 @@ export const listCalculatorConfigsQuerySchema = z.object({
   companyId: z.string().uuid({ message: "companyId must be a UUID" }).optional(),
   hubspotDealId: z.string().min(1).max(64).optional(),
   // Coerce because URL params arrive as strings.
-  showAll: z.coerce.boolean().optional().default(false),
+  showAll: z.preprocess(
+      // Same reason as envBoolean in config/env.ts: z.coerce.boolean() is
+      // Boolean(value), so "false" — which this schema's own docblock
+      // advertises — parses as TRUE.
+      v => (typeof v === "string" ? !["false", "0", "no", "off", ""].includes(v.trim().toLowerCase()) : v),
+      z.boolean()
+    ).optional().default(false),
   // Sprint 6.6: substring search on `title`. Empty / whitespace-only
   // q is treated as absent. LIKE metacharacters are escaped by the
   // repository so `q=%` doesn't match every config.

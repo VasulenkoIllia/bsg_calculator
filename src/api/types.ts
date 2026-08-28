@@ -116,6 +116,11 @@ export interface PublicCompany {
   // still owned documents (so the row was retained). NULL = live in
   // HubSpot. Drives the "Deleted in HubSpot" badge.
   hubspotDeletedAt: string | null;
+  /** Set when the client was deleted or archived in monday. */
+  crmDeletedAt: string | null;
+  crmDeletedReason: "deleted" | "archived" | null;
+  /** Set when a bound row was absent from its board during a backfill. */
+  crmMissingSince: string | null;
 }
 
 // ─── Deals ────────────────────────────────────────────────────────

@@ -13,6 +13,8 @@ export * from "./companies";
 export * from "./deals";
 export * from "./calculator-configs";
 export * from "./documents";
+export * from "./crm-notes";
+export * from "./monday-webhook-events";
 export * from "./hubspot-webhook-events";
 export * from "./events";
 export * from "./invites-and-resets";

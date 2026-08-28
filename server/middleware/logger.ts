@@ -68,9 +68,14 @@ const REDACT_PATHS = [
  * value to anyone with log access.
  */
 export function redactTokenInUrl(url: string): string {
-  return url.replace(
-    /^(\/api\/v1\/auth\/(?:invite|password-reset)\/)([^/?]+)/,
-    "$1[redacted]"
+  return (
+    url
+      .replace(/^(\/api\/v1\/auth\/(?:invite|password-reset)\/)([^/?]+)/, "$1[redacted]")
+      // The monday webhook secret travels in the PATH — monday cannot send
+      // a header we choose and does not sign personal-token webhooks — so
+      // without this the endpoint's only credential is written to the
+      // access log on every delivery, and to container stdout.
+      .replace(/^(\/api\/v1\/monday\/webhooks\/)([^/?]+)/, "$1[redacted]")
   );
 }
 

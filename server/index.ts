@@ -19,6 +19,11 @@ import {
   startWebhookProcessor,
   stopWebhookProcessor
 } from "./modules/hubspot/webhooks/webhooks.processor";
+import { monday } from "./modules/monday/monday.client";
+import {
+  startMondayWebhookProcessor,
+  stopMondayWebhookProcessor
+} from "./modules/monday/webhooks/webhooks.processor";
 import { shutdownBrowserPool } from "./modules/pdf/browser-pool";
 import { bootstrapSuperAdmin } from "./scripts/bootstrap-super-admin";
 import { backendStartupBackfillIfEmpty } from "./scripts/hubspot-backfill";
@@ -50,6 +55,12 @@ const server = app.listen(env.PORT, () => {
   // Background: if HUBSPOT_AUTO_BACKFILL=true and companies table
   // empty, paginate HubSpot once. /health responds normally during
   // backfill — listings just return empty pages until done.
+  // Both background HubSpot loops are gated on the active provider. After
+  // the flip the webhook processor would otherwise burn its 5-attempt
+  // retry budget against a dead API for every queued event, and the 401
+  // circuit-breaker would trip on every batch — pure log noise with no
+  // remediation available.
+  if (env.CRM_PROVIDER === "hubspot") {
   backendStartupBackfillIfEmpty().catch(err => {
     logger.error({ err: (err as Error).message }, "[startup] auto-backfill hook threw");
   });
@@ -58,6 +69,34 @@ const server = app.listen(env.PORT, () => {
   // NODE_ENV=test so the test suite can drive the processor by
   // calling processWebhookBatch() directly (no rogue timers).
   startWebhookProcessor();
+  } else {
+    logger.info(
+      { crmProvider: env.CRM_PROVIDER },
+      "[startup] HubSpot backfill + webhook processor NOT started — HubSpot is not the active CRM"
+    );
+  }
+
+  // The monday processor runs whenever monday is the active CRM. It is
+  // harmless when no webhooks are registered yet: the queue is simply
+  // empty and each tick is one indexed query.
+  if (env.CRM_PROVIDER === "monday") {
+    // Assert the pinned API version HERE, in the long-running process.
+    // It was previously called only by two CLI scripts, while env.ts and
+    // both env templates claimed it runs "at boot" — so the guard against
+    // monday's silent version DOWNGRADE never actually protected the
+    // server. A downgrade changes field shapes, softValidate absorbs the
+    // drift with a warn, and the mapper starts writing NULLs while every
+    // webhook still reports success.
+    void monday
+      .assertApiVersion()
+      .then(() => startMondayWebhookProcessor())
+      .catch(err => {
+        logger.error(
+          { err: (err as Error).message },
+          "[startup] monday API version assertion FAILED — not starting the webhook processor. Fix MONDAY_API_VERSION."
+        );
+      });
+  }
 });
 
 // ─── Graceful shutdown ────────────────────────────────────────────
@@ -86,6 +125,7 @@ async function shutdown(signal: string): Promise<void> {
   // confusing error during shutdown.
   try {
     stopWebhookProcessor();
+    stopMondayWebhookProcessor();
   } catch (err) {
     logger.error({ err }, "error stopping webhook processor");
   }

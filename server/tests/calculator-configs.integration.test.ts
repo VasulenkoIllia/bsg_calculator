@@ -16,13 +16,13 @@ import {
   type NewDeal
 } from "../db/schema";
 import { companyFixture } from "./fixtures/company";
-import { app, createTestUser } from "./test-helpers";
+import { app, createTestUser, describeResponse } from "./test-helpers";
 
 async function loginAs(email: string, password: string): Promise<string> {
   const res = await request(app)
     .post("/api/v1/auth/login")
     .send({ identifier: email, password });
-  if (res.status !== 200) throw new Error(`loginAs failed: ${res.status}`);
+  if (res.status !== 200) throw new Error(`loginAs failed: ${describeResponse(res)}`);
   return res.body.accessToken;
 }
 
@@ -699,6 +699,14 @@ describe("GET /api/v1/calculator-configs — picker scope", () => {
     const [company] = await db.insert(companies).values(companyFixture()).returning();
 
     // Create 5 configs so a limit of 2 yields 3 pages.
+    //
+    // The rows are created through the API, so `created_at` comes from the
+    // DB default and five inserts in a tight loop can land on equal
+    // timestamps. The sorted cursor pages on (sortValue, id), so with ties
+    // the page boundary is decided by a random UUID and the pages could
+    // overlap — which made this test pass alone but fail intermittently in
+    // a full run. Sorting by `title` instead gives a total order that the
+    // fixture actually controls.
     for (let i = 0; i < 5; i++) {
       await request(app)
         .post("/api/v1/calculator-configs")
@@ -707,14 +715,14 @@ describe("GET /api/v1/calculator-configs — picker scope", () => {
     }
 
     const page1 = await request(app)
-      .get(`/api/v1/calculator-configs?companyId=${company.id}&limit=2`)
+      .get(`/api/v1/calculator-configs?companyId=${company.id}&limit=2&sort=title:asc`)
       .set("Authorization", `Bearer ${token}`);
     expect(page1.body.items).toHaveLength(2);
     expect(page1.body.nextCursor).toBeTruthy();
 
     const page2 = await request(app)
       .get(
-        `/api/v1/calculator-configs?companyId=${company.id}&limit=2&cursor=${encodeURIComponent(page1.body.nextCursor)}`
+        `/api/v1/calculator-configs?companyId=${company.id}&limit=2&sort=title:asc&cursor=${encodeURIComponent(page1.body.nextCursor)}`
       )
       .set("Authorization", `Bearer ${token}`);
     expect(page2.body.items).toHaveLength(2);
@@ -722,7 +730,7 @@ describe("GET /api/v1/calculator-configs — picker scope", () => {
 
     const page3 = await request(app)
       .get(
-        `/api/v1/calculator-configs?companyId=${company.id}&limit=2&cursor=${encodeURIComponent(page2.body.nextCursor)}`
+        `/api/v1/calculator-configs?companyId=${company.id}&limit=2&sort=title:asc&cursor=${encodeURIComponent(page2.body.nextCursor)}`
       )
       .set("Authorization", `Bearer ${token}`);
     expect(page3.body.items).toHaveLength(1);

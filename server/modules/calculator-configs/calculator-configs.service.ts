@@ -17,6 +17,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { env } from "../../config/env";
+import { track } from "../../shared/background-work";
 import { logger } from "../../middleware/logger";
 import { parseDtoOrInternalError } from "../../shared/dto-parse";
 import { buildSortedPage, type PageResult } from "../../shared/sorted-pagination";
@@ -28,9 +29,15 @@ import {
   ValidationError
 } from "../../shared/errors";
 import { ensureDealBelongsToCompany } from "../../shared/deal-guard";
+import { findDealByHubspotId } from "../deals/deals.repository";
+import {
+  activeCrmName,
+  crmIsConfigured,
+  hasReachableNotes,
+  tearDownCalcConfigNotes
+} from "../crm-notes/crm-notes.service";
 import { insertCalcConfigEvent } from "../events/events.repository";
 import { tryRecordEvent } from "../events/events.helpers";
-import { hubspot } from "../hubspot/hubspot.client";
 import type { CalculatorConfig } from "../../db/schema";
 import type { CalculatorConfigWithCompanyName } from "./calculator-configs.repository";
 import {
@@ -125,11 +132,20 @@ export async function createCalculatorConfig(
   // Phase 8 Stage 4 — atomically write the calc + its 'created'
   // event in one TX so rollback wipes both together and the History
   // panel never shows a calc-config without an initial creation row.
+  // Mirror the deal pin onto the monday chain at creation — same reason as
+  // documents.service.ts: otherwise every calc created after the flip has
+  // hubspot_deal_id set with crm_deal_item_id NULL, which is the exact
+  // condition the remap asserts is impossible.
+  const pinnedDeal = body.hubspotDealId
+    ? await findDealByHubspotId(body.hubspotDealId)
+    : undefined;
+
   const row = await db.transaction(async tx => {
     const inserted = await insertCalculatorConfig(
       {
         companyId: body.companyId,
         hubspotDealId: body.hubspotDealId ?? null,
+        crmDealItemId: pinnedDeal?.crmItemId ?? null,
         title: body.title ?? null,
         payload: body.payload,
         createdByUserId: actorUserId
@@ -154,13 +170,25 @@ export async function createCalculatorConfig(
   // in the background. Subsequent auto-saves (PUT) DO NOT trigger
   // sync per operator brief — the Note's link opens our SPA which
   // always renders the freshest state, so there's nothing to push.
+  // Auto-sync posts to whichever CRM is ACTIVE — it is not a HubSpot
+  // feature. Gating it on `CRM_PROVIDER === 'hubspot'` would have silently
+  // switched auto-posting off for good at the flip, leaving every new
+  // document at `not_synced` with no note on the client's card and no
+  // error anywhere to explain why.
+  //
+  // The flag keeps its historical name because it is set in the live
+  // production .env; renaming it is a September cleanup.
   if (env.AUTO_SYNC_TO_HUBSPOT) {
     const calcId = row.id;
     setImmediate(() => {
       // Sprint 9.M B4 — added `.catch(importErr)` so a dynamic-import
       // failure surfaces as ERROR in logs rather than getting
       // silently dropped by `void`.
-      void import("./sync.service")
+      // Tracked so the test suite can await this detached work instead of
+      // draining a guessed number of event-loop ticks. Still
+      // fire-and-forget: nothing here is awaited by the request.
+      track(
+        import("./sync.service")
         .then(async ({ syncCalculatorConfigToHubspot }) => {
           try {
             await syncCalculatorConfigToHubspot(calcId);
@@ -176,7 +204,8 @@ export async function createCalculatorConfig(
             { calculatorConfigId: calcId, err: (importErr as Error).message },
             "[calc-config:auto-sync] dynamic import of sync.service failed — auto-sync NOT attempted"
           );
-        });
+        })
+      );
     });
   }
 
@@ -271,16 +300,23 @@ async function deleteCalculatorConfigLocked(
   // Tear down the HubSpot Note when one exists AND the last sync state
   // was 'synced' or 'delete_failed' (retry). Other states have no live
   // Note to clean up.
-  const needsHubspot =
-    calc.hubspotNoteId !== null &&
-    (calc.hubspotSyncState === "synced" ||
-      calc.hubspotSyncState === "delete_failed");
+  // Era marker — identical rule to documents.service.ts; see the long
+  // comment there. `crmNoteProvider === env.CRM_PROVIDER` means "the note
+  // lives in the CRM we are actually talking to", so a HubSpot-era note is
+  // skipped (not failed) once CRM_PROVIDER flips to 'monday'.
+  // Same as documents: the ledger decides, not the sync state. See
+  // documents.service.ts for why the state whitelist stranded rows.
+  const needsCrmTeardown = await hasReachableNotes({
+    calculatorConfigId: calc.id,
+    pointerNoteId: calc.hubspotNoteId,
+    pointerProvider: calc.crmNoteProvider
+  });
 
-  if (needsHubspot && calc.hubspotNoteId) {
-    if (!hubspot.isConfigured()) {
+  if (needsCrmTeardown) {
+    if (!crmIsConfigured()) {
       throw new ValidationError(
-        [{ path: ["hubspot"], message: "HubSpot integration is not configured." }],
-        "HubSpot not configured — cannot tear down upstream Note"
+        [{ path: ["crm"], message: `${activeCrmName()} integration is not configured.` }],
+        `${activeCrmName()} not configured — cannot tear down the upstream note`
       );
     }
 
@@ -289,9 +325,16 @@ async function deleteCalculatorConfigLocked(
       hubspotNoteId: calc.hubspotNoteId
     });
 
-    try {
-      await hubspot.deleteNote(calc.hubspotNoteId);
-    } catch (err) {
+    // Decision D16 — tear down every note in the ledger, not just the
+    // most recent pointer. Same rationale as documents.service.ts.
+    const outcome = await tearDownCalcConfigNotes(calc.id, {
+      noteId: calc.hubspotNoteId,
+      provider: calc.crmNoteProvider,
+      target: calc.crmNoteTarget
+    });
+
+    if (outcome.error) {
+      const err = outcome.error;
       await updateCalculatorConfigHubspotSync(calc.id, {
         hubspotSyncState: "delete_failed",
         hubspotNoteId: calc.hubspotNoteId
@@ -305,7 +348,9 @@ async function deleteCalculatorConfigLocked(
             meta: {
               stage: "delete",
               noteId: calc.hubspotNoteId,
-              error: (err as Error).message
+              attempted: outcome.attempted,
+              tornDown: outcome.tornDown,
+              error: err.message
             }
           }),
         {
@@ -316,16 +361,17 @@ async function deleteCalculatorConfigLocked(
       logger.error(
         {
           calculatorConfigId: calc.id,
-          noteId: calc.hubspotNoteId,
-          err: (err as Error).message
+          attempted: outcome.attempted,
+          tornDown: outcome.tornDown,
+          err: err.message
         },
-        "[calc-config:delete] HubSpot deleteNote failed — calc still alive, operator can Retry"
+        "[calc-config:delete] CRM note tear-down failed — calc still alive, operator can Retry"
       );
       throw err instanceof HubspotUnreachableError
         ? err
         : new HubspotUnreachableError(
-            `Failed to delete HubSpot Note (${calc.hubspotNoteId}): ${(err as Error).message}`,
-            { noteId: calc.hubspotNoteId }
+            `Failed to delete CRM note (${calc.hubspotNoteId}): ${err.message}`,
+            { noteId: calc.hubspotNoteId, attempted: outcome.attempted, tornDown: outcome.tornDown }
           );
     }
   }

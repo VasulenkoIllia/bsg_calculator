@@ -20,7 +20,20 @@ export const pool = new Pool({
   max: env.DB_POOL_MAX,
   // Default 30s idle timeout; pg's docs recommend this to recycle
   // idle connections against Postgres' default `idle_in_transaction_session_timeout`.
-  idleTimeoutMillis: 30_000
+  idleTimeoutMillis: 30_000,
+  // Without this, `pool.connect()` waits FOREVER for a free client. All
+  // DB_POOL_MAX clients being busy is then indistinguishable from the
+  // database being down: requests pile up holding their HTTP connections,
+  // nothing is logged, and the only symptom is that the app stops
+  // answering. Failing after 10s turns pool starvation into an error with
+  // a stack trace pointing at the query that could not get a client.
+  connectionTimeoutMillis: env.DB_CONNECTION_TIMEOUT_MS
+  // No `statement_timeout` here, deliberately. It would cap a single
+  // query, which is attractive — but `server/db/migrate.ts` runs through
+  // this same pool, so a future migration that rewrites a large table
+  // would be killed halfway, and a half-applied migration is a far worse
+  // failure than a slow one. Revisit if the migrator ever gets its own
+  // connection.
 });
 
 // Errors on idle connections crash the process if we don't handle.

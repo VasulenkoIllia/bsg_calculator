@@ -149,6 +149,9 @@ export function SaveCalculatorModal({
             picker. Dropdown opens on focus, browse mode lists the
             first 10 companies before any typing. */}
         <CompanyTypeahead
+          // Clients only: an agent must never be selectable as the
+          // merchant of an Offer (see CompanyTypeahead.companyType).
+          companyType="direct_client"
           selected={selectedCompany}
           onSelectedChange={c => {
             setSelectedCompany(c);

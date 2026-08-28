@@ -21,16 +21,17 @@
 import { sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { findCompanyById } from "../companies/companies.repository";
+import { findDealByHubspotId } from "../deals/deals.repository";
 import { findUserById } from "../users/users.repository";
 import {
   ConflictError,
-  HubspotUnreachableError,
   NotFoundError,
   ValidationError
 } from "../../shared/errors";
 import { logger } from "../../middleware/logger";
-import { hubspot } from "../hubspot/hubspot.client";
 import { buildHubspotNoteBody } from "../../shared/hubspot/note-builder";
+import { insertCrmNote } from "../crm-notes/crm-notes.repository";
+import { activeCrmName, crmIsConfigured, publishCrmNote } from "../crm-notes/crm-notes.service";
 import { insertCalcConfigEvent } from "../events/events.repository";
 import { tryRecordEvent } from "../events/events.helpers";
 import {
@@ -110,16 +111,46 @@ async function syncCalculatorConfigToHubspotLocked(
   // on the customer timeline. Surface as 404 so the row reads "gone".
   if (calc.deletedAt) throw new NotFoundError("Calculator config");
 
-  if (!hubspot.isConfigured()) {
+  if (!crmIsConfigured()) {
     throw new ValidationError(
-      [{ path: ["hubspot"], message: "HubSpot integration is not configured." }],
-      "HubSpot not configured"
+      [{ path: ["crm"], message: `${activeCrmName()} integration is not configured.` }],
+      `${activeCrmName()} not configured`
     );
   }
 
   // Parent company lookup (defence in depth — companyId is non-null FK).
   const company = await findCompanyById(calc.companyId);
   if (!company) throw new NotFoundError("Parent company");
+
+  // Parent was deleted in the CRM. The documents flow has always had this
+  // precheck; calc-configs never did — so a calc whose client no longer
+  // exists upstream would post a note onto a dead card (or fail with a raw
+  // upstream error). Reads BOTH era flags: `hubspotDeletedAt` freezes when
+  // HubSpot is switched off, `crmDeletedAt` is its monday counterpart.
+  if (company.hubspotDeletedAt || company.crmDeletedAt) {
+    await updateCalculatorConfigHubspotSync(calc.id, {
+      hubspotSyncState: "failed",
+      hubspotNoteId: null
+    });
+    await tryRecordEvent(
+      () =>
+        insertCalcConfigEvent({
+          calculatorConfigId: calc.id,
+          eventType: "sync_failed",
+          actorUserId,
+          meta: { stage: "precheck", error: "parent company deleted in the CRM" }
+        }),
+      { label: "calc-config:sync", context: { calculatorConfigId: calc.id } }
+    );
+    logger.warn(
+      { calculatorConfigId: calc.id, companyId: company.id },
+      "[calc-config:sync] skipped — the parent company was deleted in the CRM"
+    );
+    throw new ValidationError(
+      [{ path: ["crm"], message: "parent company was deleted in the CRM" }],
+      "Cannot sync: the parent company was deleted in the CRM."
+    );
+  }
 
   // Created-by operator for the Note header.
   const actor = await findUserById(calc.createdByUserId);
@@ -146,14 +177,33 @@ async function syncCalculatorConfigToHubspotLocked(
   // (updateNote) behavior so the /calc/:id "Sync again" confirm dialog's
   // "creates a NEW HubSpot Note" wording is accurate.
 
-  // Step 1: create the Note (no association yet).
+  // Same targeting rule as documents (decision D3): the deal card when
+  // the calc is pinned to one, otherwise the client card. Both ids are
+  // resolved because only `publishCrmNote` knows which CRM is live.
+  const pinnedDeal = calc.hubspotDealId
+    ? await findDealByHubspotId(calc.hubspotDealId)
+    : undefined;
+
+  const target: { type: "deal" | "company"; hubspotId: string | null; mondayId: string | null } =
+    calc.hubspotDealId !== null
+      ? { type: "deal", hubspotId: calc.hubspotDealId, mondayId: pinnedDeal?.crmItemId ?? null }
+      : { type: "company", hubspotId: company.hubspotCompanyId, mondayId: company.crmItemId ?? null };
+
   let noteId: string;
+  let provider: "hubspot" | "monday";
+  let targetObjectId: string;
   try {
-    const note = await hubspot.createNote({ body });
-    noteId = note.id;
+    const published = await publishCrmNote({
+      body,
+      target: target.type,
+      hubspotObjectId: target.hubspotId,
+      mondayItemId: target.mondayId,
+      calculatorConfigId: calc.id
+    });
+    noteId = published.noteId;
+    provider = published.provider;
+    targetObjectId = published.targetObjectId;
   } catch (err) {
-    // Mark failed BEFORE re-throwing so the next GET shows the failed
-    // badge. Don't carry an old noteId forward — the new Note never landed.
     await updateCalculatorConfigHubspotSync(calc.id, {
       hubspotSyncState: "failed",
       hubspotNoteId: null
@@ -164,81 +214,41 @@ async function syncCalculatorConfigToHubspotLocked(
           calculatorConfigId: calc.id,
           eventType: "sync_failed",
           actorUserId,
-          meta: { stage: "createNote", error: (err as Error).message }
+          meta: { stage: "publish", target: target.type, error: (err as Error).message }
         }),
-      {
-        label: "calc-config:sync",
-        context: { calculatorConfigId: calc.id }
-      }
+      { label: "calc-config:sync", context: { calculatorConfigId: calc.id } }
     );
     logger.error(
-      {
-        calculatorConfigId: calc.id,
-        err: (err as Error).message
-      },
-      "[calc-config:sync] createNote failed — calc-config marked failed"
+      { calculatorConfigId: calc.id, target: target.type, err: (err as Error).message },
+      "[calc-config:sync] publishing the CRM note failed — calc marked failed"
     );
     throw err;
-  }
-
-  // Step 2: associate the fresh Note. Prefer Deal when the calc is pinned
-  // to one, else the parent company (mirrors documents).
-  const target =
-    calc.hubspotDealId !== null
-      ? { type: "deal" as const, id: calc.hubspotDealId }
-      : { type: "company" as const, id: company.hubspotCompanyId };
-
-  try {
-    await hubspot.associateNoteWith({
-      noteId,
-      toObjectType: target.type,
-      toObjectId: target.id
-    });
-  } catch (err) {
-    await updateCalculatorConfigHubspotSync(calc.id, {
-      hubspotSyncState: "failed",
-      hubspotNoteId: noteId
-    });
-    await tryRecordEvent(
-      () =>
-        insertCalcConfigEvent({
-          calculatorConfigId: calc.id,
-          eventType: "sync_failed",
-          actorUserId,
-          meta: {
-            stage: "associate",
-            noteId,
-            target,
-            error: (err as Error).message
-          }
-        }),
-      {
-        label: "calc-config:sync",
-        context: { calculatorConfigId: calc.id, noteId }
-      }
-    );
-    logger.error(
-      {
-        calculatorConfigId: calc.id,
-        noteId,
-        associationTarget: target,
-        err: (err as Error).message
-      },
-      "[calc-config:sync] note created but association failed"
-    );
-    throw err instanceof HubspotUnreachableError
-      ? err
-      : new HubspotUnreachableError(
-          `Note created (${noteId}) but association failed: ${(err as Error).message}`,
-          { noteId, target }
-        );
   }
 
   // Step 3: persist success state.
   const updated = await updateCalculatorConfigHubspotSync(calc.id, {
     hubspotSyncState: "synced",
-    hubspotNoteId: noteId
+    hubspotNoteId: noteId,
+    crmNoteProvider: provider,
+    crmNoteTarget: target.type
   });
+  // Decision D16 — every note goes into the ledger, so teardown removes
+  // ALL of them on delete, not just the most recent pointer.
+  await tryRecordEvent(
+    () =>
+      insertCrmNote({
+        calculatorConfigId: calc.id,
+        provider,
+        noteId,
+        target: target.type,
+        targetObjectId
+      }),
+    {
+      label: "calc-config:sync:ledger",
+      context: { calculatorConfigId: calc.id, noteId }
+    }
+  );
+
   if (!updated) {
     // Pathological race — row vanished between find and update.
     throw new Error(
@@ -267,7 +277,7 @@ async function syncCalculatorConfigToHubspotLocked(
       noteId,
       associationTarget: target
     },
-    "[calc-config:sync] calc-config synced to HubSpot"
+    "[calc-config:sync] calc-config synced to the CRM"
   );
 
   // Re-fetch via the standard service so the public DTO includes

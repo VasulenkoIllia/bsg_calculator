@@ -1,5 +1,11 @@
 # Client & HubSpot Workflow (REWRITTEN 2026-05-15)
 
+> **Era note (2026-08-28).** This document describes the **HubSpot** era.
+> HubSpot is switched off after 2026-08-31 and monday.com replaces it via
+> the `CRM_PROVIDER` switch. What still applies, what changes, and why is in
+> [`monday_migration_plan.md`](monday_migration_plan.md); the practical diff
+> is in [`ONBOARDING.md`](ONBOARDING.md) §10.
+
 How a HubSpot company / deal flows through the listing page → calculator
 → document pipeline. Pinned now so Phase 8 endpoints leave the right
 hooks open for Phase 9 write-back without committing to mechanics that

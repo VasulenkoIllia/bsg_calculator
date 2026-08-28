@@ -76,7 +76,7 @@ export async function loginAsToken(
     .post("/api/v1/auth/login")
     .send({ identifier: email, password });
   if (res.status !== 200) {
-    throw new Error(`loginAsToken ${email} failed: ${res.status}`);
+    throw new Error(`loginAsToken ${email} failed: ${describeResponse(res)}`);
   }
   return res.body.accessToken;
 }
@@ -89,7 +89,7 @@ export async function loginAsSession(
     .post("/api/v1/auth/login")
     .send({ identifier: email, password });
   if (res.status !== 200) {
-    throw new Error(`loginAsSession ${email} failed: ${res.status}`);
+    throw new Error(`loginAsSession ${email} failed: ${describeResponse(res)}`);
   }
   return {
     accessToken: res.body.accessToken,
@@ -106,4 +106,24 @@ export function extractRefreshCookie(setCookieHeader: string | string[] | undefi
     if (match) return match[1];
   }
   return "";
+}
+
+/**
+ * A readable one-line dump of a failed response.
+ *
+ * `failed: 404` is ambiguous in exactly the case that matters: it cannot
+ * distinguish "no route matched" (the catch-all handler, message
+ * "Cannot POST /x") from a NotFoundError thrown inside a controller. An
+ * intermittent 404 was chased for hours because the message said neither.
+ */
+export function describeResponse(res: {
+  status: number;
+  headers: Record<string, string | undefined>;
+  body?: unknown;
+  text?: string;
+}): string {
+  const ct = res.headers?.["content-type"] ?? "none";
+  const body = JSON.stringify(res.body ?? null);
+  const text = String(res.text ?? "").slice(0, 300);
+  return `${res.status} ct=${ct} body=${body} text=${text}`;
 }

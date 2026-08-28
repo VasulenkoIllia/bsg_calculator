@@ -20,7 +20,12 @@
  */
 
 import { useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import {
+  Link,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import { ApiError } from "../api/client.js";
 import type { CalculatorConfigSortField } from "../api/calculator-configs.js";
 import type { CompanyDealSortField } from "../api/companies.js";
@@ -39,7 +44,7 @@ import { useSortState } from "../hooks/useSortState.js";
 import type {
   PublicCalculatorConfig,
   PublicDeal,
-  PublicDocument
+  PublicDocument,
 } from "../api/types.js";
 import { formatDateTime, formatScopeLabel } from "../shared/format.js";
 
@@ -66,7 +71,7 @@ const VALID_TABS: ReadonlyArray<CompanyTab> = ["deals", "calcs", "documents"];
 
 function parseTab(value: string | null): CompanyTab {
   if (!value) return "deals";
-  return VALID_TABS.find(t => t === value) ?? "deals";
+  return VALID_TABS.find((t) => t === value) ?? "deals";
 }
 
 export function CompanyDetailPage() {
@@ -95,7 +100,10 @@ export function CompanyDetailPage() {
   // hooks keep each table's column-order memory separate — switching
   // tabs back and forth doesn't reset the operator's chosen sort.
   const dealsSort = useSortState<CompanyDealSortField>("createdAt", "desc");
-  const calcsSort = useSortState<CalculatorConfigSortField>("createdAt", "desc");
+  const calcsSort = useSortState<CalculatorConfigSortField>(
+    "createdAt",
+    "desc",
+  );
   const docsSort = useSortState<DocumentSortField>("createdAt", "desc");
 
   const deals = useCompanyDeals(id, { sort: dealsSort.sortSpec });
@@ -106,24 +114,24 @@ export function CompanyDetailPage() {
   const configs = useCalculatorConfigs({
     companyId: id,
     sort: calcsSort.sortSpec,
-    enabled: typeof id === "string" && id.length > 0
+    enabled: typeof id === "string" && id.length > 0,
   });
   const documents = useDocuments({ companyId: id, sort: docsSort.sortSpec });
 
   const dealsSortControls: SortControls<CompanyDealSortField> = {
     field: dealsSort.sortField,
     direction: dealsSort.sortDir,
-    onChange: dealsSort.handleSortChange
+    onChange: dealsSort.handleSortChange,
   };
   const calcsSortControls: SortControls<CalculatorConfigSortField> = {
     field: calcsSort.sortField,
     direction: calcsSort.sortDir,
-    onChange: calcsSort.handleSortChange
+    onChange: calcsSort.handleSortChange,
   };
   const docsSortControls: SortControls<DocumentSortField> = {
     field: docsSort.sortField,
     direction: docsSort.sortDir,
-    onChange: docsSort.handleSortChange
+    onChange: docsSort.handleSortChange,
   };
 
   const renderHeader = () => {
@@ -147,8 +155,15 @@ export function CompanyDetailPage() {
           Company
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-xl font-semibold text-slate-900">{company.name}</h1>
-          <HubspotDeletedBadge deletedAt={company.hubspotDeletedAt} />
+          <h1 className="text-xl font-semibold text-slate-900">
+            {company.name}
+          </h1>
+          <HubspotDeletedBadge
+            deletedAt={company.hubspotDeletedAt}
+            crmDeletedAt={company.crmDeletedAt}
+            crmDeletedReason={company.crmDeletedReason}
+            missingSince={company.crmMissingSince}
+          />
         </div>
         <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm text-slate-600 sm:grid-cols-2 md:grid-cols-3">
           <div>
@@ -168,7 +183,21 @@ export function CompanyDetailPage() {
             <dd>{formatDateTime(company.lastSyncedAt)}</dd>
           </div>
         </dl>
-        {company.hubspotDeletedAt && hasRole("admin") ? (
+        {/*
+          Gated on EITHER deletion flag, matching what the backend guard
+          accepts. `hubspotDeletedAt` is written only by the HubSpot
+          deletion webhook and freezes the moment HubSpot is switched off,
+          so on this condition alone no company deleted in monday could
+          ever be purged — the widened backend guard, the DTO field and the
+          badge would all deliver nothing.
+
+          `crmMissingSince` is deliberately NOT part of the condition: it
+          records that an item was not returned by a backfill, which can
+          also mean a paging glitch or a permissions change. An observation
+          must never unlock an irreversible action.
+        */}
+        {(company.hubspotDeletedAt || company.crmDeletedAt) &&
+        hasRole("admin") ? (
           <div className="pt-2">
             <button
               type="button"
@@ -178,7 +207,7 @@ export function CompanyDetailPage() {
               Delete from system…
             </button>
             <p className="mt-1 text-xs text-slate-500">
-              This company was deleted in HubSpot. Permanently remove it and all
+              This company was deleted in the CRM. Permanently remove it and all
               its documents from our system.
             </p>
           </div>
@@ -206,10 +235,10 @@ export function CompanyDetailPage() {
           companyId={companyQuery.data.id}
           companyName={companyQuery.data.name}
           onClose={() => setPurgeOpen(false)}
-          onPurged={summary => {
+          onPurged={(summary) => {
             setPurgeOpen(false);
             toast.success(
-              `Deleted ${summary.name}: ${summary.documents} document(s), ${summary.deals} deal(s)`
+              `Deleted ${summary.name}: ${summary.documents} document(s), ${summary.deals} deal(s)`,
             );
             navigate("/companies");
           }}
@@ -285,7 +314,7 @@ function TabButton({
   count,
   hasMore,
   active,
-  onClick
+  onClick,
 }: {
   label: string;
   count: number;
@@ -318,7 +347,7 @@ function TabButton({
 
 function DealsTable({
   deals,
-  sort
+  sort,
 }: {
   deals: ReturnType<typeof useCompanyDeals>;
   sort: SortControls<CompanyDealSortField>;
@@ -373,7 +402,10 @@ function DealsTable({
       <tbody className="divide-y divide-slate-100">
         {deals.isLoading ? (
           <tr>
-            <td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-500">
+            <td
+              colSpan={5}
+              className="px-4 py-6 text-center text-sm text-slate-500"
+            >
               Loading deals…
             </td>
           </tr>
@@ -381,26 +413,38 @@ function DealsTable({
 
         {deals.isError ? (
           <tr>
-            <td colSpan={5} className="px-4 py-6 text-center text-sm text-red-600">
+            <td
+              colSpan={5}
+              className="px-4 py-6 text-center text-sm text-red-600"
+            >
               Failed to load deals
-              {deals.error instanceof ApiError ? `: ${deals.error.message}` : "."}
+              {deals.error instanceof ApiError
+                ? `: ${deals.error.message}`
+                : "."}
             </td>
           </tr>
         ) : null}
 
         {!deals.isLoading && !deals.isError && deals.items.length === 0 ? (
           <tr>
-            <td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-500">
+            <td
+              colSpan={5}
+              className="px-4 py-6 text-center text-sm text-slate-500"
+            >
               No deals associated with this company yet.
             </td>
           </tr>
         ) : null}
 
-        {deals.items.map(deal => (
+        {deals.items.map((deal) => (
           <tr key={deal.id} className="hover:bg-slate-50">
-            <td className="px-4 py-3 font-medium text-slate-800">{deal.name}</td>
+            <td className="px-4 py-3 font-medium text-slate-800">
+              {deal.name}
+            </td>
             <td className="px-4 py-3 text-slate-700">{deal.stage ?? "—"}</td>
-            <td className="px-4 py-3 text-slate-700">{deal.businessVertical ?? "—"}</td>
+            <td className="px-4 py-3 text-slate-700">
+              {deal.businessVertical ?? "—"}
+            </td>
             <td className="px-4 py-3 text-right font-mono text-slate-700">
               {formatAmount(deal)}
             </td>
@@ -416,7 +460,7 @@ function DealsTable({
 
 function CalcsTable({
   configs,
-  sort
+  sort,
 }: {
   configs: ReturnType<typeof useCalculatorConfigs>;
   sort: SortControls<CalculatorConfigSortField>;
@@ -457,7 +501,10 @@ function CalcsTable({
       <tbody className="divide-y divide-slate-100">
         {configs.isLoading ? (
           <tr>
-            <td colSpan={4} className="px-4 py-6 text-center text-sm text-slate-500">
+            <td
+              colSpan={4}
+              className="px-4 py-6 text-center text-sm text-slate-500"
+            >
               Loading saved calculators…
             </td>
           </tr>
@@ -465,16 +512,26 @@ function CalcsTable({
 
         {configs.isError ? (
           <tr>
-            <td colSpan={4} className="px-4 py-6 text-center text-sm text-red-600">
+            <td
+              colSpan={4}
+              className="px-4 py-6 text-center text-sm text-red-600"
+            >
               Failed to load calculators
-              {configs.error instanceof ApiError ? `: ${configs.error.message}` : "."}
+              {configs.error instanceof ApiError
+                ? `: ${configs.error.message}`
+                : "."}
             </td>
           </tr>
         ) : null}
 
-        {!configs.isLoading && !configs.isError && configs.items.length === 0 ? (
+        {!configs.isLoading &&
+        !configs.isError &&
+        configs.items.length === 0 ? (
           <tr>
-            <td colSpan={4} className="px-4 py-6 text-center text-sm text-slate-500">
+            <td
+              colSpan={4}
+              className="px-4 py-6 text-center text-sm text-slate-500"
+            >
               No saved calculators yet. Open the calculator and click
               <strong> Save calculator</strong> to persist one.
             </td>
@@ -493,7 +550,9 @@ function CalcsTable({
                 <span className="text-slate-400">company-level</span>
               )}
             </td>
-            <td className="px-4 py-3 text-slate-500">{formatDateTime(cfg.updatedAt)}</td>
+            <td className="px-4 py-3 text-slate-500">
+              {formatDateTime(cfg.updatedAt)}
+            </td>
             <td className="px-4 py-3 text-right">
               <Link
                 to={`/calc/${cfg.id}`}
@@ -511,7 +570,7 @@ function CalcsTable({
 
 function DocumentsTable({
   documents,
-  sort
+  sort,
 }: {
   documents: ReturnType<typeof useDocuments>;
   sort: SortControls<DocumentSortField>;
@@ -536,7 +595,9 @@ function DocumentsTable({
           >
             Scope
           </SortableTh>
-          <th className="px-4 py-3 text-left font-semibold text-slate-600">Validity</th>
+          <th className="px-4 py-3 text-left font-semibold text-slate-600">
+            Validity
+          </th>
           <SortableTh
             field="createdAt"
             activeField={sort.field}
@@ -551,7 +612,10 @@ function DocumentsTable({
       <tbody className="divide-y divide-slate-100">
         {documents.isLoading ? (
           <tr>
-            <td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-500">
+            <td
+              colSpan={5}
+              className="px-4 py-6 text-center text-sm text-slate-500"
+            >
               Loading documents…
             </td>
           </tr>
@@ -559,18 +623,28 @@ function DocumentsTable({
 
         {documents.isError ? (
           <tr>
-            <td colSpan={5} className="px-4 py-6 text-center text-sm text-red-600">
+            <td
+              colSpan={5}
+              className="px-4 py-6 text-center text-sm text-red-600"
+            >
               Failed to load documents
-              {documents.error instanceof ApiError ? `: ${documents.error.message}` : "."}
+              {documents.error instanceof ApiError
+                ? `: ${documents.error.message}`
+                : "."}
             </td>
           </tr>
         ) : null}
 
-        {!documents.isLoading && !documents.isError && documents.items.length === 0 ? (
+        {!documents.isLoading &&
+        !documents.isError &&
+        documents.items.length === 0 ? (
           <tr>
-            <td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-500">
-              No documents saved for this company yet. Use the wizard
-              to create one.
+            <td
+              colSpan={5}
+              className="px-4 py-6 text-center text-sm text-slate-500"
+            >
+              No documents saved for this company yet. Use the wizard to create
+              one.
             </td>
           </tr>
         ) : null}
@@ -586,7 +660,9 @@ function DocumentsTable({
             <td className="px-4 py-3">
               <DocumentOfferStatus scope={doc.scope} payload={doc.payload} />
             </td>
-            <td className="px-4 py-3 text-slate-500">{formatDateTime(doc.createdAt)}</td>
+            <td className="px-4 py-3 text-slate-500">
+              {formatDateTime(doc.createdAt)}
+            </td>
             <td className="px-4 py-3 text-right">
               <Link
                 to={`/documents/${doc.number}`}

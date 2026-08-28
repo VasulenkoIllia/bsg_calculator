@@ -56,6 +56,9 @@ export function WizardBackendBar({
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <CompanyTypeahead
+          // Clients only: an agent must never be selectable as the
+          // merchant of an Offer (see CompanyTypeahead.companyType).
+          companyType="direct_client"
           selected={selectedCompany}
           onSelectedChange={onCompanyChange}
           required

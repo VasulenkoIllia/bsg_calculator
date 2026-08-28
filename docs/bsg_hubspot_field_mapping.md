@@ -1,5 +1,11 @@
 # BSG ↔ HubSpot Field Mapping
 
+> **Era note (2026-08-28).** This document describes the **HubSpot** era.
+> HubSpot is switched off after 2026-08-31 and monday.com replaces it via
+> the `CRM_PROVIDER` switch. What still applies, what changes, and why is in
+> [`monday_migration_plan.md`](monday_migration_plan.md); the practical diff
+> is in [`ONBOARDING.md`](ONBOARDING.md) §10.
+
 Date: 2026-05-14 (updated 2026-05-16: company-type filter)
 Status: **Source of truth — validated against live BSG HubSpot 2026-05-16.**
 Integration model: **Link-only** (BSG documents reference HubSpot

@@ -22,13 +22,13 @@ import { eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { companies, deals, type NewDeal } from "../db/schema";
 import { companyFixture } from "./fixtures/company";
-import { app, createTestUser } from "./test-helpers";
+import { app, createTestUser, describeResponse } from "./test-helpers";
 
 async function loginAs(email: string, password: string): Promise<string> {
   const res = await request(app)
     .post("/api/v1/auth/login")
     .send({ identifier: email, password });
-  if (res.status !== 200) throw new Error(`loginAs ${email} failed: ${res.status}`);
+  if (res.status !== 200) throw new Error(`loginAs ${email} failed: ${describeResponse(res)}`);
   return res.body.accessToken;
 }
 

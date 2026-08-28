@@ -46,6 +46,32 @@ function loadDotenv(filePath: string): void {
 loadDotenv(resolve(process.cwd(), ".env"));
 
 // ─── Schema ────────────────────────────────────────────────────────
+/**
+ * A boolean env var that actually honours "false".
+ *
+ * `z.coerce.boolean()` is `Boolean(value)`, so EVERY non-empty string is
+ * true — "false", "0" and "no" all parse as TRUE. Five flags were built on
+ * it, including `AUTO_SYNC_TO_HUBSPOT` and `HUBSPOT_AUTO_BACKFILL`, and the
+ * live production .env carries `HUBSPOT_AUTO_BACKFILL=false` believing it
+ * to be off. It is not. The cutover runbook's "set AUTO_SYNC_TO_HUBSPOT=false"
+ * step would likewise have done nothing at all.
+ *
+ * Accepts the forms an operator actually types; anything unrecognised is a
+ * boot error rather than a silent default, because a typo in a kill switch
+ * must not read as "on".
+ */
+function envBoolean(defaultValue: boolean) {
+  return z.preprocess(v => {
+    if (typeof v === "boolean") return v;
+    if (v === undefined || v === null) return defaultValue;
+    const raw = String(v).trim().toLowerCase();
+    if (raw === "") return defaultValue;
+    if (["true", "1", "yes", "y", "on"].includes(raw)) return true;
+    if (["false", "0", "no", "n", "off"].includes(raw)) return false;
+    return raw; // falls through to the boolean() validator below -> clear error
+  }, z.boolean());
+}
+
 const EnvSchema = z.object({
   // App
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
@@ -80,6 +106,12 @@ const EnvSchema = z.object({
   DB_PASSWORD: z.string(),
   DB_NAME: z.string().default("bsg_calculator"),
   DB_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
+  /**
+   * How long `pool.connect()` waits for a free client before failing.
+   * `pg` defaults to 0 = wait forever, which turns pool starvation into a
+   * silent hang: no error, no log, requests simply never answer.
+   */
+  DB_CONNECTION_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(10_000),
 
   // Auth — JWT + bcrypt
   // Only JWT_ACCESS_SECRET is needed: access tokens are JWTs, refresh
@@ -125,8 +157,66 @@ const EnvSchema = z.object({
   // CORS / frontend
   FRONTEND_ORIGIN: z.string().url().default("http://localhost:5173"),
 
+  /**
+   * Which CRM this deployment talks to (monday migration, 2026-08-27).
+   *
+   * `hubspot` — the pre-migration behaviour, unchanged in every respect.
+   * `monday`  — reads and note write-back go to monday.com instead.
+   *
+   * It is BOTH the global kill switch and the value the per-row era
+   * marker is compared against: a row is only torn down in the CRM that
+   * actually holds its note (`documents.crm_note_provider === CRM_PROVIDER`).
+   * That is what makes 2026-08-31 a flag flip rather than a deploy — see
+   * docs/monday_migration_plan.md §3.
+   *
+   * Defaults to `hubspot`, so adding this variable changes nothing.
+   */
+  CRM_PROVIDER: z.enum(["hubspot", "monday"]).default("hubspot"),
+
+  // monday.com (added alongside HubSpot — neither replaces the other
+  // until CRM_PROVIDER flips).
+  MONDAY_API_TOKEN: z.preprocess(
+    v => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.string().optional()
+  ),
+  MONDAY_API_BASE_URL: z.string().url().default("https://api.monday.com/v2"),
+  /**
+   * Pinned API version. monday releases quarterly and an unrecognised
+   * value silently DOWNGRADES the request instead of failing, so the
+   * client asserts at startup that the server echoes back what we asked
+   * for. Never leave this blank.
+   */
+  MONDAY_API_VERSION: z.string().default("2026-07"),
+  /**
+   * Board ids in the "BlackStripe CRM" workspace. Column ids are
+   * deliberately NOT env vars — they are resolved by title+type at boot
+   * and verified, because four mapped columns were deleted and recreated
+   * between 2026-08-22 and 2026-08-27 (docs/monday_migration_plan.md R4).
+   */
+  MONDAY_BOARD_COMPANIES: z.string().default("5102466967"),
+  MONDAY_BOARD_AGENTS: z.string().default("5102466950"),
+  MONDAY_BOARD_DEALS: z.string().default("5102466996"),
+  /**
+   * Unguessable path segment for POST /api/v1/monday/webhooks/:secret.
+   * monday webhooks created with a personal token carry no signature, so
+   * the secret path plus "the payload is only a trigger, every field is
+   * re-read from the API" is the authentication (decision D6).
+   */
+  MONDAY_WEBHOOK_SECRET: z.string().optional(),
+
   // HubSpot (Phase 8 reads + Phase 9 writes)
-  HUBSPOT_API_TOKEN: z.string().startsWith("pat-").optional(),
+  /**
+   * An EMPTY value counts as "not set". Without the preprocess below,
+   * `HUBSPOT_API_TOKEN=` in .env parses as "" — which fails
+   * `.startsWith("pat-")` and crash-loops the container. That is the most
+   * natural thing an operator would type to switch HubSpot off, so it
+   * must mean "absent", not "invalid". Same treatment for the monday
+   * token and both secrets.
+   */
+  HUBSPOT_API_TOKEN: z.preprocess(
+    v => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.string().startsWith("pat-").optional()
+  ),
   HUBSPOT_API_BASE_URL: z.string().url().default("https://api.hubapi.com"),
   HUBSPOT_DEAL_PIPELINE_ID: z.string().optional(),
   HUBSPOT_SYNC_TTL_SECONDS: z.coerce.number().int().min(0).default(300),
@@ -142,7 +232,7 @@ const EnvSchema = z.object({
   HUBSPOT_BACKFILL_PAGE_SIZE: z.coerce.number().int().min(1).max(100).default(100),
   // When true AND companies table is empty at server start, run
   // hubspot:backfill in background. Production first-deploy default.
-  HUBSPOT_AUTO_BACKFILL: z.coerce.boolean().default(false),
+  HUBSPOT_AUTO_BACKFILL: envBoolean(false),
   /**
    * Phase 9.G / 9.I — auto-sync new documents AND calc-configs to
    * HubSpot in background.
@@ -173,11 +263,11 @@ const EnvSchema = z.object({
    * (added in Phase 9.I). The old name is still accepted as a
    * fallback below so existing prod .env files don't break.
    */
-  AUTO_SYNC_TO_HUBSPOT: z.coerce.boolean().default(false),
+  AUTO_SYNC_TO_HUBSPOT: envBoolean(false),
 
   // PDF rendering (Puppeteer)
   PUPPETEER_EXECUTABLE_PATH: z.string().optional(),
-  PUPPETEER_HEADLESS: z.coerce.boolean().default(true),
+  PUPPETEER_HEADLESS: envBoolean(true),
   PDF_RENDER_TIMEOUT_MS: z.coerce.number().int().min(1000).default(30000),
   PUPPETEER_RENDERS_PER_BROWSER: z.coerce.number().int().min(1).default(1000),
   PUPPETEER_BROWSER_TTL_MS: z.coerce.number().int().min(60000).default(86400000),
@@ -190,7 +280,7 @@ const EnvSchema = z.object({
   // SECURITY: only set this when you understand the trade-off —
   // the calculator HTML is operator-built so the XSS surface is
   // small, but a future user-input path could amplify the risk.
-  PUPPETEER_NO_SANDBOX: z.coerce.boolean().default(false),
+  PUPPETEER_NO_SANDBOX: envBoolean(false),
 
   // Document numbering
   DOCUMENT_NUMBER_START: z.coerce.number().int().min(1).default(7100001),
@@ -215,7 +305,7 @@ const EnvSchema = z.object({
 
   // Logging
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
-  LOG_HTTP_REQUESTS: z.coerce.boolean().default(true)
+  LOG_HTTP_REQUESTS: envBoolean(true)
 }).superRefine((data, ctx) => {
   // ─── Cross-field production hardening ────────────────────────────
   // In dev/test we allow loose values for fast iteration. In prod we
@@ -223,11 +313,21 @@ const EnvSchema = z.object({
   // boot rather than silently exposing an attack surface.
   if (data.NODE_ENV !== "production") return;
 
+  // ─── Provider-scoped gates ───────────────────────────────────────
+  // Each CRM's hard requirements apply ONLY while that CRM is the active
+  // one. Before this, the three HubSpot gates below were unconditional,
+  // which meant production could not be de-configured from HubSpot at
+  // all: blanking the token to "turn HubSpot off" crash-looped the
+  // container. That made the 2026-08-31 switch-off impossible without a
+  // code change — see docs/monday_migration_plan.md R3.
+  const usingHubspot = data.CRM_PROVIDER === "hubspot";
+  const usingMonday = data.CRM_PROVIDER === "monday";
+
   // SSRF guard: only the canonical HubSpot endpoint may be hit in
   // prod. If the env is ever overwritten (compromise, fat-fingered
   // deploy), refuse to boot rather than emit requests with HubSpot
   // bearer tokens to an attacker-controlled host.
-  if (data.HUBSPOT_API_BASE_URL !== "https://api.hubapi.com") {
+  if (usingHubspot && data.HUBSPOT_API_BASE_URL !== "https://api.hubapi.com") {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["HUBSPOT_API_BASE_URL"],
@@ -241,12 +341,63 @@ const EnvSchema = z.object({
   // Operators can set a placeholder value before Sprint 5 ships —
   // having any non-empty secret is enough to satisfy this gate, and
   // the webhook handler itself will refuse mismatched signatures.
-  if (!data.HUBSPOT_WEBHOOK_SECRET || data.HUBSPOT_WEBHOOK_SECRET.length === 0) {
+  if (usingHubspot && (!data.HUBSPOT_WEBHOOK_SECRET || data.HUBSPOT_WEBHOOK_SECRET.length === 0)) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["HUBSPOT_WEBHOOK_SECRET"],
       message:
         "must be set in production (HMAC SHA-256 secret for HubSpot webhook signature verification)."
+    });
+  }
+
+  // Mirror image for monday: the same two things must be present when it
+  // is the active CRM. The SSRF guard has the same shape — a bearer token
+  // must never be sent to an arbitrary host.
+  if (usingMonday && (!data.MONDAY_API_TOKEN || data.MONDAY_API_TOKEN.length === 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["MONDAY_API_TOKEN"],
+      message:
+        "must be set in production when CRM_PROVIDER=monday (every read and every note write goes through it)."
+    });
+  }
+  // Mirror of the HubSpot webhook-secret gate. Without it an operator can
+  // deploy with monday active and no secret set, and every inbound webhook
+  // silently 404s (the route treats "not configured" as "route does not
+  // exist") — the cache then goes quietly stale with nothing to explain it.
+  if (usingMonday && (!data.MONDAY_WEBHOOK_SECRET || data.MONDAY_WEBHOOK_SECRET.length < 16)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["MONDAY_WEBHOOK_SECRET"],
+      message:
+        "must be set in production when CRM_PROVIDER=monday, at least 16 chars (it is the webhook endpoint's only credential). Generate with `openssl rand -hex 24`."
+    });
+  }
+
+  // The three board ids are how an inbound webhook is classified: the
+  // controller maps boardId -> company/agent/deal and SKIPS anything it
+  // does not recognise. Two ids being equal (a copy-paste in .env) would
+  // therefore route one board's events to the wrong object type, silently
+  // and for every event. Defaults are the real boards, so this only fires
+  // on an explicit override.
+  if (usingMonday) {
+    const boards = [data.MONDAY_BOARD_COMPANIES, data.MONDAY_BOARD_AGENTS, data.MONDAY_BOARD_DEALS];
+    if (new Set(boards).size !== boards.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["MONDAY_BOARD_COMPANIES"],
+        message:
+          "MONDAY_BOARD_COMPANIES / _AGENTS / _DEALS must be three DIFFERENT board ids — a duplicate silently routes one board's webhooks to the wrong object type."
+      });
+    }
+  }
+
+  if (usingMonday && data.MONDAY_API_BASE_URL !== "https://api.monday.com/v2") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["MONDAY_API_BASE_URL"],
+      message:
+        'must be exactly "https://api.monday.com/v2" in production (SSRF guard for the monday API token).'
     });
   }
 
@@ -289,7 +440,7 @@ const EnvSchema = z.object({
   // the webhook processor silently retries every event 5 times,
   // marks it failed, and operators don't notice until a sales
   // person can't find a deal. Better to fail at boot.
-  if (!data.HUBSPOT_API_TOKEN || data.HUBSPOT_API_TOKEN.length === 0) {
+  if (usingHubspot && (!data.HUBSPOT_API_TOKEN || data.HUBSPOT_API_TOKEN.length === 0)) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["HUBSPOT_API_TOKEN"],

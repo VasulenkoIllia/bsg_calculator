@@ -38,3 +38,11 @@ tests/visual-diff-output/
 
 # Local PDF reference set for layout testing (not committed)
 reference-pdfs/
+
+# Untracked copy of the production env file — never commit (the repo is public).
+.env.server
+
+# Operational runbook: contains prod host paths, container names and the
+# deploy channel. The repo is PUBLIC, so "do not push this" cannot be left
+# to memory — a single `git add docs/` would publish it.
+docs/monday_cutover_runbook.md

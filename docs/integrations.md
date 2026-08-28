@@ -1,5 +1,11 @@
 # Integrations
 
+> **Era note (2026-08-28).** This document describes the **HubSpot** era.
+> HubSpot is switched off after 2026-08-31 and monday.com replaces it via
+> the `CRM_PROVIDER` switch. What still applies, what changes, and why is in
+> [`monday_migration_plan.md`](monday_migration_plan.md); the practical diff
+> is in [`ONBOARDING.md`](ONBOARDING.md) §10.
+
 Last updated: 2026-06-10. Describes the integrations as they work **today**.
 
 ## HubSpot CRM (live)

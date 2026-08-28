@@ -63,12 +63,44 @@ interface CleanupResult {
 }
 
 /**
+ * Above this many `referring_partner` rows, the cleanup pass refuses to
+ * run at all. Three is the count that existed before the monday
+ * migration began (2026-08-27) — anything more means the Agents board is
+ * being cached and the pass would destroy it.
+ */
+const AGENT_ROW_CLEANUP_LIMIT = 3;
+
+/**
  * Remove existing rows that don't match the active company_type
  * filter. Deals first (FK RESTRICT requires that order).
  * No-op when the filter is empty.
  */
 async function cleanupNonMatching(filter: string): Promise<CleanupResult> {
   if (filter.length === 0) {
+    return { companiesDeleted: 0, dealsDeleted: 0 };
+  }
+
+  // ─── SAFETY BRAKE (monday migration, 2026-08-27) ─────────────────
+  // This pass DELETES every company whose company_type != filter. That
+  // was safe while the only thing in the table was `direct_client` rows
+  // pulled by this very script. It stops being safe the moment the
+  // monday sync starts caching the Agents (A) board, because those rows
+  // are `referring_partner` by design and this pass would wipe ~40 of
+  // them — together with their calculator_configs, which cascade.
+  //
+  // Refuse rather than trust an env var: the filter lives in .env on the
+  // server and nobody re-reads it before running a backfill by hand.
+  const agentRows = await db.execute<{ count: number }>(
+    sql`SELECT count(*)::int AS count FROM companies WHERE company_type = 'referring_partner'`
+  );
+  const agentCount = Number(agentRows.rows[0]?.count ?? 0);
+  if (agentCount > AGENT_ROW_CLEANUP_LIMIT) {
+    logger.error(
+      { agentCount, limit: AGENT_ROW_CLEANUP_LIMIT, filter },
+      "[hubspot:backfill] cleanup pass REFUSED — the table holds agent rows that this pass would delete. " +
+        "This is expected once monday is syncing the Agents board; the cleanup pass is obsolete then. " +
+        "Run the backfill with HUBSPOT_COMPANY_TYPE_FILTER='' to skip it."
+    );
     return { companiesDeleted: 0, dealsDeleted: 0 };
   }
 
@@ -90,6 +122,7 @@ async function cleanupNonMatching(filter: string): Promise<CleanupResult> {
       SELECT c.hubspot_company_id FROM companies c
       WHERE c.company_type IS DISTINCT FROM ${filter}
         AND NOT EXISTS (SELECT 1 FROM documents d WHERE d.company_id = c.id)
+        AND NOT EXISTS (SELECT 1 FROM calculator_configs k WHERE k.company_id = c.id)
     )
     RETURNING hubspot_deal_id
   `);
@@ -102,7 +135,12 @@ async function cleanupNonMatching(filter: string): Promise<CleanupResult> {
     .where(
       and(
         ne(companiesTable.companyType, filter),
-        sql`NOT EXISTS (SELECT 1 FROM documents d WHERE d.company_id = ${companiesTable.id})`
+        sql`NOT EXISTS (SELECT 1 FROM documents d WHERE d.company_id = ${companiesTable.id})`,
+        // calculator_configs.company_id is ON DELETE CASCADE, so without
+        // this guard a client whose operator has saved a calculator but
+        // not yet produced a document loses that work silently and
+        // uncounted. The documents-only guard never covered them.
+        sql`NOT EXISTS (SELECT 1 FROM calculator_configs k WHERE k.company_id = ${companiesTable.id})`
       )
     )
     .returning({ id: companiesTable.id });
@@ -114,6 +152,7 @@ async function cleanupNonMatching(filter: string): Promise<CleanupResult> {
     DELETE FROM companies
     WHERE company_type IS NULL
       AND NOT EXISTS (SELECT 1 FROM documents d WHERE d.company_id = companies.id)
+      AND NOT EXISTS (SELECT 1 FROM calculator_configs k WHERE k.company_id = companies.id)
     RETURNING id
   `);
   companiesDeleted += removedNullType.rowCount ?? 0;
@@ -304,6 +343,15 @@ async function backfillDeals(): Promise<PassResult> {
 // ────────────────────────────────────────────────────────────────────
 
 export async function runBackfill(): Promise<BackfillStats> {
+  // See reconcile-companies.ts for the reasoning: HUBSPOT_API_TOKEN
+  // survives the flip (the runbook only ever appends to the live .env),
+  // so this stays runnable in the monday era and would write HubSpot's
+  // view straight over monday-era rows.
+  if (env.CRM_PROVIDER !== "hubspot" && !process.argv.includes("--force-hubspot-era")) {
+    throw new Error(
+      `CRM_PROVIDER is "${env.CRM_PROVIDER}", not "hubspot" — refusing to backfill monday-era data from HubSpot. Pass --force-hubspot-era only when deliberately rolling back.`
+    );
+  }
   if (!hubspot.isConfigured()) {
     throw new Error(
       "HUBSPOT_API_TOKEN is not set. Add it to .env before running backfill."
@@ -351,6 +399,17 @@ export const __internals = {
  */
 export async function backendStartupBackfillIfEmpty(): Promise<void> {
   if (!env.HUBSPOT_AUTO_BACKFILL) return;
+  // A startup backfill in the monday era would re-import HubSpot's view of
+  // every company on each boot. Silent, automatic and provider-blind is
+  // the worst combination of the three, so gate it here rather than
+  // relying on the operator having also cleared the token.
+  if (env.CRM_PROVIDER !== "hubspot") {
+    logger.warn(
+      { crmProvider: env.CRM_PROVIDER },
+      "[hubspot:backfill] HUBSPOT_AUTO_BACKFILL is on but the active CRM is not HubSpot — skipping the startup backfill"
+    );
+    return;
+  }
   if (!hubspot.isConfigured()) {
     logger.warn(
       "[hubspot:backfill] HUBSPOT_AUTO_BACKFILL=true but no token configured — skipping"

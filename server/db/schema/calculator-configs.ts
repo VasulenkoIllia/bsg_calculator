@@ -72,6 +72,13 @@ export const calculatorConfigs = pgTable(
     // operator-facing manual Sync button on /calc/:id is the only
     // path that creates a second/replacement Note.
     hubspotNoteId: text("hubspot_note_id"),
+    // Era marker — see documents.ts for the full rationale.
+    crmNoteProvider: text("crm_note_provider").$type<"hubspot" | "monday" | null>(),
+    crmNoteTarget: text("crm_note_target").$type<"company" | "agent" | "deal" | null>(),
+    legacyHubspotNoteId: text("legacy_hubspot_note_id"),
+    // The monday-side deal pin, alongside hubspotDealId. Born ON UPDATE
+    // CASCADE (migration 0021) so a future re-bind is a single UPDATE.
+    crmDealItemId: text("crm_deal_item_id"),
     hubspotSyncState: text("hubspot_sync_state")
       .notNull()
       .default("not_synced")

@@ -61,6 +61,28 @@ export const companies = pgTable(
     // by any successful re-sync (upsert) — i.e. if the company is
     // restored upstream.
     hubspotDeletedAt: timestamp("hubspot_deleted_at", { withTimezone: true }),
+    // ─── monday binding chain (added 2026-08-27, migration 0021) ───
+    // Runs ALONGSIDE hubspot_company_id, which stays the natural key and
+    // FK target. Nothing here replaces anything until CRM_PROVIDER flips.
+    crmItemId: text("crm_item_id"),
+    crmBoardId: text("crm_board_id"),
+    // 'primary' = the row the UI surfaces for this monday item;
+    // 'alias'   = one of our duplicates pointing at the same item (eight
+    // such pairs exist — HubSpot duplicates the operator merged in monday).
+    crmBindingRole: text("crm_binding_role").$type<"primary" | "alias" | null>(),
+    mondayRaw: jsonb("monday_raw"),
+    crmCreatedAt: timestamp("crm_created_at", { withTimezone: true }),
+    crmUpdatedAt: timestamp("crm_updated_at", { withTimezone: true }),
+    // Written ONLY by an explicit item_deleted / item_archived event.
+    crmDeletedAt: timestamp("crm_deleted_at", { withTimezone: true }),
+    crmDeletedReason: text("crm_deleted_reason").$type<"deleted" | "archived" | null>(),
+    // Written by the BACKFILL on absence. An observation, never an
+    // authorisation — it must never unlock a purge, because absence can
+    // also mean a paging glitch or a backfill that ran before the remap.
+    crmMissingSince: timestamp("crm_missing_since", { withTimezone: true }),
+    // The pre-migration name, kept because the first monday sync renames
+    // 71 of 76 companies (monday has no "(M) " / "(A) " prefixes).
+    legacyHubspotName: text("legacy_hubspot_name"),
     // First time we saw this company in our DB.
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     // Application-managed on every UPDATE.

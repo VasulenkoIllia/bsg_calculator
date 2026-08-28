@@ -37,6 +37,9 @@ const fixtureCompany = (overrides: Partial<PublicCompany> = {}): PublicCompany =
   hubspotModifiedAt: "2026-05-01T00:00:00.000Z",
   lastSyncedAt: "2026-05-15T00:00:00.000Z",
   hubspotDeletedAt: null,
+  crmDeletedAt: null,
+  crmDeletedReason: null,
+  crmMissingSince: null,
   ...overrides
 });
 
@@ -55,6 +58,7 @@ function renderTypeahead(
         label={props.label}
         placeholder={props.placeholder}
         required={props.required}
+        companyType={props.companyType}
       />
     </QueryClientProvider>
   );
@@ -174,7 +178,11 @@ describe("CompanyTypeahead — keyboard navigation", () => {
     // aria-activedescendant should reference the Gamma <li>.
     await waitFor(() => {
       const active = input.getAttribute("aria-activedescendant");
-      const gammaId = screen.getByText("Gamma").getAttribute("id");
+      // The id lives on the <li role="option">, and the name is nested
+      // inside a <span> so an "Agent" badge can sit beside it — so walk
+      // up to the option element rather than reading the text node's
+      // parent, which has no id.
+      const gammaId = screen.getByText("Gamma").closest("li")?.getAttribute("id");
       expect(active).toBe(gammaId);
     });
 
@@ -293,5 +301,62 @@ describe("CompanyTypeahead — empty state copy", () => {
       },
       { timeout: 1_000 }
     );
+  });
+});
+
+describe("CompanyTypeahead — company type filtering (monday migration)", () => {
+  it("passes companyType through to the API so agents are excluded server-side", async () => {
+    // The guarantee: a client picker must never OFFER an agent. Filtering
+    // happens on the server (the list is paginated, so hiding rows in the
+    // browser would silently shrink pages instead), which means the only
+    // thing to assert here is that the parameter reaches the request.
+    const spy = vi.spyOn(companiesApi, "listCompanies").mockResolvedValue({
+      items: [fixtureCompany()],
+      nextCursor: null,
+      limit: 10
+    });
+    renderTypeahead({ companyType: "direct_client" });
+    fireEvent.focus(screen.getByRole("combobox"));
+    await waitFor(() => screen.getByText("Acme Inc"));
+
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({ companyType: "direct_client" })
+    );
+  });
+
+  it("browses by NAME, not by creation date", async () => {
+    // The first monday backfill inserts ~42 agents with created_at = now.
+    // Under the previous createdAt:desc default they would have filled the
+    // operator's first ten browse results and pushed real clients out of
+    // sight until they started typing.
+    const spy = vi.spyOn(companiesApi, "listCompanies").mockResolvedValue({
+      items: [fixtureCompany()],
+      nextCursor: null,
+      limit: 10
+    });
+    renderTypeahead();
+    fireEvent.focus(screen.getByRole("combobox"));
+    await waitFor(() => screen.getByText("Acme Inc"));
+
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ sort: "name:asc" }));
+  });
+
+  it("marks an agent with a badge wherever the list is unfiltered", async () => {
+    // monday names carry no "(M) " / "(A) " prefix, so once the Agents
+    // board is synced this badge is the only cue distinguishing the two.
+    vi.spyOn(companiesApi, "listCompanies").mockResolvedValue({
+      items: [
+        fixtureCompany({ id: "m", name: "Merchant Co" }),
+        fixtureCompany({ id: "a", name: "Agent Co", companyType: "referring_partner" })
+      ],
+      nextCursor: null,
+      limit: 10
+    });
+    renderTypeahead();
+    fireEvent.focus(screen.getByRole("combobox"));
+    await waitFor(() => screen.getByText("Agent Co"));
+
+    expect(screen.getByText("Agent")).toBeInTheDocument();
+    expect(screen.getByText("Merchant Co").closest("li")?.textContent).not.toContain("Agent");
   });
 });

@@ -55,6 +55,18 @@ export const deals = pgTable(
     // including all pricing / KYB / business context fields that we
     // deliberately do NOT extract.
     hubspotRaw: jsonb("hubspot_raw").notNull(),
+    // ─── monday binding chain (migration 0021) ───
+    crmItemId: text("crm_item_id"),
+    crmBoardId: text("crm_board_id"),
+    // monday item id of the parent company. A plain column, NOT an FK:
+    // companies.crm_item_id is only PARTIALLY unique (primary rows only),
+    // so it cannot be a foreign-key target.
+    crmCompanyItemId: text("crm_company_item_id"),
+    mondayRaw: jsonb("monday_raw"),
+    crmCreatedAt: timestamp("crm_created_at", { withTimezone: true }),
+    crmUpdatedAt: timestamp("crm_updated_at", { withTimezone: true }),
+    crmDeletedAt: timestamp("crm_deleted_at", { withTimezone: true }),
+    crmMissingSince: timestamp("crm_missing_since", { withTimezone: true }),
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

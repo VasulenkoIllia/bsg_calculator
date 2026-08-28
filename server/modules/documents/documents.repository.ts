@@ -172,6 +172,16 @@ export async function updateDocumentHubspotSync(
       | "delete_pending"
       | "delete_failed";
     hubspotNoteId: string | null;
+    /**
+     * Era marker — which CRM holds the note id above. MUST be written in
+     * the same statement as the id: a DB CHECK enforces that the two are
+     * either both set or both NULL, and the delete path compares this
+     * against env.CRM_PROVIDER to decide whether a teardown is even
+     * possible. Callers pass `null` whenever `hubspotNoteId` is null.
+     */
+    crmNoteProvider?: "hubspot" | "monday" | null;
+    /** Which card the note sits on — 'deal' when the row is deal-pinned. */
+    crmNoteTarget?: "company" | "agent" | "deal" | null;
   }
 ): Promise<Document | undefined> {
   const rows = await db
@@ -179,6 +189,34 @@ export async function updateDocumentHubspotSync(
     .set({
       hubspotSyncState: patch.hubspotSyncState,
       hubspotNoteId: patch.hubspotNoteId,
+      // The marker is kept consistent HERE rather than at every call site,
+      // because the DB CHECK makes an inconsistent pair a hard 500 and the
+      // call sites that merely move the sync state (e.g. 'delete_pending')
+      // have no business knowing about providers.
+      //
+      //   note id cleared  -> marker cleared too (CHECK requires it)
+      //   note id set      -> use the caller's marker if supplied,
+      //                       otherwise KEEP whatever is already stored
+      //                       (never blank it — that would break the pair)
+      crmNoteProvider:
+        patch.hubspotNoteId === null
+          ? null
+          : (patch.crmNoteProvider ?? sql`${documents}.crm_note_provider`),
+      crmNoteTarget:
+        patch.hubspotNoteId === null
+          ? null
+          : (patch.crmNoteTarget ?? sql`${documents}.crm_note_target`),
+      // Preserve the HubSpot id the moment a row crosses eras. Four
+      // comments called this column the audit trail while nothing ever
+      // wrote to it; now a re-bind from HubSpot to monday carries the old
+      // id here instead of overwriting it out of existence.
+      legacyHubspotNoteId: sql`CASE
+        WHEN ${patch.crmNoteProvider ?? null} = 'monday'
+         AND ${documents}.crm_note_provider = 'hubspot'
+         AND ${documents}.hubspot_note_id IS NOT NULL
+        THEN ${documents}.hubspot_note_id
+        ELSE ${documents}.legacy_hubspot_note_id
+      END`,
       updatedAt: new Date()
     })
     .where(eq(documents.id, id))
@@ -520,6 +558,26 @@ export async function softDeleteDocument(
       deletionNote: note,
       hubspotSyncState: "not_synced",
       hubspotNoteId: null,
+      // Paired with the note id by a DB CHECK — nulling one without the
+      // others is rejected outright.
+      //
+      // Carry a HubSpot note id into the legacy column before dropping it.
+      // The old comment here assumed the pointer is only ever cleared
+      // "because we just tore the note down upstream" — which stopped
+      // being true at the cutover: a HubSpot-era note is unreachable once
+      // monday is the active CRM, so the delete path skips the teardown
+      // and the note stays on the customer's card while its id was
+      // erased. That id was the only record it ever existed.
+      // Gated on the HubSpot era so a monday id never lands in a column
+      // named for HubSpot, and COALESCE so an id already parked there by
+      // a re-bind is never overwritten.
+      legacyHubspotNoteId: sql`CASE
+        WHEN ${documents}.crm_note_provider = 'hubspot' AND ${documents}.hubspot_note_id IS NOT NULL
+        THEN COALESCE(${documents}.legacy_hubspot_note_id, ${documents}.hubspot_note_id)
+        ELSE ${documents}.legacy_hubspot_note_id
+      END`,
+      crmNoteProvider: null,
+      crmNoteTarget: null,
       updatedAt: new Date()
     })
     .where(eq(documents.id, id))
@@ -553,6 +611,11 @@ export async function restoreDocument(
       deletionNote: null,
       hubspotSyncState: "not_synced",
       hubspotNoteId: null,
+      // Paired with the note id by a DB CHECK — nulling one without the
+      // others is rejected outright. `legacyHubspotNoteId` is deliberately
+      // NOT cleared: it is the audit trail of what used to be there.
+      crmNoteProvider: null,
+      crmNoteTarget: null,
       updatedAt: new Date()
     })
     .where(eq(documents.id, id))

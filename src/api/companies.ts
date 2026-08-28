@@ -37,6 +37,13 @@ export interface ListCompaniesParams {
   /** Sprint 7.2: "field:asc" or "field:desc"; default "createdAt:desc". */
   sort?: CompanySortSpec;
   cursor?: string;
+  /**
+   * Restrict to one company type. The client pickers pass
+   * "direct_client" so an agent can never be chosen as the merchant of
+   * an Offer; the admin list and the column filters leave it unset and
+   * show everything.
+   */
+  companyType?: "direct_client" | "referring_partner";
   limit?: number;
 }
 

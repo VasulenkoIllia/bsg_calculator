@@ -80,10 +80,37 @@ export interface ListCompaniesArgs {
   sort: SortSpec<CompanySortField>;
   cursor: SortedCursor | null;
   limit: number;
+  /** When set, restrict to this company_type. See the query schema. */
+  companyType?: "direct_client" | "referring_partner";
 }
 
 export async function listCompanies(args: ListCompaniesArgs): Promise<Company[]> {
   const conditions = [];
+  if (args.companyType) {
+    // A row that ALREADY OWNS WORK stays visible whatever its type.
+    //
+    // Real case this exists for: "(A) ConsultiPay / Monepik Limited" is a
+    // referring_partner that owns a live document. A strict type filter
+    // made it unreachable in both client pickers — an operator looking
+    // for a client they had already produced a document for would get
+    // "No matches". Hiding a company that owns work is worse than showing
+    // one extra row, and the amber "Agent" badge in the option row keeps
+    // the distinction visible.
+    //
+    // The 42 agents that own nothing are still filtered out, which is the
+    // whole point of the filter.
+    conditions.push(
+      or(
+        eq(companies.companyType, args.companyType),
+        sql`EXISTS (SELECT 1 FROM documents d WHERE d.company_id = ${companies.id})`,
+        // Calculators count as work too. The normal flow is
+        // calculator-first (31 of 35 live configs have never produced a
+        // document), so admitting only document-owners would still hide a
+        // client an operator is actively working on.
+        sql`EXISTS (SELECT 1 FROM calculator_configs k WHERE k.company_id = ${companies.id})`
+      )!
+    );
+  }
   if (args.q) {
     // pg_trgm-backed substring search. ILIKE picks up the GIN index
     // when the predicate contains a literal-substring pattern.

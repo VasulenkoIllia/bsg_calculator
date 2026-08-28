@@ -38,12 +38,25 @@ export interface UseCompanySearchResult {
   effectiveQuery: string;
 }
 
-export function useCompanySearch(rawQuery: string): UseCompanySearchResult {
+export function useCompanySearch(
+  rawQuery: string,
+  companyType?: "direct_client" | "referring_partner"
+): UseCompanySearchResult {
   const debounced = useDebouncedValue(rawQuery, SEARCH_DEBOUNCE_MS);
   const trimmed = debounced.trim();
   // Limit 10 — pickers don't need more results visible at once;
   // the operator narrows the search if their company isn't there.
-  const { items, isLoading, isError } = useCompanies({ q: trimmed, limit: 10 });
+  // Browse (empty query) is sorted by NAME, not by creation date. The
+  // first monday backfill inserts ~42 agents with created_at = now, so a
+  // createdAt:desc default would fill the operator's first ten browse
+  // results with rows they must never pick, and push their actual
+  // clients out of sight until they start typing.
+  const { items, isLoading, isError } = useCompanies({
+    q: trimmed,
+    limit: 10,
+    companyType,
+    sort: "name:asc"
+  });
 
   return {
     items,

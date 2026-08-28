@@ -114,6 +114,29 @@ export class HubspotUnreachableError extends AppError {
   }
 }
 
+/**
+ * The active CRM is unreachable — monday or HubSpot, whichever is live.
+ *
+ * It extends `HubspotUnreachableError` and therefore carries the SAME wire
+ * code, `HUBSPOT_UNREACHABLE`. That looks odd and is deliberate: four
+ * frontend branches match that string literally against `ApiError.code`
+ * with no compile-time link between them (the delete modals and both sync
+ * handlers). Emitting a new code this week would silently degrade a 502
+ * "CRM unreachable" into an unhandled raw backend string in front of an
+ * operator. The rename of the wire contract is a September item, done
+ * together with the frontend — see docs/monday_migration_plan.md §7.
+ *
+ * Subclassing also keeps every existing `instanceof HubspotUnreachableError`
+ * check working, including the ones in the delete/sync services that decide
+ * whether to wrap an error before re-throwing.
+ */
+export class CrmUnreachableError extends HubspotUnreachableError {
+  constructor(message = "CRM upstream is unreachable.", details?: unknown) {
+    super(message, details);
+    this.name = "CrmUnreachableError";
+  }
+}
+
 export class DbUnavailableError extends AppError {
   constructor(message = "Database is temporarily unavailable.") {
     super(503, "DB_UNAVAILABLE", message);

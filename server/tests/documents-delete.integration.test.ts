@@ -19,13 +19,13 @@ import { db } from "../db/client";
 import { companies, documents } from "../db/schema";
 import { hubspot } from "../modules/hubspot/hubspot.client";
 import { companyFixture } from "./fixtures/company";
-import { app, createTestUser } from "./test-helpers";
+import { app, createTestUser, describeResponse } from "./test-helpers";
 
 async function loginAs(email: string, password: string): Promise<string> {
   const res = await request(app)
     .post("/api/v1/auth/login")
     .send({ identifier: email, password });
-  if (res.status !== 200) throw new Error(`loginAs ${email} failed: ${res.status}`);
+  if (res.status !== 200) throw new Error(`loginAs ${email} failed: ${describeResponse(res)}`);
   return res.body.accessToken;
 }
 
@@ -44,7 +44,14 @@ async function createDocAs(
     .set("Authorization", `Bearer ${token}`)
     .send({ companyId, scope: "offer", payload: samplePayload });
   if (res.status !== 201) {
-    throw new Error(`createDoc failed: ${res.status} ${JSON.stringify(res.body)}`);
+    // Dump the RAW body and content-type, not just `res.body`. A parsed
+    // body is `{}` for any non-JSON response, which turns a real failure
+    // ("404 {}") into an unreadable one — exactly what happened while
+    // chasing an intermittent failure here.
+    throw new Error(
+      `createDoc failed: ${res.status} ct=${res.headers["content-type"] ?? "none"} ` +
+        `body=${JSON.stringify(res.body)} text=${String(res.text ?? "").slice(0, 300)}`
+    );
   }
   return { number: res.body.number, id: res.body.id };
 }
@@ -318,9 +325,18 @@ describe("DELETE /api/v1/documents/:number — HubSpot tear-down", () => {
     const { number, id } = await createDocAs(token, company.id);
 
     // Simulate a previously-synced state by directly patching the row.
+    // `crmNoteProvider` is required alongside the note id: a DB CHECK
+    // enforces the pairing, and the teardown predicate compares it against
+    // env.CRM_PROVIDER (which is 'hubspot' by default) to decide whether
+    // the note is reachable at all.
     await db
       .update(documents)
-      .set({ hubspotSyncState: "synced", hubspotNoteId: "fake-note-42" })
+      .set({
+        hubspotSyncState: "synced",
+        hubspotNoteId: "fake-note-42",
+        crmNoteProvider: "hubspot",
+        crmNoteTarget: "company"
+      })
       .where(eq(documents.id, id));
 
     const deleteNoteSpy = vi.spyOn(hubspot, "deleteNote").mockResolvedValue();
@@ -338,6 +354,57 @@ describe("DELETE /api/v1/documents/:number — HubSpot tear-down", () => {
     expect(res.body.hubspotSyncState).toBe("not_synced");
   });
 
+  it("skips tear-down when the note lives in a DIFFERENT CRM than the active one", async () => {
+    // THE POINT OF THE ERA MARKER (docs/monday_migration_plan.md §3).
+    //
+    // The teardown predicate is `crmNoteProvider === env.CRM_PROVIDER`.
+    // Here the row carries a monday update while the app is running on
+    // HubSpot — the mirror image of the case that matters in production
+    // on 2026-09-01, when 34 HubSpot-era documents must stay deletable
+    // after the HubSpot account is gone. Either way the branch under test
+    // is the same one, and the assertion is the same: a note held by an
+    // inactive CRM is unreachable, so nothing is called and the delete
+    // proceeds normally instead of wedging on `delete_failed`.
+    //
+    // (`env` is Object.freeze'd, so the provider is varied on the ROW
+    // rather than by stubbing the environment.)
+    await createTestUser({ email: "admin@bsg.test", password: "admin12345", role: "admin" });
+    const [company] = await db
+      .insert(companies)
+      .values(companyFixture({ hubspotCompanyId: "del000000008" }))
+      .returning();
+    const token = await loginAs("admin@bsg.test", "admin12345");
+    const { number, id } = await createDocAs(token, company.id);
+
+    await db
+      .update(documents)
+      .set({
+        hubspotSyncState: "synced",
+        hubspotNoteId: "627117975",
+        crmNoteProvider: "monday",
+        crmNoteTarget: "company"
+      })
+      .where(eq(documents.id, id));
+
+    // If anything reached for HubSpot, this would reject and the delete
+    // would come back 502 with the row still alive.
+    const deleteNoteSpy = vi
+      .spyOn(hubspot, "deleteNote")
+      .mockRejectedValue(new Error("the other CRM must never be called"));
+    vi.spyOn(hubspot, "isConfigured").mockReturnValue(true);
+
+    const res = await request(app)
+      .delete(`/api/v1/documents/${number}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ reason: "client_request" });
+
+    expect(res.status).toBe(200);
+    expect(deleteNoteSpy).not.toHaveBeenCalled();
+    expect(res.body.deletedAt).not.toBeNull();
+    expect(res.body.hubspotSyncState).toBe("not_synced");
+    expect(res.body.hubspotNoteId).toBeNull();
+  });
+
   it("returns 502 + leaves row ALIVE with state='delete_failed' on HubSpot failure", async () => {
     await createTestUser({ email: "admin@bsg.test", password: "admin12345", role: "admin" });
     const [company] = await db.insert(companies).values(companyFixture({ hubspotCompanyId: "del000000007" })).returning();
@@ -346,7 +413,12 @@ describe("DELETE /api/v1/documents/:number — HubSpot tear-down", () => {
 
     await db
       .update(documents)
-      .set({ hubspotSyncState: "synced", hubspotNoteId: "fake-note-99" })
+      .set({
+        hubspotSyncState: "synced",
+        hubspotNoteId: "fake-note-99",
+        crmNoteProvider: "hubspot",
+        crmNoteTarget: "company"
+      })
       .where(eq(documents.id, id));
 
     vi.spyOn(hubspot, "isConfigured").mockReturnValue(true);

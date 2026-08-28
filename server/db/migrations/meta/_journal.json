@@ -141,6 +141,34 @@
       "when": 1780354800000,
       "tag": "0019_admin_actions_2fa_types",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1780441200000,
+      "tag": "0020_crm_note_provider_and_ledger",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1780527600000,
+      "tag": "0021_monday_binding_chain",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1780614000000,
+      "tag": "0022_monday_webhook_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1780700400000,
+      "tag": "0023_crm_note_provider_rollback_guard",
+      "breakpoints": true
     }
   ]
 }

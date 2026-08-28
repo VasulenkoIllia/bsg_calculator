@@ -62,6 +62,19 @@ export interface CompanyTypeaheadProps {
   className?: string;
   /** True when the field is required → asterisk in label. */
   required?: boolean;
+  /**
+   * Restrict the options to one company type.
+   *
+   * The two CLIENT pickers (wizard + save-calculator) pass
+   * "direct_client". Without it an operator can pick an agent as the
+   * merchant of a real Offer and nothing objects — the backend only
+   * validates that the company exists, never its type. Until the monday
+   * migration the only thing preventing this was the "(A) " prefix in
+   * the name, and monday names carry no prefix.
+   *
+   * Column filters leave it unset and list every type.
+   */
+  companyType?: "direct_client" | "referring_partner";
 }
 
 export function CompanyTypeahead({
@@ -70,13 +83,14 @@ export function CompanyTypeahead({
   label = "Company",
   placeholder = "Click to browse, or type to filter…",
   className = "w-full",
-  required = false
+  required = false,
+  companyType
 }: CompanyTypeaheadProps) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
-  const companySearch = useCompanySearch(query);
+  const companySearch = useCompanySearch(query, companyType);
 
   // Stable id pair so the <label htmlFor=…> binds to <input id=…> —
   // required for getByLabelText() in tests and for screen readers
@@ -270,7 +284,20 @@ export function CompanyTypeahead({
                     isHighlighted ? "bg-blue-100" : "hover:bg-blue-50"
                   }`}
                 >
-                  {c.name}
+                  <span>{c.name}</span>
+                  {/*
+                    Type badge. monday names carry no "(M) " / "(A) "
+                    prefix, so once the Agents board is synced this is the
+                    ONLY visual cue telling an operator that a row is an
+                    agent. Rendered wherever the list is unfiltered (the
+                    column filters); the client pickers filter agents out
+                    server-side, so it simply never appears there.
+                  */}
+                  {c.companyType === "referring_partner" ? (
+                    <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                      Agent
+                    </span>
+                  ) : null}
                 </li>
               );
             })

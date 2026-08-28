@@ -5,7 +5,31 @@ Single entry point for a developer taking over this codebase. It explains
 it in production.** Deeper references are linked at the end; this document is
 the map.
 
-Last updated: 2026-06-08.
+Last updated: 2026-08-28.
+
+> ## ⚠ The CRM is being replaced — read this first
+>
+> **HubSpot is switched off after 2026-08-31 and monday.com replaces it.**
+> Everything below that says "HubSpot" is still true *while*
+> `CRM_PROVIDER=hubspot`, which is the default and the shipped state.
+>
+> The integration is **provider-switched, not rewritten**: one env var,
+> `CRM_PROVIDER` (`hubspot` | `monday`), decides which system receives note
+> writes, which one owns display fields, and which webhook processor runs.
+> Exactly one is authoritative at a time; both can be *connected* at once,
+> which is the designed transition state.
+>
+> Start here, in this order:
+> - [`monday_migration_plan.md`](monday_migration_plan.md) — **authoritative**:
+>   decisions D1–D16, what was retracted and why, the era design.
+> - [`monday_audit_round4.md`](monday_audit_round4.md) — what was found and
+>   fixed in the final review, with evidence.
+> - [`monday_migration_analysis.md`](monday_migration_analysis.md) — the
+>   original inventory of every HubSpot touch-point in the code.
+> - The cutover runbook is deliberately **not in git** (it names prod hosts
+>   and paths, and this repo is public) — ask the maintainer for it.
+>
+> §10 below covers what actually differs between the two systems.
 
 ---
 
@@ -228,11 +252,59 @@ Other invariants:
   layout-mode matrix: [`pdf_rendering_logic_matrix.md`](pdf_rendering_logic_matrix.md),
   Agreement structure: [`agreement_structure.md`](agreement_structure.md).
 
-## 10. HubSpot integration
+## 10. CRM integration (HubSpot → monday.com)
 
-Live and entirely server-side. Reads companies/deals (TTL-cached), processes
-inbound webhooks (HMAC v3), and writes a document Note back to the parent
-company/deal on create (auto) and on manual Sync.
+Entirely server-side, and **provider-switched**: `CRM_PROVIDER` selects
+HubSpot or monday.com. Reads companies/deals, processes inbound webhooks,
+and writes a document Note back to the parent company/deal on create (auto)
+and on manual Sync.
+
+### What the switch actually governs
+
+| | `CRM_PROVIDER=hubspot` | `CRM_PROVIDER=monday` |
+|---|---|---|
+| Note writes | HubSpot | monday |
+| Owns name / stage / segment | HubSpot | monday |
+| Which webhook processor runs | HubSpot | monday |
+
+The two processors are mutually exclusive (`server/index.ts`). Note writes
+are never dual: `publishCrmNote` picks one system and, if the row is not
+bound to a monday item yet, **refuses** rather than falling back — writing
+silently to the wrong CRM is worse than a visible error.
+
+Reads, by contrast, are dual on purpose: the monday backfill can run while
+HubSpot is still authoritative, because it writes only *binding* columns
+(`crm_item_id`, `monday_raw`, …). Display fields are guarded by
+`mondayIsAuthoritative()`.
+
+Every note carries its own era marker, `crm_note_provider`. After the flip
+the 34 HubSpot-era notes simply become unreachable — a delete skips them
+instead of failing. `crm_notes` is the ledger of every note ever created,
+so teardown removes all of a document's notes, not just the newest.
+
+### What genuinely differs after the flip
+
+- **Deal amount, currency and business vertical stop updating.** Those
+  columns do not exist on the monday Deals board at all. Existing values
+  freeze; monday-native deals show them empty.
+- **Lifecycle vocabulary changes** — HubSpot's seven inconsistent values
+  become monday's three (`Lead` / `Opportunity` / `Disqualified`).
+- **No TTL-refresh-on-read.** That self-healing path is HubSpot-only and is
+  switched off after the flip, so freshness depends on webhooks — which
+  must be registered manually on all three boards. A nightly
+  `npm run monday:backfill` is the recommended safety net.
+- **A note is one API call, not two.** monday's item id *is* the
+  association, so the "note created but association failed" half-state is
+  structurally impossible.
+
+### Useful commands
+
+```bash
+npm run monday:drift      # read-only: has the monday account drifted?
+npm run monday:backfill   # pull companies/agents/deals from monday
+```
+
+### HubSpot-era behaviour (still current until the flip)
 
 Lifecycle handling worth knowing:
 - **Note sync** never mints duplicate Notes (advisory lock → `409
@@ -245,9 +317,11 @@ Lifecycle handling worth knowing:
   keeps + badges "Deleted in HubSpot" one that owns documents (legal records
   are never auto-deleted).
 
-Full detail: [`integrations.md`](integrations.md), field mapping:
+Full HubSpot detail: [`integrations.md`](integrations.md), field mapping:
 [`bsg_hubspot_field_mapping.md`](bsg_hubspot_field_mapping.md), operator flow:
-[`client_and_hubspot_workflow.md`](client_and_hubspot_workflow.md).
+[`client_and_hubspot_workflow.md`](client_and_hubspot_workflow.md). Those
+three describe the HubSpot era specifically — see the migration docs linked
+at the top for what replaces them.
 
 ## 11. Environment variables
 

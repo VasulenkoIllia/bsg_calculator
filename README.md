@@ -14,7 +14,8 @@ The calculator's math and business logic are stabilized and **must not be change
 - Document Wizard + OFFER PDF renderer: `src/components/document-wizard/*`;
   PDFs rendered server-side via Puppeteer.
 - Backend (`server/`): JWT auth + RBAC, **opt-in TOTP 2FA** (Google
-  Authenticator-compatible), HubSpot company/deal sync + webhooks, saved
+  Authenticator-compatible), CRM company/deal sync + webhooks (HubSpot,
+  moving to monday.com — see `docs/monday_migration_plan.md`), saved
   calculators + documents with soft-delete, an admin/audit surface.
 - Deployment target (test): `bsg.workflo.space` (Docker Compose + Traefik).
 
@@ -105,6 +106,7 @@ Current references (how the system works today):
 - [docs/backend_computation_boundary.md](docs/backend_computation_boundary.md) — what the backend recomputes vs trusts from snapshots.
 - [docs/deployment.md](docs/deployment.md) — production deployment + operations guide.
 - [docs/integrations.md](docs/integrations.md) — current and planned integrations.
+- [docs/monday_migration_plan.md](docs/monday_migration_plan.md) — **the CRM migration off HubSpot onto monday.com** (authoritative: decisions, era design), with [docs/monday_audit_round4.md](docs/monday_audit_round4.md) as the final review and [docs/monday_migration_analysis.md](docs/monday_migration_analysis.md) as the original code inventory.
 - [docs/client_and_hubspot_workflow.md](docs/client_and_hubspot_workflow.md) — client picker + HubSpot sync workflow.
 - [docs/bsg_hubspot_field_mapping.md](docs/bsg_hubspot_field_mapping.md) + [docs/hubspot_api_reference.md](docs/hubspot_api_reference.md) — HubSpot field selection + API reference.
 - [docs/spec_v2_alignment.md](docs/spec_v2_alignment.md) — implemented vs planned vs out-of-scope from `technical_specification_bsg.docx v2.0`.

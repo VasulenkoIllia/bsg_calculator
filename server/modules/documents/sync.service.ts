@@ -25,18 +25,19 @@
 import { sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { findCompanyById } from "../companies/companies.repository";
+import { findDealByHubspotId } from "../deals/deals.repository";
 import {
   ConflictError,
-  HubspotUnreachableError,
   NotFoundError,
   ValidationError
 } from "../../shared/errors";
 import { logger } from "../../middleware/logger";
-import { hubspot } from "../hubspot/hubspot.client";
 import {
   buildHubspotNoteBody,
   noteKindFromDocumentScope
 } from "../../shared/hubspot/note-builder";
+import { insertCrmNote } from "../crm-notes/crm-notes.repository";
+import { activeCrmName, crmIsConfigured, publishCrmNote } from "../crm-notes/crm-notes.service";
 import { insertDocumentEvent } from "../events/events.repository";
 import { tryRecordEvent } from "../events/events.helpers";
 import {
@@ -126,10 +127,10 @@ async function syncDocumentToHubspotLocked(
     throw new NotFoundError("Document");
   }
 
-  if (!hubspot.isConfigured()) {
+  if (!crmIsConfigured()) {
     throw new ValidationError(
-      [{ path: ["hubspot"], message: "HubSpot integration is not configured." }],
-      "HubSpot not configured"
+      [{ path: ["crm"], message: `${activeCrmName()} integration is not configured.` }],
+      `${activeCrmName()} not configured`
     );
   }
 
@@ -147,7 +148,11 @@ async function syncDocumentToHubspotLocked(
   // it owns documents). There is nothing upstream to attach a Note to —
   // an association would 400 ("associations are invalid"). Fail fast with
   // a clear reason instead of creating an orphan Note + spamming HubSpot.
-  if (company.hubspotDeletedAt) {
+  // Reads BOTH era flags. `hubspotDeletedAt` is written only by the
+  // HubSpot deletion webhook and freezes when HubSpot is switched off, so
+  // on that alone this precheck would never fire again — and a note would
+  // be posted to the card of a client the CRM says no longer exists.
+  if (company.hubspotDeletedAt || company.crmDeletedAt) {
     await updateDocumentHubspotSync(document.id, {
       hubspotSyncState: "failed",
       hubspotNoteId: null
@@ -197,30 +202,61 @@ async function syncDocumentToHubspotLocked(
     detailPath: `/documents/${encodeURIComponent(document.number)}`
   });
 
-  // Step 1: create the Note (no association yet).
+  // Resolve WHERE the note goes. Unchanged rule (decision D3, and the
+  // same one HubSpot has always used): the deal card when the document is
+  // pinned to a deal, otherwise the client card.
+  //
+  // Both ids are resolved because only `publishCrmNote` knows which CRM is
+  // live. The monday id comes from the parallel binding chain written by
+  // the remap.
+  const pinnedDeal = document.hubspotDealId
+    ? await findDealByHubspotId(document.hubspotDealId)
+    : undefined;
+
+  const target: { type: "deal" | "company"; hubspotId: string | null; mondayId: string | null } =
+    document.hubspotDealId !== null
+      ? {
+          type: "deal",
+          hubspotId: document.hubspotDealId,
+          mondayId: pinnedDeal?.crmItemId ?? null
+        }
+      : {
+          type: "company",
+          hubspotId: company.hubspotCompanyId,
+          mondayId: company.crmItemId ?? null
+        };
+
+  // Publish. In monday this is ONE call — the item id is the association —
+  // so the old "note created but association failed" half-state, and the
+  // whole `stage: 'associate'` recovery branch it needed, no longer exist.
   let noteId: string;
+  let provider: "hubspot" | "monday";
+  let targetObjectId: string;
   try {
-    const note = await hubspot.createNote({ body });
-    noteId = note.id;
+    const published = await publishCrmNote({
+      body,
+      target: target.type,
+      hubspotObjectId: target.hubspotId,
+      mondayItemId: target.mondayId,
+      documentId: document.id
+    });
+    noteId = published.noteId;
+    provider = published.provider;
+    targetObjectId = published.targetObjectId;
   } catch (err) {
-    // Mark the document failed BEFORE re-throwing so the next GET
-    // shows the failed badge. Don't carry forward an old noteId —
-    // that would be misleading (the new Note never landed).
+    // Mark the document failed BEFORE re-throwing so the next GET shows
+    // the failed badge. No note id is carried forward — nothing landed.
     await updateDocumentHubspotSync(document.id, {
       hubspotSyncState: "failed",
       hubspotNoteId: null
     });
-    // Phase 8 Stage 4 — best-effort sync_failed event.
-    // Sprint 9.M D1 — uses the shared `tryRecordEvent` helper that
-    // replaces 10+ identical try/catch + logger.warn blocks across
-    // the sync + delete + auto-save paths.
     await tryRecordEvent(
       () =>
         insertDocumentEvent({
           documentId: document.id,
           eventType: "sync_failed",
           actorUserId,
-          meta: { stage: "createNote", error: (err as Error).message }
+          meta: { stage: "publish", target: target.type, error: (err as Error).message }
         }),
       {
         label: "documents:sync",
@@ -231,76 +267,12 @@ async function syncDocumentToHubspotLocked(
       {
         documentId: document.id,
         documentNumber: document.number,
+        target: target.type,
         err: (err as Error).message
       },
-      "[documents:sync] createNote failed — document marked failed"
+      "[documents:sync] publishing the CRM note failed — document marked failed"
     );
     throw err;
-  }
-
-  // Step 2: associate the Note. Prefer Deal if the document is
-  // pinned to one (the operator confirmed this preference: "Тільки
-  // Deal якщо є, інакше Company").
-  const target =
-    document.hubspotDealId !== null
-      ? { type: "deal" as const, id: document.hubspotDealId }
-      : { type: "company" as const, id: company.hubspotCompanyId };
-
-  try {
-    await hubspot.associateNoteWith({
-      noteId,
-      toObjectType: target.type,
-      toObjectId: target.id
-    });
-  } catch (err) {
-    // The Note exists in HubSpot but has no associations — it'll
-    // show up as a stand-alone activity in the operator's HubSpot
-    // home feed. Not ideal, but not catastrophic. We still persist
-    // the noteId + state=failed so the operator can manually
-    // associate it (or click Retry, which creates a NEW Note +
-    // association — the orphan Note can be deleted later).
-    await updateDocumentHubspotSync(document.id, {
-      hubspotSyncState: "failed",
-      hubspotNoteId: noteId
-    });
-    // Phase 8 Stage 4 — record the partial failure on the timeline.
-    await tryRecordEvent(
-      () =>
-        insertDocumentEvent({
-          documentId: document.id,
-          eventType: "sync_failed",
-          actorUserId,
-          meta: {
-            stage: "associate",
-            noteId,
-            target,
-            error: (err as Error).message
-          }
-        }),
-      {
-        label: "documents:sync",
-        context: { documentId: document.id, noteId }
-      }
-    );
-    logger.error(
-      {
-        documentId: document.id,
-        documentNumber: document.number,
-        noteId,
-        associationTarget: target,
-        err: (err as Error).message
-      },
-      "[documents:sync] note created but association failed"
-    );
-    // Re-throw a HubspotUnreachableError so the controller's error
-    // handler maps it to 502. Original error (could be a plain
-    // Error from the .put helper) is wrapped for consistency.
-    throw err instanceof HubspotUnreachableError
-      ? err
-      : new HubspotUnreachableError(
-          `Note created (${noteId}) but association failed: ${(err as Error).message}`,
-          { noteId, target }
-        );
   }
 
   // Step 3: persist the new state. Single UPDATE — no TX needed
@@ -308,7 +280,9 @@ async function syncDocumentToHubspotLocked(
   // a real HubSpot note", and HubSpot already confirmed that.
   const updated = await updateDocumentHubspotSync(document.id, {
     hubspotSyncState: "synced",
-    hubspotNoteId: noteId
+    hubspotNoteId: noteId,
+    crmNoteProvider: provider,
+    crmNoteTarget: target.type
   });
   if (!updated) {
     // Pathological: the document row vanished between the find and
@@ -319,6 +293,28 @@ async function syncDocumentToHubspotLocked(
     );
   }
 
+  // Decision D16 — record this note in the ledger. `hubspot_note_id`
+  // above is only the MOST RECENT note; a re-sync mints another one
+  // (decision D14, unchanged from HubSpot behaviour). Teardown enumerates
+  // the ledger, so every note ever created for this document is removed
+  // on delete instead of just the newest — otherwise the older ones stay
+  // on a live client card forever, carrying the document number, the
+  // company name and a link into our SPA.
+  await tryRecordEvent(
+    () =>
+      insertCrmNote({
+        documentId: updated.id,
+        provider,
+        noteId,
+        target: target.type,
+        targetObjectId
+      }),
+    {
+      label: "documents:sync:ledger",
+      context: { documentId: updated.id, noteId }
+    }
+  );
+
   // Phase 8 Stage 4 — record the success on the History timeline.
   await tryRecordEvent(
     () =>
@@ -326,7 +322,7 @@ async function syncDocumentToHubspotLocked(
         documentId: updated.id,
         eventType: "synced_to_hubspot",
         actorUserId,
-        meta: { noteId, target }
+        meta: { noteId, provider, target: target.type }
       }),
     {
       label: "documents:sync",
@@ -339,9 +335,9 @@ async function syncDocumentToHubspotLocked(
       documentId: updated.id,
       documentNumber: updated.number,
       noteId,
-      associationTarget: target
+      target: target.type
     },
-    "[documents:sync] document synced to HubSpot"
+    "[documents:sync] document synced to the CRM"
   );
 
   // Re-fetch through the standard service so the public DTO carries

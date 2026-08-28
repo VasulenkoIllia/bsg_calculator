@@ -60,6 +60,7 @@
 
 import { db, pool } from "../db/client";
 import { companies as companiesTable, type Company } from "../db/schema";
+import { env } from "../config/env";
 import { logger } from "../middleware/logger";
 import { hubspot, isHubspotNotFound } from "../modules/hubspot/hubspot.client";
 import {
@@ -408,6 +409,18 @@ async function markDrifted(): Promise<void> {
 
 async function main(): Promise<void> {
   try {
+    // Refuse to run in the monday era. The runbook APPENDS to the live
+    // .env and never rewrites it, so HUBSPOT_API_TOKEN survives the flip
+    // and this script stays runnable long after HubSpot stopped being the
+    // source of truth. Writing HubSpot's view over monday-era rows would
+    // be silent and, for --prune-empty, destructive: it marks companies
+    // deleted based on a system we no longer follow. --force-hubspot-era
+    // exists for the one legitimate case, a rollback to HubSpot.
+    if (env.CRM_PROVIDER !== "hubspot" && !process.argv.includes("--force-hubspot-era")) {
+      throw new Error(
+        `CRM_PROVIDER is "${env.CRM_PROVIDER}", not "hubspot" — refusing to run a HubSpot-era script against monday-era data. Pass --force-hubspot-era only if you are deliberately rolling back to HubSpot.`
+      );
+    }
     if (!hubspot.isConfigured()) {
       throw new Error("HUBSPOT_API_TOKEN is not set. Add it to .env before running reconcile.");
     }

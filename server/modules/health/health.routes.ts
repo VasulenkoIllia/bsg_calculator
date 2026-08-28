@@ -15,6 +15,7 @@ import { Router } from "express";
 import { db } from "../../db/client";
 import { env } from "../../config/env";
 import { hubspot } from "../hubspot/hubspot.client";
+import { monday } from "../monday/monday.client";
 import { asyncHandler } from "../../shared/async-handler";
 
 export const healthRouter = Router();
@@ -52,12 +53,36 @@ healthRouter.get(
     // A 401 here is the most important signal: it means the
     // Private App token was revoked or rotated. Operator must
     // rotate HUBSPOT_API_TOKEN in env and restart.
-    if (env.HUBSPOT_API_TOKEN && hubspot.isConfigured()) {
+    // Only probe the CRM we actually use. Without the provider check
+    // /ready would report 503 forever once HubSpot is switched off, even
+    // though the app is perfectly healthy on monday.
+    if (
+      env.CRM_PROVIDER === "hubspot" &&
+      env.HUBSPOT_API_TOKEN &&
+      hubspot.isConfigured()
+    ) {
       try {
         await hubspot.listPipelineStages();
         checks.hubspot = "ok";
       } catch {
         checks.hubspot = "fail";
+        allOk = false;
+      }
+    }
+
+    // Mirror branch for monday. Without it the provider gate above meant
+    // that after the flip /ready probed NO crm at all: a revoked personal
+    // token would break every note write and every webhook while the probe
+    // happily reported "ready", and the first symptom would be an operator
+    // noticing a missing update on a card.
+    if (env.CRM_PROVIDER === "monday" && monday.isConfigured()) {
+      try {
+        // maxRetries 0 — a readiness probe must not stall for 8s on the
+        // rate-limit backoff.
+        await monday.query(`query { me { id } }`, { label: "ready", maxRetries: 0 });
+        checks.monday = "ok";
+      } catch {
+        checks.monday = "fail";
         allOk = false;
       }
     }

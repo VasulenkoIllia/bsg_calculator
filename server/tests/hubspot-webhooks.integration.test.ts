@@ -34,7 +34,7 @@ import { HubspotUnreachableError } from "../shared/errors";
 import { processWebhookBatch } from "../modules/hubspot/webhooks/webhooks.processor";
 import type { HubspotObject } from "../modules/hubspot/hubspot.types";
 import { companyFixture } from "./fixtures/company";
-import { app, createTestUser } from "./test-helpers";
+import { app, createTestUser, describeResponse } from "./test-helpers";
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
@@ -44,7 +44,7 @@ async function loginAs(email: string, password: string): Promise<string> {
   const res = await request(app)
     .post("/api/v1/auth/login")
     .send({ identifier: email, password });
-  if (res.status !== 200) throw new Error(`loginAs failed: ${res.status}`);
+  if (res.status !== 200) throw new Error(`loginAs failed: ${describeResponse(res)}`);
   return res.body.accessToken;
 }
 
