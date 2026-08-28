@@ -20,6 +20,7 @@ import {
   stopWebhookProcessor
 } from "./modules/hubspot/webhooks/webhooks.processor";
 import { monday } from "./modules/monday/monday.client";
+import { startMondayMaintenance } from "./modules/monday/monday.maintenance";
 import {
   startMondayWebhookProcessor,
   stopMondayWebhookProcessor
@@ -89,7 +90,10 @@ const server = app.listen(env.PORT, () => {
     // webhook still reports success.
     void monday
       .assertApiVersion()
-      .then(() => startMondayWebhookProcessor())
+      .then(() => {
+        startMondayWebhookProcessor();
+        startMondayMaintenance();
+      })
       .catch(err => {
         logger.error(
           { err: (err as Error).message },

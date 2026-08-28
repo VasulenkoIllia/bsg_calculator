@@ -219,6 +219,19 @@ const EnvSchema = z.object({
   ),
   HUBSPOT_API_BASE_URL: z.string().url().default("https://api.hubapi.com"),
   HUBSPOT_DEAL_PIPELINE_ID: z.string().optional(),
+  /**
+   * How often the scheduled backfill re-reads all three monday boards.
+   * 0 disables it — and disabling it means rows nobody opens never
+   * self-heal, because TTL-refresh only fires on read. 24 is the
+   * intended production value.
+   */
+  MONDAY_BACKFILL_INTERVAL_HOURS: z.coerce.number().int().min(0).max(168).default(24),
+  /**
+   * Delay before the FIRST scheduled backfill after boot. A restart loop
+   * would otherwise hit monday with a full three-board read on every
+   * boot; this makes a crash-looping container cheap instead of abusive.
+   */
+  MONDAY_BACKFILL_FIRST_DELAY_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
   HUBSPOT_SYNC_TTL_SECONDS: z.coerce.number().int().min(0).default(300),
   HUBSPOT_WEBHOOK_SECRET: z.string().optional(),
   // Restrict which company_type values land in our DB. Empty = pull
