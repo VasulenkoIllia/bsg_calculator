@@ -81,12 +81,39 @@ re-read of that one item. This is what heals a row after a lost webhook.
 It never acts on absence and never fires for an unbound row — see
 `monday.refresh.ts` for why.
 
-**Backfill.** `npm run monday:backfill` re-reads all three boards. It is
-the only path allowed to conclude "this item is gone", because it has the
-context to tell one missing item from a failed read — and it aborts if
-more than 5% of bound rows go missing at once.
+**Scheduled backfill.** Every `MONDAY_BACKFILL_INTERVAL_HOURS` (default
+24, first run 15 minutes after boot) the app re-reads all three boards.
+This is what heals rows NOBODY OPENS — the TTL refresh cannot, because it
+only fires on read, and a client nobody looks at for three months would
+otherwise sit wrong for three months. It is also the only path allowed to
+conclude "this item is gone", because it sees a whole board at once and
+aborts if more than 5% of bound rows go missing together.
+
+Setting the interval to 0 disables it, and the startup path logs a WARN
+saying so — a silently absent safety net is how this gap appeared in the
+first place.
+
+The same script is available on demand: `npm run monday:backfill`.
 
 ## 6. Checking that it is alive
+
+Once an hour the app logs the queue itself, and **the level carries the
+meaning**:
+
+- `ERROR` — events have exhausted their retries. Each one is a change from
+  monday that was never applied.
+- `WARN` — the oldest pending event is over ten minutes old; the processor
+  is not draining.
+- `INFO` — healthy.
+
+```bash
+docker compose logs --since 24h app | grep "monday:health"
+```
+
+This is visibility, not paging: nobody is woken up. It exists because the
+failure being guarded against is *nobody thinking to look*.
+
+On demand:
 
 ```bash
 curl -s http://127.0.0.1:8080/ready
@@ -166,11 +193,10 @@ would take the unrelated nginx-proxy-manager stack with it.
 
 ## 9. Known gaps
 
-- **No scheduled backfill.** The TTL refresh only heals rows somebody
-  looks at. A nightly `monday:backfill` would also cover rows nobody
-  reads, and would prove the API path daily. Recommended, not yet done.
-- **`failed` queue rows are visible but not alerted.** Somebody has to
-  look at `/ready`.
+- **No paging.** Queue health is logged hourly and exposed on `/ready`,
+  but nothing sends anyone a message. Closing this properly needs a
+  destination (email, Slack, an uptime probe hitting `/ready`), which is
+  an infrastructure decision rather than a code one.
 - **Field names still say `hubspot`** — `hubspot_company_id` holds
   `mon:<id>` for monday-native rows. Renaming the schema and the wire
   contract is a coordinated change, deliberately deferred.
