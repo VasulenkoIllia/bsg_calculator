@@ -112,7 +112,7 @@ export function CompaniesPage() {
                 activeDirection={sortDir}
                 onSortChange={handleSortChange}
               >
-                HubSpot updated
+                CRM updated
               </SortableTh>
             </tr>
           </thead>

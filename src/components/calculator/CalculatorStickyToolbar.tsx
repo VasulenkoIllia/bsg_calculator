@@ -138,13 +138,13 @@ export function CalculatorStickyToolbar({
                     ? "bg-red-100 text-red-700"
                     : "bg-slate-100 text-slate-500"
               ].join(" ")}
-              title="HubSpot sync state for this calc-config"
+              title="CRM sync state for this calc-config"
             >
               {hubspotSyncState === "synced"
-                ? "✓ HubSpot"
+                ? "✓ CRM"
                 : hubspotSyncState === "failed"
-                  ? "× HubSpot"
-                  : "HubSpot: off"}
+                  ? "× CRM"
+                  : "CRM: off"}
             </span>
           ) : null}
         </div>
@@ -207,8 +207,8 @@ export function CalculatorStickyToolbar({
                 : hubspotSyncState === "synced"
                   ? "Sync again"
                   : hubspotSyncState === "failed"
-                    ? "Retry HubSpot"
-                    : "Sync to HubSpot"}
+                    ? "Retry sync"
+                    : "Sync to CRM"}
             </button>
           ) : null}
           <button

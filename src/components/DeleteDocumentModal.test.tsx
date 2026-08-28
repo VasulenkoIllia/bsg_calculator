@@ -45,17 +45,17 @@ describe("DeleteDocumentModal — rendering", () => {
     expect((select as HTMLSelectElement).value).toBe("client_request");
   });
 
-  it("shows the HubSpot warning when hasHubspotNote=true", () => {
+  it("shows the CRM-note warning when hasHubspotNote=true", () => {
     mountModal({ hasHubspotNote: true });
     expect(
-      screen.getByText(/HubSpot Note will be PERMANENTLY deleted/i)
+      screen.getByText(/CRM note will be PERMANENTLY deleted/i)
     ).toBeInTheDocument();
   });
 
-  it("hides the HubSpot warning when hasHubspotNote=false", () => {
+  it("hides the CRM-note warning when hasHubspotNote=false", () => {
     mountModal({ hasHubspotNote: false });
     expect(
-      screen.getByText(/No HubSpot Note is linked/i)
+      screen.getByText(/No CRM note is linked/i)
     ).toBeInTheDocument();
   });
 
@@ -146,7 +146,7 @@ describe("DeleteDocumentModal — server errors", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/HubSpot is unreachable/i)
+        screen.getByText(/CRM is unreachable/i)
       ).toBeInTheDocument();
     });
   });

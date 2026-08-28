@@ -118,7 +118,7 @@ describe("EventHistoryPanel — per-event meta", () => {
       />
     );
     expect(screen.getByText(/noteId: 12345/i)).toBeInTheDocument();
-    expect(screen.getByText(/Synced to HubSpot/i)).toBeInTheDocument();
+    expect(screen.getByText(/Synced to CRM/i)).toBeInTheDocument();
   });
 
   it("renders error string on sync_failed", () => {
@@ -135,7 +135,7 @@ describe("EventHistoryPanel — per-event meta", () => {
       />
     );
     expect(screen.getByText(/error: HubSpot rate-limited/i)).toBeInTheDocument();
-    expect(screen.getByText(/Sync to HubSpot failed/i)).toBeInTheDocument();
+    expect(screen.getByText(/Sync to CRM failed/i)).toBeInTheDocument();
   });
 
   it("renders 'saved as file' / 'viewed inline' on pdf_downloaded", () => {

@@ -52,16 +52,16 @@ describe("DeleteCalculatorModal — rendering", () => {
     expect((select as HTMLSelectElement).value).toBe("client_request");
   });
 
-  it("shows the HubSpot warning when hasHubspotNote=true", () => {
+  it("shows the CRM-note warning when hasHubspotNote=true", () => {
     mountModal({ hasHubspotNote: true });
     expect(
-      screen.getByText(/HubSpot Note will be PERMANENTLY deleted/i)
+      screen.getByText(/CRM note will be PERMANENTLY deleted/i)
     ).toBeInTheDocument();
   });
 
-  it("hides the HubSpot warning when hasHubspotNote=false", () => {
+  it("hides the CRM-note warning when hasHubspotNote=false", () => {
     mountModal({ hasHubspotNote: false });
-    expect(screen.getByText(/No HubSpot Note is linked/i)).toBeInTheDocument();
+    expect(screen.getByText(/No CRM note is linked/i)).toBeInTheDocument();
   });
 
   it("falls back to (untitled) when title is null", () => {
@@ -157,7 +157,7 @@ describe("DeleteCalculatorModal — server errors", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Delete calculator$/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/HubSpot is unreachable/i)).toBeInTheDocument();
+      expect(screen.getByText(/CRM is unreachable/i)).toBeInTheDocument();
     });
   });
 });

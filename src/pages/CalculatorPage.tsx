@@ -259,7 +259,7 @@ export function CalculatorPage() {
       const updated = await configsApi.syncCalculatorConfigToHubspot(configId);
       // Optimistic single-config cache update; `finally` reconciles.
       queryClient.setQueryData(["calculator-configs", "get", configId], updated);
-      toast.success("Calculator synced to HubSpot.");
+      toast.success("Calculator synced to the CRM.");
     } catch (err) {
       // 409 = a concurrent sync is already running (backend advisory
       // lock). Not a failure — soft info instead of a scary "Sync
@@ -486,8 +486,8 @@ export function CalculatorPage() {
 
       <ConfirmDialog
         open={resyncConfirmOpen}
-        title="Sync again to HubSpot?"
-        message="This calculator is already synced. Syncing again creates a NEW HubSpot Note (the previous one stays as history)."
+        title="Sync again to the CRM?"
+        message="This calculator is already synced. Syncing again creates a NEW note in the CRM (the previous one stays as history)."
         confirmLabel="Sync again"
         pending={calcSyncPending}
         onCancel={() => setResyncConfirmOpen(false)}

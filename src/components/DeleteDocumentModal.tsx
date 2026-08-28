@@ -80,7 +80,7 @@ export function DeleteDocumentModal({
           );
         } else if (err.code === "HUBSPOT_UNREACHABLE") {
           setError(
-            "HubSpot is unreachable. The document was NOT deleted. " +
+            "The CRM is unreachable. The document was NOT deleted. " +
               "Wait a moment and try again — the row is now in 'delete_failed' state."
           );
         } else {
@@ -120,8 +120,8 @@ export function DeleteDocumentModal({
           <p className="mt-1 text-sm text-slate-500">
             The document will be soft-deleted (BSG-XXXXX stays reserved).
             {hasHubspotNote
-              ? " The linked HubSpot Note will be PERMANENTLY deleted."
-              : " No HubSpot Note is linked — only the local row is affected."}
+              ? " The linked CRM note will be PERMANENTLY deleted."
+              : " No CRM note is linked — only the local row is affected."}
           </p>
         </header>
 

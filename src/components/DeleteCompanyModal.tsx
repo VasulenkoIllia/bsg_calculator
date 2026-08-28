@@ -76,7 +76,7 @@ export function DeleteCompanyModal({
         </header>
 
         <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          Only do this for a company that was deleted in HubSpot and whose
+          Only do this for a company that was deleted in the CRM and whose
           documents are no longer needed.
         </p>
 

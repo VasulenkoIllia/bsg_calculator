@@ -175,7 +175,7 @@ export function CompanyDetailPage() {
             <dd>{company.lifecycleStage ?? "—"}</dd>
           </div>
           <div>
-            <dt className="font-semibold text-slate-500">HubSpot ID</dt>
+            <dt className="font-semibold text-slate-500">CRM ID</dt>
             <dd className="font-mono text-xs">{company.hubspotCompanyId}</dd>
           </div>
           <div>
@@ -395,7 +395,7 @@ function DealsTable({
             activeDirection={sort.direction}
             onSortChange={sort.onChange}
           >
-            HubSpot updated
+            CRM updated
           </SortableTh>
         </tr>
       </thead>
@@ -482,7 +482,7 @@ function CalcsTable({
             activeField={sort.field}
             activeDirection={sort.direction}
             onSortChange={sort.onChange}
-            tooltip="HubSpot deal ID if the draft is pinned to a specific deal, or 'company-level' if it's available to any deal of the parent company."
+            tooltip="CRM deal id if the draft is pinned to a specific deal, or 'company-level' if it's available to any deal of the parent company."
           >
             Deal
           </SortableTh>

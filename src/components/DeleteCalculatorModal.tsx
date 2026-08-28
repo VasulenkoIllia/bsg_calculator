@@ -83,7 +83,7 @@ export function DeleteCalculatorModal({
           setError("Another delete for this calculator is already in progress. Try again in a moment.");
         } else if (err.code === "HUBSPOT_UNREACHABLE") {
           setError(
-            "HubSpot is unreachable. The calculator was NOT deleted. " +
+            "The CRM is unreachable. The calculator was NOT deleted. " +
               "Wait a moment and try again — the row is now in 'delete_failed' state."
           );
         } else {
@@ -127,8 +127,8 @@ export function DeleteCalculatorModal({
             soft-deleted — it stays in the list with a “Deleted” badge and a
             super-admin can restore it later.
             {hasHubspotNote
-              ? " The linked HubSpot Note will be PERMANENTLY deleted."
-              : " No HubSpot Note is linked — only the local row is affected."}
+              ? " The linked CRM note will be PERMANENTLY deleted."
+              : " No CRM note is linked — only the local row is affected."}
           </p>
         </header>
 

@@ -33,8 +33,8 @@ const EVENT_LABEL: Record<string, string> = {
   // Phase 8 Stage 4 — the original document/calc event vocabulary.
   created: "Created",
   pdf_downloaded: "PDF downloaded",
-  synced_to_hubspot: "Synced to HubSpot",
-  sync_failed: "Sync to HubSpot failed",
+  synced_to_hubspot: "Synced to CRM",
+  sync_failed: "Sync to CRM failed",
   // Phase 8 Stage 5 — soft-delete + super_admin restore.
   deleted: "Deleted",
   restored: "Restored",

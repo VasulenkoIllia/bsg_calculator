@@ -132,7 +132,7 @@ export function formatAdminActionType(type: AdminActionType): string {
     case "document.created":
       return "Created document";
     case "document.synced":
-      return "Synced document to HubSpot";
+      return "Synced document to CRM";
     case "document.deleted":
       return "Deleted document";
     case "document.restored":
@@ -144,7 +144,7 @@ export function formatAdminActionType(type: AdminActionType): string {
     case "calc.deleted":
       return "Deleted calculator";
     case "calc.synced":
-      return "Synced calculator to HubSpot";
+      return "Synced calculator to CRM";
     default: {
       const _exhaustive: never = type;
       return String(_exhaustive);

@@ -186,7 +186,7 @@ export function DocumentViewPage() {
       // flips immediately; the `finally` invalidate then reconciles.
       // Query key shape: ["documents", "get", number] — see useDocument().
       queryClient.setQueryData(["documents", "get", number], updated);
-      toast.success("Document synced to HubSpot.");
+      toast.success("Document synced to the CRM.");
     } catch (err) {
       // 409 = a concurrent sync is already running (backend advisory
       // lock). NOT a failure — the other run finishes and updates the
@@ -248,7 +248,7 @@ export function DocumentViewPage() {
           {/*
             Phase 9 — HubSpot sync status badge. Three states:
               - not_synced: neutral grey "Not synced"
-              - synced: green "✓ Synced to HubSpot"
+              - synced: green "✓ Synced to CRM"
               - failed: red "Sync failed"
             Mirrors the badge on the /documents listing row but
             larger + more prominent here on the detail page.
@@ -269,7 +269,7 @@ export function DocumentViewPage() {
             }
           >
             {doc.hubspotSyncState === "synced"
-              ? "✓ Synced to HubSpot"
+              ? "✓ Synced to CRM"
               : doc.hubspotSyncState === "failed"
                 ? "× Sync failed"
                 : "Not synced"}
@@ -369,12 +369,12 @@ export function DocumentViewPage() {
               {syncPending
                 ? "Syncing…"
                 : doc.hubspotSyncState === "synced"
-                  ? "Sync again to HubSpot"
+                  ? "Sync again to the CRM"
                   : doc.hubspotSyncState === "failed"
-                    ? "Retry HubSpot sync"
+                    ? "Retry CRM sync"
                     : doc.hubspotSyncState === "delete_failed"
                       ? "Retry delete"
-                      : "Sync to HubSpot"}
+                      : "Sync to CRM"}
             </button>
           ) : null}
           {/* Phase 8 Stage 5 — Delete (admin) / Restore (super_admin)
@@ -416,8 +416,8 @@ export function DocumentViewPage() {
         ) : null}
         <ConfirmDialog
           open={resyncConfirmOpen}
-          title="Sync again to HubSpot?"
-          message="This document is already synced. Syncing again creates a NEW HubSpot Note (the previous one stays as history)."
+          title="Sync again to the CRM?"
+          message="This document is already synced. Syncing again creates a NEW note in the CRM (the previous one stays as history)."
           confirmLabel="Sync again"
           pending={syncPending}
           onCancel={() => setResyncConfirmOpen(false)}
