@@ -18,6 +18,8 @@ import { NotFoundError, ValidationError } from "../../shared/errors";
 import { buildSortedPage, type PageResult } from "../../shared/sorted-pagination";
 import { scheduleTtlRefresh as runTtlRefresh } from "../../shared/ttl-refresh";
 import { hubspot } from "../hubspot/hubspot.client";
+import { monday } from "../monday/monday.client";
+import { refreshCompanyFromMonday } from "../monday/monday.refresh";
 import { mapHubspotCompanyToRow } from "../hubspot/hubspot.mapper";
 import { hardDeleteDocumentsByCompanyId } from "../documents/documents.repository";
 import { deleteDealsByCompanyId } from "../deals/deals.repository";
@@ -86,20 +88,39 @@ export async function getCompany(id: string): Promise<CompanyPublic> {
  * and upsert. Runs in background — caller never awaits.
  */
 export async function scheduleTtlRefresh(row: Company): Promise<void> {
+  // Refresh from whichever CRM is ACTIVE. This used to be HubSpot-only,
+  // which meant the self-healing path simply stopped existing at the
+  // cutover: freshness rested entirely on webhooks, so a webhook deleted
+  // in monday — or an event that burned its five retries — left a row
+  // wrong indefinitely with nothing to notice. HubSpot had this safety
+  // net for a year; monday now has the same one.
+  const usingMonday = env.CRM_PROVIDER === "monday";
+
   return runTtlRefresh({
     lastSyncedAt: row.lastSyncedAt,
     ttlMs: env.HUBSPOT_SYNC_TTL_SECONDS * 1000,
-    // Only refresh from HubSpot while HubSpot is the active CRM. After
-    // the flip this silently stops instead of firing a background fetch
-    // at a dead API on every stale GET (and logging a warn each time).
-    enabled: hubspot.isConfigured() && env.CRM_PROVIDER === "hubspot",
-    logLabel: "[companies] TTL refresh",
-    logContext: { hubspotCompanyId: row.hubspotCompanyId },
-    refresh: async () => {
-      const fresh = await hubspot.getCompany(row.hubspotCompanyId);
-      const mapped = mapHubspotCompanyToRow(fresh);
-      if (mapped) await upsertCompany(mapped);
-    }
+    // An unbound row has nothing to refresh FROM — the remap has not
+    // reached it (the five test companies are the live example). Firing a
+    // fetch for it would be a guaranteed miss on every stale read.
+    enabled: usingMonday
+      ? monday.isConfigured() && row.crmItemId !== null
+      : hubspot.isConfigured(),
+    logLabel: usingMonday ? "[companies] monday TTL refresh" : "[companies] HubSpot TTL refresh",
+    logContext: usingMonday
+      ? { crmItemId: row.crmItemId }
+      : { hubspotCompanyId: row.hubspotCompanyId },
+    refresh: usingMonday
+      ? () =>
+          refreshCompanyFromMonday({
+            crmItemId: row.crmItemId as string,
+            crmBoardId: row.crmBoardId ?? null,
+            companyType: row.companyType ?? null
+          })
+      : async () => {
+          const fresh = await hubspot.getCompany(row.hubspotCompanyId);
+          const mapped = mapHubspotCompanyToRow(fresh);
+          if (mapped) await upsertCompany(mapped);
+        }
   });
 }
 

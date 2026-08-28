@@ -10,6 +10,8 @@ import { scheduleTtlRefresh as runTtlRefresh } from "../../shared/ttl-refresh";
 import { logger } from "../../middleware/logger";
 import { getCompany, loadCompanyByHubspotIdOrNull } from "../companies/companies.service";
 import { hubspot } from "../hubspot/hubspot.client";
+import { monday } from "../monday/monday.client";
+import { refreshDealFromMonday } from "../monday/monday.refresh";
 import {
   extractDealCompanyCandidates,
   mapHubspotDealToRow
@@ -132,14 +134,30 @@ export async function resolveDealCompany(
  * = Merchant) from silently failing FK on refresh.
  */
 export async function scheduleTtlRefresh(row: Deal): Promise<void> {
+  // See companies.service for the reasoning: the self-healing path was
+  // HubSpot-only and stopped existing at the cutover. monday now has it
+  // too, so a lost webhook no longer leaves a deal wrong forever.
+  const usingMonday = env.CRM_PROVIDER === "monday";
+  if (usingMonday) {
+    return runTtlRefresh({
+      lastSyncedAt: row.lastSyncedAt,
+      ttlMs: env.HUBSPOT_SYNC_TTL_SECONDS * 1000,
+      enabled: monday.isConfigured() && row.crmItemId !== null,
+      logLabel: "[deals] monday TTL refresh",
+      logContext: { crmItemId: row.crmItemId },
+      refresh: () =>
+        refreshDealFromMonday({
+          crmItemId: row.crmItemId as string,
+          crmBoardId: row.crmBoardId ?? null
+        })
+    });
+  }
+
   return runTtlRefresh({
     lastSyncedAt: row.lastSyncedAt,
     ttlMs: env.HUBSPOT_SYNC_TTL_SECONDS * 1000,
-    // Only refresh from HubSpot while HubSpot is the active CRM. After
-    // the flip this silently stops instead of firing a background fetch
-    // at a dead API on every stale GET (and logging a warn each time).
-    enabled: hubspot.isConfigured() && env.CRM_PROVIDER === "hubspot",
-    logLabel: "[deals] TTL refresh",
+    enabled: hubspot.isConfigured(),
+    logLabel: "[deals] HubSpot TTL refresh",
     logContext: { hubspotDealId: row.hubspotDealId },
     refresh: async () => {
       const fresh = await hubspot.getDeal(row.hubspotDealId);

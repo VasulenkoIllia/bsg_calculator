@@ -87,9 +87,49 @@ healthRouter.get(
       }
     }
 
+    // Webhook queue health — REPORTED, never used to fail readiness.
+    //
+    // The dangerous monday failure is silence: a webhook deleted on a
+    // board, or events burning their five retries, and nothing anywhere
+    // says so. An empty queue is indistinguishable from a quiet CRM, so
+    // these numbers are the only way to tell the two apart from outside.
+    //
+    // Deliberately NOT part of `allOk`: a backlog means data is late, not
+    // that the app should be pulled out of service. Making it fail
+    // readiness would take the whole site down over a stale company name.
+    let queue: Record<string, number | string | null> | undefined;
+    if (env.CRM_PROVIDER === "monday") {
+      try {
+        const q = await db.execute<{
+          pending: number;
+          failed: number;
+          oldest_pending_age_s: number | null;
+          last_processed_age_s: number | null;
+        }>(sql`
+          SELECT
+            count(*) FILTER (WHERE status = 'pending')::int AS pending,
+            count(*) FILTER (WHERE status = 'failed')::int  AS failed,
+            EXTRACT(EPOCH FROM now() - min(received_at) FILTER (WHERE status = 'pending'))::int
+              AS oldest_pending_age_s,
+            EXTRACT(EPOCH FROM now() - max(processed_at))::int AS last_processed_age_s
+          FROM monday_webhook_events
+        `);
+        const r = q.rows[0];
+        queue = {
+          pending: Number(r?.pending ?? 0),
+          failed: Number(r?.failed ?? 0),
+          oldestPendingAgeSeconds: r?.oldest_pending_age_s ?? null,
+          lastProcessedAgeSeconds: r?.last_processed_age_s ?? null
+        };
+      } catch (err) {
+        queue = { error: (err as Error).message.slice(0, 120) };
+      }
+    }
+
     res.status(allOk ? 200 : 503).json({
       status: allOk ? "ready" : "degraded",
       checks,
+      ...(queue ? { mondayWebhookQueue: queue } : {}),
       ts: new Date().toISOString()
     });
   })

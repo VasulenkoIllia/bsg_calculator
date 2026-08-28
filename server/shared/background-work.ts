@@ -58,3 +58,22 @@ export async function settleBackgroundWork(maxRounds = 50): Promise<void> {
 export function pendingBackgroundWorkCount(): number {
   return pending.size;
 }
+
+/**
+ * Await detached work the way a caller almost always means it.
+ *
+ * `settleBackgroundWork` alone is a footgun: `track()` runs INSIDE the
+ * `setImmediate` callback, so at the moment you call it the registry can
+ * still be empty and it returns instantly, having waited for nothing.
+ * The tick before each drain is what makes it correct, and the second
+ * round covers work that schedules more work.
+ *
+ * The test suite's own `beforeEach` had this right and a later test did
+ * not, which is exactly why it lives here now instead of being copied.
+ */
+export async function flushDetachedWork(): Promise<void> {
+  await new Promise(resolve => setImmediate(resolve));
+  await settleBackgroundWork();
+  await new Promise(resolve => setImmediate(resolve));
+  await settleBackgroundWork();
+}

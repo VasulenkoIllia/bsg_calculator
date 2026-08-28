@@ -19,13 +19,7 @@ import { logger } from "../../../middleware/logger";
 import type { MondayWebhookEvent } from "../../../db/schema";
 import { monday } from "../monday.client";
 import { classifyMondayItem } from "../monday.types";
-import {
-  AGENT_COLUMNS,
-  COMPANY_COLUMNS,
-  DEAL_COLUMNS,
-  resolveBoardColumns,
-  type ResolvedColumns
-} from "../monday.columns";
+import { columnsFor } from "../monday.column-cache";
 import { upsertOneCompany, upsertOneDeal } from "../monday.backfill";
 import {
   listPendingMondayEvents,
@@ -38,27 +32,6 @@ const MAX_ATTEMPTS = 5;
 const BATCH_SIZE = 50;
 const POLL_INTERVAL_MS = 5_000;
 
-/**
- * Column maps are cached, but only briefly.
- *
- * A permanent cache would mean a column recreated in monday keeps
- * resolving to the OLD id for as long as the process lives — and since
- * the resolver only fails loud at resolution time, the mapper would
- * quietly write NULLs in the meantime. Boards were rebuilt four times in
- * the week this was written, so the TTL is deliberately short:
- * `resolveBoardColumns` is one cheap query.
- */
-const COLUMN_CACHE_TTL_MS = 5 * 60 * 1000;
-const columnCache = new Map<string, { at: number; cols: ResolvedColumns }>();
-async function columnsFor(boardId: string, objectType: "company" | "agent" | "deal") {
-  const cached = columnCache.get(boardId);
-  if (cached && Date.now() - cached.at < COLUMN_CACHE_TTL_MS) return cached.cols;
-  const specs =
-    objectType === "deal" ? DEAL_COLUMNS : objectType === "agent" ? AGENT_COLUMNS : COMPANY_COLUMNS;
-  const resolved = await resolveBoardColumns(boardId, specs);
-  columnCache.set(boardId, { at: Date.now(), cols: resolved });
-  return resolved;
-}
 
 /**
  * An item left its board (deleted, archived, or moved out of scope).

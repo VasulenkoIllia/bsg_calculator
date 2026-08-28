@@ -15,8 +15,8 @@
 
 import { afterAll, afterEach, beforeAll, beforeEach } from "vitest";
 import {
-  pendingBackgroundWorkCount,
-  settleBackgroundWork
+  flushDetachedWork,
+  pendingBackgroundWorkCount
 } from "../shared/background-work";
 import { sql } from "drizzle-orm";
 import pg from "pg";
@@ -141,15 +141,7 @@ beforeAll(async () => {
  * thing.
  */
 async function flushPendingBackgroundWork(): Promise<void> {
-  // One tick first, so work scheduled with `setImmediate` has actually
-  // been HANDED to the registry before we look at it — `track()` runs
-  // inside the setImmediate callback, not at schedule time.
-  await new Promise(resolve => setImmediate(resolve));
-  await settleBackgroundWork();
-  // Second pass: settling one promise can schedule another setImmediate,
-  // which is not in the registry until its tick runs.
-  await new Promise(resolve => setImmediate(resolve));
-  await settleBackgroundWork();
+  await flushDetachedWork();
 
   if (pendingBackgroundWorkCount() > 0) {
     // Never silently give up: leftover work is exactly what corrupts the
