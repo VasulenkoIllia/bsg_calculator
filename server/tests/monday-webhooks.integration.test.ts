@@ -140,3 +140,56 @@ describe("POST /api/v1/monday/webhooks/:secret — queueing", () => {
     expect((await queued())[0].object_type).toBe("deal");
   });
 });
+
+describe("POST /api/v1/monday/webhooks/:secret — monday's delivered vocabulary", () => {
+  // The cutover failed on exactly this. The `create_webhook` mutation takes
+  // `create_item`, but the delivery says `create_pulse`. Our allowlist held
+  // the mutation's names, so every real event was ACKed with 200, logged as
+  // "not subscribed", and dropped. The queue stayed empty and the
+  // integration looked perfectly healthy while syncing nothing.
+  const DELIVERED: Array<[string, string]> = [
+    ["create_pulse", "create_item"],
+    ["update_name", "change_name"],
+    ["update_column_value", "change_column_value"],
+    ["delete_pulse", "item_deleted"],
+    ["archive_pulse", "item_archived"],
+    ["restore_pulse", "item_restored"],
+    ["move_pulse_into_group", "item_moved_to_any_group"]
+  ];
+
+  for (const [delivered, canonical] of DELIVERED) {
+    it(`queues "${delivered}" as "${canonical}"`, async () => {
+      const res = await request(app)
+        .post(PATH)
+        .send(eventBody({ type: delivered, pulseId: "3170219470" }));
+      expect(res.status).toBe(200);
+      expect(res.body.accepted).toBe(1);
+
+      const rows = await queued();
+      expect(rows).toHaveLength(1);
+      // Stored CANONICALLY: the processor branches on these names, so a
+      // raw `archive_pulse` in the queue would reach the delete path and
+      // be treated as an ordinary upsert.
+      expect(rows[0].event_type).toBe(canonical);
+    });
+  }
+
+  it("still passes canonical names straight through", async () => {
+    const res = await request(app)
+      .post(PATH)
+      .send(eventBody({ type: "create_item", pulseId: "3170219470" }));
+    expect(res.status).toBe(200);
+    expect((await queued())[0].event_type).toBe("create_item");
+  });
+
+  it("ACKs and drops a genuinely unknown type without queueing it", async () => {
+    // Must stay 200: a non-2xx makes monday retry the same body every
+    // minute for thirty minutes.
+    const res = await request(app)
+      .post(PATH)
+      .send(eventBody({ type: "some_future_event", pulseId: "3170219470" }));
+    expect(res.status).toBe(200);
+    expect(res.body.accepted).toBe(0);
+    expect(await queued()).toHaveLength(0);
+  });
+});

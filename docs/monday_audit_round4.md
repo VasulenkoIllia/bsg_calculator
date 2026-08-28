@@ -215,9 +215,21 @@ step immediately before the Stage F freeze. It is read-only.
   accepted, because nothing is pinned to it and every new deal from monday
   attaches to the primary row. See `monday_migration_plan.md` §open
   questions item 5 for the full reasoning and the one-line reversal.
-- ~~**monday plan limits**~~ — **answered 2026-08-28.** The account reads
-  `tier: "pro"`, so the subscription is live. (`account.plan` returns
-  `null` on this billing model; `tier` is the field that answers it.) The
-  complexity ceiling is 1,000,000 per minute against ~3,000 for a full
-  three-board pass, so the client's self-throttle at 50,000 remaining will
-  not fire in normal operation.
+- ⛔ **monday subscription is NOT paid — 3 days of trial left (2026-08-28).**
+  An earlier entry here claimed the opposite. That was a misreading: the
+  API returns `tier: "pro"`, which describes the **trial's feature tier**,
+  not payment. `account.plan` returning `null` was the real signal, and the
+  monday UI states plainly "You have 3 days left on your trial".
+
+  **This is now the single highest risk in the whole migration.** The trial
+  expires around 2026-08-31 — the same day HubSpot is switched off. If both
+  lapse, the system has no working CRM at all: note writes fail, webhooks
+  stop being served, and the backfill cannot read. There is no fallback,
+  because the HubSpot account will be gone by then.
+
+  Pay before the trial ends, and re-check with
+  `account { plan { max_users period tier version } }` — a **non-null
+  `plan`** is the confirmation, not `tier`.
+
+  Capacity itself is not a concern: the observed ceiling is 1,000,000
+  complexity per minute against ~3,000 for a full three-board pass.

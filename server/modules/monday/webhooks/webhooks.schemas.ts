@@ -20,7 +20,22 @@ import { z } from "zod";
 
 export const challengeSchema = z.object({ challenge: z.string().min(1) });
 
-/** Events we subscribe to. Anything else is ACKed and ignored. */
+/**
+ * Events we act on, in CANONICAL form. Anything else is ACKed and ignored.
+ *
+ * These are the names the `create_webhook` mutation accepts. monday does
+ * NOT send them back: the delivered payload's `type` uses a different,
+ * older vocabulary — `create_item` arrives as `create_pulse`, `change_name`
+ * as `update_name`, `change_column_value` as `update_column_value`.
+ * Verified on live deliveries 2026-08-28, and confirmed by monday's own
+ * docs for the two they publish samples for.
+ *
+ * That mismatch silently dropped EVERY event: the endpoint answered 200,
+ * the log said "not subscribed", the queue stayed empty, and the whole
+ * integration looked healthy while syncing nothing. `normaliseEventType`
+ * below exists so the inbound vocabulary can never diverge from this list
+ * again.
+ */
 export const SUPPORTED_EVENTS = [
   "create_item",
   "change_column_value",
@@ -31,6 +46,45 @@ export const SUPPORTED_EVENTS = [
   "move_item_to_group",
   "item_moved_to_any_group"
 ] as const;
+
+/**
+ * Delivered `type` -> canonical event.
+ *
+ * Deliberately generous: an alias that never arrives costs nothing, while
+ * a missing one drops data silently. Both spellings of every event are
+ * listed, so this keeps working whichever vocabulary monday sends.
+ *
+ * The `_pulse` forms are monday's legacy internal name for an item.
+ */
+const EVENT_ALIASES: Record<string, (typeof SUPPORTED_EVENTS)[number]> = {
+  // observed live, 2026-08-28
+  create_pulse: "create_item",
+  update_name: "change_name",
+  update_column_value: "change_column_value",
+  // documented / legacy spellings for the rest
+  delete_pulse: "item_deleted",
+  archive_pulse: "item_archived",
+  restore_pulse: "item_restored",
+  unarchive_pulse: "item_restored",
+  move_pulse_into_group: "item_moved_to_any_group",
+  move_pulse_into_board: "item_moved_to_any_group",
+  update_pulse_group: "item_moved_to_any_group",
+  // status changes arrive as a column update
+  change_status_column_value: "change_column_value",
+  change_specific_column_value: "change_column_value"
+};
+
+/**
+ * Map whatever monday sent onto one of SUPPORTED_EVENTS, or null when we
+ * genuinely do not handle it. Canonical names pass through unchanged, so
+ * this is safe if monday ever aligns the two vocabularies.
+ */
+export function normaliseEventType(raw: string): (typeof SUPPORTED_EVENTS)[number] | null {
+  if ((SUPPORTED_EVENTS as readonly string[]).includes(raw)) {
+    return raw as (typeof SUPPORTED_EVENTS)[number];
+  }
+  return EVENT_ALIASES[raw] ?? null;
+}
 
 const numericish = z.union([z.string(), z.number()]).transform(v => String(v));
 

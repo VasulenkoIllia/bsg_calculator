@@ -17,10 +17,10 @@ import { env } from "../../../config/env";
 import { insertMondayEventIfNew } from "./webhooks.repository";
 import {
   challengeSchema,
+  normaliseEventType,
   eventItemId,
   occurredAt,
   stableTriggerStamp,
-  SUPPORTED_EVENTS,
   webhookBodySchema
 } from "./webhooks.schemas";
 
@@ -89,8 +89,19 @@ export async function mondayWebhookController(req: Request, res: Response): Prom
     return;
   }
 
-  if (!SUPPORTED_EVENTS.includes(event.type as (typeof SUPPORTED_EVENTS)[number])) {
-    logger.info({ type: event.type }, "[monday:webhook] event type not subscribed — skipping");
+  // monday's delivered `type` uses a different vocabulary from the one the
+  // create_webhook mutation accepts, so match on the CANONICAL name.
+  const canonicalType = normaliseEventType(event.type);
+  if (!canonicalType) {
+    // WARN, not INFO. This branch is how the integration failed silently on
+    // the day of the cutover: every delivery landed here, the endpoint
+    // answered 200, and an empty queue looked exactly like a quiet CRM.
+    // An unrecognised event ON ONE OF OUR OWN BOARDS is a defect until
+    // proven otherwise, so it must be visible at a level that gets read.
+    logger.warn(
+      { type: event.type, boardId: event.boardId, itemId, objectType },
+      "[monday:webhook] UNRECOGNISED event type on one of our boards — skipping. If this is an event we should act on, add it to EVENT_ALIASES in webhooks.schemas.ts"
+    );
     res.status(200).json({ accepted: 0, skipped: true });
     return;
   }
@@ -107,11 +118,11 @@ export async function mondayWebhookController(req: Request, res: Response): Prom
     eventKey: eventKey({
       boardId: event.boardId,
       itemId,
-      type: event.type,
+      type: canonicalType,
       stamp,
       raw: parsed.data
     }),
-    eventType: event.type,
+    eventType: canonicalType,
     boardId: event.boardId,
     itemId,
     objectType,
