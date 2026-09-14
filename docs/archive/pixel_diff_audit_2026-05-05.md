@@ -5,17 +5,17 @@ Status: Visual fidelity pass complete. Typography rescaled, page count converged
 
 ## 1. Method
 
-1. Built standalone HTML for the wizard `manualDefaults` seed with `documentScope: "offerAndAgreement"` and the merchant party fields filled with `DIMERIS LTD / Cyprus / Kalymnou, 1, "Q MERITO"…` (mirrors the ZenCreator signed reference).
+1. Built standalone HTML for the wizard `manualDefaults` seed with `documentScope: "offerAndAgreement"` and the merchant party fields filled with `Example Merchant Ltd / <country> / <address>` (mirrors the Sample A signed reference).
 2. Rendered to PDF via headless Chrome (`--print-to-pdf`).
 3. Rasterised both our PDF and each reference PDF to PNG at 150 DPI (1240×1754 px) with `pdftoppm`.
 4. Compared with Pillow:
-   - Side-by-side composites (OURS / CEI signed / ZenCreator signed) per page.
-   - Pixel difference vs ZenCreator (CEI signed has no text layer; OCR-grade reference for visual layout only).
+   - Side-by-side composites (OURS / Sample B signed / Sample A signed) per page.
+   - Pixel difference vs Sample A (Sample B signed has no text layer; OCR-grade reference for visual layout only).
    - Mean absolute difference (MAD) and percentage of pixels with |Δ| > 8 (tolerance for anti-aliasing).
 
 References used:
-- `CEI Commercial Offer 1.0 and MSA (for signature).pdf` — 12 pages.
-- `ZenCreator Commercial Offer 1.1 (signed).pdf` — 12 pages.
+- `Sample B Commercial Offer 1.0 and MSA (for signature).pdf` — 12 pages.
+- `Sample A Commercial Offer 1.1 (signed).pdf` — 12 pages.
 
 Artifacts (regenerable): `/tmp/bsg_pixel_diff/{ours,ref_cei,ref_zen,diff}/`.
 
@@ -26,8 +26,8 @@ Artifacts (regenerable): `/tmp/bsg_pixel_diff/{ours,ref_cei,ref_zen,diff}/`.
 | Source | Pages |
 |---|---|
 | OURS (initial) | **18** |
-| CEI signed | 12 |
-| ZenCreator signed | 12 |
+| Sample B signed | 12 |
+| Sample A signed | 12 |
 
 50% page-count overshoot. AGREEMENT body especially expanded (~6 extra pages).
 
@@ -116,10 +116,10 @@ This single change saved ~1 page on its own without touching content.
 | Source | Pages |
 |---|---|
 | **OURS (after)** | **12** ✅ |
-| CEI signed | 12 |
-| ZenCreator signed | 12 |
+| Sample B signed | 12 |
+| Sample A signed | 12 |
 
-### 4.2 Pixel-difference metrics (vs ZenCreator)
+### 4.2 Pixel-difference metrics (vs Sample A)
 
 Mean absolute grayscale difference per page (0–255 scale; lower = closer match):
 

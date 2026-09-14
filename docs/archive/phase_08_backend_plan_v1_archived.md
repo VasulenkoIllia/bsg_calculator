@@ -353,7 +353,7 @@ Seed script: `server/db/seeds/dev.ts`
 | display_name | jurisdiction |
 |---|---|
 | Acme Payment Solutions Ltd | GB |
-| TechPay Europe GmbH | DE |
+| Example Payments GmbH | DE |
 | FinServe International SA | CH |
 
 **Calculator snapshots (2):**
@@ -432,11 +432,11 @@ Each step ends with `npm run verify` and a focused decision log entry in `docs/d
 
 ## 13. References
 
-- Frontend payload type: [`src/components/document-wizard/types.ts`](../src/components/document-wizard/types.ts)
-- Calculator state: [`src/components/calculator/useCalculatorState.ts`](../src/components/calculator/useCalculatorState.ts)
-- Renderer entry: [`src/components/document-wizard/buildOfferPdfHtml.ts`](../src/components/document-wizard/buildOfferPdfHtml.ts)
-- URL contract: [`docs/url_contract.md`](url_contract.md)
-- AGREEMENT structure: [`docs/agreement_structure.md`](agreement_structure.md)
-- Integrations (HubSpot planned): [`docs/integrations.md`](integrations.md)
-- Decisions log: [`docs/decisions.md`](decisions.md)
-- Spec alignment: [`docs/spec_v2_alignment.md`](spec_v2_alignment.md)
+- Frontend payload type: [`src/components/document-wizard/types.ts`](../../src/components/document-wizard/types.ts)
+- Calculator state: [`src/components/calculator/useCalculatorState.ts`](../../src/components/calculator/useCalculatorState.ts)
+- Renderer entry: [`src/components/document-wizard/buildOfferPdfHtml.ts`](../../src/components/document-wizard/buildOfferPdfHtml.ts)
+- URL contract: [`docs/url_contract.md`](../url_contract.md)
+- AGREEMENT structure: [`docs/agreement_structure.md`](../agreement_structure.md)
+- Integrations (HubSpot planned): [`docs/integrations.md`](../integrations.md)
+- Decisions log: [`docs/decisions.md`](../decisions.md)
+- Spec alignment: [`docs/spec_v2_alignment.md`](../spec_v2_alignment.md)

@@ -1,7 +1,9 @@
 # PDF Rendering Logic Matrix
 
+> Reference samples are anonymised as Sample A–I. The real sample files, and which client each one came from, are kept outside this repository.
+
 Date: 2026-05-30 (refreshed for the universal-layout redesign — compact mode removed, Puppeteer running header/footer, natural page flow, ValueMode + feeNotes)
-Status: Active. Derived from specification + 8 reference commercial offers + MSA docx + the 2026-05-30 "Be There Solutions Commercial Offer 1.1" reference redesign.
+Status: Active. Derived from specification + 8 reference commercial offers + MSA docx + the 2026-05-30 "Sample I Commercial Offer 1.1" reference redesign.
 
 ## 1. Sources used
 
@@ -9,14 +11,14 @@ Specification:
 - `technical_specification_bsg.docx` v2.0 — sections 6 + 9.
 
 Reference PDFs (commercial offer sheets):
-- `ZenCreator Commercial Offer 1.1 (3).pdf` — 11 pages, OFFER + bundled AGREEMENT (MSA).
-- `Aron Group Commercial Offer 1.0 (2).pdf` — 2 pages, OFFER only.
-- `CEI Commercial Offer 1.0 and MSA_Director Signed.pdf` — 11 pages, OFFER + AGREEMENT (signed). Text layer absent; OCR via `tesseract`.
-- `Finera Commercial Offer 1.0.pdf` — 2 pages, OFFER only.
-- `ATOM Commercial Offer 1.0 and MSA.pdf` — 11 pages, OFFER + AGREEMENT.
-- `Pay.cc Commercial Offer 1.1.pdf` — 2 pages, OFFER only.
-- `SoftGaming Commercial Offer 1.0.docx.pdf` — 2 pages, OFFER only.
-- `TodaPay Commercial Offer 1.0.pdf` — 2 pages, OFFER only.
+- `Sample A Commercial Offer 1.1 (3).pdf` — 11 pages, OFFER + bundled AGREEMENT (MSA).
+- `Sample E Commercial Offer 1.0 (2).pdf` — 2 pages, OFFER only.
+- `Sample B Commercial Offer 1.0 and MSA_Director Signed.pdf` — 11 pages, OFFER + AGREEMENT (signed). Text layer absent; OCR via `tesseract`.
+- `Sample F Commercial Offer 1.0.pdf` — 2 pages, OFFER only.
+- `Sample C Commercial Offer 1.0 and MSA.pdf` — 11 pages, OFFER + AGREEMENT.
+- `Sample G Commercial Offer 1.1.pdf` — 2 pages, OFFER only.
+- `Sample D Commercial Offer 1.0.docx.pdf` — 2 pages, OFFER only.
+- `Sample H Commercial Offer 1.0.pdf` — 2 pages, OFFER only.
 
 AGREEMENT body source (long-form MSA legal text):
 - `Extended Schedule 4 - MSA format.docx` — canonical Service Agreement template (11 sections + 3-party signature block). See `docs/agreement_structure.md`.
@@ -25,8 +27,8 @@ AGREEMENT body source (long-form MSA legal text):
 
 | Code | Length | Composition | Samples |
 |---|---|---|---|
-| **OFFER** | 1–2 pages | Sections 1–4 only (Payin / Payout / Other Fees / Terms) | Aron, Finera, Pay.cc, SoftGaming, TodaPay |
-| **AGREEMENT** | 11 pages typical | Sections 1–4 + bundled MSA legal text + signature blocks | ZenCreator, ATOM, CEI |
+| **OFFER** | 1–2 pages | Sections 1–4 only (Payin / Payout / Other Fees / Terms) | Sample E, Sample F, Sample G, Sample D, Sample H |
+| **AGREEMENT** | 11 pages typical | Sections 1–4 + bundled MSA legal text + signature blocks | Sample A, Sample C, Sample B |
 
 The OFFER and AGREEMENT share the same Sections 1–4 layout. AGREEMENT adds the MSA appendix and 3-party signature pages. **Templates do not fork**; AGREEMENT is OFFER + appended MSA section.
 
@@ -127,14 +129,14 @@ no longer sets any per-row break flag.
 
 | Sample | Header label | Value |
 |---|---|---|
-| ZenCreator | `SETTLEMENT MODEL` | `IC++ / Interchange Plus` |
-| Aron Group | `COLLECTION MODEL` | `IC++ / Blended` |
-| CEI | `COLLECTION MODEL` | `IC++ / Blended` |
-| Finera | `COLLECTION MODEL` | `IC++ / Blended` |
-| ATOM | `COLLECTION MODEL` | `IC++ / Blended` |
-| Pay.cc | `COLLECTION MODEL` | `IC++ / Blended` |
-| SoftGaming | `SETTLEMENT MODEL` | `IC++ / Interchange Plus` |
-| TodaPay | `COLLECTION MODEL` | `IC++ / Blended` |
+| Sample A | `SETTLEMENT MODEL` | `IC++ / Interchange Plus` |
+| Sample E | `COLLECTION MODEL` | `IC++ / Blended` |
+| Sample B | `COLLECTION MODEL` | `IC++ / Blended` |
+| Sample F | `COLLECTION MODEL` | `IC++ / Blended` |
+| Sample C | `COLLECTION MODEL` | `IC++ / Blended` |
+| Sample G | `COLLECTION MODEL` | `IC++ / Blended` |
+| Sample D | `SETTLEMENT MODEL` | `IC++ / Interchange Plus` |
+| Sample H | `COLLECTION MODEL` | `IC++ / Blended` |
 
 Rule: when the value contains "Interchange Plus", the label is `SETTLEMENT MODEL`; otherwise `COLLECTION MODEL`. Already implemented in `offerPdf/formatters.ts:resolveModelHeaderLabel`.
 
@@ -142,14 +144,14 @@ Rule: when the value contains "Interchange Plus", the label is `SETTLEMENT MODEL
 
 | Sample | Tier 1 | Tier 2 | Tier 3 | Regions |
 |---|---|---|---|---|
-| ZenCreator | Up to €1M | €1M–€3M | Above €3M | EU + Global |
-| Aron Group | Up to €10M | €10M–€25M | Above €25M | EU + Global |
-| CEI | Up to €10M | €10M–€25M | Above €25M | EU + Global |
-| Finera | Up to €10M | €10M–€25M | Above €25M | EU + Global |
-| ATOM | Up to €10M | €10M–€25M | Above €25M | EU + Global |
-| Pay.cc | Up to €10M | €10M–€25M | Above €25M | EU + Global |
-| SoftGaming | Up to €10M | €10M–€25M | Above €25M | EU + Global |
-| TodaPay | Up to €5M | €5M–€7M | Above €7M | EU + Global |
+| Sample A | Up to €1M | €1M–€3M | Above €3M | EU + Global |
+| Sample E | Up to €10M | €10M–€25M | Above €25M | EU + Global |
+| Sample B | Up to €10M | €10M–€25M | Above €25M | EU + Global |
+| Sample F | Up to €10M | €10M–€25M | Above €25M | EU + Global |
+| Sample C | Up to €10M | €10M–€25M | Above €25M | EU + Global |
+| Sample G | Up to €10M | €10M–€25M | Above €25M | EU + Global |
+| Sample D | Up to €10M | €10M–€25M | Above €25M | EU + Global |
+| Sample H | Up to €5M | €5M–€7M | Above €7M | EU + Global |
 
 All samples use 3 tiers, both regions. Boundaries are arbitrary — `byRegionTiered` mode handles this; the calculator already exposes editable `tier1UpToMillion` / `tier2UpToMillion`.
 
@@ -161,8 +163,8 @@ Examples (full table omitted; see source files). Range observed: 2.5%–5.5%. Bo
 
 Common pattern: `C/D: €0.30` and `APM: €0.35` for all tiers.
 Variations:
-- ZenCreator and SoftGaming: `C/D` varies per tier (`€0.35 / €0.30 / €0.25`).
-- Finera: `C/D` varies per tier (`€0.35 / €0.30 / €0.25`).
+- Sample A and Sample D: `C/D` varies per tier (`€0.35 / €0.30 / €0.25`).
+- Sample F: `C/D` varies per tier (`€0.35 / €0.30 / €0.25`).
 
 Already supported by `payinPricing.tiers[].trxCc` / `trxApm`.
 
@@ -255,14 +257,14 @@ code never wraps.
 
 | Sample | Footnote |
 |---|---|
-| ZenCreator | none |
-| Aron Group | `*Min. Transaction fee applies to successful transaction fees only up to the Min. total amount processed in every bracket. The Min. Transaction fee is waived once total amount processed surpasses the Min. total amount processed.` |
-| CEI | none |
-| Finera | header marker `**`, footnote: `** Transaction fee on declined transactions to be waived according to terms and limitations in section 4` |
-| ATOM | none |
-| Pay.cc | none |
-| SoftGaming | none |
-| TodaPay | none |
+| Sample A | none |
+| Sample E | `*Min. Transaction fee applies to successful transaction fees only up to the Min. total amount processed in every bracket. The Min. Transaction fee is waived once total amount processed surpasses the Min. total amount processed.` |
+| Sample B | none |
+| Sample F | header marker `**`, footnote: `** Transaction fee on declined transactions to be waived according to terms and limitations in section 4` |
+| Sample C | none |
+| Sample G | none |
+| Sample D | none |
+| Sample H | none |
 
 **Closed (2026-05-07)**: free-form section note is now supported via
 `contractSummary.payinCustomNoteEnabled / payinCustomNoteText` for
@@ -280,20 +282,20 @@ All 8 samples use **non-tiered fixed rate, Global region only**. No tiered payou
 
 | Sample | MDR | TRX | Min Fee |
 |---|---|---|---|
-| ZenCreator | 2% | €0.50 | €2.50 |
-| Aron Group | 2% | €0.50 | €2.50 |
-| CEI | 1.8% | €0.50 | €2.00 |
-| Finera | 2% | €0.50 | €2.50 |
-| ATOM | 1.8% | €0.50 | €2.00 |
-| Pay.cc | 2% | €0.50 | €2.50 |
-| SoftGaming | 2% | €0.50 | €2.50 |
-| TodaPay | 2% | €0.50 | €2.50 |
+| Sample A | 2% | €0.50 | €2.50 |
+| Sample E | 2% | €0.50 | €2.50 |
+| Sample B | 1.8% | €0.50 | €2.00 |
+| Sample F | 2% | €0.50 | €2.50 |
+| Sample C | 1.8% | €0.50 | €2.00 |
+| Sample G | 2% | €0.50 | €2.50 |
+| Sample D | 2% | €0.50 | €2.50 |
+| Sample H | 2% | €0.50 | €2.50 |
 
 ### 4.8 Section 3 (Other Services & Fees)
 
 Card values across samples:
 
-| Card | ZenCreator | Aron | CEI | Finera | ATOM | Pay.cc | SoftGaming | TodaPay |
+| Card | Sample A | Sample E | Sample B | Sample F | Sample C | Sample G | Sample D | Sample H |
 |---|---|---|---|---|---|---|---|---|
 | ACCOUNT SETUP | €1,000 | Waived | Waived | Waived | Waived | Waived | €2,000 | Waived |
 | REFUND | €15 | €15 | €15 | €15 | €15 | €15 | €15 | €15 |
@@ -311,8 +313,8 @@ Observed extra annotation lines under values (rendered as small note below the p
 | Card | Annotation | Samples |
 |---|---|---|
 | MIN. MONTHLY ACCOUNT FEE | `· NA if processing volume is over 1M /mo` | **all 8 samples** |
-| MIN. MONTHLY ACCOUNT FEE | `· MMAF to be charged from 4th month` | Aron only |
-| SETTLEMENT | `Waived for EU only` | TodaPay only |
+| MIN. MONTHLY ACCOUNT FEE | `· MMAF to be charged from 4th month` | Sample E only |
+| SETTLEMENT | `Waived for EU only` | Sample H only |
 
 **✅ Closed (2026-05-30):** all six fee cards support an optional operator-entered second line. `FeeCardItem.subtitleNote` renders as a second `fee-subtitle` paragraph (accent colour) under the primary subtitle; the text is stored per-fee in `payload.feeNotes` (`DocumentWizardFeeNotes`) and edited in the wizard's Other Fees step via the `FeeModeNote` control.
 
@@ -320,17 +322,17 @@ Observed extra annotation lines under values (rendered as small note below the p
 
 | Field | Variants observed |
 |---|---|
-| Settlement | `Daily, T+3` (4 samples), `Daily, T+4` (3 samples), `Daily, T+3` (CEI) |
+| Settlement | `Daily, T+3` (4 samples), `Daily, T+4` (3 samples), `Daily, T+3` (Sample B) |
 | Settlement Note | `Does not apply on weekends` / `…and bank holidays` / `…and banking holidays` (3 spellings) |
-| Traffic Type | `STD` (7 samples), `New + Returning` (ZenCreator only). Renamed from "Client Type" on 2026-05-12 — label only; payload key `clientType` and the default `"STD"` stay. See `docs/decisions.md`. |
-| Restricted Jurisdictions | `OFAC, US` (most), `OFAC, Sanctioned` (ZenCreator only) |
+| Traffic Type | `STD` (7 samples), `New + Returning` (Sample A only). Renamed from "Client Type" on 2026-05-12 — label only; payload key `clientType` and the default `"STD"` stay. See `docs/decisions.md`. |
+| Restricted Jurisdictions | `OFAC, US` (most), `OFAC, Sanctioned` (Sample A only) |
 | Min. Collection | `€1 EUR` (all) |
 | Max. Collection | `€2,500 EUR` (all) |
-| Min. Payout | `€60 EUR` (most), `€50 EUR` (ATOM), `€20 EUR` (CEI) |
+| Min. Payout | `€60 EUR` (most), `€50 EUR` (Sample C), `€20 EUR` (Sample B) |
 | Max. Payout | `N/A` (all) |
 | Rolling Reserve | `10% · 180 days` (all) |
 | Rolling Reserve Cap | `TBD` (all) |
-| Footnote line | Finera: `** Decline fee removal - After 3 months of processing 2M/m and having min 80% approved transactions` |
+| Footnote line | Sample F: `** Decline fee removal - After 3 months of processing 2M/m and having min 80% approved transactions` |
 
 **Renderer gap status (2026-05-07)**:
 - ✅ **Closed**: Settlement Note / Traffic Type (renamed 2026-05-12,
@@ -390,7 +392,7 @@ The MSA appendix is the canonical Service Agreement long-form text. See [agreeme
 ## 7. Renderer gap summary (for product decision)
 
 A grouped list of discrepancies between the current OFFER renderer and the 8 samples is maintained separately as a snapshot:
-- See [pdf_renderer_audit_2026-05-02.md](pdf_renderer_audit_2026-05-02.md).
+- See [pdf_renderer_audit_2026-05-02.md](archive/pdf_renderer_audit_2026-05-02.md).
 
 ## 8. Implementation mapping
 

@@ -27,7 +27,7 @@ interface PayinRegionContext {
 // and custom rows (section 1.1). Rendered with EXPLICIT <br> line
 // breaks so it is ALWAYS the same 4-line block regardless of how
 // table-layout:fixed sizes the column across configs (matching the
-// Be There Solutions reference exactly):
+// Sample I reference exactly):
 //     Credit / Debit —
 //     Visa, Mastercard
 //     APM — Apple Pay,      (muted subtitle)

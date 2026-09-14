@@ -741,7 +741,7 @@ Use this file to record meaningful technical decisions for the project.
   - JS bundle: 391 → 482 KB (+90 KB for router); gzipped 103 → 132 KB. Acceptable.
   - Test count: 151 → 176 (+25: AGREEMENT renderer, Stepper, scope clamp).
 - Follow-up actions:
-  - Implement Phase 8 backend per [phase_08_backend_plan.md](phase_08_backend_plan.md).
+  - Implement Phase 8 backend per [phase_08_backend_plan.md](archive/phase_08_backend_plan.md).
   - Wire deep-links (`/calculator/:id`, `/wizard/:id/edit`, `/share/:token`) once backend ships.
 
 ### Decision: AGREEMENT Template Updated to DRAFT TEXT.docx (1:1 alignment)
@@ -773,7 +773,7 @@ Use this file to record meaningful technical decisions for the project.
 - Context:
   - All open questions from the initial Phase 8 kickoff plan answered by product.
   - Frontend is locked at 173 → 180 tests, two document scopes, AGREEMENT styled to signed references.
-- Decision (summary; full spec in [phase_08_backend_plan.md](phase_08_backend_plan.md)):
+- Decision (summary; full spec in [phase_08_backend_plan.md](archive/phase_08_backend_plan.md)):
   - **Stack**: Node 20 + Express + Drizzle ORM/Kit + PostgreSQL 15 + Puppeteer + bcrypt + JWT.
   - **Auth**: email/password, admin-created users only, JWT access (15 min) + refresh (30 d).
   - **Save flow**: explicit "Confirm" creates immutable `documents` row with allocated `BSG-#####` number; preview-only stays as today.
@@ -797,7 +797,7 @@ Use this file to record meaningful technical decisions for the project.
 - Date: 2026-05-03
 - Context:
   - Product confirmed only two document scopes: `offer` and `offerAndAgreement`. The transitional `agreement` (agreement-only) scope was removed entirely.
-  - User provided two signed MSA references (`CEI Commercial Offer 1.0 and MSA (for signature).pdf`, `ZenCreator Commercial Offer 1.1 (signed).pdf`) showing the desired AGREEMENT typography.
+  - User provided two signed MSA references (`Sample B Commercial Offer 1.0 and MSA (for signature).pdf`, `Sample A Commercial Offer 1.1 (signed).pdf`) showing the desired AGREEMENT typography.
   - User requested explicit clarity in documentation that backend implementation has not started — the only artifact for Phase 8 is a kickoff plan awaiting product decisions on stack and schema.
 - Decision:
   - **DocumentScope** is now `"offer" | "offerAndAgreement"`. All UI options, dropdown values, URL params, tests, and docs use these two values. Stale `"agreement"` references removed across code and docs.
@@ -859,7 +859,7 @@ Use this file to record meaningful technical decisions for the project.
   - **Calculator math untouched.** All 151 tests still pass.
 - Alternatives considered:
   - Keep a separate "Document Scope" dropdown alongside readonly Document Type. Rejected — duplicate UI per product feedback.
-  - Render AGREEMENT as a separate PDF document instead of one bundle. Rejected — spec section 6 + sample bundles (ZenCreator, ATOM, CEI) confirm a single combined document with shared header/footer.
+  - Render AGREEMENT as a separate PDF document instead of one bundle. Rejected — spec section 6 + sample bundles (Sample A, Sample C, Sample B) confirm a single combined document with shared header/footer.
   - Make MSA paragraphs editable in wizard. Rejected — product wants static legal text; only placeholder fields editable.
   - Add highlight via post-process of preview HTML in the iframe. Rejected — cleaner to set body class once at render time and let CSS do the rest.
 - Consequences:
@@ -927,7 +927,7 @@ Use this file to record meaningful technical decisions for the project.
 - Date: 2026-05-07
 - Context:
   - The frontend PDF generation flow had several rough edges that were
-    blocking real visual testing against the CEI / ZenCreator reference
+    blocking real visual testing against the Sample B / Sample A reference
     PDFs:
     1. Print path opened a popup window, which Brave/Safari blocked or
        returned `null` for when `noopener` was set.
@@ -1080,7 +1080,7 @@ Use this file to record meaningful technical decisions for the project.
     payin/payout, per-tier colours, MDR-percent default colour,
     APM cell-subtitle class, MIN. TRX FEE secondary line muting,
     and the removed Calculator-mode subtitle.
-  - The OFFER PDF visual now matches the CEI / ZenCreator
+  - The OFFER PDF visual now matches the Sample B / Sample A
     references in spirit: per-page disclaimer footer, per-tier
     coloured rows, gray N/A states, blue labels.
   - The wizard exposes the full N/A surface so QA can flip any
@@ -1597,7 +1597,7 @@ Use this file to record meaningful technical decisions for the project.
   - The rule lives entirely in `buildOfferBodyRows` and reads as
     two booleans + two `breakBefore: …` flags — clear to follow.
 - Follow-up actions:
-  - Verify against real reference PDFs (CEI, ZenCreator) that
+  - Verify against real reference PDFs (Sample B, Sample A) that
     the page break locations match the expected layouts.
 
 ### Decision: 2026-05-12 product update batch (A/B/C/D)
@@ -2782,7 +2782,7 @@ Use this file to record meaningful technical decisions for the project.
   **I. Listing page** — Hierarchical Company → Deals → Documents.
   - Tree/accordion view:
       [+] (M) Acme Ltd            — 2 deals, 3 documents
-        ├─ Deal: CEI Processing   — appointmentscheduled · €500,000
+        ├─ Deal: Example Processing   — appointmentscheduled · €500,000
         │   ├─ BSG-7100123-874808 (Offer · 2026-05-12)
         │   └─ Calc draft "v2 with CH share"
         └─ Standalone documents (no deal)
@@ -5640,7 +5640,7 @@ Use this file to record meaningful technical decisions for the project.
     auto-applied "compact" preset that shrank fonts/padding ~20% to
     keep busy offers within a 2-page budget. Product wanted ONE layout
     that looks identical at every data volume (more pages is fine),
-    matching the "Be There Solutions Commercial Offer 1.1" reference.
+    matching the "Sample I Commercial Offer 1.1" reference.
   - The disclaimer footer lived in an in-HTML `<table><tfoot>` with a
     Chromium `counter()` workaround; product also wanted a running
     header (purple accent bar) on every page.

@@ -1,5 +1,7 @@
 # PDF Template Fidelity Requirements
 
+> Reference samples are anonymised as Sample A–I. The real sample files, and which client each one came from, are kept outside this repository.
+
 Date: 2026-05-02  
 Status: Active baseline for OFFER template implementation
 
@@ -20,19 +22,19 @@ Specification source:
 
 Reference PDF set (offer-only and bundled):
 
-1. `ZenCreator Commercial Offer 1.1 (3).pdf`
-2. `Aron Group Commercial Offer 1.0 (2).pdf`
-3. `CEI Commercial Offer 1.0 and MSA_Director Signed.pdf`
-4. `Finera Commercial Offer 1.0.pdf`
-5. `ATOM Commercial Offer 1.0 and MSA.pdf`
+1. `Sample A Commercial Offer 1.1 (3).pdf`
+2. `Sample E Commercial Offer 1.0 (2).pdf`
+3. `Sample B Commercial Offer 1.0 and MSA_Director Signed.pdf`
+4. `Sample F Commercial Offer 1.0.pdf`
+5. `Sample C Commercial Offer 1.0 and MSA.pdf`
 
 Signed bundle references (used to lock AGREEMENT visual style in 2026-05-03 pass):
 
-1. `CEI Commercial Offer 1.0 and MSA (for signature).pdf`
-2. `ZenCreator Commercial Offer 1.1 (signed).pdf`
-6. `Pay.cc Commercial Offer 1.1.pdf`
-7. `SoftGaming Commercial Offer 1.0.docx.pdf`
-8. `TodaPay Commercial Offer 1.0.pdf`
+1. `Sample B Commercial Offer 1.0 and MSA (for signature).pdf`
+2. `Sample A Commercial Offer 1.1 (signed).pdf`
+6. `Sample G Commercial Offer 1.1.pdf`
+7. `Sample D Commercial Offer 1.0.docx.pdf`
+8. `Sample H Commercial Offer 1.0.pdf`
 
 ## 3) Mandatory visual baseline
 

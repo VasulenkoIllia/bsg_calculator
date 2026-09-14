@@ -180,7 +180,7 @@ Indexes:
 ### `companies` (HubSpot-synced)
 
 Schema finalized 2026-05-14 after inspecting live BSG HubSpot data
-(`(A) Elena` agent + `(M) Finqly` merchant). See
+(`(A) Example Agent` agent + `(M) Example Merchant` merchant). See
 `docs/bsg_hubspot_field_mapping.md` §1 for the column-by-column
 rationale and the inspection scripts used.
 
@@ -211,7 +211,7 @@ Indexes:
 
 ### `deals` (HubSpot-synced)
 
-Schema finalized 2026-05-14 against deal `CEI Processing Limited`
+Schema finalized 2026-05-14 against deal `Example Processing Limited`
 (id `498828505295`). See `docs/bsg_hubspot_field_mapping.md` §2 for
 the column-by-column rationale.
 
@@ -225,8 +225,8 @@ the column-by-column rationale.
 | `pipeline_id` | text NULL | HubSpot `pipeline` (currently always `default` = Gateway sales). |
 | `amount` | numeric(14,2) NULL | HubSpot `amount`. |
 | `currency` | text NULL | HubSpot `deal_currency_code` (ISO code, e.g. `EUR`). |
-| `client_label` | text NULL | HubSpot `client` free-text (e.g. `(M) Atom`). |
-| `agent_label` | text NULL | HubSpot `agent` free-text (e.g. `(A) Jeremy`). |
+| `client_label` | text NULL | HubSpot `client` free-text (e.g. `(M) Example Merchant`). |
+| `agent_label` | text NULL | HubSpot `agent` free-text (e.g. `(A) Example Agent`). |
 | `business_vertical` | text NULL | HubSpot `business_vertical` enum (e.g. `iGaming / Betting`). |
 | `hubspot_created_at` | timestamptz NOT NULL | HubSpot `createdate`. |
 | `hubspot_modified_at` | timestamptz NOT NULL | HubSpot `hs_lastmodifieddate`. Incremental sync trigger. |

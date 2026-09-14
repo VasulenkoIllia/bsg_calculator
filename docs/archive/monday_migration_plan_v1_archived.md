@@ -42,7 +42,7 @@ recommendation (board membership only, no gating status).
 | monday board | Sync? | Lands in our `companies.company_type` as | Why |
 |---|---|---|---|
 | **Companies (M) (Gateway)** `5102466967` (64) | yes, **all items** | `direct_client` | the merchants we write documents for |
-| **Agents (A)** `5102466950` (43) | yes, **all items** | `referring_partner` | one of them owns a document today (`(A) ConsultiPay`), and deals reference agents |
+| **Agents (A)** `5102466950` (43) | yes, **all items** | `referring_partner` | one of them owns a document today (`(A) Example Referral Partner Ltd`), and deals reference agents |
 | **Deals (Gateway)** `5102466996` (31) | yes, all | — | documents can be pinned to a deal |
 | Contacts `5102466985` (37) | **no** | — | we never use contacts; syncing them buys nothing |
 | Test `5102348757` | no | — | unrelated board |
@@ -175,7 +175,7 @@ disappears entirely — that whole error branch in `sync.service.ts` goes away.
 
 ### 1.3 The Note itself (the operator brief: "deal data in the client's note")
 
-Today: `Offer BSG-7100062-750018 // Company: (M) SKOGOS // Created … by … ` + a
+Today: `Offer BSG-7100062-750018 // Company: (M) Example Merchant // Created … by … ` + a
 `Link` to our SPA, posted on the **deal** when the document is pinned to one,
 otherwise on the company.
 
@@ -190,7 +190,7 @@ did create. Cost: ~+0.5 day.
 Body:
 
 ```
-Offer BSG-7100062-750018 // Company: SKOGOS SOLUTIONS INC. // Deal: BSPOK IT Solutions LTD (662129)
+Offer BSG-7100062-750018 // Company: Example Merchant Inc. // Deal: Duplicate Pair Ltd (662129)
 Created 22.08.2026, 15:40 by Admin (admin@bsg.test)
 Link
 ```
@@ -217,7 +217,7 @@ is reused nearly verbatim.
 
 Agents (A) `5102466950` has the same shape **plus `text_mm6b8spx` "Id"** holding
 the original HubSpot company id. One of our document-owning companies —
-`(A) ConsultiPay / Monepik Limited` — lives there, so the agents board must be
+`(A) Example Referral Partner Ltd` — lives there, so the agents board must be
 synced too, not just merchants.
 
 ### Deals `5102466996` — 31 items
@@ -225,7 +225,7 @@ synced too, not just merchants.
 | Our column | monday source |
 |---|---|
 | `crm_deal_id` (new) | item `id` |
-| `name` | item `name` (`"BSPOK IT Solutions LTD (662129)"`) |
+| `name` | item `name` (`"Duplicate Pair Ltd (662129)"`) |
 | `stage` | `dropdown_mm6epmzw` "Deal Stage" (label, e.g. `New Referral`) |
 | parent company | `board_relation_mm6bmb7` "Company (M)" — filled 31/31 |
 | (order ref) | `text_mm6b2j7s` — the migration key, 28/28 match |
@@ -316,7 +316,7 @@ never existed in HubSpot) get their suffix from the monday item id.
 |---|---|---|---|---|---|
 | **C1** | **Documents and calc-configs become undeletable.** `deleteDocument` / `deleteCalculatorConfig` refuse to proceed when a row has `hubspot_note_id` and HubSpot is unconfigured (`ValidationError`), and if the token is merely revoked the `deleteNote` call fails → `delete_failed`, row survives. | **Critical** | **Certain** | **34 live documents + 3 calc-configs** hold note ids | Cutover SQL: move `hubspot_note_id` → `legacy_hubspot_note_id`, reset state so the teardown branch is skipped. Notes die with the HubSpot account anyway |
 | **C2** | Auto-sync on create keeps firing at a dead API → every new document lands in `failed` with a red badge, operators are trained to click Retry forever | High | Certain | all new documents | Switch `AUTO_SYNC_TO_HUBSPOT` → monday adapter, or set it false before the 31st |
-| **C3** | ~~Deals→Company relations missing~~ **RESOLVED 2026-08-22**: relations are filled 31/31. Verified against our DB: 25/28 identical, 0 unlinked, 3 differ — and in all 3 monday is *correct* while our cache carries the HubSpot agent-as-primary mis-association (`(A) Daykkhin.com`, `(A) ConsultiPay ×2`); none of the 3 owns documents. The migration silently fixes them | — | — | none | none needed; no writes to monday required |
+| **C3** | ~~Deals→Company relations missing~~ **RESOLVED 2026-08-22**: relations are filled 31/31. Verified against our DB: 25/28 identical, 0 unlinked, 3 differ — and in all 3 monday is *correct* while our cache carries the HubSpot agent-as-primary mis-association (`(A) Example Agent`, `(A) Example Referral Partner Ltd ×2`); none of the 3 owns documents. The migration silently fixes them | — | — | none | none needed; no writes to monday required |
 | **C4** | monday item ids are the only binding we have; if an operator deletes and recreates an item, the link breaks (the "deleted in CRM" badge makes it visible, but re-binding is manual) | High | Medium | any company | **DECIDED: add the `BSG ID` text column** on Companies (M) + Agents (A), store our company UUID → the reconcile script re-binds automatically ("auto-heal") |
 | C5 | `/ready` returns 503 forever once HubSpot 401s (`health.routes.ts`) | Medium | Certain | monitoring only — Docker's HEALTHCHECK uses `/health`, which does **not** touch HubSpot, so no restart loop | Remove the HubSpot check in the same PR |
 | C6 | 7 duplicate company pairs in our cache map onto 1 monday item each (3 of them with documents on only one side) | Medium | Certain | 4 documents | Fold duplicates with the existing merge service **before** the remap |

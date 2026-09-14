@@ -5,7 +5,7 @@ Status: Triaged. Most findings closed per product direction; one flagged for dec
 
 ## Purpose
 
-Each finding below was discovered by comparing the current OFFER renderer (`src/components/document-wizard/buildOfferPdfHtml.ts` + `offerPdf/sections/*` + `pdf-kit/*`) against the 8 reference PDFs listed in [pdf_rendering_logic_matrix.md](pdf_rendering_logic_matrix.md).
+Each finding below was discovered by comparing the current OFFER renderer (`src/components/document-wizard/buildOfferPdfHtml.ts` + `offerPdf/sections/*` + `pdf-kit/*`) against the 8 reference PDFs listed in [pdf_rendering_logic_matrix.md](../pdf_rendering_logic_matrix.md).
 
 ## Triage rule (2026-05-03)
 
@@ -22,8 +22,8 @@ The following findings are closed under the triage rule:
 | F3.3 | "Waived" default when `accountSetupFee` is zero | Confirmed: hide-if-empty is the intended behavior. |
 | F4.4 | `Rolling Reserve Cap` defaulting to `TBD` | Confirmed: hide-if-empty. |
 | F4.5 | `Max. Payout Transaction Size` defaulting to `N/A` | Confirmed: hide-if-empty. |
-| F1.1 | Section 1 free-form footnote (Aron, Finera) | Sample-specific text. Section footnote feature not added. |
-| F4.6 | Section 4 free-form footnote (Finera) | Same. |
+| F1.1 | Section 1 free-form footnote (Sample E, Sample F) | Sample-specific text. Section footnote feature not added. |
+| F4.6 | Section 4 free-form footnote (Sample F) | Same. |
 | F1.2 | Column-header markers `*` / `**` for footnote linkage | Tied to F1.1/F4.6 — closed. |
 | F4.7 | Spelling drift `bank` / `banking holidays` | Variation of `Settlement Note` text. Decided alongside F4.1 (see below). |
 
@@ -52,7 +52,7 @@ Decision: **add comment** (no functional change). Implemented:
 
 Implemented:
 - New `documentScope: "offer" | "offerAndAgreement"` field added to `DocumentTemplatePayload` and seeded by all three builders. Default value: `offer`.
-- No UI / renderer change yet — Phase 2 will add the Step 1 dropdown, Step "Parties & Signatures", and the `agreementPdf/` module per [agreement_structure.md](agreement_structure.md).
+- No UI / renderer change yet — Phase 2 will add the Step 1 dropdown, Step "Parties & Signatures", and the `agreementPdf/` module per [agreement_structure.md](../agreement_structure.md).
 
 ## ✅ Phase 2 delivered (2026-05-03)
 
@@ -76,7 +76,7 @@ Verification: `npm run verify` green (typecheck + lint + 151/151 tests + build).
 ### FA.1 🟥 AGREEMENT (long-form) renderer + document-scope dropdown
 
 - **Confirmed by product**: needed.
-- **Spec**: see [agreement_structure.md](agreement_structure.md).
+- **Spec**: see [agreement_structure.md](../agreement_structure.md).
 - **UI**: dropdown in Step 1 (Header / Meta) — `Commercial Pricing Schedule (Offer)` vs `Service Agreement (Offer + MSA)`.
 - **Internal change**: `documentScope: "offer" | "offerAndAgreement"` on `DocumentTemplatePayload` controls whether the MSA appendix + 3-party signature block is appended after the pricing schedule.
 - **Counterparty data caveat**: party fields (Merchant legal name, jurisdiction, address; Service Provider co-entity details) are **not yet available** in the system — they will arrive with the backend / DB / HubSpot phase. For now the AGREEMENT renderer must accept manual input via the wizard (Step 7 — "Parties & Signatures"), with optional field-level placeholders (e.g. `[Merchant legal name]`) when the user has nothing to enter.
@@ -86,7 +86,7 @@ Verification: `npm run verify` green (typecheck + lint + 151/151 tests + build).
 
 1. Step 1 dropdown — `Offer` / `Agreement` / `Offer + Agreement` — bound to existing `documentScope` field.
 2. New "Parties & Signatures" wizard step — visible only when `documentScope ∈ {agreement, offerAndAgreement}`.
-3. `agreementPdf/` module per [agreement_structure.md](agreement_structure.md):
+3. `agreementPdf/` module per [agreement_structure.md](../agreement_structure.md):
    - 14 section files (`overview.ts` … `other.ts`),
    - `parties.ts` and `signatureBlock.ts`,
    - placeholder substitution only — MSA body text stays static.

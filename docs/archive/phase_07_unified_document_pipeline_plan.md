@@ -43,7 +43,7 @@ Implemented:
    - keep one shared template style system,
    - hide missing rows/blocks for calculator source without synthetic placeholders.
 5. Added traceability documentation:
-   - `docs/pdf_rendering_logic_matrix.md` (8 PDF samples + OCR note for CEI + mode rules).
+   - `docs/pdf_rendering_logic_matrix.md` (8 PDF samples + OCR note for Sample B + mode rules).
 6. Added PDF UI Kit layer:
    - tokenized style profile (`pdf-kit/tokens.ts`),
    - reusable primitives (`pdf-kit/primitives.ts`),
@@ -298,14 +298,14 @@ Template structure and content rules are traced to two artifact groups:
 1. Product specification document:
    - `technical_specification_bsg.docx` (provided by product side, dated 2026-04-30 in document metadata).
 2. Commercial PDF samples:
-   - `ZenCreator Commercial Offer 1.1 (3).pdf`
-   - `Aron Group Commercial Offer 1.0 (2).pdf`
-   - `CEI Commercial Offer 1.0 and MSA_Director Signed.pdf`
-   - `Finera Commercial Offer 1.0.pdf`
-   - `ATOM Commercial Offer 1.0 and MSA.pdf`
-   - `Pay.cc Commercial Offer 1.1.pdf`
-   - `SoftGaming Commercial Offer 1.0.docx.pdf`
-   - `TodaPay Commercial Offer 1.0.pdf`
+   - `Sample A Commercial Offer 1.1 (3).pdf`
+   - `Sample E Group Commercial Offer 1.0 (2).pdf`
+   - `Sample B Commercial Offer 1.0 and MSA_Director Signed.pdf`
+   - `Sample F Commercial Offer 1.0.pdf`
+   - `Sample C Commercial Offer 1.0 and MSA.pdf`
+   - `Sample G Commercial Offer 1.1.pdf`
+   - `Sample D Commercial Offer 1.0.docx.pdf`
+   - `Sample H Commercial Offer 1.0.pdf`
 
 Operational rule:
 

@@ -2,7 +2,7 @@
 
 Date: 2026-05-03 (refreshed)
 Status: Reference for the AGREEMENT renderer.
-Source of truth: **`DRAFT TEXT.docx`** (provided 2026-05-03). Visual style aligned to the signed `CEI Commercial Offer 1.0 and MSA (for signature).pdf` and `ZenCreator Commercial Offer 1.1 (signed).pdf` references.
+Source of truth: **`DRAFT TEXT.docx`** (provided 2026-05-03). Visual style aligned to the signed `Sample B Commercial Offer 1.0 and MSA (for signature).pdf` and `Sample A Commercial Offer 1.1 (signed).pdf` references.
 
 ## 1. What this document is
 
@@ -13,7 +13,7 @@ The system supports exactly **two** document types (per product decision 2026-05
 
 There is no standalone "agreement-only" output. Every contract carries the pricing schedule.
 
-This file describes the structure of the second, larger output. In the reference set the bundle is observed as 11-page documents in `ZenCreator Commercial Offer 1.1`, `ATOM Commercial Offer 1.0 and MSA`, and `CEI Commercial Offer 1.0 and MSA_Director Signed`.
+This file describes the structure of the second, larger output. In the reference set the bundle is observed as 11-page documents in `Sample A Commercial Offer 1.1`, `Sample C Commercial Offer 1.0 and MSA`, and `Sample B Commercial Offer 1.0 and MSA_Director Signed`.
 
 ## 2. Top-level structure
 
@@ -176,6 +176,6 @@ The running footer (Puppeteer page template in `server/modules/pdf/pdf.service.t
 ## 8. References
 
 - **Authoritative source**: `DRAFT TEXT.docx` (provided 2026-05-03). Earlier `Extended Schedule 4 - MSA format.docx` superseded by this draft.
-- Visual baseline: `CEI Commercial Offer 1.0 and MSA (for signature).pdf` and `ZenCreator Commercial Offer 1.1 (signed).pdf`.
-- Reference bundle samples (older): `ZenCreator Commercial Offer 1.1 (3).pdf`, `ATOM Commercial Offer 1.0 and MSA.pdf`, `CEI Commercial Offer 1.0 and MSA_Director Signed.pdf`.
-- Implementation plan: [phase_07_unified_document_pipeline_plan.md](phase_07_unified_document_pipeline_plan.md).
+- Visual baseline: `Sample B Commercial Offer 1.0 and MSA (for signature).pdf` and `Sample A Commercial Offer 1.1 (signed).pdf`.
+- Reference bundle samples (older): `Sample A Commercial Offer 1.1 (3).pdf`, `Sample C Commercial Offer 1.0 and MSA.pdf`, `Sample B Commercial Offer 1.0 and MSA_Director Signed.pdf`.
+- Implementation plan: [phase_07_unified_document_pipeline_plan.md](archive/phase_07_unified_document_pipeline_plan.md).
