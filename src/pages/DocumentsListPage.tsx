@@ -262,7 +262,7 @@ export function DocumentsListPage() {
                 activeDirection={sortDir}
                 onSortChange={handleSortChange}
               >
-                HubSpot sync
+                CRM sync
               </SortableTh>
               <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
                 Last action

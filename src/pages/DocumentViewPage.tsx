@@ -264,7 +264,7 @@ export function DocumentViewPage() {
             ].join(" ")}
             title={
               doc.hubspotNoteId
-                ? `Latest HubSpot Note id: ${doc.hubspotNoteId}`
+                ? `Latest CRM note id: ${doc.hubspotNoteId}`
                 : undefined
             }
           >

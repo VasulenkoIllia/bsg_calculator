@@ -70,7 +70,7 @@ export function DeleteCompanyModal({
           <p className="mt-1 text-sm text-slate-500">
             This permanently removes the company and <strong>all</strong> of its
             documents, deals, saved calculators, and audit history from our
-            database. HubSpot is not affected (the company is already deleted
+            database. The CRM is not affected (the company is already deleted
             there). This cannot be undone.
           </p>
         </header>

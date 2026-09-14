@@ -141,7 +141,7 @@ export function PartiesStep({
           <p className="text-sm font-bold text-slate-800">Merchant</p>
           <p className="mt-1 text-xs text-slate-600">
             Leave fields blank to keep the spec placeholder in the preview. These values will
-            normally come from HubSpot / DB once the backend phase lands.
+            normally come from the CRM once that data is available.
           </p>
           <div className="mt-3 grid gap-3">
             <label>

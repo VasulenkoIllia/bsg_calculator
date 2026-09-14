@@ -319,7 +319,7 @@ describe("CalculatorsListPage — soft-delete (Cycle 2)", () => {
     });
   });
 
-  it("renders a HubSpot sync badge per row (parity with Documents)", async () => {
+  it("renders a CRM sync badge per row (parity with Documents)", async () => {
     vi.spyOn(configsApi, "listCalculatorConfigs").mockResolvedValueOnce({
       items: [
         fixtureConfig({ id: "cfg-synced", title: "Synced draft", hubspotSyncState: "synced" })

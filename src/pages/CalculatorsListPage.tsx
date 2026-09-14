@@ -251,7 +251,7 @@ export function CalculatorsListPage() {
               {/* UI-parity — HubSpot sync state column (mirrors the
                   Documents list). Not sortable (no backend sort key). */}
               <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-                HubSpot sync
+                CRM sync
               </th>
               {/* Sprint 9.N — Last action column populated from
                   calculator_config_events via LATERAL subquery on
