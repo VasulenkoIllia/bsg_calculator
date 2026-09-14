@@ -64,7 +64,7 @@ export function scheduleTtlRefresh(config: TtlRefreshConfig): Promise<void> {
       } catch (err) {
         logger.warn(
           { err: (err as Error).message, ageMs, ...config.logContext },
-          `${config.logLabel}: HubSpot fetch failed`
+          `${config.logLabel}: CRM fetch failed`
         );
       }
       })()

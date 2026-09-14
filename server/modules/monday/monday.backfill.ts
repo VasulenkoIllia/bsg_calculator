@@ -162,6 +162,16 @@ export async function upsertOneCompany(
           crm_missing_since = NULL,
           crm_deleted_at = NULL,
           crm_deleted_reason = NULL,
+          -- The sync bookkeeping the TTL refresh reads. It used to be written
+          -- only on INSERT, so every bound row looked stale forever: it was
+          -- re-read from monday on every single view, and the company page
+          -- showed a "last synced" date from May.
+          last_synced_at = now(),
+          -- Shown in the UI as "CRM updated": the last change made to the
+          -- card in monday. It used to keep the HubSpot-era or creation date.
+          hubspot_modified_at = CASE WHEN ${mondayIsAuthoritative()}
+                                     THEN COALESCE(${binding.crmUpdatedAt}, hubspot_modified_at)
+                                     ELSE hubspot_modified_at END,
           name = CASE WHEN ${mondayIsAuthoritative()} THEN ${display.name ?? null} ELSE name END,
           company_type = CASE WHEN ${mondayIsAuthoritative()} THEN ${display.companyType ?? null} ELSE company_type END,
           lifecycle_stage = CASE WHEN ${mondayIsAuthoritative()} AND ${display.lifecycleStage !== undefined}
@@ -306,6 +316,16 @@ export async function upsertOneDeal(
           -- surrounding sql template literal.)
           crm_deleted_at = NULL,
           name = CASE WHEN ${mondayIsAuthoritative()} THEN ${display.name ?? null} ELSE name END,
+          -- The sync bookkeeping the TTL refresh reads. It used to be written
+          -- only on INSERT, so every bound row looked stale forever: it was
+          -- re-read from monday on every single view, and the company page
+          -- showed a "last synced" date from May.
+          last_synced_at = now(),
+          -- Shown in the UI as "CRM updated": the last change made to the
+          -- card in monday. It used to keep the HubSpot-era or creation date.
+          hubspot_modified_at = CASE WHEN ${mondayIsAuthoritative()}
+                                     THEN COALESCE(${binding.crmUpdatedAt}, hubspot_modified_at)
+                                     ELSE hubspot_modified_at END,
           stage = CASE WHEN ${mondayIsAuthoritative()} THEN ${display.stage ?? null} ELSE stage END,
           updated_at = now()
         WHERE crm_item_id = ${item.id}

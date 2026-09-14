@@ -178,6 +178,14 @@ company is accepted, an empty or unbound link leaves the deal alone, and a
 deal already under any row bound to the Company (M) card — including the
 alias half of a duplicate pair, as with BSPOK — is not moved.
 
+**Two timestamps were also written once and never again** (same class,
+found the same day). last_synced_at was set only on insert, so every bound
+row looked stale forever: the TTL refresh re-read it from monday on every
+single view, and the company page showed a "last synced" date from May.
+And the "CRM updated" column (hubspot_modified_at) kept the HubSpot-era or
+creation date instead of the card's last change in monday. Every sync now
+advances both; if monday sends no updated_at the previous value is kept.
+
 ## 8. Routine operations
 
 **Re-run the backfill** (safe any time; read-only against monday):
