@@ -41,9 +41,9 @@ export const deals = pgTable(
     amount: numeric("amount", { precision: 14, scale: 2 }),
     // HubSpot deal_currency_code (ISO, e.g. 'EUR').
     currency: text("currency"),
-    // HubSpot 'client' free-text (e.g. '(M) Atom').
+    // HubSpot 'client' free-text (e.g. '(M) Example Merchant').
     clientLabel: text("client_label"),
-    // HubSpot 'agent' free-text (e.g. '(A) Jeremy').
+    // HubSpot 'agent' free-text (e.g. '(A) Example Agent').
     agentLabel: text("agent_label"),
     // HubSpot business_vertical enum (e.g. 'iGaming / Betting').
     businessVertical: text("business_vertical"),

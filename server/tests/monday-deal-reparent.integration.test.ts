@@ -6,8 +6,8 @@
  * and stage but never its company. A deal re-linked to another merchant in
  * monday therefore stayed under the old one in our system forever, and
  * three deals imported during the migration were stuck under their
- * referring agents — BPay Payments INC (662137) was invisible in the
- * wizard for BPay (found 2026-09-14).
+ * referring agents, invisible in the wizard for their merchants (found
+ * 2026-09-14).
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -63,7 +63,7 @@ async function seedAgent(): Promise<string> {
     .values(
       companyFixture({
         hubspotCompanyId: "432059832522",
-        name: "(A) ConsultiPay / Monepik Limited",
+        name: "(A) Example Referral Partner Ltd",
         companyType: "referring_partner",
         crmItemId: "3170235162",
         crmBoardId: "5102466950",
@@ -83,7 +83,7 @@ async function seedRemappedDeal(parentKey: string, itemId: string, companyItemId
       crm_item_id, crm_board_id, crm_company_item_id, monday_raw,
       crm_created_at, crm_updated_at, last_synced_at
     ) VALUES (
-      ${"hs-" + itemId}, ${parentKey}, 'BPay Payments INC (662137)', 'appointmentscheduled',
+      ${"hs-" + itemId}, ${parentKey}, 'Example Merchant Ltd (662137)', 'appointmentscheduled',
       now(), now(), '{}'::jsonb,
       ${itemId}, ${DEALS_BOARD}, ${companyItemId}, '{}'::jsonb,
       now(), now(), now()
@@ -110,10 +110,10 @@ describe("upsertOneDeal — a deal follows its Company (M) link", () => {
     // the board. First pass is the INSERT branch, second is the UPDATE one.
     const first = await seedMerchant("3170216043");
     const second = await seedMerchant("3170299999");
-    await upsertOneDeal(item("3170216855", "BPay Payments INC (662137)", "3170216043"), DEALS_BOARD, cols(DEALS_BOARD));
+    await upsertOneDeal(item("3170216855", "Example Merchant Ltd (662137)", "3170216043"), DEALS_BOARD, cols(DEALS_BOARD));
     expect(await parentOf("3170216855")).toBe(first);
 
-    await upsertOneDeal(item("3170216855", "BPay Payments INC (662137)", "3170299999"), DEALS_BOARD, cols(DEALS_BOARD));
+    await upsertOneDeal(item("3170216855", "Example Merchant Ltd (662137)", "3170299999"), DEALS_BOARD, cols(DEALS_BOARD));
 
     expect(await parentOf("3170216855")).toBe(second);
   });
@@ -123,7 +123,7 @@ describe("upsertOneDeal — a deal follows its Company (M) link", () => {
     const merchant = await seedMerchant("3170216043");
     await seedRemappedDeal(agent, "3170216855", "3170216043");
 
-    await upsertOneDeal(item("3170216855", "BPay Payments INC (662137)", "3170216043"), DEALS_BOARD, cols(DEALS_BOARD));
+    await upsertOneDeal(item("3170216855", "Example Merchant Ltd (662137)", "3170216043"), DEALS_BOARD, cols(DEALS_BOARD));
 
     expect(await parentOf("3170216855")).toBe(merchant);
   });
@@ -134,7 +134,7 @@ describe("upsertOneDeal — a deal follows its Company (M) link", () => {
     const agent = await seedAgent();
     await seedRemappedDeal(agent, "3170216855", "9999999999");
 
-    await upsertOneDeal(item("3170216855", "BPay Payments INC (662137)", "9999999999"), DEALS_BOARD, cols(DEALS_BOARD));
+    await upsertOneDeal(item("3170216855", "Example Merchant Ltd (662137)", "9999999999"), DEALS_BOARD, cols(DEALS_BOARD));
 
     expect(await parentOf("3170216855")).toBe(agent);
   });
@@ -143,7 +143,7 @@ describe("upsertOneDeal — a deal follows its Company (M) link", () => {
     const agent = await seedAgent();
     await seedRemappedDeal(agent, "3170216855", null);
 
-    await upsertOneDeal(item("3170216855", "BPay Payments INC (662137)"), DEALS_BOARD, cols(DEALS_BOARD));
+    await upsertOneDeal(item("3170216855", "Example Merchant Ltd (662137)"), DEALS_BOARD, cols(DEALS_BOARD));
 
     expect(await parentOf("3170216855")).toBe(agent);
   });
@@ -156,7 +156,7 @@ describe("upsertOneDeal — a deal follows its Company (M) link", () => {
     await db.insert(companies).values(
       companyFixture({
         hubspotCompanyId: "436756899010",
-        name: "(M) BPay Payments INC",
+        name: "(M) Example Merchant Ltd",
         crmItemId: "3170216043",
         crmBoardId: COMPANIES_BOARD,
         crmBindingRole: "alias"
@@ -164,13 +164,13 @@ describe("upsertOneDeal — a deal follows its Company (M) link", () => {
     );
     await seedRemappedDeal(agent, "3170216855", "3170216043");
 
-    await upsertOneDeal(item("3170216855", "BPay Payments INC (662137)", "3170216043"), DEALS_BOARD, cols(DEALS_BOARD));
+    await upsertOneDeal(item("3170216855", "Example Merchant Ltd (662137)", "3170216043"), DEALS_BOARD, cols(DEALS_BOARD));
 
     expect(await parentOf("3170216855")).toBe(primary);
   });
 
   it("leaves a deal held by the ALIAS half of a duplicate pair where it is", async () => {
-    // BSPOK: both rows bind to one monday card and the alias holds the
+    // A duplicate pair: both rows bind to one monday card and the alias holds the
     // deal, deliberately (decided 2026-08-28). The deal is already under a
     // row bound to the right card, so it is not a mismatch and the sync
     // must not quietly move it onto the primary row.
@@ -180,7 +180,7 @@ describe("upsertOneDeal — a deal follows its Company (M) link", () => {
       .values(
         companyFixture({
           hubspotCompanyId: "434572170473",
-          name: "(M) BSPOK IT Solutions LTD",
+          name: "(M) Duplicate Pair Ltd",
           crmItemId: "3170215994",
           crmBoardId: COMPANIES_BOARD,
           crmBindingRole: "alias"
@@ -189,7 +189,7 @@ describe("upsertOneDeal — a deal follows its Company (M) link", () => {
       .returning();
     await seedRemappedDeal(alias.hubspotCompanyId, "3170230001", "3170215994");
 
-    await upsertOneDeal(item("3170230001", "BSPOK IT Solutions LTD (662129)", "3170215994"), DEALS_BOARD, cols(DEALS_BOARD));
+    await upsertOneDeal(item("3170230001", "Duplicate Pair Ltd (662129)", "3170215994"), DEALS_BOARD, cols(DEALS_BOARD));
 
     expect(await parentOf("3170230001")).toBe(alias.hubspotCompanyId);
     expect(await parentOf("3170230001")).not.toBe(primary);
@@ -199,7 +199,7 @@ describe("upsertOneDeal — a deal follows its Company (M) link", () => {
     const merchant = await seedMerchant("3170216043");
     await seedRemappedDeal(merchant, "3170216855", "3170216043");
 
-    await upsertOneDeal(item("3170216855", "BPay Payments INC (662137)", "3170216043"), DEALS_BOARD, cols(DEALS_BOARD));
+    await upsertOneDeal(item("3170216855", "Example Merchant Ltd (662137)", "3170216043"), DEALS_BOARD, cols(DEALS_BOARD));
 
     expect(await parentOf("3170216855")).toBe(merchant);
   });

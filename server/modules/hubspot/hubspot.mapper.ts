@@ -149,9 +149,9 @@ function nullableString(raw: string | null | undefined): string | null {
  * is returned in HubSpot's own order; deduplicated to keep the
  * iteration cheap.
  *
- * Example real BSG case: deal "WORLDFY OY"
- *   - hs_primary_associated_company → "(A) Waseem" (Agent, filtered out)
- *   - associations.companies.results[1] → "(M) WORLDFY" (Merchant, kept)
+ * Example real BSG case (names withheld): one production deal where
+ *   - hs_primary_associated_company → an "(A) ..." company (Agent, filtered out)
+ *   - associations.companies.results[1] → an "(M) ..." company (Merchant, kept)
  *
  * With this helper, backfill chooses the merchant id, logs a warn
  * so BSG sales sees which deals need primary-association fixes in

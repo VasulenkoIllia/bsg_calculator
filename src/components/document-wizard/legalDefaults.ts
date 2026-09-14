@@ -71,7 +71,7 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentScope, string> = {
 export const DOCUMENT_TYPE_HINTS: Record<DocumentScope, string> = {
   offer: "Sections 1–4 with pricing tables. 1–3 pages.",
   offerAndAgreement:
-    "Sections 1–4 plus the long-form Service Agreement. ~11 pages — matches ZenCreator / ATOM / CEI sample bundles."
+    "Sections 1–4 plus the long-form Service Agreement. ~11 pages — matches the reference sample bundles."
 };
 
 // Resolve scope from the rendered document-type label. Used when external

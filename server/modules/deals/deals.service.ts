@@ -100,7 +100,7 @@ export async function getDeal(id: string): Promise<DealPublic> {
  * Shared between hubspot-backfill (one row per HubSpot list page) and
  * deals.service.scheduleTtlRefresh (one row at TTL refresh). Both
  * paths MUST use this — otherwise TTL would silently re-break
- * fallback rows like WORLDFY OY.
+ * fallback rows (a real deal whose primary association was an agent).
  */
 export interface ResolvedCompany {
   hubspotCompanyId: string;
@@ -130,7 +130,7 @@ export async function resolveDealCompany(
 /**
  * Same TTL pattern as companies.service.scheduleTtlRefresh, but with
  * the deal→company fallback resolver inside the refresh callback to
- * keep deals like WORLDFY OY (primary = filtered-out Agent, fallback
+ * keep deals like the one seen in production (primary = filtered-out Agent, fallback
  * = Merchant) from silently failing FK on refresh.
  */
 export async function scheduleTtlRefresh(row: Deal): Promise<void> {

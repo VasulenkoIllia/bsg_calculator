@@ -195,7 +195,7 @@ async function processOne(
       // Sprint 7.4 (audit S3) — multi-candidate fallback parity with
       // the backfill + TTL-refresh paths. The mapper picks ONE
       // company id (`hs_primary_associated_company` first), but real
-      // deals like WORLDFY OY have primary = Agent (filtered out)
+      // deals exist whose primary is an Agent (filtered out)
       // and a fallback Merchant in `associations.companies.results`.
       // Before this fix, processOne fell back to a single-id lookup
       // and silently returned "filtered_out" — losing every

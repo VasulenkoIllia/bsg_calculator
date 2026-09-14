@@ -253,9 +253,9 @@ export async function upsertOneDeal(
       // applied to a deal we already had: re-link a deal to another
       // merchant on the board and our system kept the old one forever,
       // through webhooks, the scheduled backfill and the TTL refresh alike.
-      // Found through BPay Payments INC (662137), imported during the
-      // migration under its referring agent and therefore invisible in the
-      // wizard for BPay. The INSERT branch below has always taken the
+      // Found through a deal imported during the migration under its
+      // referring agent and therefore invisible in the wizard for its
+      // merchant. The INSERT branch below has always taken the
       // parent from Company (M), so only deals we already had were affected.
       //
       // Only a PRIMARY bound company is accepted, and an empty or unbound
@@ -264,7 +264,7 @@ export async function upsertOneDeal(
       //
       // A deal already under ANY row bound to the Company (M) card is left
       // where it is - including the alias half of a duplicate pair. Which of
-      // two duplicate rows holds a deal is not a sync question: for BSPOK
+      // two duplicate rows holds a deal is not a sync question: for one pair
       // the alias holds the deal on purpose (decided 2026-08-28), and
       // comparing against the primary row's key would quietly undo that.
       const currentParent = existing.rows[0].hubspot_company_id;

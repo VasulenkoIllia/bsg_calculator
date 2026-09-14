@@ -89,7 +89,7 @@ export async function listCompanies(args: ListCompaniesArgs): Promise<Company[]>
   if (args.companyType) {
     // A row that ALREADY OWNS WORK stays visible whatever its type.
     //
-    // Real case this exists for: "(A) ConsultiPay / Monepik Limited" is a
+    // Real case this exists for: one agent company in production is a
     // referring_partner that owns a live document. A strict type filter
     // made it unreachable in both client pickers — an operator looking
     // for a client they had already produced a document for would get

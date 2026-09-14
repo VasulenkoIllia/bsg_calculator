@@ -96,19 +96,19 @@ afterEach(async () => {
 
 describe("company sync advances its timestamps", () => {
   it("bumps last_synced_at on every update, not only on insert", async () => {
-    await upsertOneCompany(item("3170216043", "BPay Payments INC", "2026-08-24T00:00:00Z"), COMPANIES_BOARD, cols(COMPANIES_BOARD), "merchant");
+    await upsertOneCompany(item("3170216043", "Example Merchant Ltd", "2026-08-24T00:00:00Z"), COMPANIES_BOARD, cols(COMPANIES_BOARD), "merchant");
     await age("companies", "3170216043");
 
-    await upsertOneCompany(item("3170216043", "BPay Payments INC", "2026-08-24T00:00:00Z"), COMPANIES_BOARD, cols(COMPANIES_BOARD), "merchant");
+    await upsertOneCompany(item("3170216043", "Example Merchant Ltd", "2026-08-24T00:00:00Z"), COMPANIES_BOARD, cols(COMPANIES_BOARD), "merchant");
 
     expect(justNow((await stamps("companies", "3170216043")).synced)).toBe(true);
   });
 
   it("writes the card's last change in monday into CRM updated", async () => {
-    await upsertOneCompany(item("3170216043", "BPay Payments INC", "2026-08-24T00:00:00Z"), COMPANIES_BOARD, cols(COMPANIES_BOARD), "merchant");
+    await upsertOneCompany(item("3170216043", "Example Merchant Ltd", "2026-08-24T00:00:00Z"), COMPANIES_BOARD, cols(COMPANIES_BOARD), "merchant");
     await age("companies", "3170216043");
 
-    await upsertOneCompany(item("3170216043", "BPay Payments INC", "2026-09-09T02:47:00Z"), COMPANIES_BOARD, cols(COMPANIES_BOARD), "merchant");
+    await upsertOneCompany(item("3170216043", "Example Merchant Ltd", "2026-09-09T02:47:00Z"), COMPANIES_BOARD, cols(COMPANIES_BOARD), "merchant");
 
     expect((await stamps("companies", "3170216043")).modified.toISOString()).toBe("2026-09-09T02:47:00.000Z");
   });
@@ -116,10 +116,10 @@ describe("company sync advances its timestamps", () => {
   it("keeps the previous CRM updated when monday sends no updated_at", async () => {
     // Overwriting it with NULL would violate NOT NULL; overwriting it with
     // now() would lie about when the card last changed.
-    await upsertOneCompany(item("3170216043", "BPay Payments INC", "2026-08-24T00:00:00Z"), COMPANIES_BOARD, cols(COMPANIES_BOARD), "merchant");
+    await upsertOneCompany(item("3170216043", "Example Merchant Ltd", "2026-08-24T00:00:00Z"), COMPANIES_BOARD, cols(COMPANIES_BOARD), "merchant");
     await age("companies", "3170216043");
 
-    await upsertOneCompany(item("3170216043", "BPay Payments INC", null), COMPANIES_BOARD, cols(COMPANIES_BOARD), "merchant");
+    await upsertOneCompany(item("3170216043", "Example Merchant Ltd", null), COMPANIES_BOARD, cols(COMPANIES_BOARD), "merchant");
 
     expect((await stamps("companies", "3170216043")).modified.toISOString()).toBe("2026-05-25T19:08:00.000Z");
   });
@@ -127,11 +127,11 @@ describe("company sync advances its timestamps", () => {
 
 describe("deal sync advances its timestamps", () => {
   it("bumps last_synced_at and CRM updated on every update", async () => {
-    await upsertOneCompany(item("3170216043", "BPay Payments INC", "2026-08-24T00:00:00Z"), COMPANIES_BOARD, cols(COMPANIES_BOARD), "merchant");
-    await upsertOneDeal(item("3170216855", "BPay Payments INC (662137)", "2026-08-24T00:00:00Z", "3170216043"), DEALS_BOARD, cols(DEALS_BOARD));
+    await upsertOneCompany(item("3170216043", "Example Merchant Ltd", "2026-08-24T00:00:00Z"), COMPANIES_BOARD, cols(COMPANIES_BOARD), "merchant");
+    await upsertOneDeal(item("3170216855", "Example Merchant Ltd (662137)", "2026-08-24T00:00:00Z", "3170216043"), DEALS_BOARD, cols(DEALS_BOARD));
     await age("deals", "3170216855");
 
-    await upsertOneDeal(item("3170216855", "BPay Payments INC (662137)", "2026-09-07T17:11:00Z", "3170216043"), DEALS_BOARD, cols(DEALS_BOARD));
+    await upsertOneDeal(item("3170216855", "Example Merchant Ltd (662137)", "2026-09-07T17:11:00Z", "3170216043"), DEALS_BOARD, cols(DEALS_BOARD));
 
     const s = await stamps("deals", "3170216855");
     expect(justNow(s.synced)).toBe(true);
@@ -149,11 +149,11 @@ describe("TTL refresh groups views into one re-read", () => {
       { id: "board_relation_mm6b3w0h", title: "Deals", type: "board_relation", settings_str: "{}" },
       { id: "text_mm6md0ww", title: "BSG ID", type: "text", settings_str: "{}" }
     ] as never);
-    await upsertOneCompany(item("3170216043", "BPay Payments INC", "2026-08-24T00:00:00Z"), COMPANIES_BOARD, cols(COMPANIES_BOARD), "merchant");
+    await upsertOneCompany(item("3170216043", "Example Merchant Ltd", "2026-08-24T00:00:00Z"), COMPANIES_BOARD, cols(COMPANIES_BOARD), "merchant");
     await age("companies", "3170216043");
     const fetch = vi
       .spyOn(monday, "getItemsById")
-      .mockResolvedValue(new Map([["3170216043", item("3170216043", "BPay Payments INC", "2026-09-09T02:47:00Z") as never]]));
+      .mockResolvedValue(new Map([["3170216043", item("3170216043", "Example Merchant Ltd", "2026-09-09T02:47:00Z") as never]]));
 
     const [stale] = await db.select().from(companies).where(eq(companies.crmItemId, "3170216043"));
     await scheduleTtlRefresh(stale);

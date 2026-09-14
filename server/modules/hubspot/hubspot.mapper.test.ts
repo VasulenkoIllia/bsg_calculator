@@ -18,11 +18,11 @@ function makeCompanyFixture(overrides: Partial<HubspotObject["properties"]> = {}
     id: "426418136305",
     properties: {
       hs_object_id: "426418136305",
-      name: "(A) Elena",
+      name: "(A) Example Agent",
       company_type: "referring_partner",
       segment_type: "Master_referring_partner",
       lifecyclestage: "opportunity",
-      hs_task_label: "(A) Elena",
+      hs_task_label: "(A) Example Agent",
       createdate: "2026-04-17T16:02:14.684Z",
       hs_lastmodifieddate: "2026-05-13T21:25:24.362Z",
       ...overrides
@@ -38,13 +38,13 @@ function makeDealFixture(overrides: Partial<HubspotObject["properties"]> = {}): 
     properties: {
       hs_object_id: "498828505295",
       hs_primary_associated_company: "426487875793",
-      dealname: "CEI Processing Limited",
+      dealname: "Example Processing Limited",
       dealstage: "appointmentscheduled",
       pipeline: "default",
       amount: "500000",
       deal_currency_code: "EUR",
-      client: "(M) Atom",
-      agent: "(A) Jeremy",
+      client: "(M) Example Merchant",
+      agent: "(A) Example Referrer",
       business_vertical: "iGaming / Betting",
       createdate: "2026-04-14T09:44:37.845Z",
       hs_lastmodifieddate: "2026-04-28T16:09:13.636Z",
@@ -61,15 +61,15 @@ describe("mapHubspotCompanyToRow", () => {
     expect(row).not.toBeNull();
     expect(row).toMatchObject({
       hubspotCompanyId: "426418136305",
-      name: "(A) Elena",
+      name: "(A) Example Agent",
       companyType: "referring_partner",
       segmentType: "Master_referring_partner",
       lifecycleStage: "opportunity",
-      hsTaskLabel: "(A) Elena"
+      hsTaskLabel: "(A) Example Agent"
     });
     expect(row?.hubspotCreatedAt).toBeInstanceOf(Date);
     expect(row?.hubspotModifiedAt).toBeInstanceOf(Date);
-    expect(row?.hubspotRaw).toMatchObject({ name: "(A) Elena" });
+    expect(row?.hubspotRaw).toMatchObject({ name: "(A) Example Agent" });
   });
 
   it("returns null on missing name", () => {
@@ -126,13 +126,13 @@ describe("mapHubspotDealToRow", () => {
     expect(row).toMatchObject({
       hubspotDealId: "498828505295",
       hubspotCompanyId: "426487875793",
-      name: "CEI Processing Limited",
+      name: "Example Processing Limited",
       stage: "appointmentscheduled",
       pipelineId: "default",
       amount: "500000",
       currency: "EUR",
-      clientLabel: "(M) Atom",
-      agentLabel: "(A) Jeremy",
+      clientLabel: "(M) Example Merchant",
+      agentLabel: "(A) Example Referrer",
       businessVertical: "iGaming / Betting"
     });
   });
@@ -176,7 +176,7 @@ describe("mapHubspotDealToRow", () => {
 
 describe("extractDealCompanyCandidates", () => {
   it("returns primary first, then unlabeled secondary associations", () => {
-    // Real-world WORLDFY OY case: primary = agent, secondary = merchant.
+    // Real-world case seen in production: primary = agent, secondary = merchant.
     const obj = makeDealFixture({ hs_primary_associated_company: "agent-id" });
     obj.associations = {
       companies: {

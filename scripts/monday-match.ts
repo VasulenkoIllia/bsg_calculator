@@ -147,7 +147,7 @@ function colText(item: MondayItem, columnId: string): string | null {
 }
 
 // ─── normalisation ──────────────────────────────────────────────────
-/** "(M) SKOGOS SOLUTIONS INC." → "skogos solutions inc." (punctuation kept) */
+/** "(M) Example Solutions Inc." → "example solutions inc." (punctuation kept) */
 function normStrict(raw: string): string {
   return raw
     .toLowerCase()
@@ -156,7 +156,7 @@ function normStrict(raw: string): string {
     .replace(/\s+/g, " ");
 }
 
-/** "(M) ZenCreator (447290)" → "zencreator 447290" */
+/** "(M) Example Co (447290)" → "example co 447290" */
 function normName(raw: string): string {
   return raw
     .toLowerCase()
