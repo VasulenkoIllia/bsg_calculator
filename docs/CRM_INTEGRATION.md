@@ -167,6 +167,17 @@ would not have happened. Use the upsert form.
 still returns the item with `state: deleted`, which is why the processor
 gets confirmation rather than inferring from absence.
 
+**A deal's company was taken once and never again.** Syncing a deal we
+already had updated its name and stage but not its company, so a change of
+Company (M) in monday was silently ignored forever — by webhooks, the
+scheduled backfill and the TTL refresh alike. Three deals imported during
+the migration were stuck under their referring agents; BPay Payments INC
+(662137) was invisible in the wizard for BPay (found 2026-09-14). Every
+sync now applies Company (M), with three guards: only a primary bound
+company is accepted, an empty or unbound link leaves the deal alone, and a
+deal already under any row bound to the Company (M) card — including the
+alias half of a duplicate pair, as with BSPOK — is not moved.
+
 ## 8. Routine operations
 
 **Re-run the backfill** (safe any time; read-only against monday):

@@ -223,14 +223,67 @@ export async function upsertOneDeal(
     const display = mapDealDisplay(item, cols);
     stats.deals.seen += 1;
 
-    const existing = await db.execute<{ id: string }>(sql`
-      SELECT id FROM deals WHERE crm_item_id = ${item.id} LIMIT 1
+    const existing = await db.execute<{
+      id: string;
+      hubspot_company_id: string;
+      parent_item: string | null;
+    }>(sql`
+      SELECT d.id, d.hubspot_company_id, p.crm_item_id AS parent_item
+        FROM deals d LEFT JOIN companies p ON p.hubspot_company_id = d.hubspot_company_id
+       WHERE d.crm_item_id = ${item.id}
+       LIMIT 1
     `);
 
     if (existing.rows.length > 0) {
+      // Keep the deal under the company its Company (M) link names.
+      //
+      // This branch used to update name, stage and the binding columns but
+      // never hubspot_company_id - the FK every "deals of this company"
+      // query filters on. So a change of Company (M) in monday was never
+      // applied to a deal we already had: re-link a deal to another
+      // merchant on the board and our system kept the old one forever,
+      // through webhooks, the scheduled backfill and the TTL refresh alike.
+      // Found through BPay Payments INC (662137), imported during the
+      // migration under its referring agent and therefore invisible in the
+      // wizard for BPay. The INSERT branch below has always taken the
+      // parent from Company (M), so only deals we already had were affected.
+      //
+      // Only a PRIMARY bound company is accepted, and an empty or unbound
+      // link leaves the parent alone rather than orphaning the deal - the
+      // next sync applies it once that company is bound.
+      //
+      // A deal already under ANY row bound to the Company (M) card is left
+      // where it is - including the alias half of a duplicate pair. Which of
+      // two duplicate rows holds a deal is not a sync question: for BSPOK
+      // the alias holds the deal on purpose (decided 2026-08-28), and
+      // comparing against the primary row's key would quietly undo that.
+      const currentParent = existing.rows[0].hubspot_company_id;
+      const currentCard = existing.rows[0].parent_item;
+      let parent = currentParent;
+      if (
+        mondayIsAuthoritative() &&
+        binding.crmCompanyItemId &&
+        currentCard !== binding.crmCompanyItemId
+      ) {
+        const target = await db.execute<{ hubspot_company_id: string }>(sql`
+          SELECT hubspot_company_id FROM companies
+           WHERE crm_item_id = ${binding.crmCompanyItemId} AND crm_binding_role = 'primary'
+           LIMIT 1
+        `);
+        const next = target.rows[0]?.hubspot_company_id;
+        if (next && next !== currentParent) {
+          logger.info(
+            { itemId: item.id, name: item.name, from: currentParent, to: next },
+            "[monday:backfill] deal moved to the company its Company (M) link names"
+          );
+          parent = next;
+        }
+      }
+
       await db.execute(sql`
         UPDATE deals SET
           crm_board_id = ${binding.crmBoardId},
+          hubspot_company_id = ${parent},
           crm_company_item_id = ${binding.crmCompanyItemId},
           monday_raw = ${JSON.stringify(binding.mondayRaw)}::jsonb,
           crm_created_at = ${binding.crmCreatedAt},
