@@ -1,13 +1,11 @@
 # HubSpot CRM API Reference — Companies + Deals
 
-> **Era note (2026-08-28).** This document describes the **HubSpot** era.
-> HubSpot is switched off after 2026-08-31 and monday.com replaces it via
-> the `CRM_PROVIDER` switch. What still applies, what changes, and why is in
-> [`monday_migration_plan.md`](monday_migration_plan.md); the practical diff
-> is in [`ONBOARDING.md`](ONBOARDING.md) §10.
+> **Historical** — HubSpot was switched off after 2026-08-31 and the
+> account no longer exists (confirmed 2026-09-14); monday.com is the only
+> CRM. Current reference: [docs/CRM_INTEGRATION.md](CRM_INTEGRATION.md).
 
 Date: 2026-05-14
-Status: **Validated against the live BSG HubSpot account (2026-05-14).**
+Status (as of 2026-05, historical): **Validated against the live BSG HubSpot account (2026-05-14).**
 
 Compiled from HubSpot developer docs and confirmed by 8 live test
 calls (read + write-note + delete-note) against
@@ -256,7 +254,7 @@ When there are no more pages, `paging.next` is absent.
     "hubspot_owner_id": null,
     "industry": null,
     "industry_type": null,
-    "name": "(A) Elena",
+    "name": "(A) <agent name>",
     "phone": null,
     "referral_source": null,
     "segment_type": "Master_referring_partner",
@@ -265,7 +263,7 @@ When there are no more pages, `paging.next` is absent.
   "createdAt": "2026-04-17T16:02:14.684Z",
   "updatedAt": "2026-04-27T14:15:25.376Z",
   "archived": false,
-  "url": "https://app-eu1.hubspot.com/contacts/147930284/record/0-2/426418136305"
+  "url": "https://app-eu1.hubspot.com/contacts/<portalId>/record/0-2/<companyId>"
 }
 ```
 
@@ -361,12 +359,12 @@ Authorization: Bearer ...
 {
   "id": "498828505295",
   "properties": {
-    "agent": "(A) Jeremy",
+    "agent": "(A) <agent name>",
     "amount": "500000",
     "business_vertical": "iGaming / Betting",
-    "client": "(M) Atom",
+    "client": "(M) <merchant name>",
     "createdate": "2026-04-14T09:44:37.845Z",
-    "dealname": "CEI Processing Limited",
+    "dealname": "<deal name>",
     "dealstage": "appointmentscheduled",
     "is_licensed": "no",
     "is_startup": "yes",
@@ -386,7 +384,7 @@ Authorization: Bearer ...
       ]
     }
   },
-  "url": "https://app-eu1.hubspot.com/contacts/147930284/record/0-3/498828505295"
+  "url": "https://app-eu1.hubspot.com/contacts/<portalId>/record/0-3/<dealId>"
 }
 ```
 
@@ -743,7 +741,7 @@ Full response shape on a successful create:
   "createdAt": "2026-05-13T21:21:49.201Z",
   "updatedAt": "2026-05-13T21:21:49.201Z",
   "archived": false,
-  "url": "https://app-eu1.hubspot.com/contacts/147930284/objects/0-46/views/all/list?filters=..."
+  "url": "https://app-eu1.hubspot.com/contacts/<portalId>/objects/0-46/views/all/list?filters=..."
 }
 ```
 
@@ -992,7 +990,7 @@ Private App webhook subscriptions feature.
 ### 14.1 Endpoint
 
 ```
-POST https://bsg.workflo.space/api/v1/hubspot/webhooks
+POST https://<app-domain>/api/v1/hubspot/webhooks
 ```
 
 - Public; **no Bearer token**. Authenticated via HMAC v3 signature in
@@ -1062,10 +1060,11 @@ Sample event payload HubSpot delivers (array; one entry per event):
    bsg-calculator app.
 2. **Auth** tab → copy the "Client secret" → set
    `HUBSPOT_WEBHOOK_SECRET` in the prod env / `.env`. Redeploy so the
-   server boots with the new env. (In production, env validator
-   refuses to start if this is empty.)
+   server boots with the new env. (In production with
+   `CRM_PROVIDER=hubspot`, the env validator refuses to start if this is
+   empty.)
 3. **Webhooks** tab → set the target URL to
-   `https://bsg.workflo.space/api/v1/hubspot/webhooks`.
+   `https://<app-domain>/api/v1/hubspot/webhooks`.
 4. Add the six subscriptions from §14.3.
 5. Click **Send test webhook** for each subscription type — verify
    the row appears in `hubspot_webhook_events` with
@@ -1075,7 +1074,7 @@ Sample event payload HubSpot delivers (array; one entry per event):
 ### 14.5 Manual refresh endpoint
 
 ```
-POST https://bsg.workflo.space/api/v1/hubspot/refresh
+POST https://<app-domain>/api/v1/hubspot/refresh
 Authorization: Bearer <jwt>
 Content-Type: application/json
 

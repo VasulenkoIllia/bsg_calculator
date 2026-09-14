@@ -1,5 +1,11 @@
 # HubSpot → monday.com migration: code inventory + feasibility analysis
 
+> **Completed 2026-08-28** — this is the planning record. Current state:
+> [docs/CRM_INTEGRATION.md](CRM_INTEGRATION.md); outcome:
+> [docs/CRM_MIGRATION_RECORD.md](CRM_MIGRATION_RECORD.md).
+> HubSpot has since been retired (account gone, confirmed 2026-09-14); the
+> rollback path to HubSpot described below no longer exists.
+
 Date: 2026-08-22. Status: **analysis only — no code changes made.**
 Scope: (1) where HubSpot sync lives in this repo and how it is wired,
 (2) what a move to monday.com would require, (3) risks, decisions and effort.
@@ -46,7 +52,7 @@ copy. It is not one client module — it is five distinct subsystems.
 - `hubspot.mapper.ts` — `mapHubspotCompanyToRow`, `mapHubspotDealToRow`,
   `parseTimestamp` (epoch-s / epoch-ms / ISO), and
   `extractDealCompanyCandidates()` — the primary-association-first,
-  secondary-association-fallback resolver (the "WORLDFY OY" case).
+  secondary-association-fallback resolver (for a deal whose primary association is its agent).
 - `hubspot.service.ts` — pipelines cache (1 h TTL + in-flight dedupe),
   exposed as `GET /api/v1/hubspot/pipelines`.
 

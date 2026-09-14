@@ -1,11 +1,17 @@
 # Architecture Codemaps Index
 
-**Last Updated:** 2026-06-08
+**Last Updated:** 2026-09-14 (CRM entries refreshed for monday.com; the rest as of 2026-06-08)
 
 > **New to the project? Read [`docs/ONBOARDING.md`](../ONBOARDING.md) first** —
 > it is the single, current handoff guide. These codemaps are deeper per-tree
 > references; `server.md` and `frontend.md` are accurate at a high level but
 > their detailed tables predate some later modules (a full regen is pending).
+>
+> **CRM:** monday.com is the only CRM (production `CRM_PROVIDER=monday` since
+> 2026-08-28; HubSpot retired 2026-08-31, no rollback). The live code is
+> `server/modules/monday/**` + `server/modules/crm-notes/`;
+> `server/modules/hubspot/**` and `src/api/hubspot.ts` are dormant legacy.
+> Operating manual: [`docs/CRM_INTEGRATION.md`](../CRM_INTEGRATION.md).
 
 This directory contains architectural maps of the BSG Calculator codebase to help new developers onboard quickly.
 
@@ -13,7 +19,7 @@ This directory contains architectural maps of the BSG Calculator codebase to hel
 
 ### 1. **server.md** — Backend API (Express.js + PostgreSQL)
 - **Status:** Feature-complete for Sprints 1–2.7. No changes in 2.8 (frontend-only sprint).
-- **Coverage:** 6 modules (auth, users, companies, deals, hubspot, health), 10 shared helpers.
+- **Coverage:** the original 6 modules (auth, users, companies, deals, hubspot, health), later modules (documents, calculator-configs, events, invites), the CRM layer (`monday/**` live, `crm-notes/`; `hubspot/**` dormant legacy), 10 shared helpers.
 - **Key:** Details the vertical slice pattern, TTL-refresh scheduling, cursor pagination, and three reusable helpers for Phase 3+.
 - **Entry Points:**
   - `server/index.ts` → process entrypoint (bind to PORT, graceful shutdown).
@@ -27,7 +33,7 @@ This directory contains architectural maps of the BSG Calculator codebase to hel
 - **Entry Points:**
   - `src/main.tsx` → QueryClient + AuthProvider + App.
   - `src/App.tsx` → BrowserRouter with PrivateRoute layout.
-  - `src/api/*` → endpoint wrappers (auth/companies/deals/hubspot).
+  - `src/api/*` → endpoint wrappers (auth/companies/deals/documents/calculator-configs/…; `hubspot.ts` is dormant legacy).
 
 ---
 
@@ -36,7 +42,8 @@ This directory contains architectural maps of the BSG Calculator codebase to hel
 | Use Case | Codemap | Section |
 |----------|---------|---------|
 | I'm adding a new API route | server.md | "Module Structure" + "Key Entry Points" |
-| I need to fetch from HubSpot with caching | server.md | "HubSpot" + "Sprint 2.7 Helpers" → ttl-refresh.ts |
+| I need to read CRM data with caching | server.md | "CRM — monday.com" + "Companies & Deals" + "Sprint 2.7 Helpers" → ttl-refresh.ts |
+| I'm operating or debugging the CRM sync | [CRM_INTEGRATION.md](../CRM_INTEGRATION.md) | whole file |
 | I'm building a listing endpoint | server.md | "Sprint 2.7 Helpers" → build-page.ts |
 | I need to validate API response DTOs | server.md | "Sprint 2.7 Helpers" → dto-parse.ts |
 | I'm debugging an auth flow | server.md + frontend.md | "Auth" module + "Auth flow" diagram |
@@ -55,7 +62,7 @@ This directory contains architectural maps of the BSG Calculator codebase to hel
 
 1. **Auth System** — JWT access tokens + opaque refresh tokens in HTTP-only cookies (SameSite=Strict).
 2. **Vertical Slice Modules** — auth, users, companies, deals, hubspot, health.
-3. **HubSpot Integration** — Async TTL-driven refresh (serve stale, fetch in background).
+3. **HubSpot Integration** — Async TTL-driven refresh (serve stale, fetch in background). *(2026-09-14: HubSpot retired; the same TTL refresh now reads from monday.com.)*
 4. **Three Reusable Helpers** for Sprint 3+:
    - `shared/ttl-refresh.ts` — Background sync scheduling (use for any external source sync).
    - `shared/dto-parse.ts` — Response DTO validation (catch server-side projection bugs).
@@ -83,20 +90,22 @@ This directory contains architectural maps of the BSG Calculator codebase to hel
 | Phase | State | Notes |
 |-------|-------|-------|
 | **Sprint 1** Foundation | ✅ DONE | auth, users, error envelope, base middleware |
-| **Sprint 2** HubSpot reads | ✅ DONE | companies + deals + pipelines + backfill |
+| **Sprint 2** HubSpot reads | ✅ DONE | companies + deals + pipelines + backfill (retired with HubSpot 2026-08-31) |
 | **Sprint 2.7** Hardening cycle | ✅ DONE | 9 audit sub-commits A→I + 7 security findings |
 | **Sprint 2.8** Frontend auth + listings | ✅ DONE | + F.1→F.5 audit closure (34 findings) |
 | **Sprint 3** Calculator Configs CRUD | ✅ DONE | + SaveCalculatorModal flow |
 | **Sprint 4** Documents + PDF render | ✅ DONE | + F.1→F.4 audit closure (28 findings) |
 | **Sprint 4.E.2** Server-side PDF (shared template) | ✅ DONE | buildOfferPdfHtml shared via tsconfig.server.json glob |
-| **Sprint 5** HubSpot webhooks (inbound) | ✅ DONE | `modules/hubspot/webhooks/*` — HMAC v3 + async processor + manual refresh |
+| **Sprint 5** HubSpot webhooks (inbound) | ✅ DONE | `modules/hubspot/webhooks/*` — HMAC v3 + async processor + manual refresh (retired with HubSpot 2026-08-31) |
 | **Sprint 5.5** Visual-diff harness | ✅ DONE | `scripts/visual-diff/*` — backend vs. frontend PDF equivalence gated |
 | **Sprint 5.F** Audit closure (30 findings, F.1→F.3) | ✅ DONE | HMAC URI hardened, TX-wrapped deletion, exp. backoff, re-entrancy guard, repo boundaries, SSRF defence |
 | **Sprint 6** Frontend polish (6.0 → 6.4) | ✅ DONE | Unified PDF render via POST /pdf/preview, /calc/:id hydration + auto-save, wizard ?calc= linking, global toasts, CompanyDetailPage tabs + docs-from-calc history |
 | **Sprint 6.F** Audit closure (15 findings, F.1→F.4) | ✅ DONE | Rate limit on /pdf/preview, autoSave reset on configId change, decomposition (CalcPage 679→561 LOC), runtime payload guard, calculatorConfigId filter test coverage |
 | **Sprint 7** Single-container deploy | ✅ DONE | Dockerfile + docker-compose, Express serves SPA, Traefik/Coolify, helmet+CSP |
-| **Phase 9** HubSpot Note write-back | ✅ DONE | `POST /crm/v3/objects/notes` with APP_PUBLIC_URL link, auto + manual sync |
+| **Phase 9** HubSpot Note write-back | ✅ DONE | `POST /crm/v3/objects/notes` with APP_PUBLIC_URL link, auto + manual sync (now posts monday updates via `modules/crm-notes/`) |
 | **Phase 8** Auth hardening + admin | ✅ DONE | RBAC roles, opt-in TOTP 2FA, invites + password reset, admin audit log, soft-delete |
+| **CRM migration** HubSpot → monday.com | ✅ DONE (2026-08-28) | `modules/monday/**` (client, columns, column-cache, mapper, backfill, refresh, maintenance, webhooks) + `modules/crm-notes/`; HubSpot retired 2026-08-31, `modules/hubspot/**` dormant |
+| **Post-migration fixes** (2026-09-14) | ✅ DONE | Deals follow their Company (M) link on every sync (`a84d653`); `last_synced_at` + "CRM updated" advanced on every sync (`4aeb134`) |
 | **Future** Hardening (optional) | ⏳ Pending | E2E Playwright, observability/metrics, bundle code-splitting |
 
 ---
@@ -113,4 +122,5 @@ This directory contains architectural maps of the BSG Calculator codebase to hel
 ---
 
 **Generated with:** TypeScript codebase analysis + JSDoc extraction  
-**Last Sync:** Commit 06810f8 (Sprint 2.8.F.5 audit closure complete)
+**Last Sync:** Commit 06810f8 (Sprint 2.8.F.5 audit closure complete)  
+**CRM refresh:** 2026-09-14 at commit 51998d1 (monday.com modules added, HubSpot marked dormant)

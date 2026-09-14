@@ -1,5 +1,7 @@
 # Backend Computation Boundary
 
+> **Historical design document.** The CRM is monday.com (live since 2026-08-28); HubSpot was retired and the account no longer exists. HubSpot references below describe the plan at the time. Current reference: [CRM_INTEGRATION.md](CRM_INTEGRATION.md).
+
 What gets recomputed server-side vs. what backend trusts from the
 stored snapshot/summary blobs. Pinning the boundary now prevents
 "stored PDF says €120k but listing says €115k" drift later.

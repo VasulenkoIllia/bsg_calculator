@@ -1,4 +1,11 @@
-# HubSpot → monday.com — migration plan v2 (authoritative)
+# HubSpot → monday.com — migration plan v2 (historical — authoritative until the 2026-08-28 cutover)
+
+> **Completed 2026-08-28** — this is the planning record. Current state:
+> [docs/CRM_INTEGRATION.md](CRM_INTEGRATION.md); outcome:
+> [docs/CRM_MIGRATION_RECORD.md](CRM_MIGRATION_RECORD.md).
+> HubSpot has since been retired (account gone, confirmed 2026-09-14); the
+> rollbacks to HubSpot described below (`CRM_PROVIDER=hubspot`, or the
+> pre-migration image) no longer exist.
 
 Revised **2026-08-27** after a 9-agent cross-audit (5 inventories → 3 adversarial
 reviews → synthesis). Supersedes v1, archived at
@@ -196,7 +203,7 @@ fixed and re-verified the same day.
 |---|---|
 | **blocker** | Four `hubspot.isConfigured()` calls were unconditional, so sync and delete refused to work in exactly the configuration `env.ts` now blesses — CRM_PROVIDER=monday with no HubSpot token. Replaced with a provider-dispatched `crmIsConfigured()`; **proved end-to-end** (sync → update on the card → delete → update gone, with no HubSpot token present). |
 | high | The rewritten publish path discarded the note id when HubSpot's *association* call failed after the note was already created — an unrecoverable orphan on the customer timeline, and a regression on the LIVE path. The id is now written to the ledger before the error propagates. |
-| high | The new `companyType` filter made `(A) ConsultiPay / Monepik Limited` — a referring_partner that owns a live document — unreachable in both client pickers. The filter now also admits any row that already owns work: 86 visible, 41 empty agents still hidden. |
+| high | The new `companyType` filter made one referring_partner that owns a live document unreachable in both client pickers. The filter now also admits any row that already owns work: 86 visible, 41 empty agents still hidden. |
 | high | `flagDeleted` resolved a duplicate-bound item with an unordered `LIMIT 1` and could hard-delete the wrong half of a pair. It now aggregates across every row sharing a `crm_item_id` and deletes only when the whole group owns nothing. |
 | high | `runMondayBackfill` had no trigger — after the flip there would have been no way to load or refresh monday data. Added `npm run monday:backfill`. |
 | high ×2 | Two runbook gates were impossible to execute as written (a migration count of 21 against a tree of 23; a `node -e "require('./dist/...')"` boot check against a project that emits no `dist/server` and is `type: module`). Both corrected and **actually run**. |
@@ -370,7 +377,7 @@ remap → run the down scripts → `pg_dump --schema-only` diff must be empty.
    (31/31, correct on the newest deal) or `board_relation_mm6hc7y6` (30/31, added
    08-25, already disagreeing)? Same question for `Deals` vs `Dup. of Deals` on
    the Companies board.
-5. ~~**BSPOK duplicate pair**~~ — **DECIDED 2026-08-28: leave it alone.**
+5. ~~**One duplicate company pair**~~ — **DECIDED 2026-08-28: leave it alone.**
    `434297253062` (primary) owns 2 documents and no deal; `434572170473`
    (alias) owns the one deal and no documents. Nothing is re-parented.
 
@@ -380,15 +387,15 @@ remap → run the down scripts → `pg_dump --schema-only` diff must be empty.
    never change.
 
    The one deal stays stranded on the alias row, which means it can never
-   be pinned to a BSPOK document (`ensureDealBelongsToCompany` rejects a
+   be pinned to a document of that client (`ensureDealBelongsToCompany` rejects a
    cross-company reference). Accepted: nothing is pinned to it today, and
    **every NEW deal arriving from monday attaches to the primary row** —
    `monday.backfill.ts` resolves a deal's parent with
    `crm_item_id = X AND crm_binding_role = 'primary'` — so the problem does
    not grow.
 
-   Residue the operator will see: two identical `(M) BSPOK IT Solutions
-   LTD` rows in the client picker, both `direct_client`. Cosmetic.
+   Residue the operator will see: two identical `(M) …` rows in the
+   client picker, both `direct_client`. Cosmetic.
 
    The alias row cannot be silently purged: the deletion webhook counts
    owned work per monday ITEM, not per row, so it sees the 2 documents on

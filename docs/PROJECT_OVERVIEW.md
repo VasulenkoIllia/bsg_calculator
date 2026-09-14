@@ -1,5 +1,12 @@
 # BSG Calculator — Огляд проєкту (архітектура та основна логіка)
 
+> **Стан CRM (2026-09-14):** єдина CRM — **monday.com**; продакшн працює з
+> `CRM_PROVIDER=monday` з 2026-08-28. HubSpot виведено з експлуатації: акаунта
+> більше не існує, повернення на HubSpot немає. Код HubSpot лишається в
+> репозиторії, але неактивний, а ідентифікатори з «hubspot» — легасі-назви
+> (розділ 11). Докладно: [CRM_INTEGRATION.md](CRM_INTEGRATION.md) (операційний
+> посібник) і [CRM_MIGRATION_RECORD.md](CRM_MIGRATION_RECORD.md) (запис міграції).
+
 ## 1. Що це за система
 
 BSG Calculator — це внутрішній повностековий інструмент компанії **BSG** для роботи з
@@ -13,13 +20,13 @@ BSG Calculator — це внутрішній повностековий інст
 2. **Генератор документів (Wizard + PDF)** — майстер, який перетворює дані
    калькулятора (або ручний бланк) у **комерційну пропозицію (Offer)** та
    довгоформатну **угоду (Agreement / MSA)**. PDF рендериться на сервері,
-   документи зберігаються, отримують номер формату `BSG-…` і синхронізуються з
-   HubSpot як Notes.
+   документи зберігаються, отримують номер формату `BSG-…` і публікуються в
+   CRM (**monday.com**) як нотатки (monday «updates») на картці угоди або компанії.
 
 Навколо цих двох ядер побудований захищений «бекофіс»: користувачі й ролі,
 опційна двофакторна автентифікація, збережені калькулятори й документи (з
 м'яким видаленням і журналом історії), а також синхронізація компаній та угод
-із HubSpot CRM.
+із CRM **monday.com** (до 2026-08-28 — HubSpot, нині виведений з експлуатації).
 
 Ключова архітектурна риса: **один процес Express** у продакшені обслуговує і
 API, і зібраний фронтенд (SPA). У режимі розробки це два окремі процеси.
@@ -71,10 +78,10 @@ API, і зібраний фронтенд (SPA). У режимі розробк�
       • /api/v1/* — вертикальні зрізи модулів
       • у проді роздає зібраний SPA (/srv/spa)
       ▼                          ▲
-   PostgreSQL (Drizzle ORM)      │  кешовані читання (TTL), запис Notes,
-                                 │  вхідні webhooks (HMAC v3)
+   PostgreSQL (Drizzle ORM)      │  кешовані читання (TTL), запис нотаток,
+                                 │  вхідні webhooks (секрет у шляху)
                                  ▼
-                              HubSpot CRM
+                              monday.com (CRM)
 ```
 
 **Ключові принципи:**
@@ -117,20 +124,22 @@ server/                       Express API
   config/env.ts               Zod-валідований контракт змінних оточення
   config/constants.ts         константи (напр. вікно грейсу для refresh)
   db/schema/*.ts              таблиці Drizzle (+ barrel index.ts)
-  db/migrations/              SQL-міграції 0000..0019 (+ meta/)
+  db/migrations/              SQL-міграції 0000..0023 (+ meta/)
   db/migrate.ts               застосування міграцій (advisory-lock)
   middleware/                 auth, roles, rate-limit, request-id, error-handler,
                               logger, verify-hubspot-signature
   modules/<feature>/          вертикальні зрізи (auth, users, companies, deals,
-                              documents, calculator-configs, pdf, hubspot, ...)
+                              documents, calculator-configs, pdf, monday,
+                              crm-notes, hubspot [неактивний], ...)
   shared/                     async-handler, errors, roles, token/totp-utils,
-                              hubspot/note-builder
-  scripts/                    bootstrap-super-admin, create-user, hubspot-backfill,
-                              reconcile-companies
+                              hubspot/note-builder (тіло нотатки для будь-якої CRM)
+  scripts/                    bootstrap-super-admin, create-user, monday-backfill,
+                              monday-drift-check, monday-remap (одноразовий);
+                              hubspot-backfill, reconcile-companies (HubSpot-ера)
   tests/                      інтеграційні тести (supertest) + fixtures, setup.ts
 
 docs/                         документація (цей файл — самодостатній огляд)
-scripts/                      dev/ops-скрипти (hubspot inspect, visual-diff)
+scripts/                      dev/ops-скрипти (monday inspect/match, hubspot-* [HubSpot-ера], visual-diff)
 Dockerfile, docker-compose*.yml, docker/entrypoint.sh, nginx/  пакування й деплой
 tsconfig.json                 конфіг SPA
 tsconfig.server.json          конфіг бекенду (+ підмножина src для чистих білдерів)
@@ -295,8 +304,8 @@ approval.»*
 - `baseURL = VITE_API_BASE_URL ?? "/api/v1"`, `withCredentials: true`.
 
 Обгортки по ресурсах: `auth.ts`, `companies.ts`, `deals.ts`, `documents.ts`,
-`calculator-configs.ts`, `hubspot.ts`, `users.ts`, `invites.ts`,
-`password-resets.ts`, `admin-actions.ts`, `pdf.ts`. Типи (`Public*` DTO,
+`calculator-configs.ts`, `hubspot.ts` (легасі; SPA його не викликає),
+`users.ts`, `invites.ts`, `password-resets.ts`, `admin-actions.ts`, `pdf.ts`. Типи (`Public*` DTO,
 конверти) — у `types.ts`; barrel `index.ts` дає простори імен виду
 `api.companies.*`.
 
@@ -314,6 +323,9 @@ approval.»*
 3. **Raw-body парсер** рівно на шляху `/api/v1/hubspot/webhooks`
    (`express.raw`) — має бути **до** JSON-парсера, інакше HMAC не порахувати.
    Ніколи не розширюйте його область — це «зламає» JSON для всіх POST.
+   Це легасі-приймач HubSpot (неактивний); вебхук monday
+   (`/api/v1/monday/webhooks/:secret`) raw-body не потребує і йде через
+   звичайний JSON-парсер.
 4. `express.json({limit:"1mb"})`
 5. `cookieParser()`
 6. `cors` (у dev — `FRONTEND_ORIGIN`, у prod — вимкнено, бо один origin)
@@ -354,29 +366,40 @@ schemas.ts      → Zod-схеми запиту/відповіді (контра
 - **password-resets** — лінки скидання пароля: публічні preview/consume
   (видаються адміном).
 - **companies** — список/деталі/угоди компанії (будь-який авторизований) +
-  `DELETE /:id` локальна чистка (admin); `companies.merge.service.ts` обробляє
-  злиття компаній у HubSpot.
-- **deals** — список/деталі (тільки читання, синхронізовано з HubSpot).
+  `DELETE /:id` локальна чистка (admin); `companies.merge.service.ts` —
+  злиття компаній HubSpot-ери (у monday-режимі не викликається).
+- **deals** — список/деталі (тільки читання, синхронізовано з CRM).
 - **calculator-configs** — CRUD збережених снапшотів калькулятора; м'яке
-  видалення + відновлення (super_admin), ручна синхронізація з HubSpot,
+  видалення + відновлення (super_admin), ручна синхронізація з CRM,
   `/:id/events`.
 - **documents** — заморожені артефакти offer/agreement: список / за номером /
-  створення (admin), «використати як шаблон», синхронізація з HubSpot, м'яке
+  створення (admin), «використати як шаблон», синхронізація з CRM, м'яке
   видалення (admin) + відновлення (super_admin), `/:number/events`; плюс
   `numbering.service.ts` (нумерація) і `sync.service.ts`.
 - **pdf** — рендер через Puppeteer: `browser-pool.ts` (один Chromium на процес)
   і `pdf.service.ts` (`renderHtmlToPdf`), два роутери
   (`/:number/pdf`, `/pdf/preview`).
-- **hubspot** — `hubspot.client.ts` (читання CRM v3), `hubspot.mapper.ts`
-  (payload → рядок БД), `hubspot.service.ts` (кешовані пайплайни) і `webhooks/`
-  (приймач + асинхронний процесор).
+- **monday** — активна CRM (розділ 11): `monday.client.ts` (GraphQL-клієнт,
+  закріплена версія API), `monday.columns.ts` / `monday.column-cache.ts`
+  (резолв колонок), `monday.mapper.ts`, `monday.backfill.ts` (upsert компаній
+  та угод), `monday.refresh.ts` (TTL-оновлення одного рядка),
+  `monday.maintenance.ts` (плановий бекфіл + heartbeat черги) і `webhooks/`
+  (приймач + процесор черги).
+- **crm-notes** — публікація нотатки в активну CRM (`publishCrmNote`) і
+  зняття нотаток за реєстром `crm_notes`.
+- **hubspot** — *неактивний код HubSpot-ери*: `hubspot.client.ts` (читання CRM
+  v3), `hubspot.mapper.ts`, `hubspot.service.ts` (кешовані пайплайни) і
+  `webhooks/` (приймач + процесор; процесор і стартовий бекфіл запускаються
+  лише при `CRM_PROVIDER=hubspot`; маршрути `/api/v1/hubspot/webhooks`,
+  `/refresh`, `/pipelines` лишаються змонтованими, але SPA їх не викликає).
 - **events** — хелпери журналу подій (document_events / calculator_config_events);
   без окремого роутера — монтуються на роути документів/конфігів.
 - **admin-actions** — перегляд аудит-логу (super_admin).
 - **health** — `/health` у корені.
 
 Змонтовані шляхи: `/api/v1/auth`, `.../auth/invite`, `.../auth/password-reset`,
-`/api/v1/users`, `/companies`, `/deals`, `/hubspot`, `/calculator-configs`,
+`/api/v1/users`, `/companies`, `/deals`, `/hubspot` (легасі), `/monday` (вебхуки),
+`/calculator-configs`,
 `/documents` (+ `pdfRouter` для `/:number/pdf`), `/pdf` (preview),
 `/numbering`, `/admin`.
 
@@ -385,7 +408,7 @@ schemas.ts      → Zod-схеми запиту/відповіді (контра
 ## 8. База даних
 
 **PostgreSQL** через **Drizzle ORM**. Таблиці — у `server/db/schema/*.ts`
-(barrel `index.ts`). Міграції — 20 SQL-файлів `0000_…`–`0019_…` (+ `meta/`),
+(barrel `index.ts`). Міграції — 24 SQL-файли `0000_…`–`0023_…` (+ `meta/`),
 переглядувані та комітяться. `push` заборонено (`strict: true`) — тільки
 згенеровані міграції.
 
@@ -393,7 +416,8 @@ schemas.ts      → Zod-схеми запиту/відповіді (контра
 (запише нову міграцію) → переглянути SQL → `npm run db:migrate`. Перевагу —
 адитивним змінам; на великих таблицях звертайте увагу на ризик блокувань.
 
-**16 таблиць:**
+**18 таблиць** (плюс службова `crm_id_map` — журнал зіставлень одноразового
+ремапу, створена SQL-міграцією 0021 поза Drizzle-схемою):
 
 1. **users** — ідентичності: `email`/`login` (citext, унікальні),
    `password_hash` (bcrypt), `display_name`, `is_active`, `role`
@@ -401,28 +425,41 @@ schemas.ts      → Zod-схеми запиту/відповіді (контра
    `totp_enabled_at`).
 2. **refresh_tokens** — ротаційні opaque refresh-токени (sha256 `token_hash`,
    `expires_at`, `revoked_at`, `last_used_at`); FK на користувача CASCADE.
-3. **companies** — синхронізовані з HubSpot: `hubspot_company_id` (натуральний
-   ключ, унікальний), `name`, `company_type`, `lifecycle_stage`, `hubspot_raw`
-   (повний payload JSONB), `hubspot_deleted_at` (м'яке «видалено вгорі»).
-4. **deals** — синхронізовані з HubSpot: `hubspot_deal_id`, FK на компанію,
-   `name`, `stage`, `pipeline_id`, `amount`, `currency`, вертикаль бізнесу,
-   `hubspot_raw`.
+3. **companies** — синхронізовані з CRM (monday.com): `hubspot_company_id`
+   (натуральний ключ, унікальний; назва легасі — компанії, створені з monday,
+   мають синтетичний ключ `mon:<itemId>`), `name`, `company_type`,
+   `lifecycle_stage`; прив'язка до картки monday — `crm_item_id`, `crm_board_id`,
+   `crm_binding_role` (`primary`|`alias`), `monday_raw`; маркери
+   `crm_deleted_at` / `crm_deleted_reason` / `crm_missing_since`;
+   `hubspot_modified_at` (в UI «CRM updated» — `updated_at` картки monday) і
+   `last_synced_at`. Колонки HubSpot-ери (`hubspot_raw`, `hubspot_deleted_at`)
+   лишились, але більше не оновлюються.
+4. **deals** — синхронізовані з CRM (monday.com): `hubspot_deal_id` (для угод
+   із monday — `mon:<itemId>`), FK на компанію `hubspot_company_id`, `name`,
+   `stage`, `pipeline_id`, `amount`, `currency`, вертикаль бізнесу; прив'язка —
+   `crm_item_id`, `crm_board_id`, `crm_company_item_id` (посилання «Company (M)»),
+   `monday_raw`; `hubspot_modified_at`, `last_synced_at`; `hubspot_raw` —
+   HubSpot-ера.
 5. **calculator_configs** — збережені снапшоти калькулятора: FK на компанію,
-   опційний `hubspot_deal_id`, `title`, `payload` (JSONB), автор, пара
-   синхронізації з HubSpot, поля м'якого видалення.
+   опційний `hubspot_deal_id`, `title`, `payload` (JSONB), автор, стан
+   синхронізації з CRM (`hubspot_sync_state`, `hubspot_note_id` — легасі-назви;
+   `crm_note_provider` — у якій CRM лежить нотатка, hubspot/monday), поля
+   м'якого видалення.
 6. **documents** — заморожені артефакти offer/agreement: `number` (унікальний
    BSG), FK на компанію (RESTRICT), опційні `hubspot_deal_id` /
    `calculator_config_id`, `scope` (offer/agreement/offer_and_agreement),
-   `payload` (JSONB), стан синхронізації + `hubspot_note_id`, автор, метадані
-   м'якого видалення.
+   `payload` (JSONB), стан синхронізації з CRM + `hubspot_note_id` /
+   `crm_note_provider`, автор, метадані м'якого видалення.
 7. **document_number_sequence** — синглтон-рядок із `next_value` для атомарної
    видачі BSG-номерів.
-8. **hubspot_webhook_events** — журнал вхідних вебхуків: `hubspot_event_id`
+8. **hubspot_webhook_events** — *HubSpot-ера, лише історія*: журнал вхідних
+   вебхуків HubSpot: `hubspot_event_id`
    (унікальний ключ ідемпотентності), тип, об'єкт, час, `status`
    (pending/processed/failed), `attempts`, `last_error`, `raw`.
 9. **document_events** — аудит по документу: тип події
    (created / pdf_downloaded / synced_to_hubspot / sync_failed / deleted /
-   restored / deletion_reason_edited), актор, `meta`.
+   restored / deletion_reason_edited; `synced_to_hubspot` — легасі-назва
+   синхронізації з активною CRM), актор, `meta`.
 10. **calculator_config_events** — те саме для конфігів калькулятора.
 11. **admin_actions** — append-only лог привілейованих дій: денормалізовані
     ім'я/емейл актора, `action_type`, ціль, `meta`.
@@ -435,6 +472,14 @@ schemas.ts      → Zod-схеми запиту/відповіді (контра
     `fingerprint_hash`).
 16. **mfa_temp_tokens** — короткоживучі (5 хв) одноразові токени кроку 2FA
     при вході.
+17. **monday_webhook_events** — черга вхідних вебхуків monday: синтетичний
+    `event_key` (md5 від дошки, картки, типу й часу події — monday не надсилає
+    унікального id), `event_type`, `board_id`, `item_id`, `object_type`
+    (company/agent/deal), `status` (pending/processed/failed), `outcome`,
+    `attempts`, `last_error`, `raw` (лише для дебагу — дані перечитуються з API).
+18. **crm_notes** — реєстр усіх нотаток, створених у CRM: власник (документ
+    або конфіг), `provider` (hubspot/monday), `note_id`, ціль
+    (company/agent/deal) та її id, `torn_down_at`, `last_error`.
 
 ---
 
@@ -472,7 +517,10 @@ Enrolment: setup → confirm. Вхід на акаунт із 2FA: правил�
 
 **Rate limiting** (`express-rate-limit`, у пам'яті, вимкнено в `NODE_ENV=test`):
 глобально 60/хв на IP; жорсткіше на чутливих шляхах (login 5/хв, refresh 20/хв,
-2FA verify 10/хв, hubspot-проксі 10/хв, pdf-preview 10/хв, webhook 200/хв тощо).
+2FA verify 10/хв, pdf-preview 10/хв, webhook 200/хв на приймачах вебхуків monday
+і HubSpot (легасі) тощо). `hubspotProxyLimiter` (10/хв, назва легасі)
+стоїть на ручній синхронізації з CRM і видаленні документів та конфігів, а також
+на легасі-маршрутах `/api/v1/hubspot/refresh` і `/pipelines`.
 
 **CSP / заголовки** (helmet): `default-src 'self'`; `script-src 'self'
 https://static.cloudflareinsights.com`; `style-src 'self' 'unsafe-inline'
@@ -480,14 +528,20 @@ https://fonts.googleapis.com`; `img-src 'self' data: blob:`;
 `connect-src 'self'`; `font-src 'self' data: https://fonts.gstatic.com`;
 `frame-src 'none'`; `frame-ancestors 'none'`.
 
-**Вхідні вебхуки HubSpot:** HMAC-SHA256 **v3** над (метод + URI + тіло +
-timestamp), `crypto.timingSafeEqual`, відкидання timestamp старших за 5 хв
-(захист від replay).
+**Вхідні вебхуки monday:** monday не підписує вебхуки, створені з персональним
+токеном, тому захист двоскладовий: (1) невгадуваний сегмент шляху
+`MONDAY_WEBHOOK_SECRET` (порівняння через `crypto.timingSafeEqual`, у логах
+запитів маскується); (2) payload — лише тригер: процесор перечитує картку з API
+власним токеном, тож підроблений запит щонайбільше спричинить одне зайве
+читання. *(HubSpot-ера: приймач HubSpot перевіряв HMAC-SHA256 v3; код лишився,
+але неактивний.)*
 
 **Інше:** паролі — bcrypt (`BCRYPT_COST`, за замовч. 12). Привілейовані дії
 пишуться в `admin_actions`. У проді `env.ts` жорстко валідує конфіг: блокує
-placeholder-секрети, вимагає публічний https `APP_PUBLIC_URL`, канонічний базовий
-URL HubSpot (захист від SSRF), наявність webhook-секрета й API-токена.
+placeholder-секрети, відхиляє локальний `APP_PUBLIC_URL` (`http://localhost…` /
+`http://127.…`) — задавайте реальний https-origin, а для **активної** CRM —
+канонічний базовий URL API (захист від SSRF), API-токен і webhook-секрет
+(розділ 14).
 
 ---
 
@@ -549,48 +603,131 @@ document_number_sequence SET next_value = next_value + 1 … RETURNING` (бло�
 
 ---
 
-## 11. Інтеграція з HubSpot
+## 11. Інтеграція з CRM (monday.com)
 
-Живе повністю на боці сервера.
+Єдина CRM — **monday.com** (продакшн на `CRM_PROVIDER=monday` з 2026-08-28).
+Інтеграція живе повністю на боці сервера: `server/modules/monday/**` (читання,
+вебхуки, самовідновлення) і `server/modules/crm-notes/**` (нотатки). Канонічні
+документи: [CRM_INTEGRATION.md](CRM_INTEGRATION.md) — операційний посібник,
+[CRM_MIGRATION_RECORD.md](CRM_MIGRATION_RECORD.md) — постійний запис міграції.
+`monday_migration_plan.md`, `monday_migration_analysis.md` і
+`monday_audit_round4.md` — історичні планувальні документи.
 
-**Читання** (`hubspot.client.ts`, CRM v3, Bearer із env): компанії + угоди з
-повним набором властивостей і асоціаціями угода→компанія; ретрай на 429 із
-повагою до `Retry-After`; 5xx/мережа → `HubspotUnreachableError`.
-`hubspot.mapper.ts` мапить payload у рядки `companies`/`deals` (повний payload
-зберігається в `hubspot_raw` JSONB). `hubspot.service.ts` кешує список пайплайнів
-(TTL 1h, single-flight), щоб SPA міг резолвити id↔label стадій угод. Бекфіл —
-`npm run hubspot:backfill` (або авто на порожній таблиці при старті, якщо
-`HUBSPOT_AUTO_BACKFILL=true`). `HUBSPOT_COMPANY_TYPE_FILTER` (за замовч.
-`direct_client`) обмежує, які типи компаній зберігаються.
+**Що підключено.** Дошки: Companies `5102466967`, Agents `5102466950`, Deals
+`5102466996` (`MONDAY_BOARD_*`; дефолти — саме ці дошки, мають бути різними).
+Версія API закріплена (`MONDAY_API_VERSION=2026-07`) і перевіряється при старті
+(`assertApiVersion`), бо monday мовчки «понижує» невідому версію замість
+помилки; якщо перевірка не пройшла, процесор вебхуків і планове обслуговування
+не стартують. Ідентифікатори колонок — не змінні оточення: їх резолвить
+`monday.columns.ts`.
 
-**Вебхуки** (`modules/hubspot/webhooks/`): `POST /api/v1/hubspot/webhooks` —
-публічний, але підписаний HMAC v3 (raw-body + перевірка підпису + ліміт 200/хв).
-Приймач вставляє в `hubspot_webhook_events` (`status='pending'`, ідемпотентно
-через UNIQUE `hubspot_event_id`) і миттєво відповідає 200. Окремий цикл-процесор
-(`setInterval(5000)`, стартує в `server/index.ts`, no-op у тестах) бере pending-
-події за порядком `occurredAt`, тягне об'єкт, апсертить компанії/угоди (або
-`filtered_out`, якщо тип не підходить), обробляє видалення й злиття
-(`companies.merge.service.ts`), ретраїть із бекофом до бюджету спроб, потім
-`failed`.
+**Легасі-назви з «hubspot».** Перейменування wire-контракту й словника БД
+свідомо відкладене, тож:
+- `hubspot_company_id` (companies) — натуральний ключ компанії;
+  `deals.hubspot_company_id` — FK угода→компанія. Компанії, створені з monday,
+  мають синтетичний ключ `mon:<itemId>` (угоди — так само в `hubspot_deal_id`).
+- `hubspot_modified_at` — в UI «CRM updated»; містить `updated_at` картки monday.
+- `last_synced_at` — просувається на кожній синхронізації; керує TTL-оновленням
+  і рядком «Last synced» на сторінці компанії.
+- `crm_item_id` / `crm_board_id` / `crm_binding_role` (`primary`|`alias`) —
+  прив'язка рядка до картки monday; `deals.crm_company_item_id` — посилання
+  «Company (M)» угоди.
+- `hubspotSyncState`, `hubspotNoteId`, `HUBSPOT_UNREACHABLE`,
+  `synced_to_hubspot`, `/api/v1/hubspot/*` — легасі-назви; тексти в UI кажуть
+  «CRM».
 
-**Запис** (`shared/hubspot/note-builder.ts` + сервіси `sync` у documents і
-calculator-configs): на кожен документ/конфіг створює **Note** у HubSpot.
-Тіло Note — компактний HTML (номер, компанія, хто і коли створив) + клікабельне
-посилання з `APP_PUBLIC_URL`. Асоціація — до угоди (якщо є `hubspotDealId`),
-інакше до компанії. При успіху проставляє `hubspot_note_id` +
-`hubspot_sync_state='synced'`; при невдачі — `'failed'`. **Кожна синхронізація
-створює новий Note** (старі лишаються як аудит-слід). Авто-синк (за
-`AUTO_SYNC_TO_HUBSPOT=true`) спрацьовує fire-and-forget через `setImmediate`
-після коміту першого збереження; кнопки «Sync to HubSpot» — це шлях ручного
-ретраю.
+**Вхідні дані.** `POST /api/v1/monday/webhooks/:secret` → черга
+`monday_webhook_events` → процесор. Сегмент `:secret` = `MONDAY_WEBHOOK_SECRET`
+(без налаштованого секрета маршрут відповідає 404). Приймач спершу відповідає
+на challenge-рукостискання monday, далі нормалізує тип події, дедуплікує,
+вставляє `pending`-рядок і одразу відповідає 200. Процесор (кожні 5 с, пачками
+до 50; стартує в `server/index.ts` лише при `CRM_PROVIDER=monday`, у тестах —
+no-op) перечитує картку з API — **payload лише тригер** — і апсертить
+компанію, агента чи угоду тим самим кодом, що й бекфіл. Ретраї: 5 спроб (бекоф
+30 с × спроба), далі `status='failed'`.
 
-**Життєвий цикл, який варто знати:**
-- **Злиття компаній** — документи/конфіги/угоди «злитої» компанії
-  перенаправляються на «вцілілу», дублікат прибирається (плюс self-heal і скрипт
-  `reconcile-companies.ts --fix-merged`).
-- **Видалення компанії** — компанію без документів видаляють; компанію, що
-  володіє документами, лишають і бейджать «Deleted in HubSpot» (юридичні записи
-  автоматично не видаляються; FK — RESTRICT).
+Підписано 7 подій × 3 дошки = 21 вебхук: `create_item`, `change_column_value`,
+`change_name`, `item_deleted`, `item_archived`, `item_restored`,
+`item_moved_to_any_group`. monday **доставляє** їх під іншими назвами
+(`create_pulse`, `update_column_value`, `update_name`, `delete_pulse`,
+`archive_pulse`, `restore_pulse`, `move_pulse_into_group`); `normaliseEventType`
+(`webhooks/webhooks.schemas.ts`) зводить їх до наших, а невідомий тип на наших
+дошках логується як WARN.
+
+Видалення й архівація спершу підтверджуються через API. Компанія, що володіє
+документами або калькуляторами, не видаляється — лише позначається
+(`crm_deleted_at`, бейдж «Deleted in CRM»); архівація — завжди лише позначка
+(«Archived in CRM»), бо вона оборотна; видалена компанія без жодної роботи
+видаляється разом зі своїми угодами. Відсутність картки в API — лише
+спостереження (`crm_missing_since`, «Not found in CRM»), ніколи не підстава для
+видалення.
+
+**Вихідні дані (нотатки).** Створення документа або перше збереження
+калькулятора публікує нотатку (monday «update») на картку **угоди**, якщо рядок
+прив'язаний до угоди, інакше — на картку **компанії** (`publishCrmNote`; тіло —
+`shared/hubspot/note-builder.ts`: номер, компанія, автор, посилання з
+`APP_PUBLIC_URL`). Публікація — fire-and-forget через `setImmediate` після
+коміту, якщо `AUTO_SYNC_TO_HUBSPOT=true` (легасі-назва: прапорець керує
+авто-публікацією в **активну** CRM і в проді має лишатися `true`); кнопка
+«Sync to CRM» — ручний ретрай, кожна синхронізація створює нову нотатку. Кожна
+нотатка фіксується в `crm_notes` разом із провайдером; видалення документа чи
+конфігу знімає за цим реєстром нотатки активної CRM, а нотатки HubSpot-ери
+пропускає (акаунта більше немає). Рядок без прив'язки до картки monday
+синхронізувати не можна — буде помилка, а не запис в іншу CRM.
+
+**Угода → компанія.** Угода належить компанії з її посилання «Company (M)»;
+воно застосовується на **кожній** синхронізації (вебхук, бекфіл, TTL-оновлення)
+із запобіжниками: приймається лише `primary`-прив'язана компанія; порожнє або
+неприв'язане посилання лишає угоду на місці; угода, що вже належить будь-якому
+рядку, прив'язаному до тієї ж картки (зокрема `alias`-половині пари
+дублікатів), не переноситься. Нова угода, чия «Company (M)» вказує на ще не
+кешовану компанію, пропускається з WARN.
+
+**Самовідновлення.**
+- *TTL-оновлення при читанні* (`monday.refresh.ts`): читання рядка, чий
+  `last_synced_at` старший за `HUBSPOT_SYNC_TTL_SECONDS` (легасі-назва, за
+  замовч. 300 с), у фоні перечитує цю одну картку. Неприв'язані рядки
+  пропускаються; якщо картки немає в API, рядок лишається як є.
+- *Плановий бекфіл* (`monday.maintenance.ts`): кожні
+  `MONDAY_BACKFILL_INTERVAL_HOURS` (за замовч. 24; перший запуск через
+  `MONDAY_BACKFILL_FIRST_DELAY_MINUTES`=15 хв після старту) перечитує всі три
+  дошки — лікує рядки, які ніхто не відкриває. Нічого не видаляє; якщо з дошки
+  зникло б понад 5% прив'язаних рядків, нічого не позначає. `0` вимикає бекфіл
+  (при старті — WARN).
+- *Heartbeat черги* щогодини: `[monday:health]` — ERROR, якщо є події, що
+  вичерпали ретраї; WARN, якщо найстаріша `pending`-подія старша за 10 хв;
+  інакше INFO.
+- `GET /ready` повертає `checks.monday` (пінг API) і `mondayWebhookQueue`
+  (`pending`, `failed`, `oldestPendingAgeSeconds`, `lastProcessedAgeSeconds`);
+  черга лише звітується і на готовність не впливає. Пейджингу/алертів немає.
+
+*Виправлення 2026-09-14* (коміти `a84d653`, `4aeb134`): «Company (M)» угоди,
+`last_synced_at` і «CRM updated» раніше записувалися лише при вставці рядка.
+Через це три угоди, імпортовані під час міграції, лишалися під
+агентами-рефералами (і не показувалися в майстрі для своїх мерчантів), а
+TTL-оновлення вважало кожен прив'язаний рядок застарілим.
+
+**Операції.** `npm run monday:drift` — перевірка дошок і колонок (у monday
+нічого не змінює; запускати перед структурними змінами дошок).
+`npm run monday:backfill` — ідемпотентний, безпечний будь-коли (у контейнері:
+`docker compose exec -T app npm run monday:backfill`). Вебхуки реєструються
+GraphQL-мутацією `create_webhook` на
+`<APP_PUBLIC_URL>/api/v1/monday/webhooks/<MONDAY_WEBHOOK_SECRET>`; застосунок
+уже має працювати з цим секретом, бо monday надсилає challenge і не реєструє
+ендпоінт, що не відповідає. Чотири вебхуки `change_specific_column_value`, які
+вже були на дошках, — не наші: не видаляйте їх. `server/scripts/monday-remap.ts`
+— одноразовий інструмент міграції легасі-даних; новій інсталяції він не
+потрібен.
+
+**HubSpot-ера (виведена з експлуатації).** До 2026-08-28 CRM був HubSpot
+(читання CRM v3, вебхуки з HMAC v3, Notes з асоціацією до угоди/компанії,
+обробка злиття компаній). Акаунта HubSpot більше не існує (підтверджено
+2026-09-14), тож повернення на HubSpot немає. Код (`server/modules/hubspot/**`,
+`src/api/hubspot.ts`, скрипти `hubspot:*`, `reconcile-companies.ts`) лишається
+в репозиторії: фонові цикли HubSpot при `CRM_PROVIDER=monday` не запускаються,
+маршрути `/api/v1/hubspot/*` змонтовані, але не використовуються. Дефолт
+`CRM_PROVIDER` у `env.ts` досі `hubspot` (зміну відкладено — на ньому
+тримаються тести), тому `CRM_PROVIDER=monday` задавайте явно.
 
 ---
 
@@ -605,10 +742,14 @@ npm run typecheck:server
 
 - **Фронтенд:** ~47 тест-файлів, ~399 кейсів (vitest + Testing Library). Тести
   зазвичай лежать поруч із компонентами/сторінками/зонами домену.
-- **Бекенд:** ~32 тест-файли, ~401 кейс (vitest + supertest проти **реального**
+- **Бекенд:** ~39 тест-файлів, ~457 кейсів (vitest + supertest проти **реального**
   Postgres). Запуск **послідовний** (`fileParallelism: false`);
   `server/tests/setup.ts` створює й мігрує тестову БД. Тестове оточення обходить
-  rate-limiter'и й не запускає цикл вебхуків.
+  rate-limiter'и й не запускає цикл вебхуків. `server/tests/setup.ts` не фіксує
+  `CRM_PROVIDER`, а `env.ts` читає `.env`. У `.env.example` цей рядок закоментовано;
+  якщо ваш локальний `.env` задає `CRM_PROVIDER=monday`, запускайте `CRM_PROVIDER=hubspot npm run test:server` —
+  частина тестів розраховує на дефолт коду (змінна оболонки має пріоритет над
+  `.env`).
 - **CI** (`.github/workflows/ci.yml`): один job на Node 20 —
   `typecheck → lint → test → build`. ⚠️ **CI НЕ запускає `test:server` і
   `typecheck:server`** (немає живого Postgres) — ганяйте їх локально перед
@@ -644,12 +785,19 @@ immutable:true})` для хешованих ассетів, потім `app.get(
 (no-cache) для будь-якого не-`/api/` шляху (React Router рулить клієнтськими
 маршрутами).
 
-**Старт процесу (`server/index.ts`):** bind порту, `bootstrapSuperAdmin()`,
-опційний бекфіл на порожній БД, `startWebhookProcessor()`. Graceful shutdown на
-SIGTERM/SIGINT: злити HTTP → зупинити поллер вебхуків → закрити Puppeteer →
-злити пул БД (форс-вихід за 10с).
+**Старт процесу (`server/index.ts`):** bind порту, `bootstrapSuperAdmin()`; при
+`CRM_PROVIDER=monday` — перевірка закріпленої версії API monday
+(`assertApiVersion`), після успіху — `startMondayWebhookProcessor()` і
+`startMondayMaintenance()` (плановий бекфіл + heartbeat черги); якщо перевірка
+не пройшла, вони не стартують (у лог — ERROR). Бекфіл і процесор вебхуків
+HubSpot запускаються лише при `CRM_PROVIDER=hubspot` (HubSpot-ера). Graceful
+shutdown на SIGTERM/SIGINT: злити HTTP → зупинити поллери вебхуків → закрити
+Puppeteer → злити пул БД (форс-вихід за 10с).
 
-**Ціль тестового деплою:** `bsg.workflo.space`.
+**Домен і публічний URL** задаються через `APP_DOMAIN` / `APP_PUBLIC_URL`
+(розділ 14). Оновлення проду — див. [deployment.md](deployment.md) і §8
+[CRM_INTEGRATION.md](CRM_INTEGRATION.md); **ніколи** не виконуйте
+`docker compose down`.
 
 ---
 
@@ -667,14 +815,33 @@ SIGTERM/SIGINT: злити HTTP → зупинити поллер вебхукі
 | Auth / JWT | `JWT_ACCESS_SECRET` (≥32), `JWT_ACCESS_EXPIRES` (15m), `JWT_REFRESH_EXPIRES` (**12h**), `BCRYPT_COST` (12) |
 | TOTP | `TOTP_ENCRYPTION_KEY` (64-hex, AES-256-GCM) |
 | CORS | `FRONTEND_ORIGIN` |
-| HubSpot | `HUBSPOT_API_TOKEN`, `HUBSPOT_API_BASE_URL`, `HUBSPOT_DEAL_PIPELINE_ID`, `HUBSPOT_SYNC_TTL_SECONDS`, `HUBSPOT_WEBHOOK_SECRET`, `HUBSPOT_COMPANY_TYPE_FILTER`, `HUBSPOT_AUTO_BACKFILL`, `AUTO_SYNC_TO_HUBSPOT` |
+| CRM (monday.com) | `CRM_PROVIDER` (**задавайте `monday` явно** — дефолт у коді `hubspot`), `MONDAY_API_TOKEN`, `MONDAY_WEBHOOK_SECRET`, `MONDAY_API_BASE_URL` (`https://api.monday.com/v2`), `MONDAY_API_VERSION` (`2026-07`), `MONDAY_BOARD_COMPANIES` / `_AGENTS` / `_DEALS` (дефолти — реальні дошки), `MONDAY_BACKFILL_INTERVAL_HOURS` (24; `0` — вимкнено), `MONDAY_BACKFILL_FIRST_DELAY_MINUTES` (15) |
+| CRM — легасі-назви, діють і з monday | `HUBSPOT_SYNC_TTL_SECONDS` (300 — TTL-оновлення рядків), `AUTO_SYNC_TO_HUBSPOT` (авто-публікація нотаток в активну CRM; у проді `true`, дефолт у коді `false`) |
+| HubSpot (неактивний) | `HUBSPOT_API_TOKEN`, `HUBSPOT_API_BASE_URL`, `HUBSPOT_DEAL_PIPELINE_ID`, `HUBSPOT_WEBHOOK_SECRET`, `HUBSPOT_COMPANY_TYPE_FILTER`, `HUBSPOT_BACKFILL_PAGE_SIZE`, `HUBSPOT_AUTO_BACKFILL` — при `CRM_PROVIDER=monday` не потрібні |
 | PDF / Puppeteer | `PUPPETEER_EXECUTABLE_PATH`, `PUPPETEER_HEADLESS`, `PDF_RENDER_TIMEOUT_MS` (30000), `PUPPETEER_RENDERS_PER_BROWSER` (1000), `PUPPETEER_BROWSER_TTL_MS` (86400000), `PUPPETEER_NO_SANDBOX` |
 | Numbering | `DOCUMENT_NUMBER_START` (7100001) |
 | SPA / інше | `SPA_DIST_DIR`, `BOOTSTRAP_SUPER_ADMIN_EMAIL`, `LOG_LEVEL`, `LOG_HTTP_REQUESTS` |
 
-У проді `superRefine` додатково: відхиляє неканонічний базовий URL HubSpot
-(SSRF-захист), вимагає webhook-секрет + API-токен, вимагає публічний https
-`APP_PUBLIC_URL`, блокує відомі placeholder-секрети JWT і нульовий dev-ключ TOTP.
+У проді `superRefine` додатково: відхиляє локальний `APP_PUBLIC_URL`
+(`http://localhost…` / `http://127.…`) — задавайте реальний https-origin;
+блокує відомі placeholder-секрети JWT і нульовий dev-ключ TOTP. Решта перевірок
+діє **лише для активної CRM**. При `CRM_PROVIDER=monday` обов'язкові
+`MONDAY_API_TOKEN` і `MONDAY_WEBHOOK_SECRET` (≥16 символів, напр.
+`openssl rand -hex 24`; секрет — частина URL вебхука, тож поводьтеся з ним як із
+секретом), `MONDAY_API_BASE_URL` має бути рівно `https://api.monday.com/v2`
+(SSRF-захист), а три `MONDAY_BOARD_*` — різними. HubSpot-перевірки (токен,
+webhook-секрет, базовий URL) у цьому режимі не застосовуються. Зверніть увагу:
+порожнє `HUBSPOT_API_TOKEN=` означає «не задано», але непорожнє значення за
+будь-якого провайдера мусить починатися з `pat-`, тому змінні HubSpot у шаблонах
+закоментовані — не розкоментовуйте їх і не ставте туди плейсхолдер. У
+`.env.production.example` задано `CRM_PROVIDER=monday`; у `.env.example` для
+розробки цей рядок закоментовано (частина серверних тестів розраховує на дефолт
+коду). `MONDAY_API_TOKEN=` у `.env.production.example` навмисно порожній: із
+порожнім токеном прод не стартує, тож забутий токен видно одразу. Неправильний
+чи відкликаний токен старт **не** зупиняє — його видно лише під час роботи: ERROR
+`[startup] monday API version assertion FAILED` у лозі та `"monday":"fail"`
+(HTTP 503) на `/ready`. Плейсхолдер
+`MONDAY_WEBHOOK_SECRET=<REQUIRED>` коротший за 16 символів, тож старт зупиняє.
 
 ---
 
@@ -703,8 +870,9 @@ npm run dev          # Vite SPA  → http://localhost:5173
 npm run dev:server   # Express API → :8080 (tsx watch)
 ```
 
-Корисне: `npm run db:studio` (Drizzle Studio), `npm run hubspot:backfill`
-(засіяти компанії/угоди з HubSpot).
+Корисне: `npm run db:studio` (Drizzle Studio), `npm run monday:backfill`
+(засіяти компанії/угоди з monday.com; потрібні `CRM_PROVIDER=monday` і
+`MONDAY_API_TOKEN` у `.env`).
 
 ---
 
@@ -718,8 +886,8 @@ npm run dev:server   # Express API → :8080 (tsx watch)
 - **Додати сторінку фронтенду:** додати у `src/pages/`, підключити маршрут +
   гейт у `App.tsx`, додати обгортку в `src/api/`, чиї типи дзеркалять
   бекенд-схему.
-- **Створити користувача:** `npm run create-user`. **Засіяти HubSpot:**
-  `npm run hubspot:backfill`.
+- **Створити користувача:** `npm run create-user`. **Засіяти/оновити дані з
+  CRM:** `npm run monday:backfill` (ідемпотентний, безпечний будь-коли).
 - **Чіпати калькулятор:** не варто — тільки з явним дозволом (розділ 5.1).
 
 ---
@@ -728,7 +896,8 @@ npm run dev:server   # Express API → :8080 (tsx watch)
 
 - **Формат номера документа** — це `BSG-<7 цифр>-<6 цифр>` (напр.
   `BSG-7100001-874808`), **а не** просто `BSG-#####`. Друга частина — останні 6
-  цифр `hubspot_company_id`.
+  цифр `hubspot_company_id` (для компаній, створених у monday, ключ має вигляд
+  `mon:<itemId>`, тож це останні 6 цифр id картки monday).
 - **`nginx/default.conf` — мертвий конфіг.** Актуальна модель — один контейнер,
   де Express сам роздає статику, а edge-проксі — **Traefik**, не nginx. У
   compose-файлах nginx-сервісу немає.
@@ -739,11 +908,24 @@ npm run dev:server   # Express API → :8080 (tsx watch)
   (безпечне значення), але історично на сервері зустрічалось `30d`. Якщо там досі
   `30d` — refresh-сесії живуть 30 днів замість 12 годин; вирівняйте перед тим, як
   покладатись на «коротку сесію».
-- **Raw-body парсер вебхука HubSpot** прив'язаний рівно до одного шляху. Ніколи
-  не розширюйте його область — інакше він «затінить» JSON-парсинг для кожного
-  POST.
+- **Raw-body парсер вебхука HubSpot** (легасі-приймач; вебхуку monday він не
+  потрібен) прив'язаний рівно до одного шляху. Ніколи не розширюйте його
+  область — інакше він «затінить» JSON-парсинг для кожного POST.
 - **Стан калькулятора не персиститься** сам по собі — тільки явним збереженням у
   `calculator_configs`. Не покладайтесь на «він десь у БД».
 - **Frontend — один бандл** (без code-splitting), ~0.8 МБ. Для внутрішнього
   інструмента це прийнятно; за потреби — route-level `import()`.
+- **`CRM_PROVIDER` у коді за замовчуванням — `hubspot`.** Зміну дефолту свідомо
+  відкладено (на ньому тримаються тести). Без явного `CRM_PROVIDER=monday`
+  застосунок стартує в режимі HubSpot: monday-цикли не запускаються, а в проді
+  env-валідація вимагатиме токен і секрет HubSpot-акаунта, якого вже немає.
+  Задавайте `CRM_PROVIDER=monday` явно у кожному dev- і prod-розгортанні
+  (тести — див. розділ 12).
+- **Назви з «hubspot» — легасі** (`hubspot_company_id`, `hubspot_modified_at`,
+  `hubspotSyncState`, `HUBSPOT_SYNC_TTL_SECONDS`, `AUTO_SYNC_TO_HUBSPOT`,
+  `/api/v1/hubspot/*` тощо): вони описують дані й поведінку monday-ери.
+  Перейменування відкладене — не перейменовуйте їх точково (розділ 11).
+- **Найнебезпечніший збій інтеграції — тиша.** Порожня черга вебхуків виглядає
+  так само, як CRM, яку ніхто не редагує, а пейджингу немає. Стежте за рядками
+  `[monday:health]` у логах і `mondayWebhookQueue` на `/ready`.
 ```

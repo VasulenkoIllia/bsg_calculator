@@ -1,5 +1,7 @@
 # URL Contract
 
+> **Historical design document.** The CRM is monday.com (live since 2026-08-28); HubSpot was retired and the account no longer exists. HubSpot references below describe the plan at the time. Current reference: [CRM_INTEGRATION.md](CRM_INTEGRATION.md).
+
 Date: 2026-05-03
 Status: Active. Defines current routes and the planned deep-link surface for documents and calculator snapshots.
 

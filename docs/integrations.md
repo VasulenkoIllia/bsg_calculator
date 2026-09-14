@@ -1,125 +1,170 @@
 # Integrations
 
-> **Era note (2026-08-28).** This document describes the **HubSpot** era.
-> HubSpot is switched off after 2026-08-31 and monday.com replaces it via
-> the `CRM_PROVIDER` switch. What still applies, what changes, and why is in
-> [`monday_migration_plan.md`](monday_migration_plan.md); the practical diff
-> is in [`ONBOARDING.md`](ONBOARDING.md) §10.
+Last updated: 2026-09-14 (CRM sections). The Puppeteer, reverse-proxy,
+clipboard and DOCX sections were last reviewed on 2026-06-10.
 
-Last updated: 2026-06-10. Describes the integrations as they work **today**.
+> **CRM era note (2026-09-14).** monday.com is the only CRM. Production has
+> run `CRM_PROVIDER=monday` since the 2026-08-28 cutover; HubSpot was
+> retired on 2026-08-31 and the account no longer exists, so there is no
+> rollback to it. Operating manual: [`CRM_INTEGRATION.md`](CRM_INTEGRATION.md).
+> Permanent record of the migration:
+> [`CRM_MIGRATION_RECORD.md`](CRM_MIGRATION_RECORD.md). The planning
+> documents ([`monday_migration_plan.md`](monday_migration_plan.md),
+> [`monday_migration_analysis.md`](monday_migration_analysis.md),
+> [`monday_audit_round4.md`](monday_audit_round4.md)) are historical.
 
-## HubSpot CRM (live)
+## monday.com CRM (live)
 
-HubSpot is fully integrated on the backend. The SPA never talks to HubSpot
-directly — all reads and writes go through `/api/v1/*` endpoints.
+The SPA never talks to monday directly — all reads and writes go through
+the backend and its `/api/v1/*` endpoints.
 
-- **Code:** `server/modules/hubspot/**` (client, mapper, service, routes,
-  webhooks), plus `server/modules/documents/sync.service.ts` for Note
-  write-back.
-- **Auth:** Private App token via `HUBSPOT_API_TOKEN` (`pat-...`), stored
-  server-side only. Required in production (`env.ts` enforces it).
-- **Field selection:** `docs/bsg_hubspot_field_mapping.md`.
-- **API surface notes:** `docs/hubspot_api_reference.md`.
+- **Code:** `server/modules/monday/**` (GraphQL client, column resolution
+  and cache, mapper, backfill, TTL refresh, maintenance, `webhooks/`),
+  `server/modules/crm-notes/**` (note publishing + the `crm_notes` ledger),
+  and `server/modules/{documents,calculator-configs}/sync.service.ts`.
+- **Switch:** `CRM_PROVIDER=monday`. The code default in
+  `server/config/env.ts` is still `hubspot` (changing it is a deferred code
+  change — tests rely on it), so **every deployment must set
+  `CRM_PROVIDER=monday` explicitly**.
+- **Boards:** Companies `5102466967` · Agents `5102466950` · Deals
+  `5102466996`. The API version is pinned to `2026-07` and asserted at
+  boot; if the assertion fails, the webhook processor and the maintenance
+  loop are not started and an error is logged.
 
-### Reads (companies + deals)
+### Reads (webhooks + self-healing)
 
-- TTL-driven refresh: stale data is served immediately while a background
-  fetch refreshes it (`server/shared/ttl-refresh.ts`,
-  `HUBSPOT_SYNC_TTL_SECONDS`).
-- Optional startup backfill (`HUBSPOT_AUTO_BACKFILL`,
-  `HUBSPOT_COMPANY_TYPE_FILTER`, `HUBSPOT_BACKFILL_PAGE_SIZE`); manual
-  backfill via `npm run hubspot:backfill`.
-- Resilience: exponential backoff on 5xx, honours `Retry-After` on 429,
-  throws `HubspotUnreachableError` (→ HTTP 502) once the retry budget is
-  exhausted. Response shapes are soft-validated against Zod and fall
-  through to a safe cast on drift.
+- **Inbound webhooks:** `POST /api/v1/monday/webhooks/:secret` → queue
+  table `monday_webhook_events` → a processor that polls every 5s. The
+  payload is only a trigger: the item is always re-read from the API with
+  our own token. Retries: 5 attempts, then the event is marked `failed`.
+- **Events:** 7 events × 3 boards = 21 webhooks — `create_item`,
+  `change_column_value`, `change_name`, `item_deleted`, `item_archived`,
+  `item_restored`, `item_moved_to_any_group`. monday *delivers* different
+  names (`create_pulse`, `update_name`, `update_column_value`,
+  `delete_pulse`, `archive_pulse`, `restore_pulse`,
+  `move_pulse_into_group`); `normaliseEventType` maps them onto ours.
+- **Deletion:** a company deleted in monday is removed locally only if it
+  owns no documents or calculators; otherwise it is kept and flagged
+  (`crm_deleted_at`). An archived item is only ever flagged.
+- **TTL refresh on read:** opening a single company or deal
+  (`GET /api/v1/companies/:id` or `GET /api/v1/deals/:id`) whose
+  `last_synced_at` is older than `HUBSPOT_SYNC_TTL_SECONDS` (default 300)
+  schedules a background re-read of that one item
+  (`server/modules/monday/monday.refresh.ts`). Listing the deals of a
+  company (`GET /api/v1/companies/:id/deals`) refreshes that company
+  too; list endpoints never refresh the rows they list. The refresh
+  skips unbound rows and never acts on absence.
+- **Scheduled backfill:** every `MONDAY_BACKFILL_INTERVAL_HOURS` (default
+  24; first run `MONDAY_BACKFILL_FIRST_DELAY_MINUTES` = 15 minutes after
+  boot; `0` disables it and logs a WARN). It never deletes — rows missing
+  from a board are flagged, and a pass that would flag more than 5% of
+  bound rows aborts.
+- **Deal → company:** a deal belongs to the company in its "Company (M)"
+  link, applied on every sync (since 2026-09-14). Only a primary bound
+  company is accepted; an empty or unbound link leaves the deal where it
+  is; a deal already under any row bound to that monday card (including
+  the alias half of a duplicate pair) is not moved.
+- **Visibility:** an hourly `[monday:health]` log line (ERROR when events
+  exhausted their retries, WARN when the oldest pending event is over 10
+  minutes old, INFO otherwise) and `GET /ready` (`checks.monday` plus
+  `mondayWebhookQueue`; the queue is reported but is not part of
+  readiness). There is no paging or alerting.
 
-### Writes (document Note write-back)
+### Writes (note write-back)
 
-- On document create (when `AUTO_SYNC_TO_HUBSPOT=true`) and on manual
-  Sync, the backend writes a Note to the parent company/deal and records
-  a `synced_to_hubspot` / `sync_failed` event in the document History.
-- Fire-and-forget on create (`setImmediate` after the TX commits) so the
-  operator gets an instant `201`; failures persist `state='failed'` and
-  surface a manual Retry button. Soft-deleted documents are not syncable.
-- **Fresh Note per deliberate re-sync** (operator-approved): each manual
-  Sync creates a NEW HubSpot Note (previous ones stay as history); the
-  detail page confirms before a re-sync. Documents and calc-configs are
-  symmetric here.
-- **No duplicate Notes:** `syncDocumentToHubspot` /
-  `syncCalculatorConfigToHubspot` serialise concurrent syncs for the same
-  record via a Postgres advisory xact lock — a second concurrent sync gets
-  `409 HUBSPOT_SYNC_IN_PROGRESS` instead of minting a duplicate Note. The
-  frontend also guards against double-clicks and briefly polls a freshly
-  created record so the badge flips before the operator can re-click.
-- A document whose parent company was **deleted in HubSpot** cannot sync —
-  it reports "Cannot sync: the parent company was deleted in HubSpot."
+- Saving a document or calculator posts a note (a monday "update") to the
+  deal card when the record is pinned to a deal, otherwise to the company
+  card. Auto-posting on create is gated by `AUTO_SYNC_TO_HUBSPOT` — a
+  legacy name: it posts to the active CRM. The code default is `false`, so
+  production must set `AUTO_SYNC_TO_HUBSPOT=true` explicitly (as
+  `.env.production.example` does). The manual Sync / Retry buttons remain
+  the operator's retry path.
+- Every note is recorded in `crm_notes` with its provider. A manual
+  re-sync creates a fresh note; a second concurrent sync of the same
+  record is refused (`HUBSPOT_SYNC_IN_PROGRESS`) instead of creating a
+  duplicate. Deleting a document or calculator tears down the ledgered
+  notes held by the active CRM; HubSpot-era notes are not reachable and
+  are left alone.
+- A row that is not bound to a monday item cannot sync — the backend
+  refuses rather than writing the note anywhere else. The error text
+  still says "run the remap before syncing it"; that is stale code text —
+  the remap was the one-time migration tool (see Operations below).
+  [`CRM_INTEGRATION.md`](CRM_INTEGRATION.md) §9 lists the known unbound
+  rows but has no procedure for binding one.
 
-### Inbound webhooks
+### Configuration
 
-- `POST /api/v1/hubspot/webhooks` — HMAC v3 signature verification over the
-  **raw** request body (`HUBSPOT_WEBHOOK_SECRET`). The raw-body parser is
-  scoped to this exact path only (see `server/app.ts`). Unrecognised
-  payload shapes are ACKed but skipped. Manual refresh:
-  `POST /api/v1/hubspot/refresh`.
-- Subscriptions cover `*.creation` / `*.propertyChange` / `*.deletion` /
-  `*.merge` / `*.restore` / `*.associationChange` for companies + deals
-  (see `webhooks.schemas.ts` — an unmodeled type would drop the whole
-  batch, so all are listed).
+- `CRM_PROVIDER=monday` — set explicitly (see above).
+- `MONDAY_API_TOKEN` — required in production.
+- `MONDAY_WEBHOOK_SECRET` — required in production, at least 16 characters
+  (e.g. `openssl rand -hex 24`). It is part of the webhook URL, so treat
+  it as a secret. If it is unset, the webhook route answers 404.
+- `MONDAY_API_BASE_URL` — must be exactly `https://api.monday.com/v2` in
+  production (SSRF guard). `MONDAY_API_VERSION=2026-07`.
+- `MONDAY_BOARD_COMPANIES` / `MONDAY_BOARD_AGENTS` / `MONDAY_BOARD_DEALS` —
+  the defaults are the real boards; in production the three must be
+  distinct.
+- `MONDAY_BACKFILL_INTERVAL_HOURS`, `MONDAY_BACKFILL_FIRST_DELAY_MINUTES`.
+- Legacy-named but still used: `HUBSPOT_SYNC_TTL_SECONDS` (TTL for the
+  monday refresh, default 300) and `AUTO_SYNC_TO_HUBSPOT` (code default
+  `false`; production must set it to `true` explicitly — see above).
+- HubSpot-only variables (`HUBSPOT_API_TOKEN`, `HUBSPOT_WEBHOOK_SECRET`,
+  `HUBSPOT_API_BASE_URL`, …) are required in production only when
+  `CRM_PROVIDER=hubspot`; with `monday` they are not required. Their
+  format checks still apply in every mode, though: leave
+  `HUBSPOT_API_TOKEN` empty or unset — if it is set at all it must start
+  with `pat-`, otherwise the app refuses to boot — and
+  `HUBSPOT_API_BASE_URL`, if set, must be a valid URL.
 
-### Company merge & deletion (cache reconciliation)
+### Operations
 
-The local `companies` table is a cache of HubSpot. Two upstream lifecycle
-events need careful handling so the cache doesn't drift:
+- `npm run monday:drift` — read-only check of the boards and columns; run
+  it before any structural board change.
+- `npm run monday:backfill` — idempotent, safe any time. Inside the
+  container: `docker compose exec -T app npm run monday:backfill`.
+- **Registering webhooks:** use the `create_webhook` GraphQL mutation
+  against `<APP_PUBLIC_URL>/api/v1/monday/webhooks/<MONDAY_WEBHOOK_SECRET>`.
+  The app must already be running with the secret, because monday sends a
+  challenge and refuses to register an endpoint that does not answer it.
+  Four pre-existing `change_specific_column_value` webhooks on the boards
+  are not ours — do not delete them.
+- `server/scripts/monday-remap.ts` was the one-time legacy-data migration
+  tool; a fresh install does not need it.
+- Deploys: see [`deployment.md`](deployment.md) and
+  [`CRM_INTEGRATION.md`](CRM_INTEGRATION.md).
 
-- **Merge** (`company.merge`, `server/modules/companies/companies.merge.service.ts`):
-  HubSpot folds a secondary company into a surviving primary. The handler
-  re-points the secondary's **documents + calculator-configs + deals onto
-  the primary** (in one transaction; order is load-bearing because
-  documents/deals are `ON DELETE RESTRICT` and calc-configs are
-  `ON DELETE CASCADE`), then removes the secondary row. If the primary
-  isn't cached yet it's fetched + upserted on demand (bypassing the
-  company-type filter — it now owns documents). **No data is lost; the
-  survivor inherits everything.**
-  - **Gotcha:** a merged-away company id does **not** 404 in HubSpot — a
-    `GET` resolves it to the survivor (200 with the survivor's `id`). So a
-    plain "404 = gone" check can't detect a stale merged alias. Two
-    safeguards cover this: (1) the webhook processor **self-heals** — any
-    later event whose `getCompany` returns a different `id` folds the alias
-    into the survivor; (2) the reconcile script's `--fix-merged` mode
-    auto-folds every merged alias (the survivor id comes from HubSpot's
-    redirect, so no manual lookup).
-- **Deletion** (`company.deletion`, `deleteOrMarkCompany`): a company that
-  owns **zero documents** is hard-deleted (with its deals). A company that
-  **owns documents** is NOT deleted — documents are legal records
-  (`ON DELETE RESTRICT`). Instead its deals are dropped, it's stamped
-  `hubspot_deleted_at` ("Deleted in HubSpot" badge), and the row + its
-  documents are kept. Note-sync skips it; a super_admin can "Delete from
-  system"; a HubSpot restore clears the flag.
+### Legacy names (kept by design)
 
-### Reconcile script (drift safety net)
+Renaming the wire contract and the DB vocabulary is deferred, so several
+identifiers still say "hubspot":
 
-`server/scripts/reconcile-companies.ts` repairs cache drift that a missed
-webhook left behind. Run on prod via `docker compose exec app npx tsx
-server/scripts/reconcile-companies.ts [mode]`:
+| Name | What it means today |
+|---|---|
+| `companies.hubspot_company_id` | The company natural key. `deals.hubspot_company_id` is the deal → company FK. Companies created from monday carry synthetic keys `mon:<itemId>`. |
+| `hubspot_modified_at` | Shown in the UI as "CRM updated": the monday item's `updated_at`, written on every sync (since 2026-09-14). |
+| `last_synced_at` | Advanced on every sync (since 2026-09-14); drives the TTL refresh and the "Last synced" line on the company page. |
+| `crm_item_id` / `crm_board_id` / `crm_binding_role` (`primary` \| `alias`) | The monday binding. `deals.crm_company_item_id` is the deal's "Company (M)" link. |
+| `hubspotSyncState`, `hubspotNoteId`, `HUBSPOT_UNREACHABLE`, `HUBSPOT_SYNC_IN_PROGRESS`, `synced_to_hubspot` | Legacy names for the CRM sync state, the latest note id, the error codes and the history event. User-facing text says "CRM", with a few leftovers — e.g. the "HubSpot sync" column header on the Documents and Calculators lists and the delete-company modal text; full list in [CODEMAPS/frontend.md](CODEMAPS/frontend.md#crm-naming-in-the-spa). |
 
-- (no args) — dry-run: lists drifted companies (404 = deleted upstream;
-  also flags merged-away aliases) + the recommended action per row.
-- `--fix-merged [--yes]` — auto-fold merged-away aliases into their
-  survivors. **This is the cleanup for "HubSpot shows 1 company, our list
-  shows 2."**
-- `--prune-empty` — delete drifted companies that own zero documents.
-- `--repoint <from> <to>` — fold a deleted-upstream company that owns
-  documents into a chosen survivor.
-- `--mark` — retroactively flag document-owning drift as deleted-in-HubSpot.
-- `--purge <id> [--yes]` — permanently delete a deleted-upstream company
-  **and its documents** (junk/test data only; refuses if it still exists
-  upstream).
+## HubSpot (retired 2026-08-31)
 
-Going forward, the merge webhook + the self-heal keep the cache clean
-automatically; the script is the operator-reviewed backlog/safety net.
-
-See `docs/client_and_hubspot_workflow.md` for the end-to-end operator flow.
+HubSpot was the CRM until the 2026-08-28 cutover and was switched off on
+2026-08-31. The account no longer exists (confirmed 2026-09-14): there is
+no rollback and no fallback to it. The code is still in the repo but
+dormant — `server/modules/hubspot/**` and `src/api/hubspot.ts`. Its
+webhook processor and startup backfill start only when
+`CRM_PROVIDER=hubspot`; the `/api/v1/hubspot/*` routes are still mounted
+but unused; `server/scripts/hubspot-backfill.ts` and
+`server/scripts/reconcile-companies.ts` refuse to run while
+`CRM_PROVIDER` is not `hubspot`, unless forced with
+`--force-hubspot-era`. That flag was meant for a HubSpot rollback, which
+is no longer possible (the account no longer exists), so do not use it —
+the scripts' error text still mentions rolling back. Do not build on this
+code.
+[`bsg_hubspot_field_mapping.md`](bsg_hubspot_field_mapping.md) and
+[`hubspot_api_reference.md`](hubspot_api_reference.md) are HubSpot-era
+references; this file's earlier description of the HubSpot integration is
+in git history.
 
 ## Puppeteer (server-side PDF rendering)
 

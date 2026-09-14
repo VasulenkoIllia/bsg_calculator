@@ -1,8 +1,9 @@
 # Deployment — Full-stack Production
 
 **Date**: 2026-05-20 (Sprint 7.3)
-**Target domain**: `bsg.workflo.space`
+**Target domain**: `<APP_DOMAIN>` (set in `.env`)
 **Architecture**: single Docker image (Vite SPA + Express API + Chromium) behind Traefik, with a sibling Postgres 15 container.
+**CRM**: monday.com — the only CRM since 2026-08-28; the HubSpot account no longer exists. The CRM sections and the update procedure (§6.1) were revised on 2026-09-14; the operating manual is [CRM_INTEGRATION.md](CRM_INTEGRATION.md).
 
 ---
 
@@ -35,20 +36,22 @@
 - Migrations run inside the entrypoint script BEFORE the API listens; Drizzle's per-migration hash gates idempotency.
 - The container runs as the non-root `node` user so Chromium can engage its built-in sandbox (no `--no-sandbox` flag).
 
+> **Check against the host (2026-09).** This diagram and §3 describe the Traefik setup in the repository's `docker-compose.yml`. The production host keeps its own `docker-compose.yml`, which deploys never overwrite, and it also runs an unrelated reverse-proxy stack (see the `docker compose down` warning in §6.1). §1 and §3 may therefore not match the host; reconcile them before relying on them.
+
 ---
 
 ## 2. Files on the server
 
-You need exactly these files in the deploy directory (e.g. `/srv/bsg/`):
+The image is built on the host, so the deploy directory (`<deploy-dir>`) holds the whole Docker build context plus two files that belong to the host:
 
-| File | Purpose |
+| Path | Purpose |
 |---|---|
-| `Dockerfile` | multi-stage build (SPA + API + Chromium) |
-| `docker-compose.yml` | postgres + app + Traefik labels |
-| `docker/entrypoint.sh` | wait-for-postgres + migrate + start server |
-| `.env` | **your secrets** — fill in from `.env.production.example` |
+| `src/`, `server/`, `scripts/`, `docker/` | source trees the `Dockerfile` copies into the image (`server/` includes the migrations; `docker/entrypoint.sh` waits for postgres, migrates, starts the server) |
+| `Dockerfile`, `.dockerignore`, `package.json`, `package-lock.json`, `tsconfig.json`, `tsconfig.server.json`, `vite.config.ts`, `postcss.config.cjs`, `tailwind.config.cjs`, `index.html` | root build files for the multi-stage build (SPA + API + Chromium) |
+| `docker-compose.yml` | postgres + app (the repository version carries Traefik labels). The host keeps its own copy — deploys never overwrite it |
+| `.env` | **your secrets** — filled in from `.env.production.example`; host-only, never committed, never overwritten by a deploy |
 
-Everything else (source code, migrations, package.json) is pulled in by the Docker build.
+§6.1 is how the synced files are kept identical to a pinned commit.
 
 ---
 
@@ -66,7 +69,7 @@ Otherwise verify the name and update `TRAEFIK_NETWORK` in `.env` to match.
 
 ### 3.2 DNS
 
-Point `bsg.workflo.space` (A or CNAME record) to the server's public IP. Traefik will request a Let's Encrypt cert via the configured resolver (env var `TRAEFIK_CERTRESOLVER`).
+Point `<APP_DOMAIN>` (A or CNAME record) to the server's public IP. Traefik will request a Let's Encrypt cert via the configured resolver (env var `TRAEFIK_CERTRESOLVER`).
 
 ---
 
@@ -75,16 +78,18 @@ Point `bsg.workflo.space` (A or CNAME record) to the server's public IP. Traefik
 ### 4.1 Clone
 
 ```bash
-git clone https://github.com/your-org/bsg-calculator.git /srv/bsg
-cd /srv/bsg
+git clone https://github.com/your-org/bsg-calculator.git <deploy-dir>
+cd <deploy-dir>
 git checkout main
 ```
+
+This is for the first install only. Later updates are not pulled on the host: they are synced from a pinned commit (§6.1).
 
 ### 4.2 Configure `.env`
 
 ```bash
 cp .env.production.example .env
-nano .env   # fill in every <REQUIRED> placeholder
+nano .env   # fill in every REQUIRED value: the <REQUIRED> placeholders and the empty MONDAY_API_TOKEN
 ```
 
 **Generate secrets locally before pasting them in:**
@@ -95,6 +100,9 @@ openssl rand -base64 48
 
 # Postgres password (alpha-num only is simpler for URL-encoding)
 openssl rand -base64 32 | tr -d '+=/'
+
+# monday webhook path secret (MONDAY_WEBHOOK_SECRET, 16+ chars)
+openssl rand -hex 24
 ```
 
 **Required values you must obtain ahead of time:**
@@ -104,10 +112,13 @@ openssl rand -base64 32 | tr -d '+=/'
 | `JWT_ACCESS_SECRET` | `openssl rand -base64 48` (NEW per env) |
 | `TOTP_ENCRYPTION_KEY` | `openssl rand -hex 32` (64 hex; encrypts 2FA secrets at rest — the app **refuses to boot in prod** with the all-zero dev default) |
 | `DB_PASSWORD` | `openssl rand -base64 32 \| tr -d '+=/'` |
-| `HUBSPOT_API_TOKEN` | HubSpot → Settings → Integrations → Private Apps → your app → Auth → "Access token" (starts with `pat-na1-…`) |
-| `HUBSPOT_WEBHOOK_SECRET` | HubSpot → Private App → Webhooks → "Signing secret" (32-char hex) |
-| `APP_DOMAIN` | Your public host, e.g. `bsg.workflo.space` |
+| `CRM_PROVIDER` | `monday` — set it explicitly. The code default is still `hubspot`, and with it production refuses to boot asking for HubSpot credentials (the HubSpot account no longer exists — do not supply them) |
+| `MONDAY_API_TOKEN` | monday → Developer Center → My access tokens (personal API token). Production refuses to boot without it |
+| `MONDAY_WEBHOOK_SECRET` | `openssl rand -hex 24` (16+ chars — production refuses to boot on a shorter one). It becomes part of the webhook URL, so treat that URL as a secret too |
+| `APP_DOMAIN` | Your public host, e.g. `app.example.com` |
 | `APP_PUBLIC_URL` | `https://${APP_DOMAIN}` |
+
+Keep the other monday values from the template: `MONDAY_API_BASE_URL` must be exactly `https://api.monday.com/v2` in production, `MONDAY_API_VERSION=2026-07`, and the three `MONDAY_BOARD_*` ids (the defaults are the real boards) must differ. Two legacy-named variables are still used by monday and stay as in the template: `AUTO_SYNC_TO_HUBSPOT=true` (auto-posts notes to the active CRM; the code default is `false`) and `HUBSPOT_SYNC_TTL_SECONDS` (TTL refresh, default 300). HubSpot-only variables are not needed — see the retired HubSpot block in `.env.production.example`.
 
 The `.env` file is **never committed**. Keep a copy outside the repo (1Password / Bitwarden / sealed-secret) so you can rebuild a host from scratch.
 
@@ -131,8 +142,13 @@ Expected log sequence on a green boot:
 [entrypoint] migrations applied
 [entrypoint] starting server: tsx server/index.ts
 INFO  [bsg-calculator] API listening  port=8080 env=production
-INFO  [hubspot:webhook] starting processor loop
+INFO  [startup] HubSpot backfill + webhook processor NOT started — HubSpot is not the active CRM  crmProvider=monday
+INFO  [monday] API version confirmed  apiVersion=2026-07
+INFO  [monday:webhook] processor started  pollMs=5000 batchSize=50
+INFO  [monday:maintenance] scheduled backfill armed  everyHours=24 firstRunInMinutes=15
 ```
+
+The three `[monday…]` lines appear only with `CRM_PROVIDER=monday`, and only after monday has confirmed the pinned API version. If you see `[startup] monday API version assertion FAILED — not starting the webhook processor. Fix MONDAY_API_VERSION.` instead, the webhook processor, the scheduled backfill and the hourly `[monday:health]` log are all off: fix `MONDAY_API_VERSION` — or `MONDAY_API_TOKEN`, because a rejected token fails the same check — and restart `app`. With `MONDAY_BACKFILL_INTERVAL_HOURS=0` the last line is replaced by a WARN saying the scheduled backfill is disabled.
 
 ### 4.4 Verify
 
@@ -141,16 +157,20 @@ INFO  [hubspot:webhook] starting processor loop
 docker compose ps         # both containers should be (healthy)
 
 # API health from inside the host:
-curl https://bsg.workflo.space/health
+curl https://<APP_DOMAIN>/health
 # → {"status":"ok","app":"bsg-calculator", ...}
 
-# Readiness (probes DB):
-curl https://bsg.workflo.space/ready
-# → {"status":"ready","checks":{"db":"ok","hubspot":"ok"}, ...}
+# Readiness (probes the DB and the monday API; also reports the webhook queue):
+curl https://<APP_DOMAIN>/ready
+# → {"status":"ready","checks":{"db":"ok","monday":"ok"},
+#    "mondayWebhookQueue":{"pending":0,"failed":0,"oldestPendingAgeSeconds":null,"lastProcessedAgeSeconds":null},
+#    "ts":"..."}
 
 # SPA reachable (returns the React shell HTML):
-curl -I https://bsg.workflo.space/
+curl -I https://<APP_DOMAIN>/
 ```
+
+`checks.monday` is a live `query { me { id } }` against monday with your token; `"fail"` turns the response into HTTP 503 with `"status":"degraded"` (usually a revoked token). `mondayWebhookQueue` is reported but never affects the status code — [CRM_INTEGRATION.md](CRM_INTEGRATION.md) §6 explains each field.
 
 ### 4.5 Create the bootstrap admin user
 
@@ -171,7 +191,7 @@ Backward-compat shortcuts still work:
 - `--super-admin` ≡ `--role=super_admin`
 - no flag ≡ `--role=user` (least privileged)
 
-You can now log in at `https://bsg.workflo.space/login`.
+You can now log in at `https://<APP_DOMAIN>/login`.
 
 #### Optional: bootstrap super-admin via env
 
@@ -182,83 +202,61 @@ restart the app. The script promotes that user on every boot. It
 is idempotent (already-super-admin = no-op) and never demotes, so
 removing the env later doesn't strip privileges.
 
-### 4.6 First HubSpot pull
+### 4.6 First monday sync
 
-The companies table is empty. Trigger the one-time backfill:
+On a fresh install the companies table is empty. With the app up (§4.3) and `CRM_PROVIDER=monday`, `MONDAY_API_TOKEN` and `MONDAY_WEBHOOK_SECRET` set, run these in order:
 
-```bash
-docker compose exec app npx tsx server/scripts/hubspot-backfill.ts
-```
+1. **Drift check** — read-only; confirms the token, the pinned API version, the three boards and every mapped column. Run it before the first sync and before any structural change to the boards:
 
-This pulls every `direct_client` company + its deals from HubSpot. Expect ~1 minute for a few hundred merchants. Subsequent updates flow through the webhook receiver.
+   ```bash
+   docker compose run --rm --no-deps -T --entrypoint npm app run monday:drift
+   ```
 
-### 4.7 Reconciling merged / deleted companies (drift)
+2. **Backfill** — loads every company, agent and deal from the three boards. It upserts and never deletes, so it is safe to re-run at any time:
 
-`company.merge` and `company.deletion` webhooks keep the cache in sync going forward (a merge re-points the merged-away company's documents/configs/deals onto the surviving company, then removes it — documents are never deleted). To repair **pre-existing drift** — a company that was merged/deleted in HubSpot while the merge handler wasn't deployed, so it lingers locally and 404s — use the reconcile script:
+   ```bash
+   docker compose exec -T app npm run monday:backfill
+   ```
 
-```bash
-# 1. Review (dry-run): lists local companies that no longer exist in
-#    HubSpot, with document/deal counts and the recommended action.
-docker compose exec app npx tsx server/scripts/reconcile-companies.ts
+3. **Register the webhooks** — 7 events × 3 boards = 21 webhooks, created with monday's `create_webhook` GraphQL mutation (same token, `API-Version: 2026-07`), all pointing at:
 
-# 2a. Drifted company with NO documents → prune it (safe; deals first).
-docker compose exec app npx tsx server/scripts/reconcile-companies.ts --prune-empty
+   ```
+   <APP_PUBLIC_URL>/api/v1/monday/webhooks/<MONDAY_WEBHOOK_SECRET>
+   ```
 
-# 2b. Drifted company WITH documents, MERGED upstream → fold it into its
-#     survivor. Find the survivor id by opening the drifted company in
-#     HubSpot (a merged record redirects to the surviving company).
-docker compose exec app npx tsx server/scripts/reconcile-companies.ts --repoint <driftedHubspotId> <survivorHubspotId>
+   - Boards: Companies `5102466967`, Agents `5102466950`, Deals `5102466996`.
+   - Events: `create_item`, `change_column_value`, `change_name`, `item_deleted`, `item_archived`, `item_restored`, `item_moved_to_any_group`. Register these names; monday *delivers* different ones (`create_pulse`, `update_name`, `update_column_value`, `delete_pulse`, `archive_pulse`, `restore_pulse`, `move_pulse_into_group`), which `normaliseEventType` maps back onto ours.
+   - One mutation per board × event, e.g.:
 
-# 2c. Drifted company WITH documents, DELETED upstream (no survivor — the
-#     HubSpot URL shows "not found", not a redirect) → purge it together
-#     with its documents. Previews first; add --yes to actually delete.
-docker compose exec app npx tsx server/scripts/reconcile-companies.ts --purge <driftedHubspotId>
-docker compose exec app npx tsx server/scripts/reconcile-companies.ts --purge <driftedHubspotId> --yes
+     ```graphql
+     mutation {
+       create_webhook (board_id: 5102466967, url: "<APP_PUBLIC_URL>/api/v1/monday/webhooks/<MONDAY_WEBHOOK_SECRET>", event: create_item) { id board_id }
+     }
+     ```
 
-# 2d. RETROACTIVELY flag all document-owning drift as "Deleted in HubSpot"
-#     (= what the deletion webhook now does). Use this for PRE-FIX drift
-#     whose deletion event already failed before the marker existed — after
-#     it, those companies show the badge + the admin "Delete from system"
-#     button, so the whole flow is visible/testable in the UI.
-docker compose exec app npx tsx server/scripts/reconcile-companies.ts --mark
-```
+   - **The app must already be running with that secret.** monday sends a challenge to the URL when a webhook is created and refuses to register an endpoint that does not echo it back; the app answers only when the path secret matches `MONDAY_WEBHOOK_SECRET` (a wrong one gets 403, an unset one 404).
+   - The URL contains the secret: keep it out of tickets, chat and shared shell history.
+   - **Four pre-existing `change_specific_column_value` webhooks on these boards are not ours. Do not delete them** — not while cleaning up, not while re-registering. Listing the webhooks per board should show 8 / 9 / 8 (ours plus the foreign ones); the query is in [CRM_INTEGRATION.md](CRM_INTEGRATION.md) §6.
 
-`--repoint` re-points the drifted company's documents/configs/deals onto the survivor and then removes it (the same path as a live `company.merge`). `--purge` is for a company that was DELETED upstream (so has no survivor): it permanently removes the company + its documents/configs/deals — and refuses unless HubSpot 404s the id (it never deletes the documents of a company that still exists upstream). Always run the dry-run / preview first.
+4. **Verify end to end** — edit a card on one of the boards and watch `docker compose logs -f app` for `[monday:webhook] event queued` followed by `[monday:webhook] batch complete`. An endpoint that answers 200 while the queue stays empty is the failure mode to fear (it cost the first cutover attempt — see [CRM_MIGRATION_RECORD.md](CRM_MIGRATION_RECORD.md)).
 
-> **Admin UI alternative (no SSH):** an `admin` / `super_admin` can do the equivalent of `--purge` from the app — open a company badged **"Deleted in HubSpot"** and click **"Delete from system…"** (`DELETE /api/v1/companies/:id`). It is role-gated AND refuses unless the company is flagged `hubspot_deleted_at`, and every purge is audited (`admin_actions` → `company.purged`, with the deleted document/deal counts). The reconcile script stays the tool for bulk drift discovery + the merge `--repoint` path.
+From then on changes flow in through the webhooks, with the TTL refresh and the scheduled backfill as safety nets ([CRM_INTEGRATION.md](CRM_INTEGRATION.md) §5). `server/scripts/monday-remap.ts` was the one-time tool that bound the legacy HubSpot-era rows to monday items during the migration; a fresh install does not need it.
 
-> **What happens when HubSpot deletes a company that owns documents:** `documents.company_id → companies.id` is **ON DELETE RESTRICT** — a guard so a HubSpot deletion can never silently wipe offer documents (legal records). The `company.deletion` webhook therefore can't hard-delete such a company; instead it now **marks it `hubspot_deleted_at`** and keeps the row + its documents (the admin shows a red "Deleted in HubSpot" badge; Note-sync is skipped; a later HubSpot restore auto-clears the marker). The pre-fix leftovers ("test" / "(M) TEST 1 c") predate this behavior and lingered as `failed` webhook events instead — clean them up with `--purge` (they were DELETED upstream, so have no survivor to `--repoint` into).
+### 4.7 Deleted and archived companies
+
+A company deleted in monday is flagged (`crm_deleted_at`) by the webhook processor only after the monday API confirms the deletion — absence alone is never treated as one. If the company owns no documents and no calculators it is then removed; otherwise it is kept and badged **"Deleted in CRM"**. An **archived** card is only flagged (badge **"Archived in CRM"**), never removed, because archiving is reversible; restoring the card clears the flag. A card that simply stops appearing is marked **"Not found in CRM"** — an observation, never a deletion.
+
+To remove a deleted company together with its documents, an `admin` / `super_admin` opens it and clicks **"Delete from system…"** (`DELETE /api/v1/companies/:id`). The action is audited, and it refuses unless the company is flagged as deleted in the CRM — an archived company is refused too.
+
+> **HubSpot era (retired).** This section used to describe `server/scripts/reconcile-companies.ts` (`--prune-empty`, `--repoint`, `--purge`, `--mark`), which reconciled the cache against HubSpot. It refuses to run in monday mode. Do not use its `--force-hubspot-era` override — there is no HubSpot to roll back to. It has no use today. `docs/decisions.md` still refers to it as part of the historical record.
 
 ---
 
-## 5. HubSpot configuration
+## 5. CRM configuration (monday.com)
 
-(Do this ONCE per environment.)
+(Do this ONCE per environment.) Everything is covered above: the token and webhook secret go into `.env` (§4.2), then the drift check, backfill and webhook registration (§4.6). Token rotation, webhook-secret rotation and health checks are in [CRM_INTEGRATION.md](CRM_INTEGRATION.md) §6–§8. Rotating `MONDAY_WEBHOOK_SECRET` changes the endpoint URL, so all 21 webhooks must be deleted and re-created — never touch the four foreign ones while doing so.
 
-### 5.1 Private App
-
-Settings → Integrations → **Private Apps** → Create.
-
-Scopes needed:
-- `crm.objects.companies.read` + `crm.objects.companies.write`
-- `crm.objects.deals.read` + `crm.objects.deals.write`
-- `crm.schemas.deals.read`
-- `crm.objects.notes.read` + `crm.objects.notes.write`
-- (Phase 9 will use `notes.write` for the Note write-back)
-
-Copy the **Access token** → `HUBSPOT_API_TOKEN` in `.env`.
-
-### 5.2 Webhooks
-
-In the same Private App → **Webhooks** tab:
-
-- **Target URL**: `https://bsg.workflo.space/api/v1/hubspot/webhooks`
-- **Signing secret**: copy → `HUBSPOT_WEBHOOK_SECRET` in `.env`
-- **Subscriptions**: enable
-  - `company.creation`, `company.deletion`, `company.propertyChange` (subscribe to every property)
-  - `deal.creation`, `deal.deletion`, `deal.propertyChange`
-
-After saving, send a test event from the HubSpot UI. Watch `docker compose logs app` — you should see one log line per delivery + a `[hubspot:webhook] processed event`.
+> **HubSpot era (retired).** Until 2026-08-28 this section set up a HubSpot Private App (`HUBSPOT_API_TOKEN`) and its webhook subscription to `/api/v1/hubspot/webhooks` (`HUBSPOT_WEBHOOK_SECRET`). The HubSpot account no longer exists; none of it applies, and there is no rollback to HubSpot. The migration is recorded in [CRM_MIGRATION_RECORD.md](CRM_MIGRATION_RECORD.md).
 
 ---
 
@@ -266,12 +264,30 @@ After saving, send a test event from the HubSpot UI. Watch `docker compose logs 
 
 ### 6.1 Apply updates
 
-```bash
-cd /srv/bsg
-git pull
-docker compose up -d --build app
-# Postgres is not recreated; only the app image rebuilds.
-```
+Production is updated by syncing a pinned commit into the deploy directory and rebuilding only `app` — not by `git pull` on the host (current procedure, 2026-09):
+
+1. Choose the FULL commit SHA to deploy and work from a clean checkout of it (`git status` clean, no untracked files).
+2. `rsync --delete` the `src/`, `server/`, `scripts/` and `docker/` directories into the deploy directory, and copy the root build files the `Dockerfile` uses: `Dockerfile`, `.dockerignore`, `package.json`, `package-lock.json`, `tsconfig.json`, `tsconfig.server.json`, `vite.config.ts`, `postcss.config.cjs`, `tailwind.config.cjs`, `index.html`. Never overwrite the host's `.env` or `docker-compose.yml`.
+3. Verify before building: a sha256 manifest of the synced files matches the checkout (every file identical, no leftovers), and the `docker-compose.yml` checksum is unchanged.
+4. Tag the image that is running now so it can be restored: `docker tag bsg-calculator:latest bsg-calculator:rollback-<currently-deployed-sha>` (compose runs `bsg-calculator:latest` unless `APP_IMAGE` is set).
+5. Build and recreate only the app:
+
+   ```bash
+   docker compose build app
+   docker compose up -d --no-deps app
+   # Postgres is not recreated; migrations apply in the entrypoint on boot.
+   ```
+
+6. Verify the boot. The three `[monday…]` lines from §4.3 must appear, and `/ready` must answer 200 with `"monday":"ok"`:
+
+   ```bash
+   docker compose logs --since 5m app | grep '\[monday'
+   docker compose exec -T app curl -sS http://127.0.0.1:8080/ready
+   ```
+
+   `/ready` alone is not enough: if the boot-time API-version check failed, `checks.monday` can still be `"ok"` while nothing processes the webhook queue (§7).
+
+**Never run `docker compose down`** on the host — it would take an unrelated reverse-proxy stack on the host down with it ([CRM_INTEGRATION.md](CRM_INTEGRATION.md) §8). Only ever recreate `app` with `--no-deps`.
 
 ### 6.2 Tail logs
 
@@ -287,8 +303,8 @@ The Postgres data lives in the `bsg_postgres_data` Docker volume — survives co
 Sample crontab on the host:
 
 ```cron
-# Daily 03:15 — dump the bsg_calculator DB to /srv/bsg/backups/
-15 3 * * * cd /srv/bsg && docker compose exec -T postgres pg_dump -U bsg -Fc bsg_calculator > "backups/bsg-$(date +\%F).dump" && find backups/ -name 'bsg-*.dump' -mtime +30 -delete
+# Daily 03:15 — dump the bsg_calculator DB to <deploy-dir>/backups/
+15 3 * * * cd <deploy-dir> && docker compose exec -T postgres pg_dump -U bsg -Fc bsg_calculator > "backups/bsg-$(date +\%F).dump" && find backups/ -name 'bsg-*.dump' -mtime +30 -delete
 ```
 
 Restore (manually, on a fresh server):
@@ -311,26 +327,34 @@ UPDATE document_number_sequence SET next_value = <max + 1>;
 
 ### 6.4 Rollback
 
+Restore the image tagged before the deploy (§6.1 step 4):
+
 ```bash
-git checkout <previous-commit>
-docker compose up -d --build app
+docker tag bsg-calculator:rollback-<previous-sha> bsg-calculator:latest
+docker compose up -d --no-deps --force-recreate app
 ```
+
+`--force-recreate` makes sure the container is recreated from the re-pointed tag, even on a compose version that does not notice the image change. This rolls back code only — there is no CRM-provider rollback (the HubSpot account no longer exists); keep `CRM_PROVIDER=monday`.
 
 Postgres data is unaffected. Migrations are forward-only — rolling back the container image does NOT undo schema changes. If a migration broke production, restore the DB from backup and pin the previous image.
 
-### 6.5 Force a re-pull from HubSpot
+### 6.5 Force a re-sync from monday
 
 ```bash
-# Reseed companies + deals (idempotent UPSERT — safe to re-run):
-docker compose exec app npx tsx server/scripts/hubspot-backfill.ts
+# Re-read all three boards (idempotent upsert, never deletes — safe any time):
+docker compose exec -T app npm run monday:backfill
 ```
+
+The same pass runs on its own every `MONDAY_BACKFILL_INTERVAL_HOURS` (default 24). Run it by hand after a webhook outage, or when `[monday:health]` reports failed events.
+
+> **HubSpot era (retired):** this used to be `server/scripts/hubspot-backfill.ts`. It refuses to run in monday mode and cannot run against a HubSpot account that no longer exists. Do not use its `--force-hubspot-era` override — there is no HubSpot to roll back to.
 
 ### 6.6 Health endpoints
 
 | Endpoint | Used by | Behavior |
 |---|---|---|
 | `GET /health` | Docker HEALTHCHECK | always 200 if Express is listening — no external deps |
-| `GET /ready` | manual / load balancer | 200 only if DB ping passes; 503 otherwise |
+| `GET /ready` | manual / load balancer | 200 only if the DB ping and the monday API probe (`checks.monday`) pass; 503 with `"status":"degraded"` otherwise. Also reports `mondayWebhookQueue`, which never affects the status code |
 
 ---
 
@@ -339,14 +363,19 @@ docker compose exec app npx tsx server/scripts/hubspot-backfill.ts
 ### "FATAL: DATABASE_URL is not set"
 `.env` is missing or the var is empty. Re-check.
 
-### "HUBSPOT_TOKEN_INVALID" in app logs
-The Private App token was revoked or rotated. Issue a new token in HubSpot → paste into `.env` → `docker compose up -d app` (restart picks up the new env).
+### "MONDAY_TOKEN_INVALID" in app logs
+monday rejected the API token (revoked or rotated). Issue a new personal token in monday → replace `MONDAY_API_TOKEN` in `.env` → `docker compose up -d --no-deps app` (the restart picks up the new env). Until then `/ready` shows `"monday":"fail"` and every note write fails. Deliveries still arrive and queue (the endpoint authenticates with the URL secret), but the processor cannot re-read items, so each event fails and after 5 attempts — about two minutes after it arrived — is marked `failed`. After fixing the token, run `docker compose exec -T app npm run monday:backfill` and check `mondayWebhookQueue.failed` on `/ready`. Failed rows are kept for audit, so that count, and the ERROR in the hourly `[monday:health]` log, does not clear by itself. (If the app was restarted with the bad token, the processor is not running at all and events wait as `pending` — see the next entry.)
+
+### "[startup] monday API version assertion FAILED"
+monday did not confirm `MONDAY_API_VERSION` (or the check itself failed, e.g. on a rejected token or a transient network error). The check runs only once, at boot, so until the next restart the webhook processor, the scheduled backfill and the hourly `[monday:health]` log are **not running** — inbound changes only queue up. `/ready` does not reveal this: `checks.monday` probes the token, not the processor, so it can show `"ok"`; only a rising `mondayWebhookQueue.pending` gives it away. Fix the cause and restart `app`.
 
 ### Container loop-restarts during boot
 Tail logs: `docker compose logs --tail=200 app`. Most common causes:
 - Postgres password mismatch (compare `DB_PASSWORD` in `.env` to `DATABASE_URL`).
 - Migration error → fix the migration locally, redeploy.
 - `JWT_ACCESS_SECRET` is a placeholder → boot validator refuses to start.
+- `[config/env] Invalid environment configuration` naming `HUBSPOT_API_TOKEN` / `HUBSPOT_WEBHOOK_SECRET` → `CRM_PROVIDER` is missing, so the code default `hubspot` applies. Set `CRM_PROVIDER=monday`; do not supply HubSpot values. It can also name `HUBSPOT_API_TOKEN` when a leftover `HUBSPOT_API_TOKEN` line has a value that does not start with `pat-` (checked whatever the provider) — delete that line.
+- The same message naming a `MONDAY_*` variable → `MONDAY_API_TOKEN` empty, `MONDAY_WEBHOOK_SECRET` unset or shorter than 16 chars, `MONDAY_API_BASE_URL` not exactly `https://api.monday.com/v2`, two `MONDAY_BOARD_*` ids equal, `MONDAY_BACKFILL_INTERVAL_HOURS` outside 0–168, or `MONDAY_BACKFILL_FIRST_DELAY_MINUTES` outside 1–1440 (both whole numbers).
 
 ### Chromium fails to launch (PDF render 500's)
 The base image has Chromium pre-installed. If you customised the image, ensure `chromium` + `chromium-sandbox` + `fonts-liberation` packages are present.
@@ -364,7 +393,7 @@ Default 64MB is fine for offer + agreement renders. If you bump it, set `shm_siz
 
 - No SMTP / email service (invites + password resets via copy-link only; see Phase 8 spec).
 - No automated backups — operator must set up the `pg_dump` cron above.
-- **HubSpot Note write-back is NOT YET IMPLEMENTED.** `POST /api/v1/documents/:number/sync` returns `501 NOT_IMPLEMENTED`. The frontend does not surface a "Sync to HubSpot" button — only a read-only status badge on the documents list. Manual curl to the sync endpoint returns a clean 501. Phase 9 will implement `hubspot.client.createNote()` + wire the controller.
+- **No paging for the CRM integration.** Webhook-queue health is logged hourly (`[monday:health]`: ERROR when events have exhausted their retries, WARN when the oldest pending event is over 10 minutes old) and reported on `/ready`, but nothing notifies anyone. (CRM note write-back itself *is* in this deploy — see §9; the 2026-05 remark here that it was not yet implemented is obsolete.)
 - **TOTP 2FA (Phase 8 Stage 2):** SHIPPED end-to-end (opt-in TOTP + backup
   codes + trusted devices + super-admin force-disable; two-step login UI +
   `/me` enrolment with QR; Google Authenticator / 1Password / Authy
@@ -373,66 +402,38 @@ Default 64MB is fine for offer + agreement renders. If you bump it, set `shm_siz
   Migrations 0018 + 0019 auto-apply (idempotent, forward-only).
 - No alerting on sustained outage — failures show only in container logs.
 
-## 9. HubSpot synchronization — current state (Phase 9 / 2026-05-21)
+## 9. CRM synchronization — current state (monday.com, 2026-09-14)
 
-### Inbound (HubSpot → our DB) — ✅ WORKS
-Three pull paths, all production-ready:
-1. **One-time backfill** (`docker compose exec app npx tsx server/scripts/hubspot-backfill.ts`) — pulls every `direct_client` company + its deals, idempotent via UPSERT.
-2. **Webhook receiver** (`POST /api/v1/hubspot/webhooks`) — HMAC-SHA-256 verified, 5-minute replay window, async queue in `hubspot_webhook_events` table, retry budget = 5, 30s × attempt backoff. Sprint 7.4 added a token-failure circuit-breaker (3 consecutive 401s → batch aborts + emits `HUBSPOT_TOKEN_INVALID` ERROR log).
-3. **TTL refresh** (fire-and-forget on cache hit if `last_synced_at > 5min ago`) — refreshes single company/deal in background.
+monday.com is the only CRM (production since 2026-08-28). The operating manual is [CRM_INTEGRATION.md](CRM_INTEGRATION.md); the migration is recorded in [CRM_MIGRATION_RECORD.md](CRM_MIGRATION_RECORD.md). This section is the deploy-level summary.
 
-Sprint 7.4 also fixed a correctness bug where deals whose primary HubSpot company association was filtered out (`WORLDFY OY` style) would silently land as `filtered_out` instead of using the fallback company from `associations.companies.results`.
+### Inbound (monday → our DB)
+1. **Webhooks** — `POST /api/v1/monday/webhooks/:secret` checks the path secret, normalises the event name, dedupes, writes one row to `monday_webhook_events` and answers 200. A processor polls the queue every 5 s. The payload is only a trigger: every item is re-read from the API with our own token. A failing event is retried with a 30 s × attempts backoff; after 5 attempts it is marked `failed` — a change that was never applied.
+2. **TTL refresh on read** — reading a bound company or deal whose `last_synced_at` is older than `HUBSPOT_SYNC_TTL_SECONDS` (default 300) re-reads that one item in the background (`server/modules/monday/monday.refresh.ts`). It never acts on absence and skips unbound rows.
+3. **Scheduled backfill** — every `MONDAY_BACKFILL_INTERVAL_HOURS` (default 24; first run `MONDAY_BACKFILL_FIRST_DELAY_MINUTES` = 15 minutes after boot; `0` disables it and logs a WARN). Same code as `npm run monday:backfill`.
 
-### Outbound (our DB → HubSpot Notes) — ✅ WORKS (Phase 9)
+A deal belongs to the company in its **Company (M)** link, re-applied on every sync: only a primary-bound company is accepted, an empty or unbound link leaves the deal where it is, and a deal already under any row bound to that card (including the alias half of a duplicate pair) is not moved. Every sync also advances `last_synced_at` and the "CRM updated" column (`hubspot_modified_at`, holding the monday item's `updated_at`). Both behaviours were fixed on 2026-09-14 — before that, the update path forgot fields the insert path wrote; see [CRM_INTEGRATION.md](CRM_INTEGRATION.md) §7.
 
-**Two surfaces sync to HubSpot Notes:**
-1. `POST /api/v1/documents/:number/sync` — frozen documents (Offer/Agreement)
-2. `POST /api/v1/calculator-configs/:id/sync` — saved calc-configs (Phase 9.I)
+### Outbound (our DB → monday updates)
+- Saving a document, or the first save of a calculator, posts a note — a monday "update" — in the background once the row is committed (`AUTO_SYNC_TO_HUBSPOT=true`). It goes to the deal card when the row is pinned to a deal, otherwise to the company card. The link in the note is built from `APP_PUBLIC_URL`.
+- Manual retry / re-sync: the **"Sync to CRM"** button on `/documents/:number` and `/calc/:id` (`POST /api/v1/documents/:number/sync`, `POST /api/v1/calculator-configs/:id/sync`; admin+; 10/min/IP via the legacy-named `hubspotProxyLimiter`). Each manual sync creates a NEW update; a failed one leaves the row's sync state at `failed`.
+- Note body: one line with the document type and number (or `Calculator` and the calculator's title), `Company: <name>` and `Created <date> by <name> (<email>)`, then a `Link` to the document or calculator page built from `APP_PUBLIC_URL`. Re-syncing a row that is already synced asks for confirmation first; the previous update stays on the card as history. A per-row Postgres advisory lock makes a concurrent second sync of the same row fail with 409, so a double click cannot post a duplicate.
+- Every note is recorded in `crm_notes` with the provider that created it. Deleting a document or calculator removes every monday update recorded for it; notes from the HubSpot era are not attempted.
 
-**Both flows:**
+### Names that still say "hubspot"
+Renaming the wire contract and DB vocabulary is deliberately deferred. What the legacy names mean today:
 
-1. Loads the document by BSG number + its parent company.
-2. Builds a plain-text Note body via `server/modules/documents/note-builder.ts` (BSG number, scope, key contract terms from payload, addendum if any, clickable link back to `/documents/:number`).
-3. Calls HubSpot **POST /crm/v3/objects/notes** with the body.
-4. Calls HubSpot **PUT /crm/v4/objects/notes/{noteId}/associations/default/{deal|company}/{id}** to attach the Note to either the document's `hubspotDealId` (preferred) or the parent company's `hubspot_company_id` (fallback).
-5. Updates `documents.hubspot_note_id` + `hubspot_sync_state='synced'`.
+| Name | Meaning in the monday era |
+|---|---|
+| `companies.hubspot_company_id` | the company natural key; `deals.hubspot_company_id` is the deal → company FK. Companies created from monday carry synthetic keys `mon:<itemId>` |
+| `hubspot_modified_at` | shown as "CRM updated"; holds the monday item's `updated_at` |
+| `crm_item_id` / `crm_board_id` / `crm_binding_role` (`primary` \| `alias`) | the monday binding; `deals.crm_company_item_id` is the deal's Company (M) link |
+| `hubspotSyncState`, `hubspotNoteId`, `HUBSPOT_UNREACHABLE`, `synced_to_hubspot`, `/api/v1/hubspot/*` | legacy names — the UI says "CRM" |
+| `HUBSPOT_SYNC_TTL_SECONDS`, `AUTO_SYNC_TO_HUBSPOT` | env vars still used by monday (see §4.2) |
 
-On HubSpot failure → `hubspot_sync_state='failed'` is persisted BEFORE the error propagates, so the next GET shows the failed badge + Retry CTA in the UI.
+### Token rotation
+Replace `MONDAY_API_TOKEN` in `.env` → `docker compose up -d --no-deps app` → `/ready` should show `"monday":"ok"`. The webhook registrations do not change (events that arrive while a revoked token is still in use fail — see §7). Rotating `MONDAY_WEBHOOK_SECRET` is different: it changes the endpoint URL, so the 21 webhooks must be re-created (§5).
 
-**Operator policy**: each manual Sync click creates a NEW Note in HubSpot (audit trail). `hubspot_note_id` always points to the most recent. Older Notes from previous syncs stay in HubSpot — operator can clean them up manually if they don't want clutter.
-
-**Auto-sync (Phase 9.G / 9.I)**: with `AUTO_SYNC_TO_HUBSPOT=true` in `.env` (renamed from `AUTO_SYNC_DOCUMENTS_TO_HUBSPOT` in Sprint 9.L; the old name is still accepted as a fallback), every successful `POST /documents` AND every first save of a calc-config schedules a fire-and-forget sync via `setImmediate` AFTER the DB transaction commits. The operator gets a clean 201/200 immediately; the badge flips `not_synced → synced` (or `failed`) in the background.
-
-**Calculator sync (Phase 9.I; updated Cycle 2 — 2026-06-07)**: ONE operator-confirmed difference from documents:
-1. Auto-saves (`PUT /calculator-configs/:id`) DO NOT touch HubSpot. The Note's `Link` always opens our SPA which renders the freshest state.
-
-Otherwise calculators now follow the SAME create-new-each-time policy as documents: each manual Sync click on `/calc/:id` creates a **NEW** Note in HubSpot (older ones stay as an audit trail; `hubspot_note_id` points to the most recent). Re-syncing an already-synced calc shows a confirm dialog first ("creates a NEW HubSpot Note"). The earlier Phase 9.K "one Note per calc / PATCH-in-place (with a 404→CREATE self-heal)" policy was **removed** so the dialog wording is accurate. A per-row `calc-sync:` advisory lock still prevents double-click duplicates.
-
-**Note body format (Phase 9.H)**: compact one-liner + clickable link:
-```
-Offer BSG-7100001-099930 // Company: (A) TEST 1 // Created 21.05.2026, 15:40 by Admin (admin@bsg.test)
-Link  (href: https://bsg.workflo.space/documents/BSG-7100001-099930)
-```
-Plus `Calculator: <title> // …` variant for calc-configs.
-
-**Required HubSpot scope**: `crm.objects.contacts.write` is sufficient per HubSpot Notes API docs ([developers.hubspot.com/docs/api/crm/notes](https://developers.hubspot.com/docs/api/crm/notes)). The Private App's existing scopes cover it — verified against `(A) TEST 1 c` in production 2026-05-21. No standalone `crm.objects.notes.*` scope is required by HubSpot.
-
-**Frontend triggers**:
-- `/documents/:number` → "Sync to HubSpot" button (admin+).
-- `/calc/:id` → "Sync to HubSpot" button in the sticky toolbar (admin+).
-Both gated by `requireRole('admin')` BE + `hasRole('admin')` FE so regular users don't see buttons that would 403.
-
-**Rate limit**: `hubspotProxyLimiter` = 10/min/IP per sync endpoint. Comfortably under HubSpot's per-Private-App 100 req / 10s ceiling even when an operator spams Sync.
-
-### Pipeline stages — pulled on app boot
-The deal pipeline + stage labels are fetched once at server startup via `hubspot.listPipelineStages()` and cached for 1 hour in-memory. To pick up new stages added in HubSpot before the TTL expires, restart the app container (`docker compose restart app`).
-
-### Token-rotation playbook
-1. Generate new Private App access token in HubSpot.
-2. `nano /srv/bsg/.env` → replace `HUBSPOT_API_TOKEN`.
-3. `docker compose up -d app` (restart picks up the new env).
-4. Watch logs: `docker compose logs -f app | grep -i hubspot`.
-5. Verify: `curl https://bsg.workflo.space/ready` should show `"hubspot":"ok"`. If it shows `"fail"`, the new token was rejected — re-check.
+> **HubSpot era (retired).** Until 2026-08-28 this section described the HubSpot integration: HMAC-signed webhooks to `/api/v1/hubspot/webhooks`, `hubspot-backfill.ts`, Note write-back through the HubSpot Notes API, pipeline stages loaded at boot, and a HubSpot token-rotation playbook. The HubSpot account no longer exists and there is no rollback to it; the code is still in the repo but dormant.
 
 ## 10. Upgrading from pre-Stage-1 to Stage 1 (one-time)
 
@@ -466,7 +467,7 @@ migration) to `super_admin`:
 **Option A — via env (recommended for repeatability):**
 
 ```bash
-nano /var/www/projects/bsg_calculator/.env
+nano <deploy-dir>/.env
 # Add the line:
 BOOTSTRAP_SUPER_ADMIN_EMAIL=admin@your-domain.com
 docker compose up -d app
@@ -488,12 +489,14 @@ privileges (Phase 8 Stages 3+).
 
 ## 11. Routine redeploy (Sprint 9.W + 9.X + later) — `git pull && rebuild`
 
+> **Current procedure (2026-09):** production is no longer updated with `git pull` on the host — follow §6.1 (pinned full SHA, rsync, sha256 manifest check, rollback tag, `docker compose build app`, `docker compose up -d --no-deps app`). What this section says about migrations applying automatically on boot still holds; the command block below is historical.
+
 For every sprint after the initial Stage 1 deploy, the redeploy
 recipe is the same regardless of whether the sprint added new
 migrations:
 
 ```bash
-cd /var/www/projects/bsg_calculator
+cd <deploy-dir>
 git pull
 docker compose up -d --build app
 docker compose logs -f app | head -30   # confirm migrations applied
@@ -522,7 +525,7 @@ manual `psql` step is required.
 
 After `docker compose up -d --build app`:
 
-1. Visit `https://bsg.workflo.space` — should serve the SPA.
+1. Visit `https://<APP_DOMAIN>` — should serve the SPA.
 2. `/documents` listing — every row now shows "by &lt;creator&gt;"
    under the CREATED date.
 3. `/calculators` listing — Company filter dropdown visible above

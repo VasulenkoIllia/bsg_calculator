@@ -1,10 +1,8 @@
 # Client & HubSpot Workflow (REWRITTEN 2026-05-15)
 
-> **Era note (2026-08-28).** This document describes the **HubSpot** era.
-> HubSpot is switched off after 2026-08-31 and monday.com replaces it via
-> the `CRM_PROVIDER` switch. What still applies, what changes, and why is in
-> [`monday_migration_plan.md`](monday_migration_plan.md); the practical diff
-> is in [`ONBOARDING.md`](ONBOARDING.md) §10.
+> **Historical** — HubSpot was switched off after 2026-08-31 and the
+> account no longer exists (confirmed 2026-09-14); monday.com is the only
+> CRM. Current reference: [docs/CRM_INTEGRATION.md](CRM_INTEGRATION.md).
 
 How a HubSpot company / deal flows through the listing page → calculator
 → document pipeline. Pinned now so Phase 8 endpoints leave the right
@@ -136,7 +134,7 @@ in Phase 8) will:
    ```html
    📄 <b>BSG-7100123-874808 — Offer</b><br>
    Created 2026-05-15 by operator@bsg.com<br>
-   <a href="https://bsg.workflo.space/documents/BSG-7100123-874808">View document</a>
+   <a href="https://<app-domain>/documents/BSG-7100123-874808">View document</a>
    <hr>
    <i>{operator addendum, if non-empty}</i>
    ```

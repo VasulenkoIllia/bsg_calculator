@@ -6676,3 +6676,162 @@ D1–D16, retractions, era design), `docs/monday_audit_round4.md` (final
 review with evidence), `docs/monday_migration_analysis.md` (original code
 inventory). The cutover runbook is intentionally not in git: it names
 production hosts and paths, and this repo is public.
+
+### Decision: monday post-cutover hardening — self-healing and queue visibility (2026-08-28)
+
+**Context.** The post-cutover audit found two gaps, both closed the same
+day. TTL-refresh-on-read had been switched off with HubSpot (it would have
+fired at a dead API) and nothing replaced it, so freshness rested entirely
+on webhooks: a webhook deleted on a board, or an event that burned its five
+retries, left a row wrong indefinitely. And nothing reported the webhook
+queue, so a silent failure looked exactly like a quiet CRM.
+
+**Decision.**
+
+- **TTL refresh restored against monday** (`monday.refresh.ts`, commit
+  `aec31e6`). Reading a row whose `last_synced_at` is older than
+  `HUBSPOT_SYNC_TTL_SECONDS` (legacy name, default 300) schedules a
+  background re-read of that one item. It never acts on absence: a
+  single-item read cannot tell "deleted" from a transient or permissions
+  failure, so a missing or non-active item leaves the row untouched —
+  judging that an item is gone belongs to the backfill, which sees a whole
+  board, and to the delete/archive webhook path. Unbound rows are skipped.
+- **Scheduled backfill** (`monday.maintenance.ts`, commit `7a4ddfe`).
+  Every `MONDAY_BACKFILL_INTERVAL_HOURS` (default 24) all three boards are
+  re-read, so rows nobody opens heal too. The first run waits
+  `MONDAY_BACKFILL_FIRST_DELAY_MINUTES` (default 15) after boot, so a
+  crash-looping container cannot hammer monday. A failed run is logged and
+  retried on the next interval, never fatal. `0` disables it, and startup
+  logs a WARN saying so.
+- **A plain interval from boot, with no persisted last-run marker.** "Daily
+  at 03:00" would need a durable marker to survive restarts — a table and a
+  migration. The backfill is idempotent (it upserts) and cheap (~3,000
+  complexity against a 1,000,000/minute budget), so an extra run after a
+  restart costs nothing. Restart drift is the accepted price.
+- **Hourly queue-health log whose level carries the meaning**
+  (`[monday:health]`): ERROR when events have exhausted their retries —
+  each one a monday change that was never applied — WARN when the oldest
+  pending event is over 10 minutes old, INFO otherwise. Visibility, not
+  paging: nobody is woken up.
+- **`/ready`** probes monday (`checks.monday`, which does count towards
+  readiness) and reports `mondayWebhookQueue`: pending, failed,
+  oldest-pending age and time since the last processed event. The queue is
+  reported only — late data is not a reason to take the app out of
+  service.
+
+**Supersedes** the consequence recorded in "CRM migration HubSpot →
+monday.com" that TTL-refresh-on-read is HubSpot-only, leaving freshness
+after the flip to webhooks with a nightly backfill merely recommended. Both
+mechanisms now run against monday.
+
+**Consequences accepted.** There is still no alerting: queue health reaches
+the log and `/ready`, but nothing sends anyone a message — choosing a
+destination is an infrastructure decision. The webhook processor and the
+maintenance loop start only after the boot-time API-version assertion
+succeeds, so a wrong `MONDAY_API_VERSION` stops both (logged at ERROR).
+
+### Decision: HubSpot retired — monday.com is the only CRM (2026-09-14)
+
+**Context.** Production has run `CRM_PROVIDER=monday` since 2026-08-28, and
+HubSpot was switched off after 2026-08-31. On 2026-09-14 it was confirmed
+that the HubSpot account no longer exists. The migration entry above
+describes a transition in which both CRMs may be connected and rollback is
+one variable; neither holds any more.
+
+**Decision.**
+
+- **monday.com is the only CRM, and there is no provider rollback.**
+  `CRM_PROVIDER=hubspot` would point the app at an account that does not
+  exist. A rollback now means redeploying an earlier monday-era image,
+  never switching provider.
+- **The HubSpot code stays in the tree, dormant**
+  (`server/modules/hubspot/**`, `src/api/hubspot.ts`). Its webhook
+  processor and startup backfill start only under `CRM_PROVIDER=hubspot`,
+  `/ready` probes only the active CRM, and the HubSpot-era scripts
+  (`hubspot-backfill`, `reconcile-companies`) refuse to run without
+  `--force-hubspot-era`. Deleting that code is a separate change.
+- **The code default stays `CRM_PROVIDER="hubspot"`** in
+  `server/config/env.ts`; changing it is deferred because the test suite
+  relies on it. Every deployment must set `CRM_PROVIDER=monday`
+  explicitly, as production does. With monday active the HubSpot-only
+  production gates (API token, webhook secret, base-URL guard) do not
+  apply (leave `HUBSPOT_API_TOKEN` unset or empty — a non-empty value must
+  still start with `pat-` in every mode, and `HUBSPOT_API_BASE_URL`, if
+  set, must still be a valid URL).
+- **HubSpot-era notes stay where they are.** A note is torn down only
+  through the provider that holds it (`crm_notes.provider` must equal
+  `CRM_PROVIDER`), so deleting a row whose note was written to HubSpot
+  skips the teardown. With the account gone, those notes can no longer be
+  removed.
+- **Identifiers keep their legacy names**; renaming the wire contract and
+  the DB vocabulary is deferred. `hubspot_company_id` is the company
+  natural key and the deals→company FK (monday-native rows carry
+  `mon:<itemId>`); `hubspot_modified_at` is shown as "CRM updated";
+  `hubspotSyncState`, `hubspotNoteId`, `HUBSPOT_UNREACHABLE`,
+  `synced_to_hubspot` and `/api/v1/hubspot/*` are unchanged. Two
+  legacy-named env vars still drive the monday era:
+  `HUBSPOT_SYNC_TTL_SECONDS` (the TTL refresh) and `AUTO_SYNC_TO_HUBSPOT`
+  (auto-posts notes to the active CRM; must stay `true`). User-facing text
+  says "CRM".
+- **Canonical documentation** is `docs/CRM_INTEGRATION.md` (operating
+  manual) and `docs/CRM_MIGRATION_RECORD.md` (record of the migration).
+  `docs/monday_migration_plan.md`, `docs/monday_migration_analysis.md` and
+  `docs/monday_audit_round4.md` are historical planning documents, no
+  longer the authority the migration entry above names them as.
+- **Earlier entries scrubbed for publication (2026-09-14).** Client names
+  and the production domain in earlier entries were replaced with generic
+  wording; nothing else in those entries changed.
+
+### Decision: deals follow their Company (M) link on every sync (2026-09-14)
+
+**Context.** A deal's company was taken once, at insert. The UPDATE branch
+of `upsertOneDeal` refreshed name, stage and the binding columns but never
+`hubspot_company_id` — the FK every "deals of this company" query filters
+on — so a change of Company (M) in monday was ignored forever, by webhooks,
+the scheduled backfill and the TTL refresh alike. On production, three
+deals imported during the migration were stuck under their referring agents
+and invisible in the wizard for their merchants; the daily backfill had
+"updated" them every day for over two weeks without moving them.
+
+**Decision.** Every sync re-points an existing deal to the company its
+Company (M) link names (commit `a84d653`), with three guards:
+
+- only a **primary** bound company is accepted as the new parent;
+- an **empty or unbound** link leaves the deal where it is rather than
+  orphaning it — the next sync applies the link once that company is
+  bound;
+- a deal already under **any** row bound to the linked monday card,
+  including the alias half of a duplicate pair, is not moved.
+
+**Why the alias guard exists.** On 2026-08-28 it was deliberately decided
+to leave one duplicate company pair split: the primary row owns the
+documents (their numbers embed its id and can never change), the alias row
+keeps the pair's single historical deal. Which of two duplicate rows holds
+a deal is not a sync question. Comparing against the primary row alone
+would have quietly undone that decision, and would have moved four deals
+instead of the three the production diagnostic listed.
+
+**Consequences.** The move applies only while monday is authoritative, and
+each one logs `[monday:backfill] deal moved to the company its Company (M) link names`. Same
+class of bug as the next entry: a field the INSERT branch wrote and the
+UPDATE branch forgot.
+
+### Decision: sync timestamps advance on every sync (2026-09-14)
+
+**Context.** Found by comparing the INSERT and UPDATE branches field by
+field after the deal fix. The UPDATE branches for companies and deals wrote
+neither `last_synced_at` nor `hubspot_modified_at`. Every bound row
+therefore looked stale forever — the TTL refresh re-read it from monday on
+every view instead of at most once per TTL, and the company page showed a
+"last synced" date from May — while the "CRM updated" column kept the
+HubSpot-era or creation date.
+
+**Decision.** Every sync sets `last_synced_at = now()` and, while monday is
+authoritative, writes the monday item's `updated_at` into
+`hubspot_modified_at` (commit `4aeb134`). A missing `updated_at` keeps the
+previous value: NULL would violate NOT NULL, and `now()` would misstate
+when the card last changed.
+
+**Consequences.** Beyond the TTL check, nothing but display and sorting
+reads either value, so the fix changes freshness and what the UI shows,
+nothing else.

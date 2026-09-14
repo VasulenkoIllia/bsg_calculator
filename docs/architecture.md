@@ -1,7 +1,9 @@
 # Architecture Overview
 
 Date: 2026-05-03 (refreshed)
-Status: Active reference for current frontend-only architecture
+Status: Historical overview (2026-05 frontend-only phase), kept for the calculator/wizard map — see the current-state note below.
+
+> **Current state (2026-09-14).** This overview was written for the 2026-05 frontend-only phase and is kept for its map of the calculator and wizard. Statements below that the backend is absent are historical: a backend now exists in `server/`, and the CRM is **monday.com** — see [CRM_INTEGRATION.md](CRM_INTEGRATION.md). HubSpot was the CRM until the 2026-08-28 cutover and was retired on 2026-08-31; there is no HubSpot fallback. For the current system as a whole, start at [ONBOARDING.md](ONBOARDING.md).
 
 ## 1. Project at a glance
 
@@ -12,7 +14,7 @@ BSG Calculator is a React + Vite SPA with two cooperating workspaces:
 
 Backend is intentionally absent in the current phase. A minimal `server/` skeleton exists for later use; static assets are served via nginx in Docker.
 
-> **Backend specification v2.0 finalised (2026-05-12); implementation has not started.** [docs/phase_08_backend_plan.md](phase_08_backend_plan.md) captures the confirmed stack (Express + Drizzle + Postgres + Puppeteer + JWT, **single Docker container** on Linux VPS), full DB schema, API surface, document-save flow, and HubSpot deferral plan. The previous (v1, 2026-05-03) plan is archived at `phase_08_backend_plan_v1_archived.md`. Companion specs: `backend_state_schemas.md`, `backend_computation_boundary.md`, `client_and_hubspot_workflow.md`, `ui_phase_8_9_requirements.md`. Next step is implementation in `server/`.
+> **Backend specification v2.0 finalised (2026-05-12); implementation has not started.** [docs/archive/phase_08_backend_plan.md](archive/phase_08_backend_plan.md) captures the confirmed stack (Express + Drizzle + Postgres + Puppeteer + JWT, **single Docker container** on Linux VPS), full DB schema, API surface, document-save flow, and HubSpot deferral plan. The previous (v1, 2026-05-03) plan is archived at `phase_08_backend_plan_v1_archived.md`. Companion specs: `backend_state_schemas.md`, `backend_computation_boundary.md`, `client_and_hubspot_workflow.md`, `ui_phase_8_9_requirements.md`. Next step is implementation in `server/`. *(2026-09-14: since implemented; the plan now lives in `archive/`. The HubSpot integration it deferred shipped later and was itself replaced by monday.com — see [CRM_INTEGRATION.md](CRM_INTEGRATION.md).)*
 
 ## 2. Hard rules
 
@@ -69,7 +71,7 @@ The app uses `react-router-dom` v7 (`BrowserRouter`). Calculator state is lifted
 | `/wizard` | `WizardPage` | Wizard; reads/writes `?source`, `?scope`, `?step` query params. |
 | `*` | `NotFoundPage` | Fallback. |
 
-Future deep-links (`/calculator/:id`, `/wizard/:id/edit`, `/share/:token`) are documented in [url_contract.md](url_contract.md). Backend implementation per [phase_08_backend_plan.md](phase_08_backend_plan.md).
+Future deep-links (`/calculator/:id`, `/wizard/:id/edit`, `/share/:token`) are documented in [url_contract.md](url_contract.md). Backend implementation per [archive/phase_08_backend_plan.md](archive/phase_08_backend_plan.md).
 
 ## 4. Data flow — Calculator path
 
@@ -150,11 +152,13 @@ Verification gate: `npm run verify` (`typecheck` + `test` + `build`).
 
 ## 8. Out-of-scope today (forward references)
 
+*(2026-09-14: this list is historical — most of it has since shipped; see [ONBOARDING.md](ONBOARDING.md) for the current state.)*
+
 The following are described in `technical_specification_bsg.docx v2.0` but are deliberately not implemented in the current phase:
 
 - Backend API (REST endpoints, DB persistence, immutable versioning).
 - BSG document numbering service (`BSG-#####-XXXXX`). Wizard currently emits `BSG-DRAFT-{ts}` placeholder.
-- HubSpot integration (Deals, Companies, Calculator custom object). See [integrations.md](integrations.md) for planned interaction shape.
+- HubSpot integration (Deals, Companies, Calculator custom object). *(2026-09-14: superseded — a HubSpot integration shipped with the backend and was replaced by monday.com at the 2026-08-28 cutover; HubSpot was retired on 2026-08-31. Current state: [integrations.md](integrations.md), [CRM_INTEGRATION.md](CRM_INTEGRATION.md).)*
 - DOCX export. Only PDF (via browser print) is supported.
 - Auth, RBAC, audit log, soft delete.
 
@@ -162,6 +166,6 @@ Status of every spec section is tracked in [spec_v2_alignment.md](spec_v2_alignm
 
 ## 9. Active plan and decisions
 
-- Active phase plan: [phase_07_unified_document_pipeline_plan.md](phase_07_unified_document_pipeline_plan.md).
+- Historical phase plan (archived): [archive/phase_07_unified_document_pipeline_plan.md](archive/phase_07_unified_document_pipeline_plan.md).
 - Architectural and product decisions: [decisions.md](decisions.md).
 - Historical phase handoffs: [archive/](archive/).

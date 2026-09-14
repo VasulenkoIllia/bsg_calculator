@@ -1,5 +1,7 @@
 # Specification v2.0 Alignment
 
+> **Historical design document.** The CRM is monday.com (live since 2026-08-28); HubSpot was retired and the account no longer exists. HubSpot references below describe the plan at the time. Current reference: [CRM_INTEGRATION.md](CRM_INTEGRATION.md).
+
 Date: 2026-05-30 (refreshed for the universal-layout PDF redesign)
 Status: Active reference. Reviewed when scope changes.
 
@@ -62,7 +64,7 @@ The calculator itself is governed by `Calculator_Описание.docx` and is c
 - ⏳ **Planned** — explicitly in `phase_07_unified_document_pipeline_plan.md`, not yet implemented.
 - ⛔ **Out of scope (current phase)** — acknowledged in spec but deliberately deferred.
 
-> **Backend status (2026-05-03):** Phase 8 backend specification is **finalized** in [phase_08_backend_plan.md](phase_08_backend_plan.md) — confirmed stack (Express + Drizzle + Postgres + Puppeteer + JWT), DB schema, API surface, document save flow, seed data are all decided. Implementation has **not started yet**. No server code, no database, no API endpoints exist. ⏳ items below remain ⏳ until implementation work begins.
+> **Backend status (2026-05-03):** Phase 8 backend specification is **finalized** in [phase_08_backend_plan.md](archive/phase_08_backend_plan.md) — confirmed stack (Express + Drizzle + Postgres + Puppeteer + JWT), DB schema, API surface, document save flow, seed data are all decided. Implementation has **not started yet**. No server code, no database, no API endpoints exist. ⏳ items below remain ⏳ until implementation work begins.
 
 ## Section-by-section status
 
@@ -186,7 +188,7 @@ The spec lists notional phases. Local mapping:
 
 ## Blocking gaps to resolve before Phase 8
 
-1. Lock OFFER template visually and structurally — outstanding discrepancies vs the 8 reference samples are listed in [pdf_renderer_audit_2026-05-02.md](pdf_renderer_audit_2026-05-02.md).
+1. Lock OFFER template visually and structurally — outstanding discrepancies vs the 8 reference samples are listed in [pdf_renderer_audit_2026-05-02.md](archive/pdf_renderer_audit_2026-05-02.md).
 2. Decide which AGREEMENT items to implement now vs after backend (see [agreement_structure.md](agreement_structure.md)).
 3. Confirm numbering policy (`BSG-#####-XXXXX` semantics) and counter seed (`71001`) before backend implementation.
 4. Decide backend stack (Express vs NestJS) and DB (Postgres assumed).

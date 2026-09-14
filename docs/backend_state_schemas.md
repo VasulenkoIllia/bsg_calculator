@@ -1,5 +1,7 @@
 # Backend State Schemas — Phase 8 handoff
 
+> **Historical design document.** The CRM is monday.com (live since 2026-08-28); HubSpot was retired and the account no longer exists. HubSpot references below describe the plan at the time. Current reference: [CRM_INTEGRATION.md](CRM_INTEGRATION.md).
+
 Single source of truth for the shape of data the frontend sends to
 (and receives from) the Phase 8 backend. Anything not listed here is
 either (a) UI-only and never persisted, or (b) computed server-side.

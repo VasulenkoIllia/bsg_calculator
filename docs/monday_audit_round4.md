@@ -1,5 +1,12 @@
 # monday migration — audit round 4 (2026-08-27)
 
+> **Completed 2026-08-28** — this is the planning record. Current state:
+> [docs/CRM_INTEGRATION.md](CRM_INTEGRATION.md); outcome:
+> [docs/CRM_MIGRATION_RECORD.md](CRM_MIGRATION_RECORD.md).
+> HubSpot has since been retired (account gone, confirmed 2026-09-14); the
+> rollbacks to HubSpot described below (`CRM_PROVIDER=hubspot`, or the
+> pre-migration image) no longer exist.
+
 Round 3 ended with a GO on Stage E and a must-fix list. This round fixed
 that list, and re-auditing after the fixes turned up five more defects —
 three of them in code that had no test coverage at all, which is the same
@@ -208,10 +215,10 @@ step immediately before the Stage F freeze. It is read-only.
 
 ## Decisions — both now closed
 
-- ~~**The BSPOK duplicate pair**~~ — **decided 2026-08-28: no change.**
+- ~~**One duplicate company pair**~~ — **decided 2026-08-28: no change.**
   The primary flag is already on the correct row (both document numbers
   embed its HubSpot id, and numbers never change). The single historical
-  deal stays on the alias row and is not pinnable to a BSPOK document;
+  deal stays on the alias row and is not pinnable to that client's documents;
   accepted, because nothing is pinned to it and every new deal from monday
   attaches to the primary row. See `monday_migration_plan.md` §open
   questions item 5 for the full reasoning and the one-line reversal.

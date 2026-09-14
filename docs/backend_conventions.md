@@ -1,5 +1,7 @@
 # Backend Conventions (Phase 8+)
 
+> **CRM note (2026-09-14).** The live CRM is monday.com; HubSpot was retired and the account no longer exists. The HubSpot-specific examples below (config sample, webhook route and CORS note, rate limits, health check, error codes) describe the retired integration; the identifiers that still carry `hubspot` names are explained in [CRM_INTEGRATION.md](CRM_INTEGRATION.md).
+
 Date: 2026-05-15
 Status: **Authoritative for all server-side code in `server/`.**
 

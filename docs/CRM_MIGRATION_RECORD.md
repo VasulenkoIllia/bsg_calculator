@@ -31,7 +31,7 @@ one large irreversible event.
 | | |
 |---|---|
 | Companies matched | **71 of 76** — 65 by exact name, 3 by HubSpot id, 3 by loose name |
-| The 3 loose matches | verified by hand against monday: a `(closed)` suffix, `Nexton / Daniel` vs `Nexton, Daniel`, a trailing full stop |
+| The 3 loose matches | verified by hand against monday: a `(closed)` suffix, a slash where monday had a comma, a trailing full stop |
 | Deals matched | **28 of 28**, by order reference number — deterministic |
 | Unmatched | 5 test companies. Between them 26 documents, **all soft-deleted, none carrying a note** |
 | Duplicates | 8 monday cards each claimed by two of our rows; the row owning real work became `primary` |
@@ -40,7 +40,8 @@ one large irreversible event.
 
 The whole remap ran in one transaction, wrote only binding columns, and
 left the HubSpot chain (`hubspot_company_id`, `hubspot_deal_id`) intact —
-which is what made rollback a single environment variable.
+which is what made rollback, at the time, a single environment variable
+(no longer possible — see "After the migration").
 
 The forensic trail is in `crm_id_map`: 99 rows recording what matched
 what, and by which key.
@@ -115,6 +116,54 @@ zero-byte file that looked like a backup.
 Production runs monday.com as the live CRM. HubSpot code is intact and one
 variable away. Rollback images for every step of the day are on the host.
 
+*(That was the state on 2026-08-28. The HubSpot account has since gone, so
+"one variable away" no longer holds — see "After the migration" below.)*
+
 **The largest remaining risk was never in the code:** the monday
 subscription was still a trial, expiring the same week HubSpot was
 switched off. No commit closes that.
+
+## After the migration (2026-09-14)
+
+**The HubSpot account is gone.** Confirmed 2026-09-14. The rollback the
+whole design preserved — set `CRM_PROVIDER` back to `hubspot` — no longer
+exists: monday.com is the only CRM, and the HubSpot code still in the repo
+is dormant with nothing to talk to. The code default of `CRM_PROVIDER` is
+still `hubspot` (the tests rely on it; changing it is deferred), so every
+environment must set `CRM_PROVIDER=monday` explicitly. The identifiers
+that still say `hubspot` are explained in `CRM_INTEGRATION.md` under
+"Field meanings".
+
+**Two fixes, one bug twice.** Both found and fixed on 2026-09-14:
+
+- **`a84d653` — a deal now follows its Company (M) link on every sync.**
+  Syncing a deal we already had refreshed its name and stage but never its
+  company, so a change of Company (M) in monday was ignored by webhooks,
+  the scheduled backfill and the TTL refresh alike. Three deals imported
+  during the migration had been stuck under their referring agents, which
+  made them invisible in the wizard for their merchants. The fix keeps
+  three guards: only a primary bound company is accepted; an empty or
+  unbound link leaves the deal where it is; and a deal already under any
+  row bound to the same monday card — including the alias half of a
+  duplicate pair — is not moved.
+- **`4aeb134` — `last_synced_at` and "CRM updated" (`hubspot_modified_at`)
+  now advance on every sync.** Both had been written only when a row was
+  first inserted. Every bound row therefore looked permanently stale: the
+  TTL refresh re-read it from monday on every view, the company page showed
+  a "last synced" date from May, and "CRM updated" kept the HubSpot-era or
+  creation date instead of the card's last change.
+
+**What it taught.** Both were the same class of bug: a field the INSERT
+branch of an upsert wrote and the UPDATE branch forgot. Nothing errored;
+the value was simply frozen at its first write. When changing an upsert,
+compare the INSERT and UPDATE branches field by field — a field the UPDATE
+does not touch should be left alone on purpose, not by omission.
+
+**monday was still operating on 2026-09-14.** This record does not
+establish whether the trial described above was converted to a paid plan;
+by the correction earlier in this record, only a non-null `account.plan`
+proves that.
+
+The operating manual, `CRM_INTEGRATION.md`, describes the system as it
+runs now. `monday_migration_plan.md`, `monday_migration_analysis.md` and
+`monday_audit_round4.md` are historical planning documents.

@@ -1,17 +1,15 @@
 # BSG ↔ HubSpot Field Mapping
 
-> **Era note (2026-08-28).** This document describes the **HubSpot** era.
-> HubSpot is switched off after 2026-08-31 and monday.com replaces it via
-> the `CRM_PROVIDER` switch. What still applies, what changes, and why is in
-> [`monday_migration_plan.md`](monday_migration_plan.md); the practical diff
-> is in [`ONBOARDING.md`](ONBOARDING.md) §10.
+> **Historical** — HubSpot was switched off after 2026-08-31 and the
+> account no longer exists (confirmed 2026-09-14); monday.com is the only
+> CRM. Current reference: [docs/CRM_INTEGRATION.md](CRM_INTEGRATION.md).
 
 Date: 2026-05-14 (updated 2026-05-16: company-type filter)
-Status: **Source of truth — validated against live BSG HubSpot 2026-05-16.**
+Status (as of 2026-05, historical): **Source of truth — validated against live BSG HubSpot 2026-05-16.**
 Integration model: **Link-only** (BSG documents reference HubSpot
 deals; HubSpot does NOT pre-fill the calculator).
 
-Single canonical reference for which HubSpot fields BSG reads + writes.
+Single canonical reference, in the HubSpot era, for which HubSpot fields BSG reads + writes.
 Used by:
 
 - **Phase 8 sync** (read-only) — pulls the listed fields into our DB
@@ -59,9 +57,9 @@ Mechanics:
   4. If NO candidate is in our DB — deal is genuinely orphaned;
      skip + log.
 
-  Real-world example from BSG: deal "WORLDFY OY" was primary-
-  associated with agent `(A) Waseem` but also secondary-associated
-  with merchant `(M) WORLDFY`. The fallback chose the merchant;
+  Real-world example from BSG: one deal was primary-associated
+  with its referring agent (`(A) …`) but also secondary-associated
+  with its merchant (`(M) …`). The fallback chose the merchant;
   warn log records the inconsistency.
 
 ⚠️ **No calculator auto-hydration.** Earlier drafts of this document
@@ -83,8 +81,8 @@ See also:
 
 ## 1. Companies — 8 extracted columns
 
-Validated by inspecting two live records (`(A) Elena` referring
-partner + `(M) Finqly` direct client) on 2026-05-14. Of the 263
+Validated by inspecting two live records (one `(A)` referring
+partner + one `(M)` direct client) on 2026-05-14. Of the 263
 property names the HubSpot schema exposes, only ~30 are populated
 per record and only 8 of them carry meaning for our workflow.
 
@@ -117,9 +115,8 @@ specific UI feature surfaces a real demand for filtering / sorting.
 
 ## 2. Deals — 12 extracted columns
 
-Validated by inspecting deal `CEI Processing Limited` (id
-`498828505295`) on 2026-05-14. Of 237 deal properties, 75 are
-populated; we extract 12.
+Validated by inspecting one live deal (id `498828505295`) on
+2026-05-14. Of 237 deal properties, 75 are populated; we extract 12.
 
 | HubSpot property | Our column | Type | NULL? | Use in app |
 |---|---|---|---|---|
@@ -130,8 +127,8 @@ populated; we extract 12.
 | `pipeline` | `pipeline_id` | text | NULL | HubSpot pipeline ID. Currently always `default` (= Gateway sales pipeline). Stored for forward compatibility if BSG adds a second pipeline. |
 | `amount` | `amount` | numeric(14,2) | NULL | Deal value. |
 | `deal_currency_code` | `currency` | text | NULL | ISO currency code (e.g. `EUR`). |
-| `client` | `client_label` | text | NULL | Free-text client name set by BSG sales (e.g. `(M) Atom`). Distinct from `dealname` — sometimes more informative, sometimes less. Both displayed in the picker. |
-| `agent` | `agent_label` | text | NULL | Free-text agent name (e.g. `(A) Jeremy`). Cross-references the agent-type company on the HubSpot side. |
+| `client` | `client_label` | text | NULL | Free-text client name set by BSG sales (e.g. `(M) <merchant name>`). Distinct from `dealname` — sometimes more informative, sometimes less. Both displayed in the picker. |
+| `agent` | `agent_label` | text | NULL | Free-text agent name (e.g. `(A) <agent name>`). Cross-references the agent-type company on the HubSpot side. |
 | `business_vertical` | `business_vertical` | text | NULL | Enum (`iGaming / Betting`, …). Shown in deal context panel during calculation. |
 | `createdate` | `hubspot_created_at` | timestamptz | NOT NULL | First seen. |
 | `hs_lastmodifieddate` | `hubspot_modified_at` | timestamptz | NOT NULL | Incremental sync trigger (Phase 9). |

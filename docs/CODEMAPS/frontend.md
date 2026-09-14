@@ -1,6 +1,6 @@
 # Frontend (SPA) Codemap
 
-**Last Updated:** 2026-06-08 (partial refresh — list pages, soft-delete, TOTP 2FA two-step login + `/me` cabinet; older tables below predate Phase 4+ and a full `/update-codemaps` regen is pending)
+**Last Updated:** 2026-09-14 (CRM refresh — the CRM is monday.com, UI copy says "CRM", `src/api/hubspot.ts` is dormant legacy). Earlier partial refresh 2026-06-08 — list pages, soft-delete, TOTP 2FA two-step login + `/me` cabinet; older tables below predate Phase 4+ and a full `/update-codemaps` regen is pending
 **Framework:** React 19 + Vite 6 + TypeScript (NodeNext modules)
 **Entry Point:** `src/main.tsx` → `src/App.tsx`
 **Router:** react-router-dom v7 (BrowserRouter)
@@ -35,7 +35,8 @@
 ├─────────────────────────────────────────────────────────────────┤
 │  API Layer (src/api/)                                            │
 │  • client.ts — axios singleton, interceptors, ApiError           │
-│  • auth.ts / companies.ts / deals.ts / hubspot.ts                │
+│  • auth.ts / companies.ts / deals.ts                             │
+│  • hubspot.ts — dormant legacy (HubSpot-only endpoint)           │
 │  • calculator-configs.ts / documents.ts                          │
 │  • types.ts — mirror of backend Zod public schemas               │
 │  • index.ts — barrel                                             │
@@ -118,12 +119,12 @@ Logout (POST /auth/logout):
 | File | Purpose |
 |---|---|
 | `client.ts` | axios singleton, in-memory access-token store, refresh-on-401 single-flight, `ApiError` class, `setSessionLostHandler` |
-| `types.ts` | Wire types mirroring backend Zod schemas — `PublicUser`, `PublicCompany`, `PublicDeal`, `CursorPage<T>`, `HubspotPipeline`, `ApiErrorEnvelope` |
+| `types.ts` | Wire types mirroring backend Zod schemas — `PublicUser`, `PublicCompany`, `PublicDeal`, `CursorPage<T>`, `HubspotPipeline` (legacy), `ApiErrorEnvelope` |
 | `auth.ts` | `login()`, `refresh()`, `logout()`, `me()` |
 | `companies.ts` | `listCompanies(params)`, `getCompany(id)`, `listCompanyDeals(id, params)` |
 | `deals.ts` | `listDeals(params)`, `getDeal(id)` (scaffolded, not wired to UI yet) |
-| `hubspot.ts` | `getPipelines()` |
-| `index.ts` | Barrel — exports `ApiError`, types, and `auth/companies/deals/hubspot` namespaces |
+| `hubspot.ts` | **Dormant legacy.** `getPipelines()` → `GET /api/v1/hubspot/pipelines`, a HubSpot-only endpoint. Nothing in the UI calls it any more; kept until the deferred HubSpot cleanup. |
+| `index.ts` | Barrel — exports `ApiError`, types, and the `auth/calculatorConfigs/companies/deals/documents/hubspot` namespaces (`hubspot` is legacy) |
 
 **Axios augmentation (in `client.ts`):**
 
@@ -135,6 +136,20 @@ declare module "axios" {
   }
 }
 ```
+
+### CRM naming in the SPA
+
+The CRM is **monday.com** (HubSpot was retired on 2026-08-31). User-facing copy says "CRM": *Sync to CRM*, *Synced to CRM*, *Retry CRM sync*, *CRM ID*, *CRM updated*, *Last synced*, *Deleted in CRM* / *Archived in CRM* / *Not found in CRM*. A few leftovers remain: the sync-status column header on `DocumentsListPage` and `CalculatorsListPage` ("HubSpot sync"), the body text of `DeleteCompanyModal` ("HubSpot is not affected …"), the sync-badge tooltip on `DocumentViewPage` ("Latest HubSpot Note id: …") and the Merchant hint in the wizard's `PartiesStep` ("… come from HubSpot / DB once the backend phase lands").
+
+Wire fields, components and helpers keep their legacy `hubspot*` names by design (the rename is deferred):
+
+| Name | Meaning today |
+|---|---|
+| `hubspotCompanyId` | Company natural key, shown as "CRM ID"; companies created from monday carry `mon:<itemId>` |
+| `hubspotModifiedAt` | The "CRM updated" column — the monday item's last change |
+| `lastSyncedAt` | "Last synced" on the company page |
+| `hubspotSyncState`, `hubspotNoteId` | Note write-back state and the latest note id (a monday update id for monday-era notes) |
+| `HubspotSyncBadge`, `HubspotDeletedBadge`, `src/shared/hubspotSyncPoll.ts` | CRM sync pill, CRM deleted / archived / not-found pill, post-create badge polling |
 
 ### `src/contexts/AuthContext.tsx`
 
@@ -177,9 +192,9 @@ Constants in `src/shared/constants.ts`:
 | Page | Path | Purpose |
 |---|---|---|
 | `LoginPage.tsx` | `/login` | react-hook-form + zod, validates against backend `loginRequestSchema`. Renders splash during `isBooting`. Bounces logged-in users to `state.from` or `/companies`. |
-| `CompaniesPage.tsx` | `/companies` | Search box + table (name → segment → lifecycle → updated). LoadMoreButton at tail. `isFetching && !isLoading` → "refreshing…" badge next to Search label. |
-| `CompanyDetailPage.tsx` | `/companies/:id` | Company info header (dl with segment, lifecycle, HubSpot id, last synced) + deals table with LoadMoreButton. |
-| `CalculatorPage.tsx` | `/calculator`, `/calc/:id` | Pre-2.8 calculator (frozen domain) + edit mode for a saved config (hydrate + auto-save + Sync-to-HubSpot button with re-sync confirm). |
+| `CompaniesPage.tsx` | `/companies` | Search box + table (name → segment → lifecycle → CRM updated). LoadMoreButton at tail. `isFetching && !isLoading` → "refreshing…" badge next to Search label. |
+| `CompanyDetailPage.tsx` | `/companies/:id` | Company info header (dl with segment, lifecycle, CRM ID, Last synced) + deals table ("CRM updated" column) with LoadMoreButton. |
+| `CalculatorPage.tsx` | `/calculator`, `/calc/:id` | Pre-2.8 calculator (frozen domain) + edit mode for a saved config (hydrate + auto-save + "Sync to CRM" button with re-sync confirm). |
 | `WizardPage.tsx` | `/wizard` | Pre-2.8 contract wizard — same as above. |
 | `NotFoundPage.tsx` | `*` | 404 with links to /calculator and /wizard. |
 | `DocumentsListPage.tsx` | `/documents` | Offers/agreements list. Filters: Company + Number search + Scope + Status. Columns incl. `HubspotSyncBadge`, `DeletionStatusCell` (Active/Deleted + inline super_admin Restore), and an inline **Open → / Delete** (admin) actions column → `DeleteDocumentModal`. |
@@ -197,7 +212,7 @@ Constants in `src/shared/constants.ts`:
 | `AppShell.tsx` | Main layout: IdentityStrip (signed-in name + Sign out) → CalculatorHeader → WorkspaceTabs (Companies, Calculator, Wizard) → `<Outlet />`. |
 | `PrivateRoute.tsx` | Auth gate: boot splash → redirect-to-/login → render outlet. State machine over `useAuth().isBooting` + `user`. |
 | `LoadMoreButton.tsx` | Cursor-pagination tail. Renders nothing when `!hasNextPage`. |
-| `HubspotSyncBadge.tsx` | Shared 5-state HubSpot-sync pill (Not synced / Synced / Deleting… / Delete failed / Failed). Used by both list pages. |
+| `HubspotSyncBadge.tsx` | Shared 5-state CRM-sync pill (legacy component name; Not synced / Synced / Deleting… / Delete failed / Failed). Used by both list pages. |
 | `DeletionStatusCell.tsx` | Shared Active/Deleted status cell (badge + `humanReason` + optional inline Restore). Takes primitives; used by both list pages. |
 | `DeleteDocumentModal.tsx` / `DeleteCalculatorModal.tsx` | Soft-delete modals (reason dropdown via shared `REASON_OPTIONS` + note; `other` requires a note). ~90% identical — full unification deliberately deferred (per-entity error map is the only real divergence). |
 | `ConfirmDialog.tsx` | Reusable confirm modal (used for the "Sync again creates a NEW Note" re-sync guard). |
